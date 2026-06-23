@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 
@@ -17,3 +18,30 @@ def test_validate_returns_zero(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_no_command_prints_help_returns_zero() -> None:
     assert main([]) == 0
+
+
+def test_missing_file_reports_concise_error(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["validate", "/no/such/experiment.yaml"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def test_invalid_config_reports_concise_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: only-a-name\n")  # missing required `inputs`
+    rc = main(["validate", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def test_debug_flag_reraises(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("name: only-a-name\n")
+    with pytest.raises(ValidationError):
+        main(["--debug", "validate", str(bad)])

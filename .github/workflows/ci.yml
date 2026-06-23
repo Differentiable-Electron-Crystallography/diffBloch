@@ -33,5 +33,8 @@ jobs:
 
       - name: Build docs
         run: uv run mkdocs build --strict
+
+      - name: Build package (wheel + sdist)
+        run: uv build
   # NOTE: e2e tests (`-m e2e`) are intentionally not in CI yet — they need data fixtures + the
   # ported kernels (migration stage 0+). Add a separate e2e job once the anchor is real.

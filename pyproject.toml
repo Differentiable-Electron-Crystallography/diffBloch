@@ -4,7 +4,8 @@ dynamic = ["version"]  # single-sourced from src/diffBloch/__init__.py (see [too
 description = "Differentiable Bloch-wave electron-diffraction structure refinement"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
