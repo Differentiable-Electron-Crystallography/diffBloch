@@ -1,0 +1,68 @@
+[project]
+name = "diffbloch"
+version = "0.2.0"
+description = "Differentiable Bloch-wave electron-diffraction structure refinement"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    # Scientific deps are added as their modules land (see ROADMAP.md):
+    #   numpy            -> io/ records, core/ kernels
+    #   torch            -> core/solver, engine
+    #   gemmi            -> io/ (blessed CIF/PETS reader + writer)
+    #   diffpy.structure -> io/symmetry_setup (special-position / ADP constraints)
+    #   abtem            -> core/scattering (electron form factors), wrapped behind a seam
+]
+
+[project.scripts]
+diffbloch = "diffBloch.app.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diffBloch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-pyyaml>=6.0",
+    "pre-commit>=3.7",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not e2e' --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "e2e: end-to-end characterization tests (require data fixtures; opt-in via `just test-e2e`)",
+    "slow: long-running tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# NOTE: no include-list. Unlike the research repo's incremental-lint crutch, the 2.0 rewrite is
+# clean by construction, so the whole tree is linted from the first commit.
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
+strict = true
+ignore_missing_imports = true

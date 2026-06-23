@@ -1,0 +1,22 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+pytest.xml
+
+# Build / docs output
+dist/
+build/
+site/
+
+# OS / editors
+.DS_Store
+.idea/
