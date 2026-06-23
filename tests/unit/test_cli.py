@@ -45,3 +45,28 @@ def test_debug_flag_reraises(tmp_path: Path) -> None:
     bad.write_text("name: only-a-name\n")
     with pytest.raises(ValidationError):
         main(["--debug", "validate", str(bad)])
+
+
+def test_run_pack_exports_run_directory(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run_001"
+    run.mkdir()
+    (run / "run_manifest.json").write_text("{}\n")
+    (run / "history.jsonl").write_text("{}\n")
+
+    rc = main(["run", "pack", str(run), "--format", "zip"])
+    assert rc == 0
+    output = Path(capsys.readouterr().out.strip())
+    assert output.is_file()
+    assert output.suffix == ".zip"
+
+
+def test_run_pack_missing_manifest_reports_concise_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = tmp_path / "run_001"
+    run.mkdir()
+    rc = main(["run", "pack", str(run)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err

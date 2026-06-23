@@ -11,8 +11,9 @@ commit — the executable form of *"the core physics model has not changed."*
 
 - [x] **0 — Scaffolding.** uv package (src-layout, Py ≥3.11), pre-commit (ruff + hooks), Pydantic,
   justfile, mkdocstrings docs, unit + e2e harness, CI, and the anchor placeholder. `just check` green.
-- [ ] **1 — Config + experiment packaging.** Flesh out `config/` (done: schema); add experiment-as-
-  directory loader + `experiment.lock` (SHA256, fail-fast). Relative paths only.
+- [x] **1 — Config + experiment packaging.** Flesh out `config/` with split/objective/optimizer
+  submodels; add experiment-as-directory loader + `experiment.lock` (SHA256, fail-fast); add
+  generated-artifact `RunManifest`; add `diffbloch run pack` export surface. Relative paths only.
 - [ ] **2 — `io/` parser boundary.** gemmi adapter → Pydantic `StructureRecord` / `ObservationRecord`
   **with explicit `@model_validator` contracts** (shape, occupancy ∈ [0,1], ADP PSD, symop shapes,
   σ ≥ 0). diffpy `symmetry_constraints(record)` behind its seam. Conformance/golden tests.

@@ -1,0 +1,9 @@
+structure:
+  ref: enantiomer_1.cif
+  sha256: 0b65cd679f59dbd332cf9f38892fe9c96072f8b6fe6d22ff402eddacc80f2719
+  bytes: 77
+observations:
+  ref: exp_data.cif_pets
+  sha256: b2fcfe5a3f38791441db40adca91380ac615d89c9bc2387a5e1ab6d08d84e231
+  bytes: 82
+orientations: null

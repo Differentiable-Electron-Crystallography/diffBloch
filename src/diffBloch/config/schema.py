@@ -9,9 +9,10 @@ input references and overrides. See the synthesis notebook
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SolverConfig(BaseModel):
@@ -31,6 +32,35 @@ class NumericsConfig(BaseModel):
     rocking_curve_sampling: int = 42
     dsg: float = 0.0015
     rsg: float = 0.9
+
+
+class DataSplitConfig(BaseModel):
+    """Required train/validation split declaration.
+
+    The concrete selector language is intentionally small for Stage 1: it records the fixed split
+    policy that later dataset code will materialize into ``data_used``.
+    """
+
+    train: str = "all_except_validation"
+    validation: str = "every_10th_rotation"
+
+
+class ObjectiveConfig(BaseModel):
+    """First-class target composition, not one opaque scalar loss."""
+
+    data_term: Literal["weighted_r", "poisson_nll", "least_squares"] = "weighted_r"
+    outlier_rejection: Literal["none", "tukey", "sigma_clip"] = "none"
+    restraints_weight: float = 1.0
+    nuisance_weight: float = 1.0
+    report_gradient_norms: bool = True
+
+
+class OptimizerConfig(BaseModel):
+    """Explicit optimizer backend for a refinement stage."""
+
+    name: Literal["lbfgs", "adam", "adamw", "least_squares"] = "lbfgs"
+    lr: float = 1e-3
+    max_line_search_steps: int = 20
 
 
 class BeamDamageConfig(BaseModel):
@@ -55,8 +85,10 @@ class RefinementConfig(BaseModel):
     """Default refinement-stage hyperparameters."""
 
     steps: int = 500
-    lr: float = 1e-3
     targets: tuple[str, ...] = ("positions", "adp")
+    optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
+    objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
+    split: DataSplitConfig = Field(default_factory=DataSplitConfig)
 
 
 class Inputs(BaseModel):
@@ -65,6 +97,18 @@ class Inputs(BaseModel):
     structure: str
     observations: str
     orientations: str | None = None
+
+    @field_validator("structure", "observations", "orientations")
+    @classmethod
+    def _relative_path_only(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                "input references must be relative paths within the experiment directory"
+            )
+        return value
 
 
 class ExperimentConfig(BaseModel):

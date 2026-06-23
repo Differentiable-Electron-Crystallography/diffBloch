@@ -1,0 +1,10 @@
+# Minimal locked experiment for Stage 1 packaging tests.
+name: locked-min
+inputs:
+  structure: enantiomer_1.cif
+  observations: exp_data.cif_pets
+refinement:
+  optimizer:
+    name: lbfgs
+  split:
+    validation: every_10th_rotation

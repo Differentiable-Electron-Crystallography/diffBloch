@@ -13,7 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.config import load_config
+from diffBloch.config import load_config, pack_run
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +29,17 @@ def main(argv: list[str] | None = None) -> int:
     p_validate = sub.add_parser("validate", help="Validate an experiment.yaml and report")
     p_validate.add_argument("config", help="Path to experiment.yaml")
 
+    p_run = sub.add_parser("run", help="Run artifact commands")
+    run_sub = p_run.add_subparsers(dest="run_command")
+    p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
+    p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
+    p_pack.add_argument(
+        "--format",
+        choices=["zip", "tar", "bagit", "ro-crate"],
+        default="zip",
+        help="Export package format",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -42,6 +53,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {args.config}: {exc}", file=sys.stderr)
             return 1
         print(f"OK: experiment '{cfg.name}' validated.")
+        return 0
+
+    if args.command == "run" and args.run_command == "pack":
+        try:
+            output = pack_run(args.run_directory, format=args.format)
+        except (FileNotFoundError, ValueError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(output)
         return 0
 
     parser.print_help()
