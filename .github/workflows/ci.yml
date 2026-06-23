@@ -28,8 +28,8 @@ jobs:
       - name: Typecheck
         run: uv run mypy src/diffBloch
 
-      - name: Unit tests
-        run: uv run pytest
+      - name: Unit tests (with coverage)
+        run: uv run pytest --cov=diffBloch --cov-report=term-missing
 
       - name: Build docs
         run: uv run mkdocs build --strict

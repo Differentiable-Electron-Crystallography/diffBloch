@@ -22,6 +22,10 @@ anchor:
 test-all:
     uv run pytest -m ""
 
+# Unit tests with a coverage report
+cov:
+    uv run pytest --cov=diffBloch --cov-report=term-missing
+
 # Lint + format check (no changes)
 lint:
     uv run ruff check .

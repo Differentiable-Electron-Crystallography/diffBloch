@@ -1,0 +1,9 @@
+# Minimal valid experiment, used by the boundary tests (load_config + `diffbloch validate`).
+# Input files are referenced by RELATIVE path within the experiment directory (no project-root paths).
+name: quartz-min
+inputs:
+  structure: enantiomer_1.cif
+  observations: exp_data.cif_pets
+numerics:
+  sg_max: 0.01
+  g_max_refine: 1.6
