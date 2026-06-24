@@ -14,7 +14,11 @@ test:
 test-e2e:
     uv run pytest -m e2e
 
-# The single-rotation quartz anchor specifically (north star)
+# Exposed selector examples:
+#   DIFFBLOCH_ANCHOR_ROTATIONS=all just anchor
+#   DIFFBLOCH_ANCHOR_ROTATIONS=first:5 just anchor
+#   DIFFBLOCH_ANCHOR_ROTATIONS=26,33,56 just anchor
+# Quartz anchor (north star). Defaults to DIFFBLOCH_ANCHOR_ROTATIONS=first:1.
 anchor:
     uv run pytest -m e2e -k anchor
 
