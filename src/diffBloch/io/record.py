@@ -7,7 +7,7 @@ These records are the trust boundary between file formats and differentiable ker
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,6 +17,52 @@ type FloatArray = NDArray[np.float64]
 type IntArray = NDArray[np.int64]
 
 
+class AdpRecord(BaseModel):
+    """Atomic displacement parameters, preserving CIF Uiso/Uani semantics."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    kind: tuple[Literal["Uiso", "Uani", "missing"], ...]
+    u_iso: FloatArray
+    u_iso_su: FloatArray
+    uij_cif: FloatArray
+    uij_cif_su: FloatArray
+
+    @field_validator("u_iso", "u_iso_su", "uij_cif", "uij_cif_su", mode="before")
+    @classmethod
+    def _as_float_array(cls, value: Any) -> FloatArray:
+        return np.asarray(value, dtype=np.float64)
+
+    @model_validator(mode="after")
+    def _validate_contract(self) -> Self:
+        n_atoms = len(self.kind)
+        if self.u_iso.shape != (n_atoms,):
+            raise ValueError("adp.u_iso must have shape (N,) matching adp.kind")
+        if self.u_iso_su.shape != (n_atoms,):
+            raise ValueError("adp.u_iso_su must have shape (N,) matching adp.kind")
+        if self.uij_cif.shape != (n_atoms, 3, 3):
+            raise ValueError("adp.uij_cif must have shape (N, 3, 3) matching adp.kind")
+        if self.uij_cif_su.shape != (n_atoms, 3, 3):
+            raise ValueError("adp.uij_cif_su must have shape (N, 3, 3) matching adp.kind")
+        if np.any(self.u_iso_su[np.isfinite(self.u_iso_su)] < 0.0):
+            raise ValueError("adp.u_iso_su must be non-negative where present")
+        if np.any(self.uij_cif_su[np.isfinite(self.uij_cif_su)] < 0.0):
+            raise ValueError("adp.uij_cif_su must be non-negative where present")
+
+        for index, kind in enumerate(self.kind):
+            if kind == "Uiso" and not np.isfinite(self.u_iso[index]):
+                raise ValueError("Uiso ADPs must have finite u_iso values")
+            if kind == "Uani":
+                uij = self.uij_cif[index]
+                if not np.all(np.isfinite(uij)):
+                    raise ValueError("Uani ADPs must have finite uij_cif matrices")
+                if not np.allclose(uij, uij.T, atol=1e-12):
+                    raise ValueError("Uani uij_cif matrices must be symmetric")
+                if np.any(np.linalg.eigvalsh(uij) < -1e-12):
+                    raise ValueError("Uani uij_cif matrices must be positive semidefinite")
+        return self
+
+
 class StructureRecord(BaseModel):
     """Asymmetric-unit structure data in CIF convention."""
 
@@ -24,6 +70,8 @@ class StructureRecord(BaseModel):
 
     source_path: Path | None = None
     unit_cell: FloatArray
+    cell_parameters: FloatArray
+    cell_parameters_su: FloatArray
     spacegroup_hm: str
     spacegroup_number: int | None = None
     symops_R: FloatArray
@@ -31,16 +79,21 @@ class StructureRecord(BaseModel):
     labels: tuple[str, ...]
     numbers: IntArray
     frac_positions: FloatArray
+    frac_positions_su: FloatArray
     occupancies: FloatArray
-    uij_cif: FloatArray
+    occupancies_su: FloatArray
+    adp: AdpRecord
 
     @field_validator(
         "unit_cell",
+        "cell_parameters",
+        "cell_parameters_su",
         "symops_R",
         "symops_t",
         "frac_positions",
+        "frac_positions_su",
         "occupancies",
-        "uij_cif",
+        "occupancies_su",
         mode="before",
     )
     @classmethod
@@ -57,6 +110,12 @@ class StructureRecord(BaseModel):
         n_atoms = len(self.labels)
         if self.unit_cell.shape != (3, 3):
             raise ValueError("unit_cell must have shape (3, 3)")
+        if self.cell_parameters.shape != (6,):
+            raise ValueError("cell_parameters must have shape (6,)")
+        if self.cell_parameters_su.shape != (6,):
+            raise ValueError("cell_parameters_su must have shape (6,)")
+        if np.any(self.cell_parameters_su[np.isfinite(self.cell_parameters_su)] < 0.0):
+            raise ValueError("cell_parameters_su must be non-negative where present")
         if self.symops_R.ndim != 3 or self.symops_R.shape[1:] != (3, 3):
             raise ValueError("symops_R must have shape (S, 3, 3)")
         if self.symops_t.shape != (self.symops_R.shape[0], 3):
@@ -65,17 +124,20 @@ class StructureRecord(BaseModel):
             raise ValueError("numbers must have shape (N,) matching labels")
         if self.frac_positions.shape != (n_atoms, 3):
             raise ValueError("frac_positions must have shape (N, 3) matching labels")
+        if self.frac_positions_su.shape != (n_atoms, 3):
+            raise ValueError("frac_positions_su must have shape (N, 3) matching labels")
+        if np.any(self.frac_positions_su[np.isfinite(self.frac_positions_su)] < 0.0):
+            raise ValueError("frac_positions_su must be non-negative where present")
         if self.occupancies.shape != (n_atoms,):
             raise ValueError("occupancies must have shape (N,) matching labels")
+        if self.occupancies_su.shape != (n_atoms,):
+            raise ValueError("occupancies_su must have shape (N,) matching labels")
+        if np.any(self.occupancies_su[np.isfinite(self.occupancies_su)] < 0.0):
+            raise ValueError("occupancies_su must be non-negative where present")
         if np.any((self.occupancies < 0.0) | (self.occupancies > 1.0)):
             raise ValueError("occupancies must be in [0, 1]")
-        if self.uij_cif.shape != (n_atoms, 3, 3):
-            raise ValueError("uij_cif must have shape (N, 3, 3) matching labels")
-        if not np.allclose(self.uij_cif, np.swapaxes(self.uij_cif, 1, 2), atol=1e-12):
-            raise ValueError("uij_cif matrices must be symmetric")
-        eigvals = np.linalg.eigvalsh(self.uij_cif)
-        if np.any(eigvals < -1e-12):
-            raise ValueError("uij_cif matrices must be positive semidefinite")
+        if len(self.adp.kind) != n_atoms:
+            raise ValueError("adp must have one entry per atom label")
         return self
 
     @property
@@ -87,6 +149,11 @@ class StructureRecord(BaseModel):
     def n_symops(self) -> int:
         """Number of symmetry operations provided by the source file."""
         return int(self.symops_R.shape[0])
+
+    @property
+    def uij_cif(self) -> FloatArray:
+        """Anisotropic ADP matrices; non-Uani rows are NaN."""
+        return self.adp.uij_cif
 
 
 class ObservationRecord(BaseModel):

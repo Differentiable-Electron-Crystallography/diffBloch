@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from diffBloch.io import ObservationRecord, StructureRecord
+from diffBloch.io import AdpRecord, ObservationRecord, StructureRecord
 
 
 def test_structure_record_validates_shapes_and_physical_bounds() -> None:
@@ -15,23 +15,65 @@ def test_structure_record_validates_shapes_and_physical_bounds() -> None:
             labels=("Si1",),
             numbers=np.asarray([14]),
             frac_positions=np.zeros((1, 3)),
+            frac_positions_su=np.full((1, 3), np.nan),
             occupancies=np.asarray([1.5]),
-            uij_cif=np.eye(3)[None, :, :] * 0.01,
+            occupancies_su=np.asarray([np.nan]),
+            cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+            cell_parameters_su=np.full((6,), np.nan),
+            adp=AdpRecord(
+                kind=("Uani",),
+                u_iso=np.asarray([0.01]),
+                u_iso_su=np.asarray([np.nan]),
+                uij_cif=np.eye(3)[None, :, :] * 0.01,
+                uij_cif_su=np.full((1, 3, 3), np.nan),
+            ),
         )
 
 
 def test_structure_record_rejects_non_psd_adp() -> None:
     with pytest.raises(ValidationError, match="positive semidefinite"):
+        AdpRecord(
+            kind=("Uani",),
+            u_iso=np.asarray([0.01]),
+            u_iso_su=np.asarray([np.nan]),
+            uij_cif=-np.eye(3)[None, :, :],
+            uij_cif_su=np.full((1, 3, 3), np.nan),
+        )
+
+
+def test_adp_record_validates_kind_specific_storage() -> None:
+    with pytest.raises(ValidationError, match="finite u_iso"):
+        AdpRecord(
+            kind=("Uiso",),
+            u_iso=np.asarray([np.nan]),
+            u_iso_su=np.asarray([np.nan]),
+            uij_cif=np.full((1, 3, 3), np.nan),
+            uij_cif_su=np.full((1, 3, 3), np.nan),
+        )
+
+
+def test_structure_record_rejects_negative_standard_uncertainties() -> None:
+    with pytest.raises(ValidationError, match="frac_positions_su"):
         StructureRecord(
             unit_cell=np.eye(3),
+            cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+            cell_parameters_su=np.full((6,), np.nan),
             spacegroup_hm="P1",
             symops_R=np.eye(3)[None, :, :],
             symops_t=np.zeros((1, 3)),
             labels=("Si1",),
             numbers=np.asarray([14]),
             frac_positions=np.zeros((1, 3)),
+            frac_positions_su=np.asarray([[-1.0, np.nan, np.nan]]),
             occupancies=np.asarray([1.0]),
-            uij_cif=-np.eye(3)[None, :, :],
+            occupancies_su=np.asarray([np.nan]),
+            adp=AdpRecord(
+                kind=("Uiso",),
+                u_iso=np.asarray([0.01]),
+                u_iso_su=np.asarray([np.nan]),
+                uij_cif=np.full((1, 3, 3), np.nan),
+                uij_cif_su=np.full((1, 3, 3), np.nan),
+            ),
         )
 
 
