@@ -32,6 +32,7 @@ class NumericsConfig(BaseModel):
     rocking_curve_sampling: int = 42
     dsg: float = 0.0015
     rsg: float = 0.9
+    thicknesses: tuple[float, ...] = (820.0,)
 
 
 class DataSplitConfig(BaseModel):

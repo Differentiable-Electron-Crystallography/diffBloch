@@ -14,6 +14,7 @@ numerics:
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9
+  thicknesses: [820.0]
 solver:
   inference: bloch_eigen
   refine: matrix_exp

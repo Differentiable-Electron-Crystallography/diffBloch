@@ -9,6 +9,7 @@ from diffBloch.config.manifest import (
     input_lock_for,
     load_experiment,
     pack_run,
+    select_reference_rotations,
     sha256_file,
     write_run_manifest,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "load_config",
     "load_experiment",
     "pack_run",
+    "select_reference_rotations",
     "sha256_file",
     "write_run_manifest",
 ]

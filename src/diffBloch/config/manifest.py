@@ -15,7 +15,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 from pydantic import BaseModel
@@ -112,6 +112,27 @@ def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
     Path(path).write_text(manifest.model_dump_json(indent=2) + "\n")
 
 
+def select_reference_rotations(
+    rotations: list[dict[str, object]], selector: str
+) -> list[dict[str, object]]:
+    """Select reference rotations by ``all``, ``first:N``, or comma-separated ``rotation_idx``."""
+    if selector == "all":
+        return rotations
+    if selector.startswith("first:"):
+        count = int(selector.split(":", 1)[1])
+        if count < 1:
+            raise ValueError("first:N requires N >= 1")
+        return rotations[:count]
+    requested = {int(value.strip()) for value in selector.split(",") if value.strip()}
+    selected = [
+        rotation for rotation in rotations if cast(int, rotation["rotation_idx"]) in requested
+    ]
+    missing = requested - {cast(int, rotation["rotation_idx"]) for rotation in selected}
+    if missing:
+        raise ValueError(f"unknown rotation_idx values: {sorted(missing)}")
+    return selected
+
+
 def pack_run(
     run_directory: str | Path,
     *,
@@ -125,9 +146,9 @@ def pack_run(
     if not (run_dir / "run_manifest.json").is_file():
         raise FileNotFoundError(f"{run_dir}/run_manifest.json")
     if format == "zip":
-        return _zip_tree(run_dir, run_dir.with_suffix(".zip"))
+        return _zip_tree(run_dir, _export_path(run_dir, ".zip"))
     if format == "tar":
-        return _tar_tree(run_dir, run_dir.with_suffix(".tar"))
+        return _tar_tree(run_dir, _export_path(run_dir, ".tar"))
     if format == "bagit":
         return _pack_bagit(run_dir)
     if format == "ro-crate":
@@ -142,6 +163,10 @@ def _verify_input(root: Path, ref: str, lock: InputLock) -> None:
     actual = input_lock_for(path, ref=ref)
     if actual.sha256 != lock.sha256 or actual.bytes != lock.bytes:
         raise ValueError(f"input drift detected for {ref}")
+
+
+def _export_path(run_dir: Path, suffix: str) -> Path:
+    return run_dir.parent / f"{run_dir.name}{suffix}"
 
 
 def _zip_tree(source: Path, output: Path) -> Path:
@@ -167,7 +192,7 @@ def _pack_bagit(run_dir: Path) -> Path:
             f"{sha256_file(path)}  {path.relative_to(bag).as_posix()}" for path in _iter_files(data)
         )
         (bag / "manifest-sha256.txt").write_text(manifest + "\n")
-        return _zip_tree(bag, run_dir.with_suffix(".bagit.zip"))
+        return _zip_tree(bag, _export_path(run_dir, ".bagit.zip"))
 
 
 def _pack_ro_crate(run_dir: Path) -> Path:
@@ -182,7 +207,7 @@ def _pack_ro_crate(run_dir: Path) -> Path:
             ],
         }
         (crate / "ro-crate-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        return _zip_tree(crate, run_dir.with_suffix(".ro-crate.zip"))
+        return _zip_tree(crate, _export_path(run_dir, ".ro-crate.zip"))
 
 
 def _iter_files(root: Path) -> Iterable[Path]:
