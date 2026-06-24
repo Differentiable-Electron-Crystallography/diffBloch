@@ -14,6 +14,9 @@ float64:
 
 Until the ``io/`` + ``core/`` kernels are ported, only the physics execution is skipped. Fixture
 discovery, lock verification, and reference metadata checks run now.
+
+The default ``first:1`` is selection plumbing for the later physics assertion. Today the test still
+checks the aggregate 99-rotation reference metadata before the skip.
 """
 
 import json
@@ -38,7 +41,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     assert cfg.name == "quartz-anchor"
     assert cfg.solver.inference == "bloch_eigen"
     assert cfg.numerics.sg_max == 0.01
-    assert cfg.numerics.thicknesses == (820.0,)
+    assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
     assert cfg.inputs.observations == lock.observations.ref
     assert cfg.inputs.orientations == lock.orientations.ref
@@ -63,7 +66,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     assert reference["summary"]["R_obs"] == pytest.approx(
         manifest["reference_results"]["summary"]["R_obs"]
     )
-    assert cfg.numerics.thicknesses == tuple(manifest["execution"]["thicknesses"])
+    assert cfg.sample.thicknesses == tuple(manifest["execution"]["thicknesses"])
 
     selected = select_reference_rotations(
         reference["rotations"],
@@ -72,6 +75,8 @@ def test_quartz_reference_anchor(material: str) -> None:
             manifest["rotation_selection"]["default"],
         ),
     )
+    # Until physics lands, selection only proves that a future fast anchor can choose rotations; the
+    # aggregate reference summary above remains the active metadata check.
     assert selected
     assert len(selected) <= reference["n_rotations"]
     assert selected[0]["rotation_idx"] == reference["rotations"][0]["rotation_idx"]

@@ -32,7 +32,25 @@ class NumericsConfig(BaseModel):
     rocking_curve_sampling: int = 42
     dsg: float = 0.0015
     rsg: float = 0.9
+
+
+class SampleConfig(BaseModel):
+    """Fixed sample properties.
+
+    Thickness is captured here because it is a sample/nuisance parameter, not a numerical-accuracy
+    knob. A later refinement stage can make it refinable without splitting its config home.
+    """
+
     thicknesses: tuple[float, ...] = (820.0,)
+
+    @field_validator("thicknesses")
+    @classmethod
+    def _positive_thicknesses(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        if not value:
+            raise ValueError("thicknesses must contain at least one value")
+        if any(thickness <= 0.0 for thickness in value):
+            raise ValueError("thicknesses must be positive")
+        return value
 
 
 class DataSplitConfig(BaseModel):
@@ -117,6 +135,7 @@ class ExperimentConfig(BaseModel):
 
     name: str
     inputs: Inputs
+    sample: SampleConfig = Field(default_factory=SampleConfig)
     numerics: NumericsConfig = Field(default_factory=NumericsConfig)
     solver: SolverConfig = Field(default_factory=SolverConfig)
     observation: ObservationConfig = Field(default_factory=ObservationConfig)

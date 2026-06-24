@@ -116,6 +116,9 @@ def select_reference_rotations(
     rotations: list[dict[str, object]], selector: str
 ) -> list[dict[str, object]]:
     """Select reference rotations by ``all``, ``first:N``, or comma-separated ``rotation_idx``."""
+    selector = selector.strip()
+    if not selector:
+        raise ValueError("rotation selector must not be empty")
     if selector == "all":
         return rotations
     if selector.startswith("first:"):
@@ -124,6 +127,8 @@ def select_reference_rotations(
             raise ValueError("first:N requires N >= 1")
         return rotations[:count]
     requested = {int(value.strip()) for value in selector.split(",") if value.strip()}
+    if not requested:
+        raise ValueError("rotation selector must not be empty")
     selected = [
         rotation for rotation in rotations if cast(int, rotation["rotation_idx"]) in requested
     ]

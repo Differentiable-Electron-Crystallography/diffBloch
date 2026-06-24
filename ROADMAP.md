@@ -14,6 +14,8 @@ commit — the executable form of *"the core physics model has not changed."*
 - [x] **1 — Config + experiment packaging.** Flesh out `config/` with split/objective/optimizer
   submodels; add experiment-as-directory loader + `experiment.lock` (SHA256, fail-fast); add
   generated-artifact `RunManifest`; add `diffbloch run pack` export surface. Relative paths only.
+  Fixed sample thickness belongs in `sample.thicknesses`, not `numerics`, so later nuisance/refinable
+  thickness work has one home.
 - [x] **2 — Minimal quartz anchor fixture.** Copy the self-contained quartz CIF/PETS/orientation
   assets and private `results.json` reference into public tests; wrap them in `experiment.yaml`,
   `experiment.lock`, and `anchor_manifest.json`. Anchor now verifies fixture discovery + hashes before

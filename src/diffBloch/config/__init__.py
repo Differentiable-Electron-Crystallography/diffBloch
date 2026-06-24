@@ -18,6 +18,7 @@ from diffBloch.config.schema import (
     ExperimentConfig,
     ObjectiveConfig,
     OptimizerConfig,
+    SampleConfig,
     load_config,
 )
 
@@ -29,6 +30,7 @@ __all__ = [
     "InputLock",
     "ObjectiveConfig",
     "OptimizerConfig",
+    "SampleConfig",
     "RunManifest",
     "artifact_hash_for",
     "input_lock_for",

@@ -6,6 +6,8 @@ inputs:
   structure: enantiomer_1.cif
   observations: exp_data.cif_pets
   orientations: optim_orientation.csv
+sample:
+  thicknesses: [820.0]
 numerics:
   g_max: 4.5
   g_max_sf: 4.5
@@ -14,7 +16,6 @@ numerics:
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9
-  thicknesses: [820.0]
 solver:
   inference: bloch_eigen
   refine: matrix_exp

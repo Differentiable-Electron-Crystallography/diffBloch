@@ -19,6 +19,7 @@ test-e2e:
 #   DIFFBLOCH_ANCHOR_ROTATIONS=first:5 just anchor
 #   DIFFBLOCH_ANCHOR_ROTATIONS=26,33,56 just anchor
 # Quartz anchor (north star). Defaults to DIFFBLOCH_ANCHOR_ROTATIONS=first:1.
+# Until physics assertions land, first:1 selects future work but still checks aggregate metadata.
 anchor:
     uv run pytest -m e2e -k anchor
 

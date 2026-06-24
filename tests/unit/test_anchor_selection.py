@@ -22,3 +22,10 @@ def test_select_explicit_rotation_indices() -> None:
 def test_select_rejects_missing_rotation_indices() -> None:
     with pytest.raises(ValueError, match="unknown rotation_idx"):
         select_reference_rotations(ROTATIONS, "999")
+
+
+def test_select_rejects_empty_selector() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        select_reference_rotations(ROTATIONS, "")
+    with pytest.raises(ValueError, match="must not be empty"):
+        select_reference_rotations(ROTATIONS, "  ")
