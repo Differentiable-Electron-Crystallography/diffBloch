@@ -9,7 +9,7 @@ commit — the executable form of *"the core physics model has not changed."*
 
 ## Stages
 
-- [x] **0 — Scaffolding.** uv package (src-layout, Py ≥3.11), pre-commit (ruff + hooks), Pydantic,
+- [x] **0 — Scaffolding.** uv package (src-layout, Py ≥3.12), pre-commit (ruff + hooks), Pydantic,
   justfile, mkdocstrings docs, unit + e2e harness, CI, and the anchor placeholder. `just check` green.
 - [x] **1 — Config + experiment packaging.** Flesh out `config/` with split/objective/optimizer
   submodels; add experiment-as-directory loader + `experiment.lock` (SHA256, fail-fast); add
@@ -20,7 +20,7 @@ commit — the executable form of *"the core physics model has not changed."*
   skipping only the not-yet-ported physics execution. This fixture is the seed experiment-directory
   artifact; subsequent stages should evolve it in place toward the final experiment/run layout.
   Intermediate tensor goldens remain marked pending until stages 7-8.
-- [ ] **3 — `io/` parser boundary.** gemmi adapter → Pydantic `StructureRecord` / `ObservationRecord`
+- [x] **3 — `io/` parser boundary.** gemmi adapter → Pydantic `StructureRecord` / `ObservationRecord`
   **with explicit `@model_validator` contracts** (shape, occupancy ∈ [0,1], ADP PSD, symop shapes,
   σ ≥ 0). diffpy `symmetry_constraints(record)` behind its seam. Conformance/golden tests.
   *Gate: the validators must exist before any `core/` code trusts the boundary.*

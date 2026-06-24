@@ -3,16 +3,16 @@ name = "diffbloch"
 dynamic = ["version"]  # single-sourced from src/diffBloch/__init__.py (see [tool.hatch.version])
 description = "Differentiable Bloch-wave electron-diffraction structure refinement"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+    "gemmi>=0.7.5",
+    "numpy>=2.5",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     # Scientific deps are added as their modules land (see ROADMAP.md):
-    #   numpy            -> io/ records, core/ kernels
     #   torch            -> core/solver, engine
-    #   gemmi            -> io/ (blessed CIF/PETS reader + writer)
     #   diffpy.structure -> io/symmetry_setup (special-position / ADP constraints)
     #   abtem            -> core/scattering (electron form factors), wrapped behind a seam
 ]
@@ -52,7 +52,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 # NOTE: no include-list. Unlike the research repo's incremental-lint crutch, the 2.0 rewrite is
 # clean by construction, so the whole tree is linted from the first commit.
@@ -64,7 +64,7 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM"]
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 mypy_path = "src"
 explicit_package_bases = true
 namespace_packages = true

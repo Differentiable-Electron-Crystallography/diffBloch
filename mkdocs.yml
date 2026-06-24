@@ -23,3 +23,4 @@ nav:
   - Home: index.md
   - API:
       - Config: api/config.md
+      - IO: api/io.md

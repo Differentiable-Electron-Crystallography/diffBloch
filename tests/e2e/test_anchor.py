@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from diffBloch.config import load_experiment, select_reference_rotations, sha256_file
+from diffBloch.io import read_observations, read_structure
 
 pytestmark = pytest.mark.e2e
 
@@ -41,6 +42,13 @@ def test_quartz_reference_anchor(material: str) -> None:
     assert cfg.inputs.structure == lock.structure.ref
     assert cfg.inputs.observations == lock.observations.ref
     assert cfg.inputs.orientations == lock.orientations.ref
+
+    structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    assert structure.n_atoms == 2
+    assert structure.n_symops == 6
+    assert observations.n_rotations == 99
+    assert observations.n_reflections == 6666
 
     manifest = json.loads((FIXTURE_ROOT / "anchor_manifest.json").read_text())
     reference = json.loads((FIXTURE_ROOT / manifest["reference_results"]["path"]).read_text())

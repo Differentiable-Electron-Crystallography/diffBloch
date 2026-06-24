@@ -16,5 +16,5 @@ discrete, tested commit per stage). The architecture is documented in the synthe
 
 ## API
 
-API docs are generated from docstrings and type signatures via `mkdocstrings`. See **Config** in the
-navigation; more modules appear here as each stage lands.
+API docs are generated from docstrings and type signatures via `mkdocstrings`. See **Config** and
+**IO** in the navigation; more modules appear here as each stage lands.
