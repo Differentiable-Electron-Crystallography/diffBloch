@@ -1,0 +1,23 @@
+# Real quartz anchor fixture copied from diffBloch_private/tests/e2e/inference/quartz.
+# This directory is the public experiment-directory seed. Subsequent stages should evolve this
+# layout in place (rather than creating a parallel anchor fixture) as IO/core/run artifacts land.
+name: quartz-anchor
+inputs:
+  structure: enantiomer_1.cif
+  observations: exp_data.cif_pets
+  orientations: optim_orientation.csv
+numerics:
+  g_max: 4.5
+  g_max_sf: 4.5
+  g_max_refine: 1.6
+  sg_max: 0.01
+  rocking_curve_sampling: 42
+  dsg: 0.0015
+  rsg: 0.9
+solver:
+  inference: bloch_eigen
+  refine: matrix_exp
+refinement:
+  split:
+    train: all_except_validation
+    validation: every_10th_rotation
