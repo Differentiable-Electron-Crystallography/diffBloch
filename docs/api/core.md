@@ -9,3 +9,5 @@
 ::: diffBloch.core.crystal
 
 ::: diffBloch.core.reciprocal
+
+::: diffBloch.core.symmetry

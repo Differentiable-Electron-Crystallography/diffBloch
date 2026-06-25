@@ -21,10 +21,19 @@ from diffBloch.core.reciprocal import (
     ravel_hkl,
     reciprocal_space_gpts,
 )
+from diffBloch.core.symmetry import (
+    AsuExpansionPlan,
+    ExpandedAsu,
+    build_asu_expansion_plan,
+    expand_asu,
+)
 
 __all__ = [
+    "AsuExpansionPlan",
+    "ExpandedAsu",
     "SymmetryMask",
     "apply_symmetry_mask",
+    "build_asu_expansion_plan",
     "cell_matrix_from_parameters",
     "cell_volume",
     "cholesky_adp",
@@ -40,5 +49,6 @@ __all__ = [
     "reciprocal_cell",
     "reciprocal_space_gpts",
     "reflection_condition",
+    "expand_asu",
     "unit_interval",
 ]
