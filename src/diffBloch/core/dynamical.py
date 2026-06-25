@@ -15,6 +15,8 @@ and ``g`` is fixed geometry, neither is refined — so they live on the NumPy pl
 
 from __future__ import annotations
 
+from typing import Final
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -33,7 +35,8 @@ _BOHR_RADIUS = 0.529177210903e-10  # m
 # Native form of abTEM's abtem.core.constants.kappa (4 pi eps0 / (2 pi a0 e) in ASE units), here the
 # equivalent CODATA-2018 closed form 2 eps0 / (a0 e) * 1e-20; reproduces abTEM's exact value
 # 0.0208865737082965 to ~1e-8 (the residual is CODATA-2018 vs ASE's constants). See REFERENCES.md.
-kappa: float = 2.0 * _VACUUM_PERMITTIVITY / (_BOHR_RADIUS * _ELEMENTARY_CHARGE) * 1e-20
+# Final: a fixed physical constant, not a tunable — immutability is part of the public contract.
+kappa: Final[float] = 2.0 * _VACUUM_PERMITTIVITY / (_BOHR_RADIUS * _ELEMENTARY_CHARGE) * 1e-20
 
 
 def energy2wavelength(energy: float) -> float:

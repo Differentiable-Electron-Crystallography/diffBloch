@@ -94,5 +94,8 @@ def test_m_factors_rejects_bad_shape() -> None:
 
 def test_structure_matrix_prefactor_composes_sigma_kappa_wavelength() -> None:
     energy = 200e3
+    # Independent oracle: abTEM-exact sigma / (kappa * lambda * pi) at 200 keV (via ase units).
+    assert structure_matrix_prefactor(energy) == pytest.approx(0.4428932687947089, rel=1e-6)
+    # Wiring check: composes the three helpers as documented.
     expected = energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)
     assert structure_matrix_prefactor(energy) == pytest.approx(expected)

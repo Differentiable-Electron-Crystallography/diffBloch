@@ -1,4 +1,4 @@
-e diffBloch 2.0 — staged refactor roadmap
+# diffBloch 2.0 — staged refactor roadmap
 
 A from-scratch rewrite, ported from the research codebase (`diffBloch_private`) into this package
 **stepwise**: each stage is one discrete, tested, well-commented commit with a comprehensive message.
