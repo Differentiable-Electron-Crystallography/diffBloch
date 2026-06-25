@@ -1,9 +1,17 @@
 from pathlib import Path
 
+import gemmi
 import numpy as np
 import pytest
 
-from diffBloch.io import parse_cif_number, read_observations, read_structure, symmetry_constraints
+from diffBloch.io import (
+    parse_cif_number,
+    parse_observation_block,
+    parse_structure_block,
+    read_observations,
+    read_structure,
+    symmetry_constraints,
+)
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -72,9 +80,8 @@ def test_parse_cif_number_marks_absent_standard_uncertainty() -> None:
     assert np.isnan(parsed.su)
 
 
-def test_read_structure_keeps_uiso_separate_from_uij(tmp_path: Path) -> None:
-    cif = tmp_path / "uiso.cif"
-    cif.write_text(
+def test_parse_structure_block_keeps_uiso_separate_from_uij() -> None:
+    block = gemmi.cif.read_string(
         """data_uiso
 _cell_length_a 5.0(2)
 _cell_length_b 6.0
@@ -93,9 +100,9 @@ _atom_site_U_iso_or_equiv
 _atom_site_thermal_displace_type
 C1 C 0.10(2) 0.20 0.30 0.0144(8) Uiso
 """
-    )
+    ).sole_block()
 
-    record = read_structure(cif)
+    record = parse_structure_block(block)
 
     assert record.adp.kind == ("Uiso",)
     assert record.adp.u_iso.tolist() == pytest.approx([0.0144])
@@ -107,11 +114,8 @@ C1 C 0.10(2) 0.20 0.30 0.0144(8) Uiso
     assert record.cell_parameters_su[0] == pytest.approx(0.2)
 
 
-def test_read_structure_derives_all_symops_from_spacegroup_when_loop_missing(
-    tmp_path: Path,
-) -> None:
-    cif = tmp_path / "symbol_only.cif"
-    cif.write_text(
+def test_parse_structure_block_derives_all_symops_from_spacegroup_when_loop_missing() -> None:
+    block = gemmi.cif.read_string(
         """data_symbol_only
 _cell_length_a 5.0
 _cell_length_b 6.0
@@ -128,10 +132,61 @@ _atom_site_fract_y
 _atom_site_fract_z
 C1 C 0.10 0.20 0.30
 """
-    )
+    ).sole_block()
 
-    record = read_structure(cif)
+    record = parse_structure_block(block)
 
     assert record.n_symops == 8
     assert np.any(np.all(np.isclose(record.symops_t, [0.5, 0.5, 0.0]), axis=1))
     assert record.adp.kind == ("missing",)
+
+
+def test_parse_observation_block_from_string() -> None:
+    block = gemmi.cif.read_string(
+        """data_pets
+_cell_length_a 5.0
+_cell_length_b 6.0
+_cell_length_c 7.0
+_cell_angle_alpha 90
+_cell_angle_beta 100
+_cell_angle_gamma 90
+_diffrn_radiation_wavelength 0.0251
+_diffrn_orient_matrix_UB_11 1
+_diffrn_orient_matrix_UB_12 0
+_diffrn_orient_matrix_UB_13 0
+_diffrn_orient_matrix_UB_21 0
+_diffrn_orient_matrix_UB_22 1
+_diffrn_orient_matrix_UB_23 0
+_diffrn_orient_matrix_UB_31 0
+_diffrn_orient_matrix_UB_32 0
+_diffrn_orient_matrix_UB_33 1
+loop_
+_diffrn_zone_axis_id
+_diffrn_zone_axis_u
+_diffrn_zone_axis_v
+_diffrn_zone_axis_w
+_diffrn_zone_axis_precession_angle
+_diffrn_zone_axis_alpha
+_diffrn_zone_axis_beta
+_diffrn_zone_axis_omega
+_diffrn_zone_axis_scale
+1 0 0 1 0.5 10 20 30 1
+loop_
+_refln_index_h
+_refln_index_k
+_refln_index_l
+_refln_intensity_meas
+_refln_intensity_sigma
+_refln_zone_axis_id
+1 0 0 12.5 0.7 1
+"""
+    ).sole_block()
+
+    record = parse_observation_block(block)
+
+    assert record.source_path is None
+    assert record.n_rotations == 1
+    assert record.n_reflections == 1
+    assert record.zone_axes.tolist() == [[0.0, 0.0, 1.0]]
+    assert record.intensities.tolist() == [12.5]
+    assert record.sigmas.tolist() == [0.7]

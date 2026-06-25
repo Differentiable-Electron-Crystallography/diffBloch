@@ -141,7 +141,7 @@ def select_reference_rotations(
 def pack_run(
     run_directory: str | Path,
     *,
-    format: Literal["zip", "tar", "bagit", "ro-crate"] = "zip",
+    package_format: Literal["zip", "tar", "bagit", "ro-crate"] = "zip",
 ) -> Path:
     """Export a canonical run directory for transfer/archive/publication.
 
@@ -150,15 +150,15 @@ def pack_run(
     run_dir = Path(run_directory)
     if not (run_dir / "run_manifest.json").is_file():
         raise FileNotFoundError(f"{run_dir}/run_manifest.json")
-    if format == "zip":
+    if package_format == "zip":
         return _zip_tree(run_dir, _export_path(run_dir, ".zip"))
-    if format == "tar":
+    if package_format == "tar":
         return _tar_tree(run_dir, _export_path(run_dir, ".tar"))
-    if format == "bagit":
+    if package_format == "bagit":
         return _pack_bagit(run_dir)
-    if format == "ro-crate":
+    if package_format == "ro-crate":
         return _pack_ro_crate(run_dir)
-    raise ValueError(f"unsupported run package format: {format}")
+    raise ValueError(f"unsupported run package format: {package_format}")
 
 
 def _verify_input(root: Path, ref: str, lock: InputLock) -> None:

@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 import gemmi
 import numpy as np
 from numpy.typing import NDArray
 
+from diffBloch.io._cifio import (
+    as_float,
+    loop_rows,
+    optional_int,
+    parse_cif_number,
+    unit_cell_matrix_from_parameters,
+    unquote,
+)
+from diffBloch.io._cifio import (
+    cell_parameters as parse_cell_parameters,
+)
 from diffBloch.io.record import AdpRecord, StructureRecord
 
 ANISO_TAGS = (
@@ -20,17 +30,6 @@ ANISO_TAGS = (
     "_atom_site_aniso_U_13",
     "_atom_site_aniso_U_12",
 )
-_NUMERIC_WITH_SU = re.compile(
-    r"^(?P<nominal>[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?)"
-    r"(?:\((?P<su>\d+)\))?$"
-)
-
-
-class CifNumber(NamedTuple):
-    """CIF numeric value with optional standard uncertainty."""
-
-    nominal: float
-    su: float
 
 
 class _AdpSite(NamedTuple):
@@ -41,26 +40,77 @@ class _AdpSite(NamedTuple):
     uij_cif_su: NDArray[np.float64]
 
 
-def read_structure(
-    path: str | Path, *, backend: str = "gemmi", load_hydrogens: bool = False
-) -> StructureRecord:
+class _AtomSites(NamedTuple):
+    labels: tuple[str, ...]
+    numbers: NDArray[np.int64]
+    frac_positions: NDArray[np.float64]
+    frac_positions_su: NDArray[np.float64]
+    occupancies: NDArray[np.float64]
+    occupancies_su: NDArray[np.float64]
+    adp: AdpRecord
+
+
+def read_structure(path: str | Path, *, load_hydrogens: bool = False) -> StructureRecord:
     """Read a structure CIF into a validated :class:`StructureRecord`.
 
     Args:
         path: CIF path.
-        backend: Parser backend. Stage 3 intentionally supports only ``"gemmi"``.
         load_hydrogens: Include hydrogen atom sites when present. The default mirrors electron
             diffraction refinement practice where H sites are usually excluded from this boundary.
     """
-    if backend != "gemmi":
-        raise ValueError(f"unsupported CIF backend: {backend}")
-
     source = Path(path)
     block = gemmi.cif.read_file(str(source)).sole_block()
-    atom_rows = _loop_rows(block, "_atom_site_label")
+    return parse_structure_block(block, source_path=source, load_hydrogens=load_hydrogens)
+
+
+def parse_structure_block(
+    block: gemmi.cif.Block,
+    *,
+    source_path: str | Path | None = None,
+    load_hydrogens: bool = False,
+) -> StructureRecord:
+    """Parse a Gemmi CIF block into a validated :class:`StructureRecord`.
+
+    Args:
+        block: Parsed Gemmi CIF block.
+        source_path: Optional source path to retain in the record.
+        load_hydrogens: Include hydrogen atom sites when present. The default mirrors electron
+            diffraction refinement practice where H sites are usually excluded from this boundary.
+    """
+    atom_sites = _read_atom_sites(block, load_hydrogens=load_hydrogens)
+    symops_R, symops_t = _read_symops(block)
+    cell_parameters, cell_parameters_su = parse_cell_parameters(block)
+    return StructureRecord(
+        source_path=Path(source_path) if source_path is not None else None,
+        unit_cell=unit_cell_matrix_from_parameters(cell_parameters),
+        cell_parameters=cell_parameters,
+        cell_parameters_su=cell_parameters_su,
+        spacegroup_hm=unquote(
+            block.find_value("_symmetry_space_group_name_H-M")
+            or block.find_value("_space_group_name_H-M_alt")
+            or ""
+        ),
+        spacegroup_number=optional_int(
+            block.find_value("_symmetry_Int_Tables_number")
+            or block.find_value("_space_group_IT_number")
+        ),
+        symops_R=symops_R,
+        symops_t=symops_t,
+        labels=atom_sites.labels,
+        numbers=atom_sites.numbers,
+        frac_positions=atom_sites.frac_positions,
+        frac_positions_su=atom_sites.frac_positions_su,
+        occupancies=atom_sites.occupancies,
+        occupancies_su=atom_sites.occupancies_su,
+        adp=atom_sites.adp,
+    )
+
+
+def _read_atom_sites(block: gemmi.cif.Block, *, load_hydrogens: bool) -> _AtomSites:
+    atom_rows = loop_rows(block, "_atom_site_label")
     aniso_by_label = {
         str(row["_atom_site_aniso_label"]): row
-        for row in _loop_rows(block, "_atom_site_aniso_label")
+        for row in loop_rows(block, "_atom_site_aniso_label")
     }
 
     labels: list[str] = []
@@ -74,6 +124,7 @@ def read_structure(
     u_iso_su: list[float] = []
     uij_cif: list[NDArray[np.float64]] = []
     uij_cif_su: list[NDArray[np.float64]] = []
+
     for row in atom_rows:
         element = gemmi.Element(str(row["_atom_site_type_symbol"]))
         if not load_hydrogens and element.atomic_number == 1:
@@ -83,9 +134,9 @@ def read_structure(
         numbers.append(int(element.atomic_number))
         frac_positions.append(
             [
-                _as_float(row["_atom_site_fract_x"]),
-                _as_float(row["_atom_site_fract_y"]),
-                _as_float(row["_atom_site_fract_z"]),
+                as_float(row["_atom_site_fract_x"]),
+                as_float(row["_atom_site_fract_y"]),
+                as_float(row["_atom_site_fract_z"]),
             ]
         )
         frac_positions_su.append(
@@ -105,24 +156,7 @@ def read_structure(
         uij_cif.append(adp.uij_cif)
         uij_cif_su.append(adp.uij_cif_su)
 
-    symops_R, symops_t = _read_symops(block)
-    cell_parameters, cell_parameters_su = _cell_parameters(block)
-    return StructureRecord(
-        source_path=source,
-        unit_cell=_unit_cell_matrix_from_parameters(cell_parameters),
-        cell_parameters=cell_parameters,
-        cell_parameters_su=cell_parameters_su,
-        spacegroup_hm=_unquote(
-            block.find_value("_symmetry_space_group_name_H-M")
-            or block.find_value("_space_group_name_H-M_alt")
-            or ""
-        ),
-        spacegroup_number=_optional_int(
-            block.find_value("_symmetry_Int_Tables_number")
-            or block.find_value("_space_group_IT_number")
-        ),
-        symops_R=symops_R,
-        symops_t=symops_t,
+    return _AtomSites(
         labels=tuple(labels),
         numbers=np.asarray(numbers, dtype=np.int64),
         frac_positions=np.asarray(frac_positions, dtype=np.float64),
@@ -139,75 +173,12 @@ def read_structure(
     )
 
 
-def _loop_rows(block: gemmi.cif.Block, first_tag: str) -> list[dict[str, str]]:
-    column = block.find_loop(first_tag)
-    if not column:
-        return []
-    loop = column.get_loop()
-    if loop is None:
-        return []
-    tags = [str(tag) for tag in loop.tags]
-    width = int(loop.width())
-    rows: list[dict[str, str]] = []
-    for start in range(0, len(loop.values), width):
-        values = [str(value) for value in loop.values[start : start + width]]
-        rows.append(dict(zip(tags, values, strict=True)))
-    return rows
-
-
-def _cell_parameters(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    tags = (
-        "_cell_length_a",
-        "_cell_length_b",
-        "_cell_length_c",
-        "_cell_angle_alpha",
-        "_cell_angle_beta",
-        "_cell_angle_gamma",
-    )
-    parsed = [parse_cif_number(_required_value(block, tag)) for tag in tags]
-    return (
-        np.asarray([value.nominal for value in parsed], dtype=np.float64),
-        np.asarray([value.su for value in parsed], dtype=np.float64),
-    )
-
-
-def _unit_cell_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:
-    return _unit_cell_matrix_from_parameters(_cell_parameters(block)[0])
-
-
-def _unit_cell_matrix_from_parameters(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
-    a, b, c, alpha_deg, beta_deg, gamma_deg = parameters
-    alpha = np.deg2rad(alpha_deg)
-    beta = np.deg2rad(beta_deg)
-    gamma = np.deg2rad(gamma_deg)
-
-    cos_alpha = np.cos(alpha)
-    cos_beta = np.cos(beta)
-    cos_gamma = np.cos(gamma)
-    sin_gamma = np.sin(gamma)
-    volume_factor = np.sqrt(
-        1.0 - cos_alpha**2 - cos_beta**2 - cos_gamma**2 + 2.0 * cos_alpha * cos_beta * cos_gamma
-    )
-    return np.asarray(
-        [
-            [a, 0.0, 0.0],
-            [b * cos_gamma, b * sin_gamma, 0.0],
-            [
-                c * cos_beta,
-                c * (cos_alpha - cos_beta * cos_gamma) / sin_gamma,
-                c * volume_factor / sin_gamma,
-            ],
-        ],
-        dtype=np.float64,
-    )
-
-
 def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    rows = _loop_rows(block, "_symmetry_equiv_pos_as_xyz") or _loop_rows(
+    rows = loop_rows(block, "_symmetry_equiv_pos_as_xyz") or loop_rows(
         block, "_space_group_symop_operation_xyz"
     )
     symops = [
-        _unquote(
+        unquote(
             str(row.get("_symmetry_equiv_pos_as_xyz") or row["_space_group_symop_operation_xyz"])
         )
         for row in rows
@@ -228,7 +199,7 @@ def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[n
 
 
 def _spacegroup_for_block(block: gemmi.cif.Block) -> gemmi.SpaceGroup | None:
-    name = _unquote(
+    name = unquote(
         block.find_value("_symmetry_space_group_name_H-M")
         or block.find_value("_space_group_name_H-M_alt")
         or ""
@@ -237,7 +208,7 @@ def _spacegroup_for_block(block: gemmi.cif.Block) -> gemmi.SpaceGroup | None:
         spacegroup = gemmi.find_spacegroup_by_name(name)
         if spacegroup is not None:
             return spacegroup
-    number = _optional_int(
+    number = optional_int(
         block.find_value("_symmetry_Int_Tables_number")
         or block.find_value("_space_group_IT_number")
     )
@@ -301,52 +272,3 @@ def _uij_matrix(values: dict[str, float]) -> NDArray[np.float64]:
         ],
         dtype=np.float64,
     )
-
-
-def parse_cif_number(value: Any) -> CifNumber:
-    """Parse a CIF number and optional standard uncertainty.
-
-    A parenthesized SU is expressed in units of the final significant digit of the mantissa, so
-    ``0.0144(8)`` has SU ``0.0008`` and ``42(3)`` has SU ``3``.
-    """
-    text = str(value).strip()
-    if text in {".", "?"}:
-        return CifNumber(np.nan, np.nan)
-    match = _NUMERIC_WITH_SU.match(text)
-    if match is None:
-        return CifNumber(float(text), np.nan)
-    nominal_text = match.group("nominal")
-    su_digits = match.group("su")
-    if su_digits is None:
-        return CifNumber(float(nominal_text), np.nan)
-
-    mantissa = nominal_text.lower().split("e", 1)[0]
-    exponent = int(nominal_text.lower().split("e", 1)[1]) if "e" in nominal_text.lower() else 0
-    decimals = len(mantissa.split(".", 1)[1]) if "." in mantissa else 0
-    su = int(su_digits) * 10.0 ** (exponent - decimals)
-    return CifNumber(float(nominal_text), float(su))
-
-
-def _required_value(block: gemmi.cif.Block, tag: str) -> str:
-    value = block.find_value(tag)
-    if value is None:
-        raise ValueError(f"missing required CIF tag {tag}")
-    return str(value)
-
-
-def _required_float(block: gemmi.cif.Block, tag: str) -> float:
-    return _as_float(_required_value(block, tag))
-
-
-def _optional_int(value: Any) -> int | None:
-    if value is None or str(value) in {".", "?"}:
-        return None
-    return int(str(value))
-
-
-def _as_float(value: Any) -> float:
-    return parse_cif_number(value).nominal
-
-
-def _unquote(value: str) -> str:
-    return value.strip().strip("'\"")

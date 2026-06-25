@@ -27,10 +27,22 @@ type FloatArray = NDArray[np.float64]
 type IntArray = NDArray[np.int64]
 
 
+def _readonly_float_array(value: Any) -> FloatArray:
+    array = np.array(value, dtype=np.float64, copy=True)
+    array.setflags(write=False)
+    return array
+
+
+def _readonly_int_array(value: Any) -> IntArray:
+    array = np.array(value, dtype=np.int64, copy=True)
+    array.setflags(write=False)
+    return array
+
+
 class AdpRecord(BaseModel):
     """Atomic displacement parameters, preserving CIF Uiso/Uani semantics and SUs."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     kind: tuple[Literal["Uiso", "Uani", "missing"], ...]
     u_iso: FloatArray
@@ -41,7 +53,7 @@ class AdpRecord(BaseModel):
     @field_validator("u_iso", "u_iso_su", "uij_cif", "uij_cif_su", mode="before")
     @classmethod
     def _as_float_array(cls, value: Any) -> FloatArray:
-        return np.asarray(value, dtype=np.float64)
+        return _readonly_float_array(value)
 
     @model_validator(mode="after")
     def _validate_contract(self) -> Self:
@@ -80,7 +92,7 @@ class StructureRecord(BaseModel):
     standard uncertainties as provenance metadata for reporting or later optional restraints.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     source_path: Path | None = None
     unit_cell: FloatArray
@@ -112,12 +124,12 @@ class StructureRecord(BaseModel):
     )
     @classmethod
     def _as_float_array(cls, value: Any) -> FloatArray:
-        return np.asarray(value, dtype=np.float64)
+        return _readonly_float_array(value)
 
     @field_validator("numbers", mode="before")
     @classmethod
     def _as_int_array(cls, value: Any) -> IntArray:
-        return np.asarray(value, dtype=np.int64)
+        return _readonly_int_array(value)
 
     @model_validator(mode="after")
     def _validate_contract(self) -> Self:
@@ -173,7 +185,7 @@ class StructureRecord(BaseModel):
 class ObservationRecord(BaseModel):
     """Observed PETS reflection data keyed by rotation/zone-axis id."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
     source_path: Path | None = None
     unit_cell: FloatArray
@@ -206,12 +218,12 @@ class ObservationRecord(BaseModel):
     )
     @classmethod
     def _as_float_array(cls, value: Any) -> FloatArray:
-        return np.asarray(value, dtype=np.float64)
+        return _readonly_float_array(value)
 
     @field_validator("zone_axis_ids", "hkl", "reflection_zone_axis_ids", mode="before")
     @classmethod
     def _as_int_array(cls, value: Any) -> IntArray:
-        return np.asarray(value, dtype=np.int64)
+        return _readonly_int_array(value)
 
     @model_validator(mode="after")
     def _validate_contract(self) -> Self:

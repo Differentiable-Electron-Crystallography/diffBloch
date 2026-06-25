@@ -52,6 +52,21 @@ def test_adp_record_validates_kind_specific_storage() -> None:
         )
 
 
+def test_adp_record_freezes_fields_and_arrays() -> None:
+    record = AdpRecord(
+        kind=("Uiso",),
+        u_iso=np.asarray([0.01]),
+        u_iso_su=np.asarray([np.nan]),
+        uij_cif=np.full((1, 3, 3), np.nan),
+        uij_cif_su=np.full((1, 3, 3), np.nan),
+    )
+
+    with pytest.raises(ValidationError, match="frozen"):
+        record.u_iso = np.asarray([0.02])
+    with pytest.raises(ValueError, match="read-only"):
+        record.u_iso[0] = 0.02
+
+
 def test_structure_record_rejects_negative_standard_uncertainties() -> None:
     with pytest.raises(ValidationError, match="frac_positions_su"):
         StructureRecord(

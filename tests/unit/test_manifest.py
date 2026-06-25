@@ -71,7 +71,7 @@ def test_pack_run_exports_zip_preserving_full_run_name(tmp_path: Path) -> None:
     (run / "run_manifest.json").write_text("{}\n")
     (run / "history.jsonl").write_text("{}\n")
 
-    package = pack_run(run, format="zip")
+    package = pack_run(run, package_format="zip")
     assert package.is_file()
     assert package.name == "run.v2.zip"
     with ZipFile(package) as archive:
@@ -79,22 +79,22 @@ def test_pack_run_exports_zip_preserving_full_run_name(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("format", "expected_name"),
+    ("package_format", "expected_name"),
     [
         ("tar", "run_001.tar"),
         ("bagit", "run_001.bagit.zip"),
         ("ro-crate", "run_001.ro-crate.zip"),
     ],
 )
-def test_pack_run_export_formats(tmp_path: Path, format: str, expected_name: str) -> None:
+def test_pack_run_export_formats(tmp_path: Path, package_format: str, expected_name: str) -> None:
     run = tmp_path / "run_001"
     run.mkdir()
     (run / "run_manifest.json").write_text("{}\n")
     (run / "history.jsonl").write_text("{}\n")
 
-    package = pack_run(run, format=format)
+    package = pack_run(run, package_format=package_format)
     assert package.name == expected_name
-    if format == "tar":
+    if package_format == "tar":
         with tarfile.open(package) as archive:
             assert "run_001/run_manifest.json" in archive.getnames()
     else:

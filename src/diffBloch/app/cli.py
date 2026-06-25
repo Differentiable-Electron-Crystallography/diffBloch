@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run" and args.run_command == "pack":
         try:
-            output = pack_run(args.run_directory, format=args.format)
+            output = pack_run(args.run_directory, package_format=args.format)
         except (FileNotFoundError, ValueError) as exc:
             if args.debug:
                 raise
