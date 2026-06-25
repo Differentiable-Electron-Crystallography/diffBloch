@@ -63,10 +63,17 @@ def test_structure_factors_gradients_flow_and_extinction() -> None:
     occupancies = torch.ones(2, dtype=torch.float64, requires_grad=True)
     uij = (torch.eye(3, dtype=torch.float64) * 0.01).repeat(2, 1, 1).clone().requires_grad_(True)
     hkl = torch.tensor([[0, 0, 0], [1, 0, 0], [1, 1, 0], [2, 0, 0]])
-    g = torch.tensor([0.0, 0.5, 1.0, 2.0], dtype=torch.float64)
+    reciprocal_basis = torch.eye(3, dtype=torch.float64)  # |g| = |hkl|: [0, 1, sqrt(2), 2]
 
     fgb = structure_factors(
-        positions, numbers, occupancies, uij, hkl=hkl, g=g, cell_volume=113.3, g_max=1.6
+        positions,
+        numbers,
+        occupancies,
+        uij,
+        hkl=hkl,
+        reciprocal_basis=reciprocal_basis,
+        cell_volume=113.3,
+        g_max=1.6,
     )
     assert fgb.shape == (4,) and fgb.dtype == torch.complex128
     assert fgb[-1] == 0  # |g| = 2 > g_max -> hard cutoff zeroes it

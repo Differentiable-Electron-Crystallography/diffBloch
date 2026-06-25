@@ -47,6 +47,7 @@ __all__ = [
     "cholesky_raw_from_adp",
     "debye_waller_factor",
     "equivalent_isotropic_adp",
+    "expand_asu",
     "g_vector_lengths",
     "g_vectors",
     "gmax_mask",
@@ -59,7 +60,6 @@ __all__ = [
     "reciprocal_space_gpts",
     "reflection_condition",
     "resolution_cutoff",
-    "expand_asu",
     "structure_factors",
     "unit_interval",
 ]

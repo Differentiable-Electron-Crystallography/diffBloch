@@ -26,141 +26,53 @@ from torch import Tensor
 
 type Cutoff = Literal["hard", "taper"]
 
-# Atomic-number -> symbol for indexing the symbol-keyed Lobato table (Z = index + 1).
-_ELEMENTS: tuple[str, ...] = (
-    "H",
-    "He",
-    "Li",
-    "Be",
-    "B",
-    "C",
-    "N",
-    "O",
-    "F",
-    "Ne",
-    "Na",
-    "Mg",
-    "Al",
-    "Si",
-    "P",
-    "S",
-    "Cl",
-    "Ar",
-    "K",
-    "Ca",
-    "Sc",
-    "Ti",
-    "V",
-    "Cr",
-    "Mn",
-    "Fe",
-    "Co",
-    "Ni",
-    "Cu",
-    "Zn",
-    "Ga",
-    "Ge",
-    "As",
-    "Se",
-    "Br",
-    "Kr",
-    "Rb",
-    "Sr",
-    "Y",
-    "Zr",
-    "Nb",
-    "Mo",
-    "Tc",
-    "Ru",
-    "Rh",
-    "Pd",
-    "Ag",
-    "Cd",
-    "In",
-    "Sn",
-    "Sb",
-    "Te",
-    "I",
-    "Xe",
-    "Cs",
-    "Ba",
-    "La",
-    "Ce",
-    "Pr",
-    "Nd",
-    "Pm",
-    "Sm",
-    "Eu",
-    "Gd",
-    "Tb",
-    "Dy",
-    "Ho",
-    "Er",
-    "Tm",
-    "Yb",
-    "Lu",
-    "Hf",
-    "Ta",
-    "W",
-    "Re",
-    "Os",
-    "Ir",
-    "Pt",
-    "Au",
-    "Hg",
-    "Tl",
-    "Pb",
-    "Bi",
-    "Po",
-    "At",
-    "Rn",
-    "Fr",
-    "Ra",
-    "Ac",
-    "Th",
-    "Pa",
-    "U",
-    "Np",
-    "Pu",
-    "Am",
-    "Cm",
-    "Bk",
-    "Cf",
-    "Es",
-    "Fm",
-    "Md",
-    "No",
-    "Lr",
-)
+
+def _g_vector_lengths(hkl: Tensor, reciprocal_basis: Tensor) -> Tensor:
+    """``|g|`` per reflection from Miller indices and a reciprocal basis (rows = a*, b*, c*).
+
+    The torch counterpart of the NumPy ``core.reciprocal.g_vector_lengths`` (which serves the
+    planning path); kept here so the differentiable structure-factor path stays in torch.
+    """
+    if hkl.ndim != 2 or hkl.shape[1] != 3:
+        raise ValueError("hkl must have shape (M, 3)")
+    if reciprocal_basis.shape != (3, 3):
+        raise ValueError("reciprocal_basis must have shape (3, 3)")
+    g_vectors = hkl.to(reciprocal_basis.dtype) @ reciprocal_basis
+    lengths: Tensor = torch.linalg.vector_norm(g_vectors, dim=1)
+    return lengths
 
 
 @lru_cache(maxsize=1)
-def _lobato_table() -> dict[str, tuple[tuple[float, ...], tuple[float, ...]]]:
-    """Load the vendored Lobato coefficients ``{symbol: ((a1..a5), (b1..b5))}``."""
+def _lobato_table() -> dict[int, tuple[tuple[float, ...], tuple[float, ...]]]:
+    """Load the vendored Lobato coefficients keyed by atomic number: ``{Z: ((a1..a5), (b1..b5))}``.
+
+    The table is keyed by Z, not element symbol, so the core needs no symbol authority — element
+    identity comes from the parsed atomic ``numbers`` plus the vendored data alone, keeping
+    ``core/`` free of any parser/periodic-table dependency.
+    """
     text = (resources.files("diffBloch.core") / "data" / "lobato.json").read_text()
     raw = json.loads(text)
-    return {symbol: (tuple(ab[0]), tuple(ab[1])) for symbol, ab in raw.items()}
+    return {int(z): (tuple(ab[0]), tuple(ab[1])) for z, ab in raw.items()}
 
 
 def lobato_form_factors(numbers: Tensor, g: Tensor) -> Tensor:
     """Electron scattering factor ``f_e(Z, |g|)`` for each atom, vectorised over unique Z.
 
     ``f_e(s) = sum_i a_i (2 + b_i s^2) / (1 + b_i s^2)^2`` with ``s^2 = |g|^2`` (matching the
-    private ``scattering_factor(g**2)`` call). Returns a real ``(N_atoms, N_g)`` tensor; a constant
-    with respect to the refinement (depends only on Z and the fixed geometry).
+    private ``scattering_factor(g**2)`` call). Returns a real ``(N_atoms, N_g)`` tensor (in ``g``'s
+    dtype); a constant with respect to the refinement (depends only on Z and the fixed geometry).
     """
     if numbers.ndim != 1:
         raise ValueError("numbers must have shape (N,)")
     if g.ndim != 1:
         raise ValueError("g must have shape (M,)")
     table = _lobato_table()
-    g2 = (g.to(torch.float64)) ** 2
-    factors = torch.zeros((numbers.shape[0], g.shape[0]), dtype=torch.float64, device=g.device)
+    g2 = g**2
+    factors = torch.zeros((numbers.shape[0], g.shape[0]), dtype=g.dtype, device=g.device)
     for z in torch.unique(numbers).tolist():
-        symbol = _ELEMENTS[int(z) - 1]
-        a_coeffs, b_coeffs = table[symbol]
-        a = torch.tensor(a_coeffs, dtype=torch.float64, device=g.device)[:, None]
-        b = torch.tensor(b_coeffs, dtype=torch.float64, device=g.device)[:, None]
+        a_coeffs, b_coeffs = table[int(z)]
+        a = torch.tensor(a_coeffs, dtype=g.dtype, device=g.device)[:, None]
+        b = torch.tensor(b_coeffs, dtype=g.dtype, device=g.device)[:, None]
         f = (a * (2.0 + b * g2[None, :]) / (1.0 + b * g2[None, :]) ** 2).sum(dim=0)
         factors[numbers == z] = f
     return factors
@@ -188,8 +100,10 @@ def resolution_cutoff(g: Tensor, g_max: float, *, mode: Cutoff = "hard") -> Tens
     if mode == "hard":
         return (g <= g_max).to(g.dtype)
     if mode == "taper":
-        temperature, alpha = 0.005, 1.0 - 0.05
-        return 1.0 / (1.0 + torch.exp((g / g_max - alpha) / temperature))
+        # Logistic taper (the private "taper" window): roll-off centred at TAPER_ALPHA * g_max with
+        # logistic width TAPER_WIDTH. TAPER_ALPHA = 1 - 0.05 starts the roll-off ~5% below g_max.
+        taper_width, taper_alpha = 0.005, 1.0 - 0.05
+        return 1.0 / (1.0 + torch.exp((g / g_max - taper_alpha) / taper_width))
     raise ValueError(f"unsupported cutoff mode: {mode!r}")
 
 
@@ -199,7 +113,7 @@ def structure_factors(
     occupancies: Tensor,
     uij_star: Tensor,
     hkl: Tensor,
-    g: Tensor,
+    reciprocal_basis: Tensor,
     cell_volume: float,
     *,
     g_max: float,
@@ -209,9 +123,11 @@ def structure_factors(
     """Vectorised electron structure factors ``Fgb`` (elastic).
 
     ``Fgb(h) = (1/V) sum_atoms f_e * DWF * occ * cutoff * exp(2 pi i r . h)``, ported from
-    ``StructureFactorNet.forward``. Differentiable in ``positions``, ``uij_star``, ``occupancies``;
-    ``f_e`` is a constant form factor. Components below ``extinction_threshold`` are zeroed to match
-    the private symmetry-extinction cleanup. Returns a complex ``(M,)`` tensor.
+    ``StructureFactorNet.forward``. ``|g|`` is derived internally from ``hkl`` and
+    ``reciprocal_basis`` (no separate ``g`` argument to keep in sync). Differentiable in
+    ``positions``, ``uij_star``, ``occupancies``; ``f_e`` is a constant form factor. Components
+    below ``extinction_threshold`` are zeroed to match the private symmetry-extinction cleanup.
+    Returns a complex ``(M,)`` tensor.
     """
     n_atoms = positions.shape[0]
     if positions.ndim != 2 or positions.shape[1] != 3:
@@ -221,6 +137,7 @@ def structure_factors(
     if cell_volume <= 0.0:
         raise ValueError("cell_volume must be positive")
 
+    g = _g_vector_lengths(hkl, reciprocal_basis)
     form_factors = lobato_form_factors(numbers, g)
     dwf = debye_waller_factor(hkl, uij_star)
     cutoff_window = resolution_cutoff(g, g_max, mode=cutoff)
