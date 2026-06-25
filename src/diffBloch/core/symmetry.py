@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Literal
 
@@ -11,7 +10,17 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
-type DuplicatePolicy = Literal["error", "warn", "keep", "replace"]
+type DuplicatePolicy = Literal["error", "keep", "replace"]
+
+
+@dataclass(frozen=True)
+class DuplicateSite:
+    """A candidate ASU expansion site equivalent to an already-planned site."""
+
+    existing_asu_index: int
+    candidate_asu_index: int
+    existing_symop_index: int
+    candidate_symop_index: int
 
 
 @dataclass(frozen=True)
@@ -23,6 +32,7 @@ class AsuExpansionPlan:
     rotations: Tensor
     translations: Tensor
     n_asu_sites: int
+    duplicate_sites: tuple[DuplicateSite, ...] = ()
 
     @property
     def n_expanded_sites(self) -> int:
@@ -48,7 +58,7 @@ def build_asu_expansion_plan(
     symops_t: NDArray[np.float64],
     *,
     symprec: float = 1e-3,
-    onduplicates: DuplicatePolicy = "error",
+    on_duplicates: DuplicatePolicy = "error",
 ) -> AsuExpansionPlan:
     """Precompute unique ASU/symop memberships for later torch expansion.
 
@@ -57,8 +67,8 @@ def build_asu_expansion_plan(
     """
     if symprec <= 0.0:
         raise ValueError("symprec must be positive")
-    if onduplicates not in {"error", "warn", "keep", "replace"}:
-        raise ValueError(f"unsupported duplicate policy: {onduplicates!r}")
+    if on_duplicates not in {"error", "keep", "replace"}:
+        raise ValueError(f"unsupported duplicate policy: {on_duplicates!r}")
 
     positions = np.asarray(frac_positions, dtype=np.float64)
     rotations = np.asarray(symops_R, dtype=np.float64)
@@ -68,6 +78,7 @@ def build_asu_expansion_plan(
     sites: list[NDArray[np.float64]] = []
     asu_indices: list[int] = []
     symop_indices: list[int] = []
+    duplicate_sites: list[DuplicateSite] = []
     for asu_index, position in enumerate(positions):
         for symop_index, (rotation, translation) in enumerate(
             zip(rotations, translations, strict=True)
@@ -80,28 +91,37 @@ def build_asu_expansion_plan(
                 symop_indices.append(symop_index)
                 continue
 
-            for duplicate_index in duplicate_indices:
-                if asu_indices[duplicate_index] == asu_index:
-                    continue
-                if onduplicates == "keep":
-                    continue
-                if onduplicates == "warn":
-                    warnings.warn(
-                        f"scaled_positions {asu_indices[duplicate_index]} and {asu_index} "
-                        "are equivalent",
-                        UserWarning,
-                        stacklevel=2,
-                    )
-                    continue
-                if onduplicates == "replace":
-                    sites[duplicate_index] = site
-                    asu_indices[duplicate_index] = asu_index
-                    symop_indices[duplicate_index] = symop_index
-                    continue
-                raise ValueError(
-                    f"scaled_positions {asu_indices[duplicate_index]} and {asu_index} "
-                    "are equivalent"
+            cross_asu_duplicates = [
+                duplicate_index
+                for duplicate_index in duplicate_indices
+                if asu_indices[duplicate_index] != asu_index
+            ]
+            if not cross_asu_duplicates:
+                continue
+
+            duplicate_sites.extend(
+                DuplicateSite(
+                    existing_asu_index=asu_indices[duplicate_index],
+                    candidate_asu_index=asu_index,
+                    existing_symop_index=symop_indices[duplicate_index],
+                    candidate_symop_index=symop_index,
                 )
+                for duplicate_index in cross_asu_duplicates
+            )
+            if on_duplicates == "keep":
+                continue
+            if on_duplicates == "replace":
+                if len(cross_asu_duplicates) > 1:
+                    raise ValueError("replace duplicate policy found multiple equivalent sites")
+                duplicate_index = cross_asu_duplicates[0]
+                sites[duplicate_index] = site
+                asu_indices[duplicate_index] = asu_index
+                symop_indices[duplicate_index] = symop_index
+                continue
+            duplicate_index = cross_asu_duplicates[0]
+            raise ValueError(
+                f"scaled_positions {asu_indices[duplicate_index]} and {asu_index} are equivalent"
+            )
 
     return AsuExpansionPlan(
         asu_indices=torch.tensor(asu_indices, dtype=torch.long),
@@ -109,6 +129,7 @@ def build_asu_expansion_plan(
         rotations=torch.tensor(rotations, dtype=torch.float64),
         translations=torch.tensor(translations, dtype=torch.float64),
         n_asu_sites=int(positions.shape[0]),
+        duplicate_sites=tuple(duplicate_sites),
     )
 
 
@@ -133,10 +154,8 @@ def expand_asu(
         symop_indices
     ]
 
-    expanded_positions = torch.remainder(
-        torch.einsum("mij,mj->mi", rotations, positions[asu_indices]) + translations,
-        1.0,
-    )
+    expanded_positions = torch.einsum("mij,mj->mi", rotations, positions[asu_indices])
+    expanded_positions = expanded_positions + translations
     return ExpandedAsu(
         positions=expanded_positions,
         asu_indices=asu_indices,

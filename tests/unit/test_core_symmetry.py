@@ -34,14 +34,13 @@ def test_expand_asu_matches_quartz_numpy_symops_and_preserves_gradients() -> Non
     loss = expanded.positions.sum() + expanded.uij.sum()
     loss.backward()
 
-    expected_positions = np.remainder(
+    expected_positions = (
         np.einsum(
             "mij,mj->mi",
             record.symops_R[plan.symop_indices.numpy()],
             record.frac_positions[plan.asu_indices.numpy()],
         )
-        + record.symops_t[plan.symop_indices.numpy()],
-        1.0,
+        + record.symops_t[plan.symop_indices.numpy()]
     )
     assert torch.allclose(
         expanded.positions,
@@ -58,6 +57,28 @@ def test_expand_asu_matches_quartz_numpy_symops_and_preserves_gradients() -> Non
     assert torch.any(positions.grad != 0)
     assert uij.grad is not None
     assert torch.any(uij.grad != 0)
+
+
+def test_expand_asu_leaves_positions_unwrapped_for_smooth_gradients() -> None:
+    plan = build_asu_expansion_plan(
+        np.asarray([[0.95, 0.2, 0.3]], dtype=np.float64),
+        np.eye(3, dtype=np.float64)[None, :, :],
+        np.asarray([[0.2, 0.0, 0.0]], dtype=np.float64),
+    )
+    positions = torch.tensor([[0.95, 0.2, 0.3]], dtype=torch.float64, requires_grad=True)
+
+    expanded = expand_asu(plan, positions)
+    expanded.positions.sum().backward()
+
+    assert torch.allclose(
+        expanded.positions,
+        torch.tensor([[1.15, 0.2, 0.3]], dtype=torch.float64),
+    )
+    assert positions.grad is not None
+    assert torch.allclose(
+        positions.grad,
+        torch.tensor([[1.0, 1.0, 1.0]], dtype=torch.float64),
+    )
 
 
 def test_expand_asu_rotates_uij_matrices() -> None:
@@ -92,8 +113,23 @@ def test_build_asu_expansion_plan_rejects_duplicate_atoms_by_default() -> None:
     with pytest.raises(ValueError, match="equivalent"):
         build_asu_expansion_plan(positions, rotations, translations)
 
-    plan = build_asu_expansion_plan(positions, rotations, translations, onduplicates="keep")
+    plan = build_asu_expansion_plan(positions, rotations, translations, on_duplicates="keep")
     assert plan.asu_indices.tolist() == [0]
+    assert len(plan.duplicate_sites) == 1
+    assert plan.duplicate_sites[0].existing_asu_index == 0
+    assert plan.duplicate_sites[0].candidate_asu_index == 1
+
+
+def test_build_asu_expansion_plan_replace_policy_uses_later_duplicate() -> None:
+    positions = np.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float64)
+    rotations = np.eye(3, dtype=np.float64)[None, :, :]
+    translations = np.zeros((1, 3), dtype=np.float64)
+
+    plan = build_asu_expansion_plan(positions, rotations, translations, on_duplicates="replace")
+
+    assert plan.asu_indices.tolist() == [1]
+    assert plan.symop_indices.tolist() == [0]
+    assert len(plan.duplicate_sites) == 1
 
 
 def test_expand_asu_validates_input_shapes() -> None:

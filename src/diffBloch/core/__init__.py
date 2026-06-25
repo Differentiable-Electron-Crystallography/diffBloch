@@ -23,6 +23,7 @@ from diffBloch.core.reciprocal import (
 )
 from diffBloch.core.symmetry import (
     AsuExpansionPlan,
+    DuplicateSite,
     ExpandedAsu,
     build_asu_expansion_plan,
     expand_asu,
@@ -30,6 +31,7 @@ from diffBloch.core.symmetry import (
 
 __all__ = [
     "AsuExpansionPlan",
+    "DuplicateSite",
     "ExpandedAsu",
     "apply_symmetry_mask",
     "build_asu_expansion_plan",

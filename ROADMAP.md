@@ -39,8 +39,10 @@ commit — the executable form of *"the core physics model has not changed."*
   the `io.symmetry_setup` seam until full special-position handling lands.
 - [x] **6 — `core/symmetry::expand_asu`.** Add precomputed ASU membership plans and torch-only
   expansion for positions, atomic numbers, ADPs, and occupancies. Duplicate detection happens once
-  in `build_asu_expansion_plan`; `expand_asu` gathers by plan indices and preserves gradients.
-  Quartz pins the atom-major/symop-minor membership order.
+  in `build_asu_expansion_plan` with returned duplicate diagnostics; `expand_asu` gathers by plan
+  indices and preserves gradients. Expanded positions remain unwrapped in the differentiable path so
+  scattering can use periodic phases without introducing a modulo discontinuity. Quartz pins the
+  atom-major/symop-minor membership order.
 - [ ] **7 — `core/scattering`.** From `StructureFactorNet`; vectorise per-atom loops (grid golden).
 - [ ] **8 — `core/dynamical` + `solver`.** `build_bloch_system(...) -> BlochSystem` (carries
   `A`, `Mii`, `psi0`, `k_n`, `mask` — so `bloch_eigen` needs no geometry); `Propagator(system,
