@@ -31,10 +31,12 @@ commit — the executable form of *"the core physics model has not changed."*
   g-vector lengths/masks, raveled HKL indexing, and lattice-centering reflection conditions.
   The public helpers intentionally fix the private A/B/C centering row-slice bug while preserving
   the primitive/body/face-centered behavior used by downstream stages.
-- [x] **5 — `core/constraints` + `adp`.** Add torch-backed Cholesky ADP, unit-interval,
-  positive, and symmetry-mask transforms, plus the `RefinableParams -> constrain -> PhysicalState`
-  seam. Public constraint application avoids mutating grad-carrying inputs; diffpy extraction remains
-  behind the `io.symmetry_setup` seam until full special-position handling lands.
+- [x] **5 — `core/constraints` + `adp`.** Add torch-backed lower-triangular Cholesky ADP,
+  isotropic ADP, unit-interval, positive, and symmetry-mask transforms, plus the
+  `RefinableParams -> constrain -> PhysicalState` seam. Public constraint application avoids
+  mutating grad-carrying inputs; `ConstraintSpec` carries the current Uiso/Uani/missing ADP kind
+  metadata without occupying the richer future `StructureSpec` name. diffpy extraction remains behind
+  the `io.symmetry_setup` seam until full special-position handling lands.
 - [x] **6 — `core/symmetry::expand_asu`.** Add precomputed ASU membership plans and torch-only
   expansion for positions, atomic numbers, ADPs, and occupancies. Duplicate detection happens once
   in `build_asu_expansion_plan`; `expand_asu` gathers by plan indices and preserves gradients.

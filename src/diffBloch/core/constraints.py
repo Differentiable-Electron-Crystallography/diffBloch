@@ -19,7 +19,7 @@ def positive(raw: Tensor) -> Tensor:
 
 
 @dataclass(frozen=True)
-class SymmetryMask:
+class _SymmetryMask:
     """Freeze symmetry-constrained degrees of freedom while preserving free gradients."""
 
     mask: Tensor
@@ -35,5 +35,9 @@ class SymmetryMask:
 
 
 def apply_symmetry_mask(raw: Tensor, *, mask: Tensor, fixed: Tensor) -> Tensor:
-    """Functional wrapper for :class:`SymmetryMask`."""
-    return SymmetryMask(mask=mask, fixed=fixed).forward(raw)
+    """Freeze symmetry-constrained degrees of freedom while preserving free gradients.
+
+    This function is the public API for the operation; the tiny callable object is kept private so
+    there is one advertised way to apply the mask.
+    """
+    return _SymmetryMask(mask=mask, fixed=fixed).forward(raw)

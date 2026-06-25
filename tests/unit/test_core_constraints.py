@@ -10,7 +10,7 @@ from diffBloch.core import (
     positive,
     unit_interval,
 )
-from diffBloch.params import RefinableParams, StructureSpec, constrain
+from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 
 
 def test_cholesky_adp_outputs_symmetric_psd_matrices() -> None:
@@ -30,6 +30,19 @@ def test_cholesky_adp_outputs_symmetric_psd_matrices() -> None:
     uij.sum().backward()
     assert raw.grad is not None
     assert torch.any(raw.grad != 0)
+
+
+def test_cholesky_adp_uses_only_lower_triangle() -> None:
+    lower = torch.tensor(
+        [[[0.2, 0.0, 0.0], [0.05, 0.15, 0.0], [0.01, 0.02, 0.18]]],
+        dtype=torch.float64,
+    )
+    noisy_upper = lower.clone()
+    noisy_upper[0, 0, 1] = 10.0
+    noisy_upper[0, 0, 2] = -8.0
+    noisy_upper[0, 1, 2] = 4.0
+
+    assert torch.allclose(cholesky_adp(noisy_upper), cholesky_adp(lower))
 
 
 def test_cholesky_raw_round_trips_initial_adp() -> None:
@@ -98,7 +111,7 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
         thickness_raw=thickness_raw,
         b_dose_raw=b_dose_raw,
     )
-    spec = StructureSpec(
+    spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
         position_mask=torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64),
         occupancies=torch.ones(2, dtype=torch.float64),
@@ -125,13 +138,59 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
     assert occupancy_raw.grad is not None
 
 
+def test_constrain_honors_mixed_adp_kinds() -> None:
+    positions = torch.zeros((2, 3), dtype=torch.float64, requires_grad=True)
+    uij_raw = torch.eye(3, dtype=torch.float64).repeat(2, 1, 1).requires_grad_()
+    u_iso_raw = torch.tensor([-3.0, -2.0], dtype=torch.float64, requires_grad=True)
+    params = RefinableParams(
+        asu_positions=positions,
+        uij_raw=uij_raw,
+        u_iso_raw=u_iso_raw,
+    )
+    spec = ConstraintSpec(
+        fixed_positions=torch.zeros_like(positions),
+        position_mask=torch.ones_like(positions),
+        occupancies=torch.ones(2, dtype=torch.float64),
+        adp_kind=("Uani", "Uiso"),
+    )
+
+    state = constrain(params, spec)
+    state.uij_cif.sum().backward()
+
+    assert torch.allclose(state.uij_cif[0], torch.eye(3, dtype=torch.float64))
+    assert torch.allclose(
+        state.uij_cif[1],
+        torch.eye(3, dtype=torch.float64) * torch.nn.functional.softplus(u_iso_raw[1]),
+    )
+    assert uij_raw.grad is not None
+    assert torch.any(uij_raw.grad[0] != 0)
+    assert torch.all(uij_raw.grad[1] == 0)
+    assert u_iso_raw.grad is not None
+    assert u_iso_raw.grad[1] != 0
+    assert u_iso_raw.grad[0] == 0
+
+
+def test_constrain_rejects_missing_adps_until_policy_exists() -> None:
+    positions = torch.zeros((1, 3), dtype=torch.float64)
+    params = RefinableParams(asu_positions=positions)
+    spec = ConstraintSpec(
+        fixed_positions=torch.zeros_like(positions),
+        position_mask=torch.ones_like(positions),
+        occupancies=torch.ones(1, dtype=torch.float64),
+        adp_kind=("missing",),
+    )
+
+    with pytest.raises(ValueError, match="missing ADPs"):
+        constrain(params, spec)
+
+
 def test_constrain_uses_default_occupancies_when_not_refined() -> None:
     positions = torch.zeros((1, 3), dtype=torch.float64)
     params = RefinableParams(
         asu_positions=positions,
         uij_raw=torch.eye(3, dtype=torch.float64)[None, :, :],
     )
-    spec = StructureSpec(
+    spec = ConstraintSpec(
         fixed_positions=positions,
         position_mask=torch.ones_like(positions),
         occupancies=torch.tensor([0.75], dtype=torch.float64),
@@ -147,7 +206,7 @@ def test_constrain_validates_shapes() -> None:
         asu_positions=torch.zeros((1, 3), dtype=torch.float64),
         uij_raw=torch.zeros((2, 3, 3), dtype=torch.float64),
     )
-    spec = StructureSpec(
+    spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
         position_mask=torch.ones((1, 3), dtype=torch.float64),
         occupancies=torch.ones(1, dtype=torch.float64),

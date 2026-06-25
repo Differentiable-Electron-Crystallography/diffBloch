@@ -12,6 +12,10 @@ with ``NaN`` meaning absent from the source file. Keep that parallel-array conve
 uncertainty group needs behavior beyond validation, covariance storage, or multiple competing
 representations. ADPs already use a grouped record because CIF Uiso, Uani, and missing ADPs have
 different semantics.
+
+``uij_cif`` names the CIF-source ADP convention at the IO boundary. Constrained tensors currently
+reuse that field name for ASU ADPs produced from raw parameters; downstream scattering code must
+explicitly convert to reciprocal-space ``U*`` if that is the representation it consumes.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ from diffBloch.core.adp import (
     equivalent_isotropic_adp,
     isotropic_adp,
 )
-from diffBloch.core.constraints import SymmetryMask, apply_symmetry_mask, positive, unit_interval
+from diffBloch.core.constraints import apply_symmetry_mask, positive, unit_interval
 from diffBloch.core.crystal import (
     cell_matrix_from_parameters,
     cell_volume,
@@ -31,7 +31,6 @@ from diffBloch.core.symmetry import (
 __all__ = [
     "AsuExpansionPlan",
     "ExpandedAsu",
-    "SymmetryMask",
     "apply_symmetry_mask",
     "build_asu_expansion_plan",
     "cell_matrix_from_parameters",
