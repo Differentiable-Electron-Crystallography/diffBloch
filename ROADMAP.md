@@ -43,7 +43,12 @@ commit — the executable form of *"the core physics model has not changed."*
   indices and preserves gradients. Expanded positions remain unwrapped in the differentiable path so
   scattering can use periodic phases without introducing a modulo discontinuity. Quartz pins the
   atom-major/symop-minor membership order.
-- [ ] **7 — `core/scattering`.** From `StructureFactorNet`; vectorise per-atom loops (grid golden).
+- [x] **7 — `core/scattering`.** Elastic structure factors ported from `StructureFactorNet`: native
+  Lobato form factors (coefficients vendored to `core/data/lobato.json`, cited to Lobato & Van Dyck
+  2014 in `REFERENCES.md`; abTEM/diffsims are test-only oracles, not runtime deps), anisotropic
+  Debye–Waller, resolution cutoff, and a vectorised (unique-Z + batched phase-sum) `structure_factors`.
+  Differentiable in positions/ADP/occupancy; `f_e` is a setup constant. Absorption (`U0'`) deferred;
+  `structure_factors` consumes U*-frame ADPs (Cartesian→U* conversion is owed to the ADP/spec layer).
 - [ ] **8 — `core/dynamical` + `solver`.** `build_bloch_system(...) -> BlochSystem` (carries
   `A`, `Mii`, `psi0`, `k_n`, `mask` — so `bloch_eigen` needs no geometry); `Propagator(system,
   thickness)` with `matrix_exp` (refine default) + `bloch_eigen` (eval-only) both first-class.

@@ -21,6 +21,12 @@ from diffBloch.core.reciprocal import (
     ravel_hkl,
     reciprocal_space_gpts,
 )
+from diffBloch.core.scattering import (
+    debye_waller_factor,
+    lobato_form_factors,
+    resolution_cutoff,
+    structure_factors,
+)
 from diffBloch.core.symmetry import (
     AsuExpansionPlan,
     DuplicateSite,
@@ -39,17 +45,21 @@ __all__ = [
     "cell_volume",
     "cholesky_adp",
     "cholesky_raw_from_adp",
+    "debye_waller_factor",
     "equivalent_isotropic_adp",
     "g_vector_lengths",
     "g_vectors",
     "gmax_mask",
     "isotropic_adp",
+    "lobato_form_factors",
     "make_hkl_grid",
     "positive",
     "ravel_hkl",
     "reciprocal_cell",
     "reciprocal_space_gpts",
     "reflection_condition",
+    "resolution_cutoff",
     "expand_asu",
+    "structure_factors",
     "unit_interval",
 ]
