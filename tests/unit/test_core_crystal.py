@@ -77,6 +77,13 @@ def test_reciprocal_space_grid_covers_gmax_and_stays_symmetric() -> None:
         assert np.any(np.all(hkl == -reflection, axis=1))
 
 
+def test_reciprocal_space_grid_accepts_zero_gmax() -> None:
+    cell = np.eye(3) * 5.0
+
+    assert reciprocal_space_gpts(cell, 0.0) == (1, 1, 1)
+    assert make_hkl_grid(cell, 0.0).tolist() == [[0, 0, 0]]
+
+
 def test_make_hkl_grid_can_restrict_axes() -> None:
     cell = np.eye(3) * 5.0
     hk = make_hkl_grid(cell, 0.5, axes=(0, 1))
@@ -121,6 +128,7 @@ def test_gmax_mask_and_ravel_hkl() -> None:
     hkl = np.asarray([[0, 0, 0], [1, 0, 0], [3, 0, 0]], dtype=np.int64)
 
     assert gmax_mask(hkl, reciprocal, 0.5).tolist() == [True, True, False]
+    assert gmax_mask(hkl, reciprocal, 0.0).tolist() == [True, False, False]
     assert ravel_hkl(np.asarray([[0, 0, 0]], dtype=np.int64), (5, 5, 5))[0] == np.ravel_multi_index(
         (2, 2, 2), (5, 5, 5)
     )

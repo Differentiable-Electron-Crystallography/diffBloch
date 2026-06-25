@@ -9,12 +9,12 @@ import gemmi
 import numpy as np
 from numpy.typing import NDArray
 
+from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io._cifio import (
     as_float,
     loop_rows,
     optional_int,
     parse_cif_number,
-    unit_cell_matrix_from_parameters,
     unquote,
 )
 from diffBloch.io._cifio import (
@@ -82,7 +82,7 @@ def parse_structure_block(
     cell_parameters, cell_parameters_su = parse_cell_parameters(block)
     return StructureRecord(
         source_path=Path(source_path) if source_path is not None else None,
-        unit_cell=unit_cell_matrix_from_parameters(cell_parameters),
+        unit_cell=cell_matrix_from_parameters(cell_parameters),
         cell_parameters=cell_parameters,
         cell_parameters_su=cell_parameters_su,
         spacegroup_hm=unquote(

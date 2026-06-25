@@ -29,8 +29,8 @@ def g_vector_lengths(hkl: IntArray, reciprocal_basis: FloatArray) -> FloatArray:
 
 def reciprocal_space_gpts(cell: FloatArray, g_max: float) -> tuple[int, int, int]:
     """Return symmetric reciprocal-grid dimensions needed to cover ``g_max``."""
-    if g_max <= 0.0:
-        raise ValueError("g_max must be positive")
+    if g_max < 0.0:
+        raise ValueError("g_max must be non-negative")
     reciprocal_lengths = np.linalg.norm(reciprocal_cell(cell), axis=1)
     return (
         int(np.ceil(g_max / reciprocal_lengths[0])) * 2 + 1,

@@ -18,7 +18,11 @@ _NUMERIC_WITH_SU = re.compile(
 
 
 class CifNumber(NamedTuple):
-    """CIF numeric value with optional standard uncertainty."""
+    """CIF numeric value with optional standard uncertainty.
+
+    ``su`` is ``NaN`` when the source value has no parenthesized SU, matching the shape-aligned
+    array convention used by IO records.
+    """
 
     nominal: float
     su: float
@@ -84,12 +88,7 @@ def cell_parameters(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArra
 
 def unit_cell_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:
     """Return the fractional-to-Cartesian cell matrix for ``block``."""
-    return unit_cell_matrix_from_parameters(cell_parameters(block)[0])
-
-
-def unit_cell_matrix_from_parameters(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Return the fractional-to-Cartesian cell matrix for six cell parameters."""
-    return cell_matrix_from_parameters(parameters)
+    return cell_matrix_from_parameters(cell_parameters(block)[0])
 
 
 def required_value(block: gemmi.cif.Block, tag: str) -> str:
