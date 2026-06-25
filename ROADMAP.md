@@ -26,7 +26,11 @@ commit — the executable form of *"the core physics model has not changed."*
   **with explicit `@model_validator` contracts** (shape, occupancy ∈ [0,1], ADP PSD, symop shapes,
   σ ≥ 0). diffpy `symmetry_constraints(record)` behind its seam. Conformance/golden tests.
   *Gate: the validators must exist before any `core/` code trusts the boundary.*
-- [ ] **4 — `core/crystal` + `reciprocal`.** Relocate the already-tested helpers (mechanical move).
+- [x] **4 — `core/crystal` + `reciprocal`.** Relocate the already-tested NumPy helpers:
+  cell-matrix construction, reciprocal basis, reciprocal-grid sizing, HKL grid generation,
+  g-vector lengths/masks, raveled HKL indexing, and lattice-centering reflection conditions.
+  The public helpers intentionally fix the private A/B/C centering row-slice bug while preserving
+  the primitive/body/face-centered behavior used by downstream stages.
 - [ ] **5 — `core/constraints` + `adp`.** Cholesky + symmetry-mask bijectors; delete the in-place Uij
   loop.
 - [ ] **6 — `core/symmetry::expand_asu`.** Precomputed membership; remove per-step numpy dedup

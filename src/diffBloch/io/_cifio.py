@@ -9,6 +9,8 @@ import gemmi
 import numpy as np
 from numpy.typing import NDArray
 
+from diffBloch.core.crystal import cell_matrix_from_parameters
+
 _NUMERIC_WITH_SU = re.compile(
     r"^(?P<nominal>[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?)"
     r"(?:\((?P<su>\d+)\))?$"
@@ -87,30 +89,7 @@ def unit_cell_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:
 
 def unit_cell_matrix_from_parameters(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return the fractional-to-Cartesian cell matrix for six cell parameters."""
-    a, b, c, alpha_deg, beta_deg, gamma_deg = parameters
-    alpha = np.deg2rad(alpha_deg)
-    beta = np.deg2rad(beta_deg)
-    gamma = np.deg2rad(gamma_deg)
-
-    cos_alpha = np.cos(alpha)
-    cos_beta = np.cos(beta)
-    cos_gamma = np.cos(gamma)
-    sin_gamma = np.sin(gamma)
-    volume_factor = np.sqrt(
-        1.0 - cos_alpha**2 - cos_beta**2 - cos_gamma**2 + 2.0 * cos_alpha * cos_beta * cos_gamma
-    )
-    return np.asarray(
-        [
-            [a, 0.0, 0.0],
-            [b * cos_gamma, b * sin_gamma, 0.0],
-            [
-                c * cos_beta,
-                c * (cos_alpha - cos_beta * cos_gamma) / sin_gamma,
-                c * volume_factor / sin_gamma,
-            ],
-        ],
-        dtype=np.float64,
-    )
+    return cell_matrix_from_parameters(parameters)
 
 
 def required_value(block: gemmi.cif.Block, tag: str) -> str:
