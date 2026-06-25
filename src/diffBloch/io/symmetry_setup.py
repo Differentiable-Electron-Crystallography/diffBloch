@@ -9,7 +9,7 @@ from diffBloch.io.record import StructureRecord
 
 @dataclass(frozen=True)
 class SymmetryConstraints:
-    """Placeholder value object for future diffpy-backed parameter constraints."""
+    """Internal placeholder value object for future diffpy-backed parameter constraints."""
 
     n_asymmetric_sites: int
     n_symops: int

@@ -2,6 +2,16 @@
 
 The core simulation code should receive arrays with stable shapes and units, not parser objects.
 These records are the trust boundary between file formats and differentiable kernels.
+
+Record classes are pydantic models when they cross an IO/config boundary and need validation.
+Parser-local helpers can stay as lighter Python value objects, but public records should keep this
+validated boundary shape.
+
+Standard uncertainties are stored as shape-aligned ``*_su`` arrays next to their nominal values,
+with ``NaN`` meaning absent from the source file. Keep that parallel-array convention until an
+uncertainty group needs behavior beyond validation, covariance storage, or multiple competing
+representations. ADPs already use a grouped record because CIF Uiso, Uani, and missing ADPs have
+different semantics.
 """
 
 from __future__ import annotations
@@ -18,7 +28,7 @@ type IntArray = NDArray[np.int64]
 
 
 class AdpRecord(BaseModel):
-    """Atomic displacement parameters, preserving CIF Uiso/Uani semantics."""
+    """Atomic displacement parameters, preserving CIF Uiso/Uani semantics and SUs."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -64,7 +74,11 @@ class AdpRecord(BaseModel):
 
 
 class StructureRecord(BaseModel):
-    """Asymmetric-unit structure data in CIF convention."""
+    """Asymmetric-unit structure data in CIF convention.
+
+    Nominal arrays feed downstream kernels. The corresponding ``*_su`` arrays preserve CIF
+    standard uncertainties as provenance metadata for reporting or later optional restraints.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
