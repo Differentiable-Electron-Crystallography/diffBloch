@@ -14,8 +14,11 @@ from diffBloch.core.crystal import (
     reflection_condition,
 )
 from diffBloch.core.dynamical import (
+    energy2sigma,
     energy2wavelength,
     excitation_errors,
+    kappa,
+    structure_matrix_prefactor,
     wavevector_magnitude,
 )
 from diffBloch.core.reciprocal import (
@@ -51,6 +54,7 @@ __all__ = [
     "cholesky_adp",
     "cholesky_raw_from_adp",
     "debye_waller_factor",
+    "energy2sigma",
     "energy2wavelength",
     "equivalent_isotropic_adp",
     "excitation_errors",
@@ -59,6 +63,7 @@ __all__ = [
     "g_vectors",
     "gmax_mask",
     "isotropic_adp",
+    "kappa",
     "lobato_form_factors",
     "make_hkl_grid",
     "positive",
@@ -68,6 +73,7 @@ __all__ = [
     "reflection_condition",
     "resolution_cutoff",
     "structure_factors",
+    "structure_matrix_prefactor",
     "unit_interval",
     "wavevector_magnitude",
 ]

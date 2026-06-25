@@ -2,9 +2,11 @@
 
 Stage-8 foundation. Native ports of the electron-optics helpers the private predecessor
 (``diffBloch_private/diffBloch/dynamical.py``) imported directly from abTEM
-(``abtem.core.energy.energy2wavelength``) plus the Spence & Zuo excitation-error convention
+(``abtem.core.energy.energy2wavelength`` / ``energy2sigma``; ``abtem.core.constants.kappa``) plus
+the Spence & Zuo excitation-error convention
 (``diffBloch_private/diffBloch/utils.py::excitation_errors``). See ``REFERENCES.md`` — abTEM and
-Spence & Zuo (1992) are credited; abTEM is not a runtime dependency.
+Spence & Zuo (1992) are credited; abTEM is not a runtime dependency. The ``energy2sigma``/``kappa``
+ports reproduce abTEM's values to ~1e-8 (CODATA-2018 vs ASE constants).
 
 These are setup constants on the geometry/numerics plan — beam energy is an experimental constant
 and ``g`` is fixed geometry, neither is refined — so they live on the NumPy planning path like
@@ -23,6 +25,15 @@ _PLANCK = 6.62607015e-34  # J s
 _ELECTRON_MASS = 9.1093837015e-31  # kg
 _ELEMENTARY_CHARGE = 1.602176634e-19  # C
 _SPEED_OF_LIGHT = 299792458.0  # m s^-1
+_VACUUM_PERMITTIVITY = 8.8541878128e-12  # F m^-1
+_BOHR_RADIUS = 0.529177210903e-10  # m
+
+# Conversion from the unitless (Lobato) potential parametrization to potential units, used in the
+# structure-matrix prefactor. Dimensionless in this convention (Å/eV potential units), ~0.0209.
+# Native form of abTEM's abtem.core.constants.kappa (4 pi eps0 / (2 pi a0 e) in ASE units), here the
+# equivalent CODATA-2018 closed form 2 eps0 / (a0 e) * 1e-20; reproduces abTEM's exact value
+# 0.0208865737082965 to ~1e-8 (the residual is CODATA-2018 vs ASE's constants). See REFERENCES.md.
+kappa: float = 2.0 * _VACUUM_PERMITTIVITY / (_BOHR_RADIUS * _ELEMENTARY_CHARGE) * 1e-20
 
 
 def energy2wavelength(energy: float) -> float:
@@ -38,6 +49,33 @@ def energy2wavelength(energy: float) -> float:
     rest = 2.0 * _ELECTRON_MASS * _SPEED_OF_LIGHT**2
     metres = _PLANCK * _SPEED_OF_LIGHT / np.sqrt(charge_energy * (rest + charge_energy))
     return float(metres * 1e10)
+
+
+def energy2sigma(energy: float) -> float:
+    """Electron interaction parameter ``sigma`` in 1/(angstrom*eV) for a beam ``energy`` in eV.
+
+    ``sigma = 2 pi m e lambda / h^2`` with the relativistic mass ``m = (1 + E e / (m_e c^2)) m_e``.
+    Native form of abTEM's ``energy2sigma`` (see ``REFERENCES.md``); reproduces its values
+    9.2440e-4 / 7.2884e-4 / 6.5262e-4 at 100 / 200 / 300 keV to ~1e-8.
+    """
+    if energy <= 0.0:
+        raise ValueError("energy must be positive")
+    relativistic_mass = (
+        1.0 + _ELEMENTARY_CHARGE * energy / (_ELECTRON_MASS * _SPEED_OF_LIGHT**2)
+    ) * (_ELECTRON_MASS)
+    wavelength_metres = energy2wavelength(energy) * 1e-10
+    sigma_si = 2.0 * np.pi * relativistic_mass * _ELEMENTARY_CHARGE * wavelength_metres / _PLANCK**2
+    return float(sigma_si * 1e-10)
+
+
+def structure_matrix_prefactor(energy: float) -> float:
+    """Off-diagonal structure-matrix prefactor ``sigma / (kappa * lambda * pi)``.
+
+    Scales structure factors into the Bloch structure matrix ``A``; ported from the repeated private
+    ``energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)``
+    (``diffBloch_private`` utils.py:772/878, dynamical.py:1001/1059).
+    """
+    return energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)
 
 
 def wavevector_magnitude(energy: float, *, u0: float = 0.0) -> float:

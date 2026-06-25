@@ -8,8 +8,11 @@ import numpy as np
 import pytest
 
 from diffBloch.core.dynamical import (
+    energy2sigma,
     energy2wavelength,
     excitation_errors,
+    kappa,
+    structure_matrix_prefactor,
     wavevector_magnitude,
 )
 
@@ -51,3 +54,26 @@ def test_excitation_errors_match_reference_formula() -> None:
 def test_excitation_errors_rejects_bad_shape() -> None:
     with pytest.raises(ValueError, match="g must have shape"):
         excitation_errors(np.zeros((3,)), 200e3)
+
+
+def test_energy2sigma_matches_abtem_oracle() -> None:
+    # abTEM energy2sigma values [1/(Å·eV)]; native CODATA-2018 form reproduces them to ~1e-8.
+    assert energy2sigma(100e3) == pytest.approx(9.24395822e-04, rel=1e-6)
+    assert energy2sigma(200e3) == pytest.approx(7.28840109e-04, rel=1e-6)
+    assert energy2sigma(300e3) == pytest.approx(6.52616146e-04, rel=1e-6)
+
+
+def test_energy2sigma_rejects_nonpositive() -> None:
+    with pytest.raises(ValueError, match="energy must be positive"):
+        energy2sigma(-1.0)
+
+
+def test_kappa_matches_abtem_oracle() -> None:
+    # abTEM abtem.core.constants.kappa; native form matches to ~1e-8.
+    assert kappa == pytest.approx(0.0208865737082965, rel=1e-6)
+
+
+def test_structure_matrix_prefactor_composes_sigma_kappa_wavelength() -> None:
+    energy = 200e3
+    expected = energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)
+    assert structure_matrix_prefactor(energy) == pytest.approx(expected)
