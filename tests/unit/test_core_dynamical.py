@@ -12,6 +12,7 @@ from diffBloch.core.dynamical import (
     energy2wavelength,
     excitation_errors,
     kappa,
+    m_factors,
     structure_matrix_prefactor,
     wavevector_magnitude,
 )
@@ -71,6 +72,24 @@ def test_energy2sigma_rejects_nonpositive() -> None:
 def test_kappa_matches_abtem_oracle() -> None:
     # abTEM abtem.core.constants.kappa; native form matches to ~1e-8.
     assert kappa == pytest.approx(0.0208865737082965, rel=1e-6)
+
+
+def test_m_factors_unity_at_origin_and_match_reference() -> None:
+    energy, u0 = 200e3, 0.0
+    k_n = wavevector_magnitude(energy, u0=u0)
+    g = np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.05], [0.0, 0.2, -0.05]])
+    mii = m_factors(g, energy, u0=u0)
+    assert mii.shape == (3,)
+    assert mii[0] == pytest.approx(1.0)  # g = 0 -> Mii = 1
+    expected = 1.0 / np.sqrt(1.0 - g[:, 2] / k_n)
+    assert np.allclose(mii, expected)
+    assert mii[1] > 1.0  # g_z > 0 -> Mii > 1
+    assert mii[2] < 1.0  # g_z < 0 -> Mii < 1
+
+
+def test_m_factors_rejects_bad_shape() -> None:
+    with pytest.raises(ValueError, match="g must have shape"):
+        m_factors(np.zeros((3,)), 200e3)
 
 
 def test_structure_matrix_prefactor_composes_sigma_kappa_wavelength() -> None:

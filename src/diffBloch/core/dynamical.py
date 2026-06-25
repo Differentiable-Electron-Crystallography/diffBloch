@@ -104,3 +104,21 @@ def excitation_errors(g: FloatArray, energy: float, *, u0: float = 0.0) -> Float
     k_mag = wavevector_magnitude(energy, u0=u0)
     k_vector = np.array([0.0, 0.0, -k_mag], dtype=np.float64)
     return (k_mag**2 - np.linalg.norm(k_vector + g_array, axis=1) ** 2) / (2.0 * k_mag)
+
+
+def m_factors(g: FloatArray, energy: float, *, u0: float = 0.0) -> FloatArray:
+    """Diagonal ``Mii`` factors that symmetrise the Bloch structure matrix.
+
+    ``Mii = 1 / sqrt(1 - g_z / K_n)`` with ``K_n = wavevector_magnitude(energy, u0=u0)``; port of
+    ``diffBloch_private`` ``dynamical.py::calculate_M_matrix``. The structure matrix uses them on
+    both axes off-diagonal (``Mii_i Mii_j``) and once on the diagonal. ``Mii = 1`` at ``g = 0``;
+    ``g`` is ``(N, 3)`` in Å^-1, returns ``(N,)``.
+    """
+    g_array = np.asarray(g, dtype=np.float64)
+    if g_array.ndim != 2 or g_array.shape[1] != 3:
+        raise ValueError("g must have shape (N, 3)")
+    k_n = wavevector_magnitude(energy, u0=u0)
+    radicand = 1.0 - g_array[:, 2] / k_n
+    if np.any(radicand <= 0.0):
+        raise ValueError("g_z must satisfy g_z < K_n for every reflection (1 - g_z/K_n > 0)")
+    return 1.0 / np.sqrt(radicand)

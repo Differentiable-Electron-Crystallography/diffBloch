@@ -18,6 +18,7 @@ from diffBloch.core.dynamical import (
     energy2wavelength,
     excitation_errors,
     kappa,
+    m_factors,
     structure_matrix_prefactor,
     wavevector_magnitude,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "isotropic_adp",
     "kappa",
     "lobato_form_factors",
+    "m_factors",
     "make_hkl_grid",
     "positive",
     "ravel_hkl",
