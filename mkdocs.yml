@@ -25,3 +25,4 @@ nav:
       - Config: api/config.md
       - Core: api/core.md
       - IO: api/io.md
+      - Params: api/params.md

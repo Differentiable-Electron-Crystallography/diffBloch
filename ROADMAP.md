@@ -31,8 +31,10 @@ commit — the executable form of *"the core physics model has not changed."*
   g-vector lengths/masks, raveled HKL indexing, and lattice-centering reflection conditions.
   The public helpers intentionally fix the private A/B/C centering row-slice bug while preserving
   the primitive/body/face-centered behavior used by downstream stages.
-- [ ] **5 — `core/constraints` + `adp`.** Cholesky + symmetry-mask bijectors; delete the in-place Uij
-  loop.
+- [x] **5 — `core/constraints` + `adp`.** Add torch-backed Cholesky ADP, unit-interval,
+  positive, and symmetry-mask transforms, plus the `RefinableParams -> constrain -> PhysicalState`
+  seam. Public constraint application avoids mutating grad-carrying inputs; diffpy extraction remains
+  behind the `io.symmetry_setup` seam until full special-position handling lands.
 - [ ] **6 — `core/symmetry::expand_asu`.** Precomputed membership; remove per-step numpy dedup
   (membership-order golden).
 - [ ] **7 — `core/scattering`.** From `StructureFactorNet`; vectorise per-atom loops (grid golden).
