@@ -216,7 +216,7 @@ def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[n
         spacegroup = _spacegroup_for_block(block)
         if spacegroup is None:
             raise ValueError("CIF must provide symmetry operations or a space-group symbol/number")
-        symops = [op.triplet() for op in spacegroup.operations().sym_ops]
+        symops = [op.triplet() for op in spacegroup.operations()]
 
     rotations: list[list[list[float]]] = []
     translations: list[list[float]] = []

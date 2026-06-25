@@ -107,7 +107,9 @@ C1 C 0.10(2) 0.20 0.30 0.0144(8) Uiso
     assert record.cell_parameters_su[0] == pytest.approx(0.2)
 
 
-def test_read_structure_derives_symops_from_spacegroup_when_loop_missing(tmp_path: Path) -> None:
+def test_read_structure_derives_all_symops_from_spacegroup_when_loop_missing(
+    tmp_path: Path,
+) -> None:
     cif = tmp_path / "symbol_only.cif"
     cif.write_text(
         """data_symbol_only
@@ -117,7 +119,7 @@ _cell_length_c 7.0
 _cell_angle_alpha 90
 _cell_angle_beta 100
 _cell_angle_gamma 90
-_symmetry_space_group_name_H-M 'P 21/c'
+_symmetry_space_group_name_H-M 'C 2/c'
 loop_
 _atom_site_label
 _atom_site_type_symbol
@@ -130,9 +132,6 @@ C1 C 0.10 0.20 0.30
 
     record = read_structure(cif)
 
-    assert record.n_symops == 4
-    assert np.allclose(
-        record.symops_t,
-        np.asarray([[0.0, 0.0, 0.0], [0.0, 0.5, 0.5], [0.0, 0.0, 0.0], [0.0, 0.5, 0.5]]),
-    )
+    assert record.n_symops == 8
+    assert np.any(np.all(np.isclose(record.symops_t, [0.5, 0.5, 0.0]), axis=1))
     assert record.adp.kind == ("missing",)
