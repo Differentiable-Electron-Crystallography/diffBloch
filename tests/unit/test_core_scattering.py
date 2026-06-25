@@ -4,6 +4,7 @@ The form-factor golden values are the Lobato-Van Dyck (2014) parametrization as 
 (see REFERENCES.md); our native functional form must reproduce them.
 """
 
+import pytest
 import torch
 
 from diffBloch.core.scattering import (
@@ -82,3 +83,25 @@ def test_structure_factors_gradients_flow_and_extinction() -> None:
     assert positions.grad.abs().sum() > 0
     assert uij.grad.abs().sum() > 0
     assert occupancies.grad.abs().sum() > 0
+
+
+def test_structure_factors_rejects_mismatched_adp_count() -> None:
+    # A single ADP matrix for 3 atoms must error, not silently broadcast to wrong physics.
+    positions = torch.rand(3, 3, dtype=torch.float64)
+    numbers = torch.tensor([8, 14, 8])
+    occupancies = torch.ones(3, dtype=torch.float64)
+    uij = (torch.eye(3, dtype=torch.float64) * 0.01).unsqueeze(0)  # (1, 3, 3), not (3, 3, 3)
+    hkl = torch.tensor([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    reciprocal_basis = torch.eye(3, dtype=torch.float64)
+
+    with pytest.raises(ValueError, match="uij_star must have shape"):
+        structure_factors(
+            positions,
+            numbers,
+            occupancies,
+            uij,
+            hkl=hkl,
+            reciprocal_basis=reciprocal_basis,
+            cell_volume=113.3,
+            g_max=2.0,
+        )

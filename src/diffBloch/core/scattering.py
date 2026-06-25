@@ -134,6 +134,8 @@ def structure_factors(
         raise ValueError("positions must have shape (N, 3)")
     if numbers.shape != (n_atoms,) or occupancies.shape != (n_atoms,):
         raise ValueError("numbers and occupancies must have shape (N,) matching positions")
+    if uij_star.shape != (n_atoms, 3, 3):
+        raise ValueError("uij_star must have shape (N, 3, 3) matching positions")
     if cell_volume <= 0.0:
         raise ValueError("cell_volume must be positive")
 
