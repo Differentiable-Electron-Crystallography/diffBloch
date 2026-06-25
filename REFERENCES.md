@@ -22,8 +22,16 @@ new method, dataset, dependency, or studied design adds its credit here.
   This is the **canonical source** of the form-factor coefficients used in `core/scattering`. Five
   hydrogenic basis functions fit to first-principles scattering factors for 103 neutral atoms.
 
-_(Dynamical-diffraction / Bloch-wave theory and PETS references will be added when stages 7–8 land
-the solver and observation model.)_
+- **Dynamical electron diffraction (Bloch-wave method).**
+  Spence, J. C. H. & Zuo, J. M. (1992). *Electron Microdiffraction.* Plenum Press, New York.
+  The canonical reference for the Bloch-wave formulation diffBloch ports: the structure matrix `A`,
+  the diagonalisation/`matrix_exp` propagation of the wavefunction through thickness, the diagonal
+  excitation errors `Sg` (the "Spence and Zuo method" named in the private `excitation_errors`
+  docstring), and the `Mii` Lorentz/obliquity factors. The relativistic electron-optics relations
+  (`energy → wavelength`, interaction parameter `σ`) are standard and follow the abTEM
+  implementation noted below.
+
+_(PETS / observation-model references will be added when stage 9+ lands the observation model.)_
 
 ## Vendored reference data
 
@@ -58,7 +66,12 @@ the solver and observation model.)_
   first principles*, Open Research Europe 1:24. <https://open-research-europe.ec.europa.eu/articles/1-24>
   — used **only** as a test oracle for form-factor values and as the extraction path for the Lobato
   table. It is deliberately **not** a runtime dependency (its numba/dask/llvmlite tree is too heavy
-  for the lean core).
+  for the lean core). The dynamical stage additionally reimplements abTEM's relativistic
+  electron-optics helpers natively — `energy2wavelength` and `energy2sigma` (`abtem.core.energy`)
+  and the interaction constant `kappa` (`abtem.core.constants`) — and follows the structure-matrix
+  conventions of `abtem.bloch`. The private predecessor imported these directly from abTEM; the
+  port re-derives them from the underlying physical constants and verifies against published values
+  (and abTEM as oracle), so abTEM remains a credited source but not a runtime dependency.
 - **diffsims** (pyxem) — independent tabulation of the Lobato coefficients
   (`diffsims.utils.lobato_scattering_params.ATOMIC_SCATTERING_PARAMS_LOBATO`), used to cross-check our
   vendored data against a second source. <https://github.com/pyxem/diffsims>

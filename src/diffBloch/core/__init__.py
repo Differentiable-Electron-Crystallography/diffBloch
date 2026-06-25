@@ -13,6 +13,11 @@ from diffBloch.core.crystal import (
     reciprocal_cell,
     reflection_condition,
 )
+from diffBloch.core.dynamical import (
+    energy2wavelength,
+    excitation_errors,
+    wavevector_magnitude,
+)
 from diffBloch.core.reciprocal import (
     g_vector_lengths,
     g_vectors,
@@ -46,7 +51,9 @@ __all__ = [
     "cholesky_adp",
     "cholesky_raw_from_adp",
     "debye_waller_factor",
+    "energy2wavelength",
     "equivalent_isotropic_adp",
+    "excitation_errors",
     "expand_asu",
     "g_vector_lengths",
     "g_vectors",
@@ -62,4 +69,5 @@ __all__ = [
     "resolution_cutoff",
     "structure_factors",
     "unit_interval",
+    "wavevector_magnitude",
 ]
