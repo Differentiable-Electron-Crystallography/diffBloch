@@ -49,12 +49,15 @@ commit — the executable form of *"the core physics model has not changed."*
   Debye–Waller, resolution cutoff, and a vectorised (unique-Z + batched phase-sum) `structure_factors`.
   Differentiable in positions/ADP/occupancy; `f_e` is a setup constant. Absorption (`U0'`) deferred;
   `structure_factors` consumes U*-frame ADPs (Cartesian→U* conversion is owed to the ADP/spec layer).
-- [ ] **8 — `core/dynamical` + `solver`.** `build_bloch_system(...) -> BlochSystem` (carries
+- [x] **8 — `core/dynamical` + `solver`.** `build_bloch_system(...) -> BlochSystem` (carries
   `A`, `Mii`, `psi0`, `k_n`, `mask` — so `bloch_eigen` needs no geometry); `Propagator(system,
-  thickness)` with `matrix_exp` (refine default) + `bloch_eigen` (eval-only) both first-class.
-  Precompute `BeamPlan` **keyed on geometry/numerics** (NOT ADP); ADP→coverage is a separate
-  `ScatteringTablePlan`. Two sub-steps (assert identical `A` with caches, then remove caches). Run the
-  `T ∈ {1,8,42}` timing + gradient-parity experiment before locking `matrix_exp`. *(Highest risk.)*
+  thickness)` with `matrix_exp` (refine default) + `bloch_eigen` (eval) both first-class and
+  swappable off the same system value. Precompute `BeamPlan` **keyed on geometry/numerics** (NOT ADP)
+  replaced the private `A_offdiag`/`sparse_prebuilt` caches. The `T ∈ {1,8,42,500}` timing + parity
+  experiment (`scripts/stage8_propagator_experiment.py`) confirmed the methods coincide only at
+  `Mii==1` and set the default; decision recorded in `design/decisions/stage8-bloch-propagators.md`.
+  *Deferred (oracle methodology):* real-CIF `Fgb` via the new parser, an R-factor/intensity oracle,
+  and a composite-step (gather→A→propagate→intensity→loss) breakdown.
 - [ ] **9 — `core/losses` + `products`.** Move loss bodies out; retire `DiffractionDataset` for
   `PatternBatch` / `BlochSolution`.
 - [ ] **10 — `params`/`specs` + `engine`.** `RefinableParams` (incl. `b_dose_raw`) → `constrain` →

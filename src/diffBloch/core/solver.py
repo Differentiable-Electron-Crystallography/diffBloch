@@ -8,8 +8,11 @@ Two first-class methods, selected by a ``Method`` *value* (strategy-as-value, no
   multiply -- fast for many thicknesses, but ``eigh``'s backward is ill-conditioned near degenerate
   eigenvalues (which symmetric crystals routinely produce), so it is not the refine default.
 
-Both consume *only* a ``BlochSystem`` (no geometry/energy/hkl) -- the system is the closed problem.
-Ports the no-absorption path of ``diffBloch_private``
+Both are first-class and swappable off the *same* ``BlochSystem`` (no geometry/energy/hkl needed --
+the system is the closed problem). They differ in *what* they return -- symmetrised vs physical
+amplitudes -- coinciding only at ``Mii == 1``; that distinction is a feature to experiment with, not
+a bug. Rationale, evidence, and deferred work: ``design/decisions/stage8-bloch-propagators.md`` and
+``scripts/stage8_propagator_experiment.py``. Ports the no-absorption path of ``diffBloch_private``
 ``dynamical.py::calculate_dynamical_scattering_batched`` (here single-system).
 """
 
