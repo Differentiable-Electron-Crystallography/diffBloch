@@ -119,8 +119,10 @@ def _validate_shapes(params: RefinableParams, spec: ConstraintSpec) -> None:
 
 def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
     n_atoms = int(params.asu_positions.shape[0])
-    reciprocal_basis = spec.reciprocal_basis
-    assert reciprocal_basis is not None  # guaranteed by _validate_shapes when ADPs are present
+    dtype = params.asu_positions.dtype
+    device = params.asu_positions.device
+    assert spec.reciprocal_basis is not None  # guaranteed by _validate_shapes when ADPs are present
+    reciprocal_basis = spec.reciprocal_basis.to(dtype=dtype, device=device)
     reciprocal_lengths = torch.linalg.norm(reciprocal_basis, dim=1)
 
     if spec.adp_kind is None:
@@ -128,8 +130,6 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
             raise ValueError("uij_raw is required when adp_kind is not provided")
         return cif_adp_to_star(cholesky_adp(params.uij_raw), reciprocal_lengths)
 
-    dtype = params.asu_positions.dtype
-    device = params.asu_positions.device
     uij = torch.zeros((n_atoms, 3, 3), dtype=dtype, device=device)
 
     if _requires_uani(spec):

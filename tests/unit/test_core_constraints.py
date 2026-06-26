@@ -61,6 +61,24 @@ def test_constrain_requires_reciprocal_basis_for_adps() -> None:
         constrain(params, spec)
 
 
+def test_constrain_coerces_reciprocal_basis_to_param_dtype() -> None:
+    # float32 params with a float64 reciprocal_basis must yield float32 ADPs, not silently upcast.
+    positions = torch.zeros((1, 3), dtype=torch.float32)
+    params = RefinableParams(
+        asu_positions=positions,
+        u_iso_raw=torch.full((1,), -4.0, dtype=torch.float32),
+    )
+    spec = ConstraintSpec(
+        fixed_positions=positions,
+        position_mask=torch.ones_like(positions),
+        occupancies=torch.ones(1, dtype=torch.float32),
+        adp_kind=("Uiso",),
+        reciprocal_basis=torch.eye(3, dtype=torch.float64),
+    )
+    state = constrain(params, spec)
+    assert state.uij_star.dtype == torch.float32
+
+
 def test_cholesky_adp_outputs_symmetric_psd_matrices() -> None:
     raw = torch.tensor(
         [
