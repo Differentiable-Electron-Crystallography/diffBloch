@@ -10,7 +10,9 @@ ports reproduce abTEM's values to ~1e-8 (CODATA-2018 vs ASE constants).
 
 These are setup constants on the geometry/numerics plan — beam energy is an experimental constant
 and ``g`` is fixed geometry, neither is refined — so they live on the NumPy planning path like
-``core.reciprocal`` (the differentiable structure-factor path stays in ``core.scattering``).
+``core.reciprocal``. The differentiable structure-factor path stays in ``core.scattering``; the
+differentiable structure-matrix assembly built on these primitives lives in the sibling
+``core.dynamical.assembly`` (torch). The numpy/torch split mirrors ``reciprocal`` vs ``scattering``.
 """
 
 from __future__ import annotations

@@ -6,11 +6,14 @@ Golden wavelength values are the textbook relativistic de Broglie values (also a
 
 import numpy as np
 import pytest
+import torch
 
 from diffBloch.core.dynamical import (
+    build_structure_factor_gather,
     energy2sigma,
     energy2wavelength,
     excitation_errors,
+    gather_structure_factors,
     kappa,
     m_factors,
     structure_matrix_prefactor,
@@ -99,3 +102,82 @@ def test_structure_matrix_prefactor_composes_sigma_kappa_wavelength() -> None:
     # Wiring check: composes the three helpers as documented.
     expected = energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)
     assert structure_matrix_prefactor(energy) == pytest.approx(expected)
+
+
+# --- structure-factor gather (off-diagonal index plan) ---------------------------------------
+
+# Three beams spanning a small in-plane patch; their pairwise differences hkl_i - hkl_j span the
+# 7 distinct cells below. gpts=(3,3,1) is the smallest box covering h,k in [-1,1], l=0.
+_BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.int64)
+_GRID_HKL = np.array(
+    [[0, 0, 0], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [-1, 1, 0], [0, -1, 0], [1, -1, 0]],
+    dtype=np.int64,
+)
+_GPTS = (3, 3, 1)
+
+
+def _encoded_factors(grid_hkl: np.ndarray) -> torch.Tensor:
+    # Each grid cell gets a unique recoverable value F(h,k,l) = h + 1j*(10k + l).
+    real = grid_hkl[:, 0].astype(np.float64)
+    imag = 10.0 * grid_hkl[:, 1] + grid_hkl[:, 2]
+    return torch.tensor(real + 1j * imag, dtype=torch.complex128)
+
+
+def test_gather_round_trip_recovers_difference_factors() -> None:
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    out = gather_structure_factors(gather, _encoded_factors(_GRID_HKL))
+    assert out.shape == (3, 3)
+
+    lookup = {tuple(hkl): _encoded_factors(_GRID_HKL)[i] for i, hkl in enumerate(_GRID_HKL)}
+    for i in range(3):
+        for j in range(3):
+            difference = tuple(_BEAM_HKL[j] - _BEAM_HKL[i])  # private ordering: beam_j - beam_i
+            assert out[i, j] == lookup[difference]
+
+
+def test_gather_uses_beam_j_minus_beam_i_sign_convention() -> None:
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    out = gather_structure_factors(gather, _encoded_factors(_GRID_HKL))
+    lookup = {tuple(hkl): _encoded_factors(_GRID_HKL)[i] for i, hkl in enumerate(_GRID_HKL)}
+    # out[0, 1] gathers beam_1 - beam_0 = (1, 0, 0), not beam_0 - beam_1 = (-1, 0, 0).
+    assert out[0, 1] == lookup[(1, 0, 0)]
+    assert out[1, 0] == lookup[(-1, 0, 0)]
+
+
+def test_gather_is_differentiable_and_grad_counts_pair_multiplicity() -> None:
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    factors = torch.arange(1.0, _GRID_HKL.shape[0] + 1.0, dtype=torch.float64, requires_grad=True)
+    gather_structure_factors(gather, factors).sum().backward()
+
+    # Linear scatter: d(sum out)/dF[m] = #(i,j) pairs with beam_j - beam_i = grid[m].
+    differences = (_BEAM_HKL[None] - _BEAM_HKL[:, None]).reshape(-1, 3)
+    expected = np.array(
+        [int((differences == hkl).all(axis=1).sum()) for hkl in _GRID_HKL], dtype=np.float64
+    )
+    assert factors.grad is not None
+    assert torch.allclose(factors.grad, torch.tensor(expected))
+
+
+def test_build_gather_rejects_grid_not_covering_differences() -> None:
+    # Grid holds only (0,0,0); the (1,0,0) difference is off-grid and must raise, not gather zero.
+    with pytest.raises(ValueError, match="must cover every beam difference"):
+        build_structure_factor_gather(np.array([[0, 0, 0]], dtype=np.int64), _BEAM_HKL, _GPTS)
+
+
+def test_build_gather_rejects_duplicate_grid_indices() -> None:
+    duplicated = np.array([[0, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=np.int64)
+    with pytest.raises(ValueError, match="must not contain duplicate"):
+        build_structure_factor_gather(duplicated, _BEAM_HKL, _GPTS)
+
+
+def test_build_gather_rejects_bad_shapes() -> None:
+    with pytest.raises(ValueError, match="grid_hkl must have shape"):
+        build_structure_factor_gather(np.zeros(3, dtype=np.int64), _BEAM_HKL, _GPTS)
+    with pytest.raises(ValueError, match="beam_hkl must have shape"):
+        build_structure_factor_gather(_GRID_HKL, np.zeros((2, 2), dtype=np.int64), _GPTS)
+
+
+def test_gather_rejects_mismatched_factor_length() -> None:
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    with pytest.raises(ValueError, match="structure_factors must have shape"):
+        gather_structure_factors(gather, torch.ones(_GRID_HKL.shape[0] + 1, dtype=torch.complex128))
