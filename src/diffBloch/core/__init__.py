@@ -30,6 +30,8 @@ from diffBloch.core.dynamical import (
     structure_matrix_prefactor,
     wavevector_magnitude,
 )
+from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.products import intensities
 from diffBloch.core.reciprocal import (
     g_vector_lengths,
     g_vectors,
@@ -79,14 +81,18 @@ __all__ = [
     "g_vectors",
     "gather_structure_factors",
     "gmax_mask",
+    "intensities",
     "isotropic_adp",
     "kappa",
+    "l1",
     "lobato_form_factors",
     "m_factors",
     "make_hkl_grid",
+    "mse",
     "positive",
     "propagate",
     "ravel_hkl",
+    "rbragg",
     "reciprocal_cell",
     "reciprocal_space_gpts",
     "reflection_condition",
@@ -95,5 +101,7 @@ __all__ = [
     "structure_matrix",
     "structure_matrix_prefactor",
     "unit_interval",
+    "w_rbragg",
     "wavevector_magnitude",
+    "weighted_mse",
 ]

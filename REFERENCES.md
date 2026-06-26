@@ -31,6 +31,16 @@ new method, dataset, dependency, or studied design adds its credit here.
   (`energy → wavelength`, interaction parameter `σ`) are standard and follow the abTEM
   implementation noted below.
 
+- **Refinement loss / agreement metrics.**
+  The Bragg R(obs) factor `R = Σ|√I_obs − √I_calc| / Σ√I_obs` (over reflections with `I_obs > 3σ`)
+  is the standard crystallographic agreement index (e.g. Spence & Zuo above; Giacovazzo, *Fundamentals
+  of Crystallography*). The **weighted R2** `w_rbragg` and its weighting scheme (instability factor
+  `μ`, weak-reflection floor) follow the SI of Klar, P. B. et al. (2023). *Accurate structure models
+  and absolute configuration determination using dynamical effects in continuous-rotation 3D electron
+  diffraction data.* **Nature Chemistry 15, 848–855.** DOI:
+  [10.1038/s41557-023-01186-1](https://doi.org/10.1038/s41557-023-01186-1). Loss bodies are ported
+  from the private `diffBloch/metrics.py`.
+
 _(PETS / observation-model references will be added when stage 9+ lands the observation model.)_
 
 ## Vendored reference data
