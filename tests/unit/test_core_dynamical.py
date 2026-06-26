@@ -159,9 +159,35 @@ def test_gather_is_differentiable_and_grad_counts_pair_multiplicity() -> None:
 
 
 def test_build_gather_rejects_grid_not_covering_differences() -> None:
-    # Grid holds only (0,0,0); the (1,0,0) difference is off-grid and must raise, not gather zero.
+    # In-box but off-grid: (1,0,0) fits the (3,3,1) box yet is absent from the single-cell grid.
     with pytest.raises(ValueError, match="must cover every beam difference"):
         build_structure_factor_gather(np.array([[0, 0, 0]], dtype=np.int64), _BEAM_HKL, _GPTS)
+
+
+def test_build_gather_rejects_gpts_too_small_for_differences() -> None:
+    # Realistic failure: gpts sized to the beams, not 2x -- the (5,0,0) difference falls outside the
+    # (3,3,1) box. Must give a clear gpts message, not numpy's "invalid entry in coordinates array".
+    beams = np.array([[0, 0, 0], [5, 0, 0]], dtype=np.int64)
+    with pytest.raises(ValueError, match="gpts is too small"):
+        build_structure_factor_gather(np.array([[0, 0, 0]], dtype=np.int64), beams, _GPTS)
+
+
+def test_build_gather_rejects_fractional_hkl() -> None:
+    # Genuinely fractional indices must raise, not silently truncate (0.5 -> 0).
+    fractional_beams = np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    with pytest.raises(ValueError, match="must contain integer Miller indices"):
+        build_structure_factor_gather(_GRID_HKL, fractional_beams, _GPTS)
+    with pytest.raises(ValueError, match="must contain integer Miller indices"):
+        build_structure_factor_gather(_GRID_HKL.astype(np.float64) + 0.5, _BEAM_HKL, _GPTS)
+
+
+def test_build_gather_accepts_integer_valued_float_hkl() -> None:
+    # 1.0 is a valid Miller index; only genuinely fractional values are rejected.
+    from_float = build_structure_factor_gather(
+        _GRID_HKL.astype(np.float64), _BEAM_HKL.astype(np.float64), _GPTS
+    )
+    from_int = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    assert torch.equal(from_float.destination_indices, from_int.destination_indices)
 
 
 def test_build_gather_rejects_duplicate_grid_indices() -> None:

@@ -68,12 +68,26 @@ def build_structure_factor_gather(
     # Private ordering: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
     gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
 
-    source = ravel_hkl(grid, gpts)
-    destination = ravel_hkl(gmh, gpts)
-
+    source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
     if np.unique(source).size != source.size:
         raise ValueError("grid_hkl must not contain duplicate Miller indices")
 
+    # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to
+    # span the difference support (the realistic failure: gpts sized to the beam g_max, not 2x).
+    # Catch it here with a clear message rather than letting ravel_hkl(gmh, ...) raise numpy's
+    # cryptic "invalid entry in coordinates array".
+    gpts_box = np.asarray(gpts, dtype=np.int64)
+    shifted = gmh + gpts_box // 2
+    out_of_box = np.any((shifted < 0) | (shifted >= gpts_box), axis=1)
+    if out_of_box.any():
+        missing = gmh[out_of_box][0]
+        raise ValueError(
+            "gpts is too small to contain the beam differences hkl_j - hkl_i; "
+            f"first out-of-box difference {tuple(int(component) for component in missing)} "
+            "(size gpts to span the difference support, ~2x the beam g_max)"
+        )
+
+    destination = ravel_hkl(gmh, gpts)
     uncovered = np.isin(destination, source, invert=True)
     if uncovered.any():
         missing = gmh[uncovered][0]
@@ -116,7 +130,17 @@ def gather_structure_factors(
 
 
 def _beam_index_array(hkl: IntArray, *, name: str) -> IntArray:
-    miller = np.asarray(hkl, dtype=np.int64)
+    miller = np.asarray(hkl)
     if miller.ndim != 2 or miller.shape[1] != 3:
         raise ValueError(f"{name} must have shape (N, 3)")
-    return miller
+    # Reject genuinely fractional / non-finite input rather than silently truncating (0.5 -> 0);
+    # integer-valued floats (1.0) are accepted, matching the explicit-contract style elsewhere.
+    if not np.issubdtype(miller.dtype, np.integer):
+        is_integral = (
+            np.issubdtype(miller.dtype, np.floating)
+            and bool(np.all(np.isfinite(miller)))
+            and bool(np.all(miller == np.rint(miller)))
+        )
+        if not is_integral:
+            raise ValueError(f"{name} must contain integer Miller indices")
+    return miller.astype(np.int64)
