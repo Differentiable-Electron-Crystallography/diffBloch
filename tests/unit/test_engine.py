@@ -86,6 +86,17 @@ def test_forward_is_differentiable_through_the_whole_chain() -> None:
     assert params.uij_raw.grad.abs().sum() > 0
 
 
+def test_forward_co_locates_invariants_on_the_param_device() -> None:
+    # On CPU this is a no-op, but it pins the contract: engine-owned invariants (numbers, grid_hkl,
+    # reciprocal_basis, thicknesses, beam_hkl) are moved to the params device at the use site, so a
+    # simulated solution lands on the same device as the parameter-derived tensors.
+    engine = _engine()
+    params = _params()
+    (solution,) = engine.simulate(params)
+    assert solution.intensities.device == params.asu_positions.device
+    assert solution.beam_hkl.device == params.asu_positions.device
+
+
 def test_forward_rejects_engine_without_orientations() -> None:
     engine = _engine()
     empty = RefinementEngine(

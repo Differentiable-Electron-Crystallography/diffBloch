@@ -163,10 +163,11 @@ class RefinementEngine:
 
     def _structure_factors(self, params: RefinableParams) -> Tensor:
         state = constrain(params, self.spec)
+        device = state.positions.device  # the active (params) device; co-locate invariants here
         expanded = expand_asu(
             self.asu_plan,
             state.positions,
-            numbers=self.numbers,
+            numbers=self.numbers.to(device),
             uij=state.uij_star,
             occupancies=state.occupancies,
         )
@@ -177,13 +178,15 @@ class RefinementEngine:
             expanded.numbers,
             expanded.occupancies,
             expanded.uij,
-            hkl=self.grid.grid_hkl,
-            reciprocal_basis=self.grid.reciprocal_basis,
+            hkl=self.grid.grid_hkl.to(device),
+            reciprocal_basis=self.grid.reciprocal_basis.to(device),
             cell_volume=self.grid.cell_volume,
             g_max=self.grid.g_max,
         )
 
     def _solve(self, orientation: OrientationPlan, fgb: Tensor) -> BlochSolution:
+        device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
+        thicknesses = self.thicknesses.to(device)
         system = build_bloch_system(orientation.beam_plan, fgb)
-        psi = propagate(system, self.thicknesses, method=self.method)
-        return BlochSolution.from_propagation(psi, orientation.beam_hkl, self.thicknesses)
+        psi = propagate(system, thicknesses, method=self.method)
+        return BlochSolution.from_propagation(psi, orientation.beam_hkl.to(device), thicknesses)
