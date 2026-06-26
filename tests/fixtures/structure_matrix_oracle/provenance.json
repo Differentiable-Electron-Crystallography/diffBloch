@@ -4,15 +4,18 @@
   "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
   "oracle_functions": {
     "calculate_structure_matrix": "dynamical.py:975-1025 (no-absorption; timing/cuda elided)",
+    "calculate_dynamical_scattering_batched": "dynamical.py:820-972 (no-absorption, B=1; timing/cuda elided; complex128 oracle deviation)",
     "calculate_M_matrix": "dynamical.py:1128-1143",
     "reciprocal_cell": "utils.py:35-58",
     "calculate_g_vec": "utils.py:61-79",
     "excitation_errors": "utils.py:261-300",
     "ravel_hkl": "utils.py:520-548",
     "raveled_hkl_to_hkl_torch": "utils.py:453-517",
-    "fill_diagonal_torch": "utils.py:564-602"
+    "fill_diagonal_torch": "utils.py:564-602",
+    "fill_diagonal_torch_batched": "utils.py:605-624"
   },
   "constants": "energy2wavelength/energy2sigma/kappa as CODATA-2018 closed-forms (abTEM-pinned ~1e-8, stage 8.1-8.3)",
+  "dtype_note": "Private propagator casts to complex64 internally; this oracle keeps complex128 throughout for tight regression tolerances.",
   "case": {
     "material": "alpha-quartz",
     "cell_a": 4.913,
@@ -27,6 +30,12 @@
       5,
       5,
       1
+    ],
+    "thicknesses_A": [
+      1.0,
+      8.0,
+      42.0,
+      500.0
     ],
     "Fgb": "synthetic, np.random.default_rng(8).standard_normal complex"
   },

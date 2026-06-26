@@ -6,10 +6,12 @@ holds the torch differentiable structure-matrix path built on them. Re-exported 
 """
 
 from diffBloch.core.dynamical.assembly import (
+    BeamPlan,
+    BlochSystem,
     StructureFactorGather,
-    StructureMatrixPlan,
+    build_beam_plan,
+    build_bloch_system,
     build_structure_factor_gather,
-    build_structure_matrix_plan,
     gather_structure_factors,
     structure_matrix,
 )
@@ -24,10 +26,12 @@ from diffBloch.core.dynamical.primitives import (
 )
 
 __all__ = [
+    "BeamPlan",
+    "BlochSystem",
     "StructureFactorGather",
-    "StructureMatrixPlan",
+    "build_beam_plan",
+    "build_bloch_system",
     "build_structure_factor_gather",
-    "build_structure_matrix_plan",
     "energy2sigma",
     "energy2wavelength",
     "excitation_errors",

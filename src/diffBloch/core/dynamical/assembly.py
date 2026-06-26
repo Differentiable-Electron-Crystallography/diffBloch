@@ -166,22 +166,28 @@ def _beam_index_array(hkl: IntArray, *, name: str) -> IntArray:
 
 
 @dataclass(frozen=True)
-class StructureMatrixPlan:
-    """Geometry/numerics-only plan for assembling the Bloch structure matrix ``A``.
+class BeamPlan:
+    """Geometry/numerics-only plan for a beam set (immutable across refinement).
 
-    Fixed by geometry and beam energy (none of it refined): the slice-1 ``gather`` of structure
-    factors onto beam pairs, the symmetrisation factors ``mii`` (``(N,)``), the scalar off-diagonal
-    ``prefactor``, and the precomputed real ``diagonal`` (``(N,)`` = ``2 * k_n * Sg * Mii``).
-    :func:`structure_matrix` consumes it with the differentiable ``Fgb`` to produce ``A``.
+    Everything fixed by geometry and beam energy, with no dependence on the refined ``Fgb``: the
+    slice-1 ``gather`` of structure factors onto beam pairs, the symmetrisation factors ``mii``
+    (``(N,)``), the scalar off-diagonal ``prefactor``, the precomputed real structure-matrix
+    ``diagonal`` (``(N,)`` = ``2 * k_n * Sg * Mii``), the propagation constant ``k_n``, the incident
+    wavefunction ``psi0`` (``(N,)``, 1 at the 000 beam), and the active-beam ``mask`` (``(N,)``).
+    :func:`structure_matrix` consumes it with ``Fgb`` to produce ``A``; :func:`build_bloch_system`
+    wraps that into a :class:`BlochSystem` for the propagators.
     """
 
     gather: StructureFactorGather
     mii: Tensor
     prefactor: float
     diagonal: Tensor
+    k_n: float
+    psi0: Tensor
+    mask: Tensor
 
 
-def build_structure_matrix_plan(
+def build_beam_plan(
     beam_hkl: IntArray,
     grid_hkl: IntArray,
     reciprocal_basis: FloatArray,
@@ -189,31 +195,39 @@ def build_structure_matrix_plan(
     energy: float,
     gpts: tuple[int, int, int],
     u0: float = 0.0,
-) -> StructureMatrixPlan:
-    """Precompute the geometry/numerics of the structure matrix for a beam set.
+) -> BeamPlan:
+    """Precompute the geometry/numerics for a beam set.
 
     ``beam_hkl`` ``(N, 3)`` selects the beams; ``grid_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``
     support grid (slice-1 gather); ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @
     reciprocal_basis``. ``energy`` (eV) and ``u0`` (mean-inner-potential) set the wavevector.
-    Composes the native primitives into the off-diagonal scale and the diagonal exactly as
-    ``diffBloch_private`` ``calculate_structure_matrix`` does (no-absorption path).
+    Composes the native primitives into the off-diagonal scale, the structure-matrix diagonal, and
+    the propagation pieces (``k_n``, ``psi0``, ``mask``) -- mirroring ``diffBloch_private``
+    ``calculate_structure_matrix`` (no-absorption path) and the ``psi0 = (hkl == 000)``
+    convention of its dynamical-scattering propagator. ``mask`` is all-True here: the beams are the
+    pre-selected active set (per-orientation ``sg_max`` selection is deferred).
     """
     gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts)
-    g = g_vectors(beam_hkl, reciprocal_basis)
+    beams = _beam_index_array(beam_hkl, name="beam_hkl")
+    g = g_vectors(beams, reciprocal_basis)
     mii = m_factors(g, energy, u0=u0)
     sg = excitation_errors(g, energy, u0=u0)
     k_n = wavevector_magnitude(energy, u0=u0)
     prefactor = structure_matrix_prefactor(energy)
     diagonal = 2.0 * k_n * sg * mii
-    return StructureMatrixPlan(
+    psi0 = np.all(beams == 0, axis=1)  # incident beam: amplitude 1 at the 000 reflection
+    return BeamPlan(
         gather=gather,
         mii=torch.tensor(mii, dtype=torch.float64),
         prefactor=prefactor,
         diagonal=torch.tensor(diagonal, dtype=torch.float64),
+        k_n=k_n,
+        psi0=torch.tensor(psi0, dtype=torch.complex128),
+        mask=torch.ones(beams.shape[0], dtype=torch.bool),
     )
 
 
-def structure_matrix(plan: StructureMatrixPlan, structure_factors: Tensor) -> Tensor:
+def structure_matrix(plan: BeamPlan, structure_factors: Tensor) -> Tensor:
     """Assemble the Bloch structure matrix ``A`` from a plan and structure factors ``Fgb``.
 
     Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (slice-1 gather, then
@@ -241,3 +255,46 @@ def _fill_diagonal(matrix: Tensor, diagonal: Tensor) -> Tensor:
     index = torch.arange(matrix.shape[0], device=matrix.device)
     filled[index, index] = diagonal
     return filled
+
+
+# ---------------------------------------------------------------------------
+# BlochSystem: the closed, solver-agnostic dynamical-diffraction problem
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BlochSystem:
+    """A fully specified, propagator-agnostic Bloch-wave system.
+
+    Reifies the coupled dynamical-diffraction equations ``dpsi/dz = (i pi / k_n) A psi`` with
+    ``psi(0) = psi0``: the structure-matrix operator ``A`` (``(N, N)`` complex), its symmetrisation
+    companion ``mii`` (``(N,)`` -- ``A`` is stored Hermitian-symmetrised so ``eigh`` applies;
+    ``mii`` un-does that to recover physical amplitudes), the incident wavefunction ``psi0``
+    (``(N,)``), the propagation constant ``k_n``, and the active-beam ``mask`` (``(N,)``).
+
+    Defining invariant: a propagator consumes *only* a ``BlochSystem`` -- no geometry, energy, or
+    hkl -- which is what makes it a closed system rather than a field bag. See ``core.solver``.
+    """
+
+    a: Tensor
+    mii: Tensor
+    psi0: Tensor
+    k_n: float
+    mask: Tensor
+
+
+def build_bloch_system(plan: BeamPlan, structure_factors: Tensor) -> BlochSystem:
+    """Assemble the closed Bloch system for a beam plan and structure factors ``Fgb``.
+
+    ``A`` is built from the differentiable ``Fgb`` (so the system is differentiable in ``Fgb``); the
+    symmetrisation factors, incident wavefunction, propagation constant, and active mask are carried
+    straight from the geometry plan. The result is solver-agnostic -- see
+    :func:`core.solver.propagate`.
+    """
+    return BlochSystem(
+        a=structure_matrix(plan, structure_factors),
+        mii=plan.mii,
+        psi0=plan.psi0,
+        k_n=plan.k_n,
+        mask=plan.mask,
+    )

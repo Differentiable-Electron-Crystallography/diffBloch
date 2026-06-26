@@ -11,9 +11,10 @@ import pytest
 import torch
 
 from diffBloch.core.dynamical import (
-    StructureMatrixPlan,
+    BeamPlan,
+    build_beam_plan,
+    build_bloch_system,
     build_structure_factor_gather,
-    build_structure_matrix_plan,
     energy2sigma,
     energy2wavelength,
     excitation_errors,
@@ -223,10 +224,8 @@ _RECIP_BASIS = np.array([[0.20, 0.0, 0.03], [0.0, 0.25, -0.02], [0.0, 0.0, 0.18]
 _ENERGY = 200e3
 
 
-def _small_plan() -> StructureMatrixPlan:
-    return build_structure_matrix_plan(
-        _BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS
-    )
+def _small_plan() -> BeamPlan:
+    return build_beam_plan(_BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS)
 
 
 def test_structure_matrix_decomposes_into_scale_and_diagonal() -> None:
@@ -261,7 +260,7 @@ def test_structure_matrix_replaces_diagonal_at_origin_beam() -> None:
     assert a[0, 1].item() != 0
 
 
-def test_structure_matrix_plan_is_reusable_across_factors() -> None:
+def test_beam_plan_is_reusable_across_factors() -> None:
     plan = _small_plan()
     a1 = structure_matrix(plan, _encoded_factors(_GRID_HKL))
     a2 = structure_matrix(plan, _encoded_factors(_GRID_HKL) * 2.0 + 1.0)
@@ -289,6 +288,37 @@ def test_structure_matrix_rejects_mismatched_factor_length() -> None:
         structure_matrix(plan, torch.ones(_GRID_HKL.shape[0] + 1, dtype=torch.complex128))
 
 
+def test_build_beam_plan_carries_propagation_fields() -> None:
+    plan = _small_plan()
+
+    assert plan.k_n == pytest.approx(wavevector_magnitude(_ENERGY))
+    assert plan.psi0.dtype == torch.complex128
+    assert plan.psi0.shape == (_BEAM_HKL.shape[0],)
+    assert torch.equal(plan.psi0, torch.tensor([1.0, 0.0, 0.0], dtype=torch.complex128))
+    assert plan.mask.dtype == torch.bool
+    assert torch.equal(plan.mask, torch.ones(_BEAM_HKL.shape[0], dtype=torch.bool))
+
+
+def test_build_bloch_system_wires_structure_matrix_and_plan_fields() -> None:
+    plan = _small_plan()
+    factors = _encoded_factors(_GRID_HKL)
+    system = build_bloch_system(plan, factors)
+
+    assert system.a.shape == (_BEAM_HKL.shape[0], _BEAM_HKL.shape[0])
+    assert system.a.dtype == torch.complex128
+    assert system.mii.shape == (_BEAM_HKL.shape[0],)
+    assert system.mii.dtype == torch.float64
+    assert system.psi0.shape == (_BEAM_HKL.shape[0],)
+    assert system.psi0.dtype == torch.complex128
+    assert system.mask.shape == (_BEAM_HKL.shape[0],)
+    assert system.mask.dtype == torch.bool
+    assert torch.allclose(system.a, structure_matrix(plan, factors))
+    assert torch.equal(system.mii, plan.mii)
+    assert torch.equal(system.psi0, plan.psi0)
+    assert system.k_n == plan.k_n
+    assert torch.equal(system.mask, plan.mask)
+
+
 _ORACLE_NPZ = (
     Path(__file__).resolve().parents[1]
     / "fixtures"
@@ -303,7 +333,7 @@ def test_structure_matrix_matches_private_oracle() -> None:
     data = np.load(_ORACLE_NPZ)
     # Geometry sanity first, so a failure localizes to the convention vs the assembly.
     assert np.allclose(g_vectors(data["beam_hkl"], data["reciprocal_basis"]), data["g"])
-    plan = build_structure_matrix_plan(
+    plan = build_beam_plan(
         data["beam_hkl"],
         data["grid_hkl"],
         data["reciprocal_basis"],

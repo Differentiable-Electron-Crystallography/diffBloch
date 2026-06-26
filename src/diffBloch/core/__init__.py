@@ -14,10 +14,12 @@ from diffBloch.core.crystal import (
     reflection_condition,
 )
 from diffBloch.core.dynamical import (
+    BeamPlan,
+    BlochSystem,
     StructureFactorGather,
-    StructureMatrixPlan,
+    build_beam_plan,
+    build_bloch_system,
     build_structure_factor_gather,
-    build_structure_matrix_plan,
     energy2sigma,
     energy2wavelength,
     excitation_errors,
@@ -42,6 +44,7 @@ from diffBloch.core.scattering import (
     resolution_cutoff,
     structure_factors,
 )
+from diffBloch.core.solver import propagate
 from diffBloch.core.symmetry import (
     AsuExpansionPlan,
     DuplicateSite,
@@ -52,14 +55,16 @@ from diffBloch.core.symmetry import (
 
 __all__ = [
     "AsuExpansionPlan",
+    "BeamPlan",
+    "BlochSystem",
     "DuplicateSite",
     "ExpandedAsu",
     "StructureFactorGather",
-    "StructureMatrixPlan",
     "apply_symmetry_mask",
     "build_asu_expansion_plan",
+    "build_beam_plan",
+    "build_bloch_system",
     "build_structure_factor_gather",
-    "build_structure_matrix_plan",
     "cell_matrix_from_parameters",
     "cell_volume",
     "cholesky_adp",
@@ -80,6 +85,7 @@ __all__ = [
     "m_factors",
     "make_hkl_grid",
     "positive",
+    "propagate",
     "ravel_hkl",
     "reciprocal_cell",
     "reciprocal_space_gpts",
