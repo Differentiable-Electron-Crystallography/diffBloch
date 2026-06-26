@@ -54,6 +54,16 @@ def test_matrix_exp_and_bloch_eigen_agree_for_hermitian_system() -> None:
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
+def test_propagate_returns_on_the_operator_device(method: str) -> None:
+    # Contract: the geometry fields (k_n/psi0/mii) are co-located onto a.device at the use site, so
+    # the exit wavefunction lands on the operator device even when the plan was built CPU-side. A
+    # CPU no-op here; meaningful on CUDA/MPS (see KNOWN_ISSUES.md / build_bloch_system).
+    system = _system()
+    psi = propagate(system, [1.0, 8.0], method=method)
+    assert psi.device == system.a.device
+
+
+@pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
 def test_propagate_is_differentiable_in_structure_factors(method: str) -> None:
     factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128, requires_grad=True)
     psi = propagate(_system(factors), [1.0, 8.0], method=method)

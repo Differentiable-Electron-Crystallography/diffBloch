@@ -58,23 +58,29 @@ def propagate(
 
 def _propagate_matrix_exp(system: BlochSystem, thicknesses: Tensor) -> Tensor:
     a = _complex_operator(system.a)
+    # Co-locate the geometry-plan tensors onto the operator device (they may be built CPU-side while
+    # A is parameter-derived on an accelerator); thicknesses is already on a.device, k_n is a float.
+    psi0 = system.psi0.to(dtype=a.dtype, device=a.device)
     # i pi t / k_n: the dynamical-diffraction propagation scaling. For a Hermitian A this scalar is
     # pure-imaginary, so matrix_exp(A * scalar) is unitary (flux-conserving).
     scalars = (1j * torch.pi * thicknesses / system.k_n).to(a.dtype)
     transfer = torch.matrix_exp(a[None] * scalars[:, None, None])  # (T, N, N)
-    return (transfer @ system.psi0.to(a.dtype).unsqueeze(-1)).squeeze(-1)  # (T, N)
+    return (transfer @ psi0.unsqueeze(-1)).squeeze(-1)  # (T, N)
 
 
 def _propagate_bloch_eigen(system: BlochSystem, thicknesses: Tensor) -> Tensor:
     a = _complex_operator(system.a)
+    # Co-locate the geometry-plan tensors onto the operator device (see _propagate_matrix_exp).
+    mii = system.mii.to(device=a.device)
+    psi0 = system.psi0.to(device=a.device)
     # Hermitian eigendecomposition (no-absorption path); v are the Bloch-wave excitations.
     v, eigvecs = torch.linalg.eigh(a)
     gamma = v / (2.0 * system.k_n)
     # Un-symmetrise: A was Mii-symmetrised to be Hermitian, so divide the eigenvectors' diagonal
     # back to recover the physical Bloch coefficients (private dynamical.py:877).
-    physical_diag = torch.diagonal(eigvecs) / system.mii.to(eigvecs.dtype)
+    physical_diag = torch.diagonal(eigvecs) / mii.to(eigvecs.dtype)
     c = _fill_diagonal(eigvecs, physical_diag)
-    alpha = torch.conj(c.mT) @ system.psi0.to(c.dtype)  # decompose psi0 onto the Bloch waves
+    alpha = torch.conj(c.mT) @ psi0.to(c.dtype)  # decompose psi0 onto the Bloch waves
     phase = torch.exp(2.0j * torch.pi * thicknesses[:, None] * gamma[None, :])  # (T, N)
     return (phase * alpha[None, :]) @ c.mT  # recombine: psi(t) = C @ (phase ⊙ alpha), (T, N)
 
