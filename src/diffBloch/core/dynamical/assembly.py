@@ -1,10 +1,11 @@
 """Differentiable structure-matrix assembly (the Bloch ``A`` path).
 
 Combines a geometry-only plan (precomputed, NumPy) with the refined structure factors ``Fgb``
-(torch, differentiable). Stage 8 builds this bottom-up — the first piece is the gather that maps
-``Fgb`` onto the ``(N, N)`` off-diagonal positions ``F(g_j - g_i)``; the scaling
-(``prefactor * Mii_i * Mii_j``), the diagonal, and the full ``build_bloch_system`` follow, drawing
-their constants from the sibling ``core.dynamical.primitives`` module.
+(torch, differentiable). Stage 8 builds this bottom-up: the gather maps ``Fgb`` onto the ``(N, N)``
+off-diagonal positions ``F(g_j - g_i)``, then :func:`structure_matrix` scales it
+(``prefactor * Mii_i * Mii_j``) and fills the diagonal (``2 * k_n * Sg * Mii``). The full
+``build_bloch_system`` (psi0, mask, propagators) follows, drawing its constants from the sibling
+``core.dynamical.primitives`` module.
 
 This is the torch half of ``core.dynamical``; ``primitives`` is the NumPy half. The split mirrors
 the codebase's ``core.reciprocal`` (geometry) vs ``core.scattering`` (differentiable) seam.
@@ -19,9 +20,16 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
-from diffBloch.core.reciprocal import ravel_hkl
+from diffBloch.core.dynamical.primitives import (
+    excitation_errors,
+    m_factors,
+    structure_matrix_prefactor,
+    wavevector_magnitude,
+)
+from diffBloch.core.reciprocal import g_vectors, ravel_hkl
 
 type IntArray = NDArray[np.int64]
+type FloatArray = NDArray[np.float64]
 
 # The off-diagonal of the Bloch structure matrix is ``A[i,j] = scale * F(g_j - g_i)`` — a gather of
 # the structure factors ``Fgb`` onto every pair of beams. ``F`` is the only refined (differentiable)
@@ -144,3 +152,92 @@ def _beam_index_array(hkl: IntArray, *, name: str) -> IntArray:
         if not is_integral:
             raise ValueError(f"{name} must contain integer Miller indices")
     return miller.astype(np.int64)
+
+
+# ---------------------------------------------------------------------------
+# Structure-matrix assembly: A = scale(geometry) ⊙ gather(F), diagonal replaced
+# ---------------------------------------------------------------------------
+# Adds the geometry-only scale and diagonal to the slice-1 gather, completing the Bloch structure
+# matrix A. Ports the no-absorption path of ``diffBloch_private`` ``calculate_structure_matrix``:
+#   off-diagonal  A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)
+#   diagonal      A[i,i] = 2 * k_n * Sg_i * Mii_i      (replaces, not adds)
+# Every constant is a native primitive (structure_matrix_prefactor, m_factors, excitation_errors,
+# wavevector_magnitude); only F is refined, so all of it precomputes into a frozen plan.
+
+
+@dataclass(frozen=True)
+class StructureMatrixPlan:
+    """Geometry/numerics-only plan for assembling the Bloch structure matrix ``A``.
+
+    Fixed by geometry and beam energy (none of it refined): the slice-1 ``gather`` of structure
+    factors onto beam pairs, the symmetrisation factors ``mii`` (``(N,)``), the scalar off-diagonal
+    ``prefactor``, and the precomputed real ``diagonal`` (``(N,)`` = ``2 * k_n * Sg * Mii``).
+    :func:`structure_matrix` consumes it with the differentiable ``Fgb`` to produce ``A``.
+    """
+
+    gather: StructureFactorGather
+    mii: Tensor
+    prefactor: float
+    diagonal: Tensor
+
+
+def build_structure_matrix_plan(
+    beam_hkl: IntArray,
+    grid_hkl: IntArray,
+    reciprocal_basis: FloatArray,
+    *,
+    energy: float,
+    gpts: tuple[int, int, int],
+    u0: float = 0.0,
+) -> StructureMatrixPlan:
+    """Precompute the geometry/numerics of the structure matrix for a beam set.
+
+    ``beam_hkl`` ``(N, 3)`` selects the beams; ``grid_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``
+    support grid (slice-1 gather); ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @
+    reciprocal_basis``. ``energy`` (eV) and ``u0`` (mean-inner-potential) set the wavevector.
+    Composes the native primitives into the off-diagonal scale and the diagonal exactly as
+    ``diffBloch_private`` ``calculate_structure_matrix`` does (no-absorption path).
+    """
+    gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts)
+    g = g_vectors(beam_hkl, reciprocal_basis)
+    mii = m_factors(g, energy, u0=u0)
+    sg = excitation_errors(g, energy, u0=u0)
+    k_n = wavevector_magnitude(energy, u0=u0)
+    prefactor = structure_matrix_prefactor(energy)
+    diagonal = 2.0 * k_n * sg * mii
+    return StructureMatrixPlan(
+        gather=gather,
+        mii=torch.tensor(mii, dtype=torch.float64),
+        prefactor=prefactor,
+        diagonal=torch.tensor(diagonal, dtype=torch.float64),
+    )
+
+
+def structure_matrix(plan: StructureMatrixPlan, structure_factors: Tensor) -> Tensor:
+    """Assemble the Bloch structure matrix ``A`` from a plan and structure factors ``Fgb``.
+
+    Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (slice-1 gather, then
+    broadcast-scaled); the diagonal is replaced by the precomputed ``2 * k_n * Sg_i * Mii_i``.
+    Differentiable in ``structure_factors`` (the diagonal is a geometry constant). Returns a complex
+    ``(N, N)`` tensor in the dtype of ``structure_factors``.
+    """
+    off = gather_structure_factors(plan.gather, structure_factors)
+    mii = plan.mii.to(device=off.device, dtype=off.real.dtype)
+    off = off * (plan.prefactor * mii[None] * mii[:, None])
+    return _fill_diagonal(off, plan.diagonal.to(device=off.device, dtype=off.dtype))
+
+
+def _fill_diagonal(matrix: Tensor, diagonal: Tensor) -> Tensor:
+    """Return a copy of square ``matrix`` with its diagonal replaced by ``diagonal`` (out-of-place).
+
+    Gradient flows through the off-diagonal copy; the diagonal positions are overwritten. Mirrors
+    ``diffBloch_private`` ``utils.py::fill_diagonal_torch``.
+    """
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("matrix must be square (N, N)")
+    if diagonal.shape != (matrix.shape[0],):
+        raise ValueError("diagonal must have shape (N,) matching the matrix")
+    filled = matrix.clone()
+    index = torch.arange(matrix.shape[0], device=matrix.device)
+    filled[index, index] = diagonal
+    return filled

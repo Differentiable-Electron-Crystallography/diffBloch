@@ -1,0 +1,34 @@
+{
+  "fixture": "structure_matrix_oracle.npz",
+  "generated_by": "notebooks/iain/stage8_structure_matrix_oracle.ipynb",
+  "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
+  "oracle_functions": {
+    "calculate_structure_matrix": "dynamical.py:975-1025 (no-absorption; timing/cuda elided)",
+    "calculate_M_matrix": "dynamical.py:1128-1143",
+    "reciprocal_cell": "utils.py:35-58",
+    "calculate_g_vec": "utils.py:61-79",
+    "excitation_errors": "utils.py:261-300",
+    "ravel_hkl": "utils.py:520-548",
+    "raveled_hkl_to_hkl_torch": "utils.py:453-517",
+    "fill_diagonal_torch": "utils.py:564-602"
+  },
+  "constants": "energy2wavelength/energy2sigma/kappa as CODATA-2018 closed-forms (abTEM-pinned ~1e-8, stage 8.1-8.3)",
+  "case": {
+    "material": "alpha-quartz",
+    "cell_a": 4.913,
+    "cell_c": 5.405,
+    "gamma_deg": 120.0,
+    "energy_eV": 200000.0,
+    "u0": 0.0,
+    "absorption": false,
+    "n_beams": 9,
+    "n_grid": 25,
+    "gpts": [
+      5,
+      5,
+      1
+    ],
+    "Fgb": "synthetic, np.random.default_rng(8).standard_normal complex"
+  },
+  "date": "2026-06-26"
+}

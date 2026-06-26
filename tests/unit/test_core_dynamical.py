@@ -4,21 +4,27 @@ Golden wavelength values are the textbook relativistic de Broglie values (also a
 ``energy2wavelength``); the excitation-error convention follows Spence & Zuo (see REFERENCES.md).
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
 
 from diffBloch.core.dynamical import (
+    StructureMatrixPlan,
     build_structure_factor_gather,
+    build_structure_matrix_plan,
     energy2sigma,
     energy2wavelength,
     excitation_errors,
     gather_structure_factors,
     kappa,
     m_factors,
+    structure_matrix,
     structure_matrix_prefactor,
     wavevector_magnitude,
 )
+from diffBloch.core.reciprocal import g_vectors
 
 
 def test_energy2wavelength_matches_textbook() -> None:
@@ -207,3 +213,103 @@ def test_gather_rejects_mismatched_factor_length() -> None:
     gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
     with pytest.raises(ValueError, match="structure_factors must have shape"):
         gather_structure_factors(gather, torch.ones(_GRID_HKL.shape[0] + 1, dtype=torch.complex128))
+
+
+# --- structure-matrix assembly (A = scale ⊙ gather(F), diagonal replaced) ---------------------
+
+# A tilted reciprocal basis so l=0 beams still get distinct g_z (hence non-trivial, varying Mii):
+# beam (1,0,0) → g_z>0 (Mii>1), (0,1,0) → g_z<0 (Mii<1), (0,0,0) → g_z=0 (Mii=1, Sg=0).
+_RECIP_BASIS = np.array([[0.20, 0.0, 0.03], [0.0, 0.25, -0.02], [0.0, 0.0, 0.18]])
+_ENERGY = 200e3
+
+
+def _small_plan() -> StructureMatrixPlan:
+    return build_structure_matrix_plan(
+        _BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS
+    )
+
+
+def test_structure_matrix_decomposes_into_scale_and_diagonal() -> None:
+    plan = _small_plan()
+    factors = _encoded_factors(_GRID_HKL)
+    a = structure_matrix(plan, factors)
+    assert a.shape == (3, 3)
+
+    g = g_vectors(_BEAM_HKL, _RECIP_BASIS)
+    mii = m_factors(g, _ENERGY)
+    sg = excitation_errors(g, _ENERGY)
+    k_n = wavevector_magnitude(_ENERGY)
+    prefactor = structure_matrix_prefactor(_ENERGY)
+    lookup = {tuple(hkl): complex(factors[i].item()) for i, hkl in enumerate(_GRID_HKL)}
+
+    for i in range(3):
+        assert a[i, i].item() == pytest.approx(complex(2.0 * k_n * sg[i] * mii[i]))  # diagonal
+        for j in range(3):
+            if i == j:
+                continue
+            difference = tuple(_BEAM_HKL[j] - _BEAM_HKL[i])  # F(beam_j - beam_i)
+            expected = prefactor * float(mii[i]) * float(mii[j]) * lookup[difference]
+            assert a[i, j].item() == pytest.approx(expected)
+
+
+def test_structure_matrix_replaces_diagonal_at_origin_beam() -> None:
+    plan = _small_plan()
+    a = structure_matrix(plan, _encoded_factors(_GRID_HKL))
+    # _BEAM_HKL[0] == (0,0,0): Sg = 0 there, so the (replaced) diagonal is exactly 0...
+    assert a[0, 0].item() == 0
+    # ...while that beam's off-diagonal (gather + scale) is not.
+    assert a[0, 1].item() != 0
+
+
+def test_structure_matrix_plan_is_reusable_across_factors() -> None:
+    plan = _small_plan()
+    a1 = structure_matrix(plan, _encoded_factors(_GRID_HKL))
+    a2 = structure_matrix(plan, _encoded_factors(_GRID_HKL) * 2.0 + 1.0)
+    # The diagonal is geometry (F-independent) → identical; the off-diagonal tracks F → differs.
+    assert torch.allclose(a1.diagonal(), a2.diagonal())
+    assert a1[0, 1].item() != a2[0, 1].item()
+
+
+def test_structure_matrix_is_differentiable_and_diagonal_carries_no_factor_grad() -> None:
+    plan = _small_plan()
+    factors = torch.arange(1.0, _GRID_HKL.shape[0] + 1.0, dtype=torch.float64, requires_grad=True)
+    structure_matrix(plan, factors).sum().backward()
+
+    assert factors.grad is not None
+    # F(0,0,0) only ever lands on the diagonal (beam_j - beam_i = 0 ⇔ i = j), which is replaced,
+    # so its gradient is exactly 0; the other beams' factors do flow.
+    zero_index = next(i for i, hkl in enumerate(_GRID_HKL) if tuple(hkl) == (0, 0, 0))
+    assert factors.grad[zero_index] == 0
+    assert factors.grad.abs().sum() > 0
+
+
+def test_structure_matrix_rejects_mismatched_factor_length() -> None:
+    plan = _small_plan()
+    with pytest.raises(ValueError, match="structure_factors must have shape"):
+        structure_matrix(plan, torch.ones(_GRID_HKL.shape[0] + 1, dtype=torch.complex128))
+
+
+_ORACLE_NPZ = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "structure_matrix_oracle"
+    / "structure_matrix_oracle.npz"
+)
+
+
+def test_structure_matrix_matches_private_oracle() -> None:
+    # Independent oracle: A from diffBloch_private's verbatim calculate_structure_matrix on a small
+    # alpha-quartz case (see notebooks/iain/stage8_structure_matrix_oracle.ipynb + provenance.json).
+    data = np.load(_ORACLE_NPZ)
+    # Geometry sanity first, so a failure localizes to the convention vs the assembly.
+    assert np.allclose(g_vectors(data["beam_hkl"], data["reciprocal_basis"]), data["g"])
+    plan = build_structure_matrix_plan(
+        data["beam_hkl"],
+        data["grid_hkl"],
+        data["reciprocal_basis"],
+        energy=float(data["energy"]),
+        gpts=tuple(int(point) for point in data["gpts"]),
+        u0=float(data["u0"]),
+    )
+    a_ours = structure_matrix(plan, torch.tensor(data["structure_factor"]))
+    assert torch.allclose(a_ours, torch.tensor(data["A"]), rtol=1e-10, atol=1e-12)
