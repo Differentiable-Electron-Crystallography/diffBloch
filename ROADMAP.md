@@ -60,6 +60,17 @@ commit — the executable form of *"the core physics model has not changed."*
   and a composite-step (gather→A→propagate→intensity→loss) breakdown.
 - [ ] **9 — `core/losses` + `products`.** Move loss bodies out; retire `DiffractionDataset` for
   `PatternBatch` / `BlochSolution`.
+  - [x] (1/n) `products.intensities` (`|psi|^2`) + intensity-space losses (`mse`, `l1`,
+    `weighted_mse`, `rbragg`, `w_rbragg`), each pinned against the verbatim private `metrics.py`
+    bodies (`41d22bf`).
+  - [x] (2/n) typed products `BlochSolution` / `PatternBatch` (built from `io.ObservationRecord`) +
+    precomputed `AlignmentPlan`/`align` bridge; device-safe (`2e635ac`, `22982eb`).
+  - [x] (3/n) end-to-end calculated pipeline on the synthetic-Friedel oracle: composite-step
+    breakdown (A -> psi -> intensities vs golden) + products->align->loss chain + end-to-end
+    differentiability to `Fgb`.
+  - Deferred: symmetry-equivalent hkl merging in alignment; engine/eval position metrics
+    (`rmsd`, `euclidean_distance`, flat-bottomed/convexity regularisers); the physically-real
+    R-factor pin against a CIF dataset (the e2e quartz anchor).
 - [ ] **10 — `params`/`specs` + `engine`.** `RefinableParams` (incl. `b_dose_raw`) → `constrain` →
   `PhysicalState` (incl. `b_dose`). `RefinementEngine`: `from_experiment`/`from_config`/
   `from_snapshot`, `forward`, `simulate(solver=…)`, chainable `refine(targets, …, checkpoint_every)`,
