@@ -31,7 +31,15 @@ from diffBloch.core.dynamical import (
     wavevector_magnitude,
 )
 from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
-from diffBloch.core.products import intensities
+from diffBloch.core.products import (
+    AlignedIntensities,
+    AlignmentPlan,
+    BlochSolution,
+    PatternBatch,
+    align,
+    build_alignment_plan,
+    intensities,
+)
 from diffBloch.core.reciprocal import (
     g_vector_lengths,
     g_vectors,
@@ -56,13 +64,19 @@ from diffBloch.core.symmetry import (
 )
 
 __all__ = [
+    "AlignedIntensities",
+    "AlignmentPlan",
     "AsuExpansionPlan",
     "BeamPlan",
+    "BlochSolution",
     "BlochSystem",
     "DuplicateSite",
     "ExpandedAsu",
+    "PatternBatch",
     "StructureFactorGather",
+    "align",
     "apply_symmetry_mask",
+    "build_alignment_plan",
     "build_asu_expansion_plan",
     "build_beam_plan",
     "build_bloch_system",
