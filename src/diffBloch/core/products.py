@@ -166,9 +166,16 @@ class AlignedIntensities:
 def align(
     solution: BlochSolution, pattern: PatternBatch, plan: AlignmentPlan
 ) -> AlignedIntensities:
-    """Gather calculated and observed intensities onto the plan's shared reflection axis."""
-    calculated = solution.intensities[:, plan.solution_index]  # (T, K)
+    """Gather calculated and observed intensities onto the plan's shared reflection axis.
+
+    Device-safe: the geometry-only plan indices may live on CPU, so (mirroring the gather/diagonal
+    use sites in ``core.dynamical``) they are moved to each tensor's device, and observed/sigmas
+    land on ``calculated.device`` so the trio is co-located for ``core.losses``.
+    """
+    calculated = solution.intensities[:, plan.solution_index.to(solution.intensities.device)]
     n_thick = calculated.shape[0]
-    observed = pattern.intensities[plan.pattern_index].expand(n_thick, -1)
-    sigmas = pattern.sigmas[plan.pattern_index].expand(n_thick, -1)
+    out_device = calculated.device
+    pattern_index = plan.pattern_index.to(pattern.intensities.device)
+    observed = pattern.intensities[pattern_index].to(out_device).expand(n_thick, -1)
+    sigmas = pattern.sigmas[pattern_index].to(out_device).expand(n_thick, -1)
     return AlignedIntensities(calculated=calculated, observed=observed, sigmas=sigmas)

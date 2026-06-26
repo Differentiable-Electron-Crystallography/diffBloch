@@ -89,6 +89,9 @@ def test_align_puts_calculated_and_observed_on_common_axis() -> None:
     assert torch.equal(plan.hkl, torch.tensor([[1, 0, 0], [0, 1, 0]]))
 
     aligned = align(solution, pattern, plan)
+    # all three outputs must be co-located (on calculated.device) for downstream losses
+    assert aligned.observed.device == aligned.calculated.device
+    assert aligned.sigmas.device == aligned.calculated.device
     # calculated intensities are |2|^2=4 (100) and |3|^2=9 (010), broadcast over T=2 thicknesses
     f64 = torch.float64
     assert torch.allclose(aligned.calculated, torch.tensor([[4.0, 9.0], [4.0, 9.0]], dtype=f64))
