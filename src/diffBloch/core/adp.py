@@ -36,6 +36,39 @@ def isotropic_adp(u_iso: Tensor) -> Tensor:
     return u_iso[..., None, None] * eye
 
 
+def cif_adp_to_star(uij_cif: Tensor, reciprocal_lengths: Tensor) -> Tensor:
+    """Convert CIF-frame anisotropic ADPs ``Uij_cif`` to the reciprocal ``U*`` frame.
+
+    ``U*_ij = d*_i d*_j Uij_cif`` with ``d* = (|a*|, |b*|, |c*|)`` (``reciprocal_lengths``, shape
+    ``(3,)``). This is the private CIF->Cartesian->star chain (``diffBloch_private`` ``Uij_layer``,
+    atoms.py:169-171) with the orthogonalization matrix ``A`` cancelled algebraically
+    (``A^-1 A D* U D* A^T A^-T = D* U D*``), so it depends only on ``reciprocal_cell`` and is
+    exactly faithful to the private result. Differentiable in ``uij_cif``; supports a batch axis.
+    """
+    _require_trailing_matrix(uij_cif, name="uij_cif")
+    if reciprocal_lengths.shape != (3,):
+        raise ValueError("reciprocal_lengths must have shape (3,)")
+    outer = reciprocal_lengths[:, None] * reciprocal_lengths[None, :]
+    return uij_cif * outer
+
+
+def cartesian_adp_to_star(uij_cart: Tensor, reciprocal_basis: Tensor) -> Tensor:
+    """Convert Cartesian-frame ADPs ``Uij_cart`` to the reciprocal ``U*`` frame.
+
+    ``U* = B Uij_cart B^T`` with ``B = reciprocal_cell`` (rows ``a*, b*, c*``). For an isotropic
+    Cartesian displacement ``Uij_cart = Uiso I`` this reduces to the textbook ``U* = Uiso G*``
+    (``G* = B B^T`` the reciprocal metric), so ``DWF = exp(-2 pi^2 Uiso |g|^2)``. This replaces the
+    private ``Uij_layer`` ``A^-1 (Uiso I) A^-T`` path, whose ``A`` (Trueblood eq. 50) is built from
+    a ``c_star`` using ``cross(c, b) = |a*|`` rather than ``cross(a, b) = |c*|`` -- a private bug
+    that mislabels ``|a*|`` as ``c*`` and only affects anisotropic cells (see REFERENCES.md).
+    Differentiable in ``uij_cart``; supports a leading batch axis.
+    """
+    _require_trailing_matrix(uij_cart, name="uij_cart")
+    if reciprocal_basis.shape != (3, 3):
+        raise ValueError("reciprocal_basis must have shape (3, 3)")
+    return torch.einsum("ij,...jk,lk->...il", reciprocal_basis, uij_cart, reciprocal_basis)
+
+
 def equivalent_isotropic_adp(uij: Tensor) -> Tensor:
     """Return the trace-equivalent isotropic ADP for 3x3 matrices."""
     _require_trailing_matrix(uij, name="uij")

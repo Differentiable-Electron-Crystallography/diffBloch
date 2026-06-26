@@ -1,8 +1,10 @@
 """Pure crystallographic helpers used by differentiable core stages."""
 
 from diffBloch.core.adp import (
+    cartesian_adp_to_star,
     cholesky_adp,
     cholesky_raw_from_adp,
+    cif_adp_to_star,
     equivalent_isotropic_adp,
     isotropic_adp,
 )
@@ -83,11 +85,13 @@ __all__ = [
     "build_structure_factor_gather",
     "cell_matrix_from_parameters",
     "cell_volume",
+    "cartesian_adp_to_star",
     "cholesky_adp",
     "cholesky_raw_from_adp",
     "debye_waller_factor",
     "energy2sigma",
     "energy2wavelength",
+    "cif_adp_to_star",
     "equivalent_isotropic_adp",
     "excitation_errors",
     "expand_asu",

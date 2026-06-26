@@ -8,7 +8,12 @@ from typing import Literal
 import torch
 from torch import Tensor
 
-from diffBloch.core.adp import cholesky_adp, isotropic_adp
+from diffBloch.core.adp import (
+    cartesian_adp_to_star,
+    cholesky_adp,
+    cif_adp_to_star,
+    isotropic_adp,
+)
 from diffBloch.core.constraints import apply_symmetry_mask, positive, unit_interval
 
 type AdpKind = Literal["Uiso", "Uani", "missing"]
@@ -29,26 +34,31 @@ class RefinableParams:
 
 @dataclass(frozen=True)
 class ConstraintSpec:
-    """Static constraint metadata needed to constrain raw parameters."""
+    """Static constraint metadata needed to constrain raw parameters.
+
+    ``reciprocal_basis`` (``B`` = ``reciprocal_cell``, rows ``a*, b*, c*``) is required whenever
+    ADPs are constrained: it carries the cell frame used to map raw ADPs into the reciprocal ``U*``
+    frame that :func:`diffBloch.core.scattering.structure_factors` consumes.
+    """
 
     fixed_positions: Tensor
     position_mask: Tensor
     occupancies: Tensor
     adp_kind: tuple[AdpKind, ...] | None = None
+    reciprocal_basis: Tensor | None = None
 
 
 @dataclass(frozen=True)
 class PhysicalState:
     """Constrained physical tensors consumed by later physics stages.
 
-    ``uij_cif`` keeps the CIF-record naming convention for the constrained ASU ADP tensor. At this
-    seam it is still the matrix generated in the raw parameter frame; scattering code must perform
-    any required hand-off to reciprocal-space ``U*`` explicitly rather than assuming the name
-    implies that conversion has already happened.
+    ``uij_star`` is the ASU ADP tensor already mapped into the reciprocal ``U*`` frame (Uani via the
+    ``d*`` relation, Uiso via ``Uiso G*``), so :func:`diffBloch.core.scattering.structure_factors`
+    can consume it directly with no further frame hand-off.
     """
 
     positions: Tensor
-    uij_cif: Tensor
+    uij_star: Tensor
     occupancies: Tensor
     Fgb: Tensor | None = None
     thicknesses: Tensor | None = None
@@ -71,7 +81,7 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
             mask=spec.position_mask,
             fixed=spec.fixed_positions,
         ),
-        uij_cif=_constrain_adps(params, spec),
+        uij_star=_constrain_adps(params, spec),
         occupancies=occupancies,
         Fgb=params.Fgb,
         thicknesses=positive(params.thickness_raw) if params.thickness_raw is not None else None,
@@ -101,14 +111,22 @@ def _validate_shapes(params: RefinableParams, spec: ConstraintSpec) -> None:
         raise ValueError("uij_raw must have shape (N, 3, 3)")
     if _requires_uiso(spec) and (params.u_iso_raw is None or params.u_iso_raw.shape != (n_atoms,)):
         raise ValueError("u_iso_raw must have shape (N,)")
+    if _constrains_adps(spec) and spec.reciprocal_basis is None:
+        raise ValueError("reciprocal_basis is required to map ADPs into the U* frame")
+    if spec.reciprocal_basis is not None and spec.reciprocal_basis.shape != (3, 3):
+        raise ValueError("reciprocal_basis must have shape (3, 3)")
 
 
 def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
     n_atoms = int(params.asu_positions.shape[0])
+    reciprocal_basis = spec.reciprocal_basis
+    assert reciprocal_basis is not None  # guaranteed by _validate_shapes when ADPs are present
+    reciprocal_lengths = torch.linalg.norm(reciprocal_basis, dim=1)
+
     if spec.adp_kind is None:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required when adp_kind is not provided")
-        return cholesky_adp(params.uij_raw)
+        return cif_adp_to_star(cholesky_adp(params.uij_raw), reciprocal_lengths)
 
     dtype = params.asu_positions.dtype
     device = params.asu_positions.device
@@ -118,15 +136,22 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required for Uani ADPs")
         mask = _kind_mask(spec.adp_kind, "Uani", device=device)
-        uij = torch.where(mask[:, None, None], cholesky_adp(params.uij_raw), uij)
+        star = cif_adp_to_star(cholesky_adp(params.uij_raw), reciprocal_lengths)
+        uij = torch.where(mask[:, None, None], star, uij)
 
     if _requires_uiso(spec):
         if params.u_iso_raw is None:
             raise ValueError("u_iso_raw is required for Uiso ADPs")
         mask = _kind_mask(spec.adp_kind, "Uiso", device=device)
-        uij = torch.where(mask[:, None, None], isotropic_adp(positive(params.u_iso_raw)), uij)
+        star = cartesian_adp_to_star(isotropic_adp(positive(params.u_iso_raw)), reciprocal_basis)
+        uij = torch.where(mask[:, None, None], star, uij)
 
     return uij
+
+
+def _constrains_adps(spec: ConstraintSpec) -> bool:
+    """Whether ``constrain`` will produce ADPs (and therefore needs a cell frame)."""
+    return spec.adp_kind is None or _requires_uani(spec) or _requires_uiso(spec)
 
 
 def _requires_uani(spec: ConstraintSpec) -> bool:

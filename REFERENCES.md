@@ -31,6 +31,21 @@ new method, dataset, dependency, or studied design adds its credit here.
   (`energy → wavelength`, interaction parameter `σ`) are standard and follow the abTEM
   implementation noted below.
 
+- **Atomic displacement parameter (ADP) frame conventions.**
+  Trueblood, K. N. et al. (1996). *Atomic displacement parameter nomenclature: report of a
+  subcommittee on atomic displacement parameter nomenclature.* **Acta Crystallographica A52,
+  770–781.** DOI: [10.1107/S0108767396005697](https://doi.org/10.1107/S0108767396005697). Defines
+  the `U_cif` / `U_cart` / `U*` frames and the orthogonalization matrix `A` (their eq. 50) the
+  private `diffBloch` uses. `core/adp` maps raw ADPs into the reciprocal `U*` frame that
+  `core/scattering` consumes: Uani via `U*_ij = d*_i d*_j U_cif_ij` (the private CIF→Cartesian→star
+  chain with `A` cancelled algebraically — exactly faithful), and Uiso via the textbook
+  `U* = Uiso G*` (`G* = B B^T`, `B = reciprocal_cell`).
+  **Note (private bug, flag upstream):** the private `Atoms.A_matrix()` builds `A[2,2] = 1/c*` from
+  `c_star = |cross(c, b)|/V = |a*|` instead of `|cross(a, b)|/V = |c*|`, mislabelling `|a*|` as
+  `c*`. This only enters the Uiso path (Uani cancels `A`) and only matters for anisotropic cells;
+  diffBloch uses the convention-correct reciprocal metric instead, so it intentionally does **not**
+  reproduce that quantity.
+
 - **Refinement loss / agreement metrics.**
   The Bragg R(obs) factor `R = Σ|√I_obs − √I_calc| / Σ√I_obs` (over reflections with `I_obs > 3σ`)
   is the standard crystallographic agreement index (e.g. Spence & Zuo above; Giacovazzo, *Fundamentals

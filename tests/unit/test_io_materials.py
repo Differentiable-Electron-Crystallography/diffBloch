@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 from diffBloch.core import build_asu_expansion_plan
+from diffBloch.core.crystal import reciprocal_cell
 from diffBloch.io import read_structure
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 
@@ -43,13 +43,16 @@ def test_constrain_accepts_paracetamol_uiso_adps() -> None:
         position_mask=torch.ones_like(positions),
         occupancies=torch.tensor(record.occupancies, dtype=torch.float64),
         adp_kind=record.adp.kind,
+        reciprocal_basis=torch.tensor(reciprocal_cell(record.unit_cell), dtype=torch.float64),
     )
 
     state = constrain(params, spec)
-    state.uij_cif.sum().backward()
+    state.uij_star.sum().backward()
 
-    assert state.uij_cif.shape == (record.n_atoms, 3, 3)
-    assert torch.all(torch.linalg.eigvalsh(state.uij_cif) >= 0.0)
-    assert state.uij_cif[:, 0, 1].tolist() == pytest.approx([0.0] * record.n_atoms)
+    # Uiso -> U* = Uiso * G* (reciprocal metric): symmetric positive-semidefinite, generally with
+    # non-zero off-diagonals once the cell is non-orthogonal.
+    assert state.uij_star.shape == (record.n_atoms, 3, 3)
+    assert torch.allclose(state.uij_star, state.uij_star.transpose(-1, -2))
+    assert torch.all(torch.linalg.eigvalsh(state.uij_star) >= 0.0)
     assert u_iso_raw.grad is not None
     assert torch.all(u_iso_raw.grad > 0.0)

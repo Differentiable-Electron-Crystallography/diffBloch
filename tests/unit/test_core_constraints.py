@@ -3,14 +3,62 @@ import torch
 
 from diffBloch.core import (
     apply_symmetry_mask,
+    cartesian_adp_to_star,
     cholesky_adp,
     cholesky_raw_from_adp,
+    cif_adp_to_star,
     equivalent_isotropic_adp,
     isotropic_adp,
     positive,
     unit_interval,
 )
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
+
+
+def test_cif_adp_to_star_cubic_closed_form() -> None:
+    # Cubic cell, edge a: d* = 1/a, so U*_ij = U_cif_ij / a^2.
+    a = 5.0
+    reciprocal_lengths = torch.full((3,), 1.0 / a, dtype=torch.float64)
+    uij = torch.tensor(
+        [[[0.10, 0.02, 0.01], [0.02, 0.12, 0.03], [0.01, 0.03, 0.14]]], dtype=torch.float64
+    )
+    star = cif_adp_to_star(uij, reciprocal_lengths)
+    assert torch.allclose(star, uij / a**2)
+    # identity cell is a no-op
+    assert torch.allclose(cif_adp_to_star(uij, torch.ones(3, dtype=torch.float64)), uij)
+
+
+def test_cartesian_adp_to_star_isotropic_gives_uiso_metric() -> None:
+    # Orthorhombic diag(a, b, c): B = diag(1/a, 1/b, 1/c), so Uiso*I -> Uiso * diag(1/a^2, ...).
+    a, b, c = 4.0, 5.0, 6.0
+    reciprocal_basis = torch.diag(torch.tensor([1 / a, 1 / b, 1 / c], dtype=torch.float64))
+    u_iso = 0.03
+    uij_cart = isotropic_adp(torch.tensor(u_iso, dtype=torch.float64))
+    star = cartesian_adp_to_star(uij_cart, reciprocal_basis)
+    expected = torch.diag(
+        torch.tensor([u_iso / a**2, u_iso / b**2, u_iso / c**2], dtype=torch.float64)
+    )
+    assert torch.allclose(star, expected)
+    # U* = B U_cart B^T must stay symmetric for a general cell
+    general = torch.tensor(
+        [[0.9, 0.1, 0.05], [0.1, 1.1, 0.2], [0.05, 0.2, 1.3]], dtype=torch.float64
+    )
+    out = cartesian_adp_to_star(torch.eye(3, dtype=torch.float64) * 0.02, general)
+    assert torch.allclose(out, out.T)
+
+
+def test_constrain_requires_reciprocal_basis_for_adps() -> None:
+    positions = torch.zeros((1, 3), dtype=torch.float64)
+    params = RefinableParams(
+        asu_positions=positions, uij_raw=torch.eye(3, dtype=torch.float64)[None]
+    )
+    spec = ConstraintSpec(
+        fixed_positions=positions,
+        position_mask=torch.ones_like(positions),
+        occupancies=torch.ones(1, dtype=torch.float64),
+    )
+    with pytest.raises(ValueError, match="reciprocal_basis is required"):
+        constrain(params, spec)
 
 
 def test_cholesky_adp_outputs_symmetric_psd_matrices() -> None:
@@ -115,17 +163,18 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
         fixed_positions=torch.zeros_like(positions),
         position_mask=torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64),
         occupancies=torch.ones(2, dtype=torch.float64),
+        reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
 
     state = constrain(params, spec)
-    loss = state.positions.sum() + state.uij_cif.sum() + state.occupancies.sum()
+    loss = state.positions.sum() + state.uij_star.sum() + state.occupancies.sum()
     loss.backward()
 
     assert torch.allclose(
         state.positions,
         torch.tensor([[0.2, 0.0, 0.4], [0.0, 0.6, 0.7]], dtype=torch.float64),
     )
-    assert torch.all(torch.linalg.eigvalsh(state.uij_cif) >= 0.0)
+    assert torch.all(torch.linalg.eigvalsh(state.uij_star) >= 0.0)
     assert torch.all((state.occupancies > 0.0) & (state.occupancies < 1.0))
     assert state.thicknesses is not None and torch.all(state.thicknesses > 0.0)
     assert state.b_dose is not None and torch.all(state.b_dose > 0.0)
@@ -152,14 +201,15 @@ def test_constrain_honors_mixed_adp_kinds() -> None:
         position_mask=torch.ones_like(positions),
         occupancies=torch.ones(2, dtype=torch.float64),
         adp_kind=("Uani", "Uiso"),
+        reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
 
     state = constrain(params, spec)
-    state.uij_cif.sum().backward()
+    state.uij_star.sum().backward()
 
-    assert torch.allclose(state.uij_cif[0], torch.eye(3, dtype=torch.float64))
+    assert torch.allclose(state.uij_star[0], torch.eye(3, dtype=torch.float64))
     assert torch.allclose(
-        state.uij_cif[1],
+        state.uij_star[1],
         torch.eye(3, dtype=torch.float64) * torch.nn.functional.softplus(u_iso_raw[1]),
     )
     assert uij_raw.grad is not None
@@ -194,6 +244,7 @@ def test_constrain_uses_default_occupancies_when_not_refined() -> None:
         fixed_positions=positions,
         position_mask=torch.ones_like(positions),
         occupancies=torch.tensor([0.75], dtype=torch.float64),
+        reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
 
     state = constrain(params, spec)
