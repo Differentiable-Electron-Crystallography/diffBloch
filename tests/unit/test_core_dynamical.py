@@ -343,3 +343,5 @@ def test_structure_matrix_matches_private_oracle() -> None:
     )
     a_ours = structure_matrix(plan, torch.tensor(data["structure_factor"]))
     assert torch.allclose(a_ours, torch.tensor(data["A"]), rtol=1e-10, atol=1e-12)
+    # Friedel-symmetric Fgb -> the Mii-symmetrised structure matrix is Hermitian.
+    assert torch.allclose(a_ours, a_ours.mH, atol=1e-9)

@@ -1,6 +1,9 @@
 {
-  "fixture": "structure_matrix_oracle.npz",
-  "generated_by": "notebooks/iain/stage8_structure_matrix_oracle.ipynb",
+  "fixtures": {
+    "structure_matrix_oracle.npz": "zone-axis (l=0 beams) -> g_z=0 -> Mii==1; A Hermitian",
+    "structure_matrix_oracle_oblique.npz": "oblique (l!=0 beams) -> g_z!=0 -> Mii!=1; A Hermitian"
+  },
+  "generated_by": "../notebooks/iain/stage8_structure_matrix_oracle.ipynb (parent workspace, intentionally outside the diffBloch repo)",
   "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
   "oracle_functions": {
     "calculate_structure_matrix": "dynamical.py:975-1025 (no-absorption; timing/cuda elided)",
@@ -16,6 +19,8 @@
   },
   "constants": "energy2wavelength/energy2sigma/kappa as CODATA-2018 closed-forms (abTEM-pinned ~1e-8, stage 8.1-8.3)",
   "dtype_note": "Private propagator casts to complex64 internally; this oracle keeps complex128 throughout for tight regression tolerances.",
+  "fgb_note": "Fgb is synthetic but Friedel-symmetric F(-g)=conj(F(g)) (F(000) real), as a real no-absorption potential requires, so the Mii-symmetrised A is Hermitian and the propagator goldens are physical.",
+  "propagator_note": "matrix_exp returns the symmetrised wavefunction (unitary, flux==1); bloch_eigen un-symmetrises to physical amplitudes. They agree to machine precision only at Mii==1 (zone axis) and differ at O(g_z/K_n) for the oblique case.",
   "case": {
     "material": "alpha-quartz",
     "cell_a": 4.913,
@@ -24,20 +29,32 @@
     "energy_eV": 200000.0,
     "u0": 0.0,
     "absorption": false,
-    "n_beams": 9,
-    "n_grid": 25,
-    "gpts": [
-      5,
-      5,
-      1
-    ],
     "thicknesses_A": [
       1.0,
       8.0,
       42.0,
       500.0
     ],
-    "Fgb": "synthetic, np.random.default_rng(8).standard_normal complex"
+    "zone": {
+      "n_beams": 9,
+      "n_grid": 25,
+      "gpts": [
+        5,
+        5,
+        1
+      ],
+      "seed": 8
+    },
+    "oblique": {
+      "n_beams": 27,
+      "n_grid": 125,
+      "gpts": [
+        5,
+        5,
+        5
+      ],
+      "seed": 9
+    }
   },
   "date": "2026-06-26"
 }
