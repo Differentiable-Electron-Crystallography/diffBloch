@@ -76,6 +76,22 @@ commit — the executable form of *"the core physics model has not changed."*
   `from_snapshot`, `forward`, `simulate(solver=…)`, chainable `refine(targets, …, checkpoint_every)`,
   `activate(component)` (explicit; targeting an inactive component raises), explicit `OptimizerState`
   + threaded `torch.Generator`, `snapshot`/`history`.
+  - [x] (1/n) ADP frame: `constrain` emits `PhysicalState.uij_star` (reciprocal `U*`) via
+    `core.adp.cif_adp_to_star` (Uani) / `cartesian_adp_to_star` (Uiso); device-safe
+    (`6870ee3`, `0991b92`). Private `A_matrix` `c_star` anomaly recorded (REFERENCES.md +
+    private `KNOWN_ISSUES.md`).
+  - [x] (2/n) stateless forward spine `RefinementEngine.forward`/`simulate` + `ScatteringGrid` /
+    `OrientationPlan` plans; shared-grid coupling enforced; device-safe (`5db3ee1`, `53e3ed5`).
+  - [x] (3/n) the imperative refinement loop: `engine/` promoted to a package (`plan` / `engine` /
+    `refine`), `refine(targets, optimizer, lr)` over `adam`/`adamw`/`lbfgs` via
+    `engine.refine.run_refinement` (functional contract: caller params never mutated),
+    `RefinementResult` (final + `losses` trajectory + `best_*`). See
+    `design/decisions/stage10-refinement-loop.md`.
+  - Deferred: `from_config`/`from_experiment`/`from_snapshot` (need stage-11 beam selection);
+    `activate(component)` + `b_dose` target (nothing optional to activate yet); per-group learning
+    rates; `least_squares` (Gauss–Newton/LM); `OptimizerState` / threaded `Generator` /
+    `snapshot`/`history` / `checkpoint_every`; refinable-thickness wiring and multi-thickness
+    reduction beyond summation.
 - [ ] **11 — `preprocess/`.** Clean reimplementation of orientation + thickness + numeric-convergence
   behind `engine.fit_*()` / `converge_numerics()`.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as

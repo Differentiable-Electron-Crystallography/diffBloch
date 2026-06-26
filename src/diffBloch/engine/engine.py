@@ -1,0 +1,129 @@
+"""The forward composition spine: raw parameters -> simulated diffraction -> scalar objective.
+
+A :class:`RefinementEngine` holds the refinement-invariant plans (constraint spec, ASU-expansion
+plan, the shared scattering grid, and one :class:`~diffBloch.engine.plan.OrientationPlan` per
+rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiable objective:
+
+    constrain -> expand ASU -> structure_factors (Fgb on the shared grid)
+              -> per orientation: build_bloch_system -> propagate -> intensities -> align -> loss
+
+``forward`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the quarantined
+imperative loop in :mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
+construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
+per-orientation beam sets.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+
+from torch import Tensor
+
+from diffBloch.core.dynamical import build_bloch_system
+from diffBloch.core.products import AlignedIntensities, BlochSolution, align
+from diffBloch.core.scattering import structure_factors
+from diffBloch.core.solver import Method, propagate
+from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
+from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
+from diffBloch.params import ConstraintSpec, RefinableParams, constrain
+
+__all__ = [
+    "Objective",
+    "RefinementEngine",
+]
+
+# An objective reduces one orientation's aligned intensities to a scalar (its own loss + reduction).
+type Objective = Callable[[AlignedIntensities], Tensor]
+
+
+@dataclass(frozen=True)
+class RefinementEngine:
+    """Forward from raw parameters to a differentiable scalar objective (plus a refinement driver).
+
+    Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,
+    the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations``, the sample
+    ``thicknesses``, the ``objective``, and the propagation ``method``.
+    """
+
+    spec: ConstraintSpec
+    asu_plan: AsuExpansionPlan
+    numbers: Tensor
+    grid: ScatteringGrid
+    orientations: tuple[OrientationPlan, ...]
+    thicknesses: Tensor
+    objective: Objective
+    method: Method = "matrix_exp"
+
+    def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
+        """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
+        fgb = self._structure_factors(params)
+        return tuple(self._solve(orientation, fgb) for orientation in self.orientations)
+
+    def forward(self, params: RefinableParams) -> Tensor:
+        """Return the scalar objective summed over orientations (differentiable in ``params``)."""
+        if not self.orientations:
+            raise ValueError("engine has no orientations to evaluate")
+        fgb = self._structure_factors(params)
+        total = params.asu_positions.new_zeros(())
+        for orientation in self.orientations:
+            solution = self._solve(orientation, fgb)
+            aligned = align(solution, orientation.pattern, orientation.alignment)
+            total = total + self.objective(aligned)
+        return total
+
+    def refine(
+        self,
+        params: RefinableParams,
+        *,
+        steps: int,
+        targets: Sequence[str] = ("positions", "adp"),
+        optimizer: OptimizerName = "lbfgs",
+        lr: float = 1e-3,
+    ) -> RefinementResult:
+        """Optimize the selected ``targets`` to minimise the objective; return a result snapshot.
+
+        Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
+        ``forward``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
+        (per-group rates deferred); ``least_squares`` and component ``activate`` are deferred --
+        see ``design/decisions/stage10-refinement-loop.md``.
+        """
+        return run_refinement(
+            self.forward,
+            params,
+            steps=steps,
+            targets=targets,
+            optimizer=optimizer,
+            lr=lr,
+        )
+
+    def _structure_factors(self, params: RefinableParams) -> Tensor:
+        state = constrain(params, self.spec)
+        device = state.positions.device  # the active (params) device; co-locate invariants here
+        expanded = expand_asu(
+            self.asu_plan,
+            state.positions,
+            numbers=self.numbers.to(device),
+            uij=state.uij_star,
+            occupancies=state.occupancies,
+        )
+        assert expanded.numbers is not None and expanded.uij is not None
+        assert expanded.occupancies is not None
+        return structure_factors(
+            expanded.positions,
+            expanded.numbers,
+            expanded.occupancies,
+            expanded.uij,
+            hkl=self.grid.grid_hkl.to(device),
+            reciprocal_basis=self.grid.reciprocal_basis.to(device),
+            cell_volume=self.grid.cell_volume,
+            g_max=self.grid.g_max,
+        )
+
+    def _solve(self, orientation: OrientationPlan, fgb: Tensor) -> BlochSolution:
+        device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
+        thicknesses = self.thicknesses.to(device)
+        system = build_bloch_system(orientation.beam_plan, fgb)
+        psi = propagate(system, thicknesses, method=self.method)
+        return BlochSolution.from_propagation(psi, orientation.beam_hkl.to(device), thicknesses)

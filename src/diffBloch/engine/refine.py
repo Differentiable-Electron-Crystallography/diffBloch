@@ -1,0 +1,168 @@
+"""The imperative refinement loop -- the one deliberately stateful corner of an otherwise pure core.
+
+``torch.optim`` optimizers mutate ``.grad`` and leaf tensors in place and carry internal state, so a
+training loop cannot be a pure function. This module quarantines that imperativeness behind a
+functional contract: :func:`run_refinement` takes the engine's pure ``forward`` callable and the
+caller's parameters, clones the *target* fields into fresh ``requires_grad`` leaves (the rest become
+detached constants), steps a chosen backend, and returns a new detached :class:`RefinementResult`.
+The caller's parameters are never touched. ``core/`` stays free of ``torch.optim`` entirely.
+
+Rationale and the deferred surface (per-group learning rates, ``least_squares``, component
+``activate``, ``OptimizerState``/history): ``design/decisions/stage10-refinement-loop.md``.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import math
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any, Literal
+
+import torch
+from torch import Tensor
+
+from diffBloch.params import RefinableParams
+
+__all__ = [
+    "OptimizerName",
+    "RefinementResult",
+    "run_refinement",
+]
+
+# The torch.optim backends wired here; least_squares (Gauss-Newton/LM) is deferred.
+type OptimizerName = Literal["adam", "adamw", "lbfgs"]
+
+# Refinement-target name -> the RefinableParams field(s) it unlocks for optimization. "adp" maps to
+# both raw ADP fields; only those actually present become leaves. b_dose is gated behind activate()
+# (deferred), so it is intentionally not a target here.
+_TARGET_FIELDS: dict[str, tuple[str, ...]] = {
+    "positions": ("asu_positions",),
+    "adp": ("uij_raw", "u_iso_raw"),
+    "occupancy": ("occupancy_raw",),
+    "Fgb": ("Fgb",),
+    "thickness": ("thickness_raw",),
+}
+
+
+@dataclass(frozen=True)
+class RefinementResult:
+    """The outcome of a refinement run (all tensors detached).
+
+    ``params`` are the final parameters after the last step; ``losses`` ``(steps,)`` is the
+    per-step training curve (each entry is the objective *before* that step's update);
+    ``best_params`` / ``best_step`` snapshot the lowest recorded loss, for early-stopping callers.
+    """
+
+    params: RefinableParams
+    losses: Tensor
+    best_params: RefinableParams
+    best_step: int
+
+    @property
+    def best_loss(self) -> float:
+        """The lowest recorded (pre-update) loss."""
+        return float(self.losses[self.best_step])
+
+
+def run_refinement(
+    forward: Callable[[RefinableParams], Tensor],
+    params: RefinableParams,
+    *,
+    steps: int,
+    targets: Sequence[str],
+    optimizer: OptimizerName,
+    lr: float,
+) -> RefinementResult:
+    """Optimize the selected ``targets`` to minimise ``forward(params)``; return a result snapshot.
+
+    Functional contract over an unavoidably imperative core: the caller's ``params`` are never
+    mutated. Target fields become fresh ``requires_grad`` leaves (non-target fields detached
+    constants); a backend steps them for ``steps`` iterations via a closure (which unifies LBFGS'
+    re-evaluation with Adam/AdamW). ``targets`` names map through ``_TARGET_FIELDS``; a named target
+    with no present parameter, or zero ``steps``, raises.
+    """
+    if steps < 1:
+        raise ValueError("steps must be >= 1")
+    leaf_params, leaves = _to_leaves(params, _resolve_targets(params, targets))
+    opt = _build_optimizer(optimizer, leaves, lr)
+
+    def closure() -> float:
+        opt.zero_grad()
+        loss = forward(leaf_params)
+        loss.backward()  # type: ignore[no-untyped-call]
+        return float(loss.detach())
+
+    losses: list[float] = []
+    best_loss = math.inf
+    best_step = 0
+    best_params = _detach_params(leaf_params)
+    for step in range(steps):
+        snapshot = _detach_params(leaf_params)  # params behind this step's pre-update loss
+        loss_value = opt.step(closure)
+        assert loss_value is not None  # closure is always provided -> step returns the loss
+        losses.append(float(loss_value))
+        if loss_value < best_loss:
+            best_loss, best_step, best_params = float(loss_value), step, snapshot
+    return RefinementResult(
+        params=_detach_params(leaf_params),
+        losses=torch.tensor(losses, dtype=torch.float64),
+        best_params=best_params,
+        best_step=best_step,
+    )
+
+
+def _resolve_targets(params: RefinableParams, targets: Sequence[str]) -> frozenset[str]:
+    """Map target names to the present RefinableParams field names they unlock."""
+    if not targets:
+        raise ValueError("at least one refinement target is required")
+    fields: set[str] = set()
+    for target in targets:
+        if target not in _TARGET_FIELDS:
+            valid = sorted(_TARGET_FIELDS)
+            raise ValueError(f"unknown refinement target {target!r}; valid: {valid}")
+        present = [name for name in _TARGET_FIELDS[target] if getattr(params, name) is not None]
+        if not present:
+            raise ValueError(f"target {target!r} selected but no matching parameter is present")
+        fields.update(present)
+    return frozenset(fields)
+
+
+def _to_leaves(
+    params: RefinableParams, target_fields: frozenset[str]
+) -> tuple[RefinableParams, list[Tensor]]:
+    """Clone ``params`` so ``target_fields`` are fresh requires_grad leaves, the rest constants."""
+    values: dict[str, Any] = {}
+    leaves: list[Tensor] = []
+    for field in dataclasses.fields(RefinableParams):
+        value = getattr(params, field.name)
+        if value is None:
+            values[field.name] = None
+        elif field.name in target_fields:
+            leaf = value.detach().clone().requires_grad_(True)
+            values[field.name] = leaf
+            leaves.append(leaf)
+        else:
+            values[field.name] = value.detach().clone()
+    return dataclasses.replace(params, **values), leaves
+
+
+def _detach_params(params: RefinableParams) -> RefinableParams:
+    """Return a fully-detached clone of ``params`` (no grad history)."""
+    detached: dict[str, Any] = {
+        field.name: (None if value is None else value.detach().clone())
+        for field in dataclasses.fields(RefinableParams)
+        for value in (getattr(params, field.name),)
+    }
+    return dataclasses.replace(params, **detached)
+
+
+def _build_optimizer(name: OptimizerName, leaves: list[Tensor], lr: float) -> torch.optim.Optimizer:
+    """Build the torch.optim backend over the leaf tensors (single shared learning rate)."""
+    if name == "adam":
+        return torch.optim.Adam(leaves, lr=lr)
+    if name == "adamw":
+        return torch.optim.AdamW(leaves, lr=lr)
+    if name == "lbfgs":
+        return torch.optim.LBFGS(leaves, lr=lr)
+    raise ValueError(f"optimizer must be 'adam', 'adamw', or 'lbfgs'; got {name!r}")

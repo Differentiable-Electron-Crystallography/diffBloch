@@ -17,18 +17,22 @@ _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5)
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 
 
-def _engine(objective=lambda aligned: mse(aligned.calculated, aligned.observed).sum()):
+def _engine(
+    objective=lambda aligned: mse(aligned.calculated, aligned.observed).sum(),
+    pattern=None,
+):
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
     asu_plan = build_asu_expansion_plan(
         np.zeros((1, 3)),
         np.eye(3)[None],
         np.zeros((1, 3)),  # P1: single atom, identity symop
     )
-    pattern = PatternBatch(
-        hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
-        intensities=torch.tensor([0.9, 0.05, 0.05], dtype=torch.float64),
-        sigmas=torch.full((3,), 0.01, dtype=torch.float64),
-    )
+    if pattern is None:
+        pattern = PatternBatch(
+            hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
+            intensities=torch.tensor([0.9, 0.05, 0.05], dtype=torch.float64),
+            sigmas=torch.full((3,), 0.01, dtype=torch.float64),
+        )
     orientation = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY)
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
@@ -42,15 +46,35 @@ def _engine(objective=lambda aligned: mse(aligned.calculated, aligned.observed).
         numbers=torch.tensor([14], dtype=torch.int64),  # silicon
         grid=grid,
         orientations=(orientation,),
-        thicknesses=torch.tensor([30.0], dtype=torch.float64),
+        thicknesses=torch.tensor([300.0], dtype=torch.float64),  # dynamical regime (I_diff ~0.1)
         objective=objective,
     )
 
 
-def _params(*, requires_grad: bool = False):
-    return RefinableParams(
-        asu_positions=torch.zeros((1, 3), dtype=torch.float64, requires_grad=requires_grad),
-        uij_raw=(torch.eye(3, dtype=torch.float64)[None] * 0.1).requires_grad_(requires_grad),
+def _params(*, requires_grad: bool = False, u_iso_scale: float = 0.1, occupancy_logit=None):
+    uij = torch.eye(3, dtype=torch.float64)[None] * u_iso_scale
+    fields = {
+        "asu_positions": torch.zeros((1, 3), dtype=torch.float64, requires_grad=requires_grad),
+        "uij_raw": uij.requires_grad_(requires_grad),
+    }
+    if occupancy_logit is not None:
+        occ = torch.full((1,), occupancy_logit, dtype=torch.float64)
+        fields["occupancy_raw"] = occ.requires_grad_(requires_grad)
+    return RefinableParams(**fields)
+
+
+def _observed_pattern(true_params, *, sigma: float = 0.01):
+    """Self-consistent observations: the intensities the engine produces at ``true_params``."""
+    dummy = PatternBatch(
+        hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
+        intensities=torch.zeros(3, dtype=torch.float64),
+        sigmas=torch.ones(3, dtype=torch.float64),
+    )
+    (solution,) = _engine(pattern=dummy).simulate(true_params)
+    return PatternBatch(
+        hkl=solution.beam_hkl,
+        intensities=solution.intensities[0].detach(),
+        sigmas=torch.full((3,), sigma, dtype=torch.float64),
     )
 
 
@@ -125,3 +149,81 @@ def test_scattering_grid_from_cell_spans_difference_support() -> None:
     tiny = ScatteringGrid.from_cell(_CELL, g_max=0.15)  # |g|<=0.15 -> only h=0, no differences
     with pytest.raises(ValueError, match="difference support|gpts is too small"):
         OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY)
+
+
+def _mse_objective(aligned):
+    return mse(aligned.calculated, aligned.observed).sum()
+
+
+@pytest.mark.parametrize("optimizer", ["adam", "lbfgs"])
+def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> None:
+    # Observations are the engine's own output at occupancy ~0.9 (logit 2.2); start from 0.5.
+    # Occupancy scales every F linearly -> strong, monotonic leverage on the diffracted intensity.
+    true_params = _params(occupancy_logit=2.2)
+    engine = _engine(objective=_mse_objective, pattern=_observed_pattern(true_params))
+    start = _params(occupancy_logit=0.0)
+
+    result = engine.refine(start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
+
+    assert result.losses.shape == (20,)
+    assert result.losses[-1] < result.losses[0]  # the loop made progress
+    assert result.best_loss <= float(result.losses[0])
+
+
+def test_refine_does_not_mutate_caller_params() -> None:
+    engine = _engine(objective=_mse_objective)
+    start = _params(u_iso_scale=0.05)
+    before = start.uij_raw.detach().clone()
+
+    engine.refine(start, steps=5, targets=("adp",), optimizer="adam", lr=0.05)
+
+    # functional contract: the caller's tensors are untouched and gradient-free
+    assert torch.equal(start.uij_raw, before)
+    assert not start.uij_raw.requires_grad
+
+
+def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
+    observed = _observed_pattern(_params(occupancy_logit=2.2))
+    engine = _engine(objective=_mse_objective, pattern=observed)
+    result = engine.refine(
+        _params(occupancy_logit=0.0), steps=12, targets=("occupancy",), optimizer="adam", lr=0.2
+    )
+
+    assert 0 <= result.best_step < 12
+    assert result.best_loss == float(result.losses.min())
+    assert result.best_params.occupancy_raw.shape == (1,)
+    assert not result.best_params.occupancy_raw.requires_grad
+
+
+def test_refine_only_selected_targets_change() -> None:
+    # With only "adp" selected, positions must be carried through as an untouched constant.
+    engine = _engine(objective=_mse_objective, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
+    start = RefinableParams(
+        asu_positions=torch.full((1, 3), 0.1, dtype=torch.float64),
+        uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.05,
+    )
+    result = engine.refine(start, steps=8, targets=("adp",), optimizer="adam", lr=0.05)
+
+    assert torch.equal(result.params.asu_positions, start.asu_positions)
+    assert not torch.equal(result.params.uij_raw, start.uij_raw)
+
+
+def test_refine_rejects_unknown_target() -> None:
+    with pytest.raises(ValueError, match="unknown refinement target"):
+        _engine().refine(_params(), steps=1, targets=("spin",))
+
+
+def test_refine_rejects_target_with_no_parameter() -> None:
+    # occupancy lives on the spec here, not as a refinable occupancy_raw -> nothing to optimize.
+    with pytest.raises(ValueError, match="no matching parameter"):
+        _engine().refine(_params(), steps=1, targets=("occupancy",))
+
+
+def test_refine_rejects_non_positive_steps() -> None:
+    with pytest.raises(ValueError, match="steps must be"):
+        _engine().refine(_params(), steps=0, targets=("adp",))
+
+
+def test_refine_rejects_unknown_optimizer() -> None:
+    with pytest.raises(ValueError, match="optimizer must be"):
+        _engine().refine(_params(), steps=1, targets=("adp",), optimizer="sgd")
