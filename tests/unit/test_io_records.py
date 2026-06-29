@@ -96,6 +96,8 @@ def test_observation_record_validates_sigmas_and_zone_ids() -> None:
     with pytest.raises(ValidationError, match="sigmas must be non-negative"):
         ObservationRecord(
             unit_cell=np.eye(3),
+            cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+            cell_parameters_su=np.full((6,), np.nan),
             wavelength=0.0251,
             ub_matrix=np.eye(3),
             zone_axis_ids=np.asarray([1]),
@@ -116,6 +118,8 @@ def test_observation_record_rejects_undeclared_reflection_zone_ids() -> None:
     with pytest.raises(ValidationError, match="not declared"):
         ObservationRecord(
             unit_cell=np.eye(3),
+            cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+            cell_parameters_su=np.full((6,), np.nan),
             wavelength=0.0251,
             ub_matrix=np.eye(3),
             zone_axis_ids=np.asarray([1]),

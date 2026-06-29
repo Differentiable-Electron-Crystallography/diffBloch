@@ -20,6 +20,8 @@ def _observation_record() -> ObservationRecord:
     # Two zone axes; reflections split across them so zone filtering is exercised.
     return ObservationRecord(
         unit_cell=np.eye(3),
+        cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+        cell_parameters_su=np.full((6,), np.nan),
         wavelength=0.0251,
         ub_matrix=np.eye(3),
         zone_axis_ids=np.asarray([1, 2]),

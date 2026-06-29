@@ -8,7 +8,8 @@ import gemmi
 import numpy as np
 from numpy.typing import NDArray
 
-from diffBloch.io._cifio import as_float, loop_rows, required_float, unit_cell_matrix
+from diffBloch.core.crystal import cell_matrix_from_parameters
+from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_float
 from diffBloch.io.record import ObservationRecord
 
 
@@ -30,9 +31,12 @@ def parse_observation_block(
     if not reflection_rows:
         raise ValueError("PETS file does not contain a _refln loop")
 
+    cellpar, cellpar_su = cell_parameters(block)
     return ObservationRecord(
         source_path=Path(source_path) if source_path is not None else None,
-        unit_cell=unit_cell_matrix(block),
+        unit_cell=cell_matrix_from_parameters(cellpar),
+        cell_parameters=cellpar,
+        cell_parameters_su=cellpar_su,
         wavelength=required_float(block, "_diffrn_radiation_wavelength"),
         ub_matrix=_ub_matrix(block),
         zone_axis_ids=np.asarray(

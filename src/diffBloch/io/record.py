@@ -193,6 +193,8 @@ class ObservationRecord(BaseModel):
 
     source_path: Path | None = None
     unit_cell: FloatArray
+    cell_parameters: FloatArray
+    cell_parameters_su: FloatArray
     wavelength: float
     ub_matrix: FloatArray
     zone_axis_ids: IntArray
@@ -209,6 +211,8 @@ class ObservationRecord(BaseModel):
 
     @field_validator(
         "unit_cell",
+        "cell_parameters",
+        "cell_parameters_su",
         "ub_matrix",
         "zone_axes",
         "precession_angles",
@@ -235,6 +239,12 @@ class ObservationRecord(BaseModel):
         n_reflections = int(self.hkl.shape[0])
         if self.unit_cell.shape != (3, 3):
             raise ValueError("unit_cell must have shape (3, 3)")
+        if self.cell_parameters.shape != (6,):
+            raise ValueError("cell_parameters must have shape (6,)")
+        if self.cell_parameters_su.shape != (6,):
+            raise ValueError("cell_parameters_su must have shape (6,)")
+        if np.any(self.cell_parameters_su[np.isfinite(self.cell_parameters_su)] < 0.0):
+            raise ValueError("cell_parameters_su must be non-negative where present")
         if self.wavelength <= 0.0:
             raise ValueError("wavelength must be positive")
         if self.ub_matrix.shape != (3, 3):
