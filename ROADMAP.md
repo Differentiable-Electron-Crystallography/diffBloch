@@ -135,9 +135,9 @@ commit — the executable form of *"the core physics model has not changed."*
     `identity`) — pure scaffolding, engine unaware of `Plan` (done). **Reordered** so
     orientation-in-the-physics comes first (the faithful Klar rsg/dsg beam filter is
     orientation-dependent, so it sits *on top of* the rotated `g`): (2/n) **orientation in the
-    physics** — a per-rotation rotation `R` feeds a rotated `reciprocal_basis`/`g` into
-    `build_beam_plan`, `R = I` default (anchor-guarded, highest risk; the private code does the
-    same — rotates the reciprocal cell, keeps `K` along `-z`); (3/n) `from_experiment` building a
+    physics** (done) — per-orientation `reciprocal_basis` feeds `g -> Sg/Mii` via
+    `OrientationPlan.build`, default = the shared (untilted) grid basis; (3/n) `from_experiment`
+    building a
     grid-sharing **`(train_plan, val_plan)`** pair (rotation train/val split; closes the stage-10
     `from_*` deferral); (4/n) `select_beams` (`Plan -> Plan`, rsg/dsg filter); (5/n)
     `fit_orientation`; (6/n) per-rotation thickness in `OrientationPlan` + `fit_thickness`; (7/n)
@@ -145,7 +145,13 @@ commit — the executable form of *"the core physics model has not changed."*
     (not a rotation in core); the quartz pull-in showed the real orientation matrices are
     non-orthonormal (a ~1% measured-cell correction), so `reciprocal_cell(cell @ M.T)` is faithful
     while `@ M.T` is wrong -- pinned by `test_orientation_oracle.py` against a private-impl golden.
-    Train/val are two `Plan`s sharing one grid (engine stays split-agnostic).
+    Train/val are two `Plan`s sharing one grid (engine stays split-agnostic). Orientations are
+    **derived natively from the PETS goniometer geometry** (`preprocess/orientation`:
+    `R_z R_x R_y @ UB B^-1`), not read from a side-car CSV -- per the effects/observability decision
+    (`design/decisions/effects-and-observability.md`), `fit_orientation`/`fit_thickness` return
+    `Plan`s and never write per-facet CSVs (persistence = checkpoint the whole `Plan`; CSV/visualize
+    are boundary reporters). Landed: (1/n) spine; (2/n) orientation in physics; (3/n) a -- native
+    orientation derivation pinned to a private golden (8.6e-7) + `orientation_basis` convention home.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
