@@ -132,10 +132,17 @@ commit — the executable form of *"the core physics model has not changed."*
     umbrella elides.
   - **Slices.** (1/n) the `preprocess/` spine + `Plan -> Plan` combinators (`Plan` value object;
     `pipeline` sequencing, `iterate_until` fixpoint with a `RuntimeError` on non-convergence,
-    `identity`) — pure scaffolding, engine unaware of `Plan` (done). Remaining: (2/n)
-    `from_experiment`/beam selection (closes the stage-10 `from_config` deferral); (3/n) orientation
-    in the physics (anchor-guarded core change, highest risk); (4/n) `fit_orientation`; (5/n)
-    per-rotation thickness in `OrientationPlan` + `fit_thickness`; (6/n) `converge_numerics`.
+    `identity`) — pure scaffolding, engine unaware of `Plan` (done). **Reordered** so
+    orientation-in-the-physics comes first (the faithful Klar rsg/dsg beam filter is
+    orientation-dependent, so it sits *on top of* the rotated `g`): (2/n) **orientation in the
+    physics** — a per-rotation rotation `R` feeds a rotated `reciprocal_basis`/`g` into
+    `build_beam_plan`, `R = I` default (anchor-guarded, highest risk; the private code does the
+    same — rotates the reciprocal cell, keeps `K` along `-z`); (3/n) `from_experiment` building a
+    grid-sharing **`(train_plan, val_plan)`** pair (rotation train/val split; closes the stage-10
+    `from_*` deferral); (4/n) `select_beams` (`Plan -> Plan`, rsg/dsg filter); (5/n)
+    `fit_orientation`; (6/n) per-rotation thickness in `OrientationPlan` + `fit_thickness`; (7/n)
+    `converge_numerics`. Decisions: orientation rotates `g` not `K`; train/val are two `Plan`s
+    sharing one grid (engine stays split-agnostic). Detail: `design/stage11-preprocess-plan.md`.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
