@@ -1,0 +1,9 @@
+{
+  "what": "private as-collected orientation matrices for the quartz PETS anchor",
+  "source_impl": "diffBloch_private/diffBloch/rotation_dataset.py (process_file -> generate_u_matrix + generate_crystal_orientations)",
+  "convention": "orientation = R_z(omega).R_x(alpha).R_y(beta) @ (UB @ B_inv); B = Busing-Levy from PETS cell params + volume; angles active, degrees",
+  "input": "diffBloch/tests/fixtures/quartz_anchor/exp_data.cif_pets",
+  "n_rotations": 99,
+  "det_u_matrix": 1.0330231311769968,
+  "note": "geometry uses reciprocal_cell(cell @ orientation.T); orientation matrices are non-orthonormal (fold the ~1% measured-vs-ideal cell correction)."
+}

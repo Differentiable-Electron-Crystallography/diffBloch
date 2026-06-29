@@ -56,6 +56,16 @@ new method, dataset, dependency, or studied design adds its credit here.
   [10.1038/s41557-023-01186-1](https://doi.org/10.1038/s41557-023-01186-1). Loss bodies are ported
   from the private `diffBloch/metrics.py`.
 
+- **Crystal orientation from the UB matrix (Busing-Levy formalism).**
+  Busing, W. R. & Levy, H. A. (1967). *Angle calculations for 3- and 4-circle X-ray and neutron
+  diffractometers.* **Acta Crystallographica 22, 457-464.** DOI:
+  [10.1107/S0365110X67000970](https://doi.org/10.1107/S0365110X67000970). Defines the reciprocal
+  `B` matrix (`a*`-along-x setting) and the `UB = U B` orientation formalism. `preprocess/orientation`
+  derives per-rotation crystal orientations natively as `R_z(ω) R_x(α) R_y(β) @ (UB B^-1)`, the
+  rotation ordering and `B` convention taken from the private `diffBloch/rotation_dataset.py`. The
+  resulting orientation matrices are deliberately **non-orthonormal** (`U = UB B^-1` folds a ~1%
+  measured-vs-ideal cell correction); geometry uses `reciprocal_cell(cell @ orientation.T)`.
+
 _(PETS / observation-model references will be added when stage 9+ lands the observation model.)_
 
 ## Vendored reference data

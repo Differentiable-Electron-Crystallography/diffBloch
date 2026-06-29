@@ -12,6 +12,13 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 ``from_experiment`` construction land in later slices.
 """
 
+from diffBloch.preprocess.orientation import (
+    busing_levy_matrix,
+    goniometer_rotation,
+    orientation_basis,
+    orientation_matrices,
+    u_matrix,
+)
 from diffBloch.preprocess.pipeline import (
     ConvergenceCheck,
     PlanStep,
@@ -25,7 +32,12 @@ __all__ = [
     "ConvergenceCheck",
     "Plan",
     "PlanStep",
+    "busing_levy_matrix",
+    "goniometer_rotation",
     "identity",
     "iterate_until",
+    "orientation_basis",
+    "orientation_matrices",
     "pipeline",
+    "u_matrix",
 ]
