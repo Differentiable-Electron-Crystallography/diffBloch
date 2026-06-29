@@ -92,8 +92,44 @@ commit — the executable form of *"the core physics model has not changed."*
     rates; `least_squares` (Gauss–Newton/LM); `OptimizerState` / threaded `Generator` /
     `snapshot`/`history` / `checkpoint_every`; refinable-thickness wiring and multi-thickness
     reduction beyond summation.
-- [ ] **11 — `preprocess/`.** Clean reimplementation of orientation + thickness + numeric-convergence
-  behind `engine.fit_*()` / `converge_numerics()`.
+- [ ] **11 — `preprocess/`** (a composable `Plan -> Plan` pipeline; name finalized — see naming
+  note). A distinct stage that **emits the invariant `Plan`** the differentiable refinement is
+  conditioned on. Structurally a scikit-learn-style **Pipeline**: a sequence of `Plan -> Plan`
+  transformers (each *fits* something and returns a sharpened `Plan` via `dataclasses.replace`),
+  with the terminal estimator being `refine` (`Plan -> Result`). Orientation and thickness are
+  **locked in here**, never entering the structural autograd graph — preprocess-locked, not
+  joint-refine, is the confirmed default (the `RefinableParams.thickness_raw` seam stays dormant for
+  an optional future joint path).
+  - **Data flow.** `Plan` is the spine (immutable, threaded through, sharpened step by step);
+    `simulate` is the kernel `(Plan, params) -> calculated` — one pass in eval, but **looped inside
+    `refine`** every iteration (it is the loop body, not a stage); `refine` is terminal and loops
+    `simulate`. So `plan0 -> converge_numerics -> fit_orientation -> fit_thickness -> plan*` is
+    linear, then `refine(plan*, params) -> loop(simulate -> loss -> step) -> result`.
+  - **Numeric convergence** (`converge_numerics()`): numerical-fidelity hyperparameters (`sg_max`,
+    `g_max_sf`, `g_max_refine`, `rocking_curve_sampling`, `dsg`, `rsg`) set by convergence testing
+    (coarsen/refine until the observable stops moving) — objective is accuracy-vs-cost, **not**
+    fit-to-data, and several are discrete (beam count, sampling) so it is a sweep, not backprop.
+    These *parameterize Plan construction*: `g_max` sizes the `ScatteringGrid`, `sg_max` selects the
+    `BeamPlan` beams, sampling drives the rocking-curve integration.
+  - **Physical nuisance calibration** (`fit_orientation()` / `fit_thickness()`): per-rotation
+    orientation and thickness, fit to the data. **Thickness is per-rotation because the specimen's
+    3D shape is irregular** (each orientation presents a different beam path length), so it moves
+    into `OrientationPlan`, retiring the engine-level shared `thicknesses`. Thickness is gridsearch
+    today, a `ThicknessNN` later (cf. private `cfg.thicknessNN` + `convexity_loss_fn`); orientation
+    likewise — 3D-ED practice already refines per-frame orientation by least-squares on simulated
+    patterns (PETS2/Jana2020).
+  - **Composition is a partial order, not free reordering.** The steps couple (convergence needs a
+    rough orientation; thickness needs converged numerics; orientation/thickness can be mutually
+    dependent), so the composition operator is sequencing **plus a fixpoint combinator**
+    (`iterate_until(converged, ...)`), not an unordered set. A fixpoint of `Plan -> Plan` is itself
+    `Plan -> Plan`, so it still composes.
+  - *Naming note (finalized).* `preprocess` kept as the umbrella, justified by the scikit-learn
+    **Pipeline** reading (transformers + a terminal estimator). Known wart: in ML "preprocessing"
+    usually means *data* transforms, which here is `io/`'s job (the parser boundary; the 3D-ED
+    "data reduction" step, PETS2) — this stage instead fits the *forward-model configuration*.
+    Rejected: `calibrate` (excludes numeric convergence), `setup` (vaguer, less signal). The precise
+    sub-verbs `converge_numerics` / `fit_orientation` / `fit_thickness` carry the meaning the
+    umbrella elides.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
