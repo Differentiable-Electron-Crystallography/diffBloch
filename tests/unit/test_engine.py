@@ -18,7 +18,7 @@ _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 
 
 def _engine(
-    objective=lambda aligned: mse(aligned.calculated, aligned.observed).sum(),
+    loss=lambda aligned: mse(aligned.calculated, aligned.observed).sum(),
     pattern=None,
 ):
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
@@ -47,7 +47,7 @@ def _engine(
         grid=grid,
         orientations=(orientation,),
         thicknesses=torch.tensor([300.0], dtype=torch.float64),  # dynamical regime (I_diff ~0.1)
-        objective=objective,
+        loss=loss,
     )
 
 
@@ -90,17 +90,17 @@ def test_simulate_returns_a_solution_per_orientation() -> None:
     assert torch.allclose(solution.intensities.sum(dim=1), torch.ones(1, dtype=torch.float64))
 
 
-def test_forward_returns_scalar_objective() -> None:
-    loss = _engine().forward(_params())
+def test_objective_returns_scalar() -> None:
+    loss = _engine().objective(_params())
     assert loss.shape == ()
     assert torch.isfinite(loss) and loss >= 0.0
 
 
-def test_forward_is_differentiable_through_the_whole_chain() -> None:
+def test_objective_is_differentiable_through_the_whole_chain() -> None:
     engine = _engine()
     params = _params(requires_grad=True)
 
-    engine.forward(params).backward()
+    engine.objective(params).backward()
 
     # gradient flows back through align -> intensity -> propagate -> A -> Fgb -> expand -> constrain
     for grad in (params.asu_positions.grad, params.uij_raw.grad):
@@ -110,7 +110,7 @@ def test_forward_is_differentiable_through_the_whole_chain() -> None:
     assert params.uij_raw.grad.abs().sum() > 0
 
 
-def test_forward_co_locates_invariants_on_the_param_device() -> None:
+def test_objective_co_locates_invariants_on_the_param_device() -> None:
     # On CPU this is a no-op, but it pins the contract: engine-owned invariants (numbers, grid_hkl,
     # reciprocal_basis, thicknesses, beam_hkl) are moved to the params device at the use site, so a
     # simulated solution lands on the same device as the parameter-derived tensors.
@@ -121,7 +121,7 @@ def test_forward_co_locates_invariants_on_the_param_device() -> None:
     assert solution.beam_hkl.device == params.asu_positions.device
 
 
-def test_forward_rejects_engine_without_orientations() -> None:
+def test_objective_rejects_engine_without_orientations() -> None:
     engine = _engine()
     empty = RefinementEngine(
         spec=engine.spec,
@@ -130,10 +130,19 @@ def test_forward_rejects_engine_without_orientations() -> None:
         grid=engine.grid,
         orientations=(),
         thicknesses=engine.thicknesses,
-        objective=engine.objective,
+        loss=engine.loss,
     )
     with pytest.raises(ValueError, match="no orientations"):
-        empty.forward(_params())
+        empty.objective(_params())
+    with pytest.raises(ValueError, match="no orientations"):
+        empty.simulate(_params())
+
+
+def test_objective_rejects_non_scalar_loss() -> None:
+    # A loss term that forgets to reduce to a scalar is caught at the engine, not later in backward.
+    engine = _engine(loss=lambda aligned: mse(aligned.calculated, aligned.observed))
+    with pytest.raises(ValueError, match="loss must return a scalar"):
+        engine.objective(_params())
 
 
 def test_scattering_grid_from_cell_spans_difference_support() -> None:
@@ -151,7 +160,7 @@ def test_scattering_grid_from_cell_spans_difference_support() -> None:
         OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY)
 
 
-def _mse_objective(aligned):
+def _mse_loss(aligned):
     return mse(aligned.calculated, aligned.observed).sum()
 
 
@@ -160,7 +169,7 @@ def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> No
     # Observations are the engine's own output at occupancy ~0.9 (logit 2.2); start from 0.5.
     # Occupancy scales every F linearly -> strong, monotonic leverage on the diffracted intensity.
     true_params = _params(occupancy_logit=2.2)
-    engine = _engine(objective=_mse_objective, pattern=_observed_pattern(true_params))
+    engine = _engine(loss=_mse_loss, pattern=_observed_pattern(true_params))
     start = _params(occupancy_logit=0.0)
 
     result = engine.refine(start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
@@ -171,7 +180,7 @@ def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> No
 
 
 def test_refine_does_not_mutate_caller_params() -> None:
-    engine = _engine(objective=_mse_objective)
+    engine = _engine(loss=_mse_loss)
     start = _params(u_iso_scale=0.05)
     before = start.uij_raw.detach().clone()
 
@@ -184,7 +193,7 @@ def test_refine_does_not_mutate_caller_params() -> None:
 
 def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
     observed = _observed_pattern(_params(occupancy_logit=2.2))
-    engine = _engine(objective=_mse_objective, pattern=observed)
+    engine = _engine(loss=_mse_loss, pattern=observed)
     result = engine.refine(
         _params(occupancy_logit=0.0), steps=12, targets=("occupancy",), optimizer="adam", lr=0.2
     )
@@ -197,7 +206,7 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
 
 def test_refine_only_selected_targets_change() -> None:
     # With only "adp" selected, positions must be carried through as an untouched constant.
-    engine = _engine(objective=_mse_objective, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
+    engine = _engine(loss=_mse_loss, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
     start = RefinableParams(
         asu_positions=torch.full((1, 3), 0.1, dtype=torch.float64),
         uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.05,

@@ -7,7 +7,7 @@ rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiabl
     constrain -> expand ASU -> structure_factors (Fgb on the shared grid)
               -> per orientation: build_bloch_system -> propagate -> intensities -> align -> loss
 
-``forward`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the quarantined
+``objective`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the quarantined
 imperative loop in :mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
 construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
 per-orientation beam sets.
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from torch import Tensor
 
@@ -26,16 +27,22 @@ from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import Method, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
-from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 
+if TYPE_CHECKING:
+    # Type-only: the optimizer-loop module is imported lazily inside refine() (see below) so this
+    # pure forward-spine module stays importable without dragging in the torch.optim loop -- keeping
+    # the documented refine -> forward -> core dependency one-directional at import time too.
+    from diffBloch.engine.refine import OptimizerName, RefinementResult
+
 __all__ = [
-    "Objective",
+    "LossFn",
     "RefinementEngine",
 ]
 
-# An objective reduces one orientation's aligned intensities to a scalar (its own loss + reduction).
-type Objective = Callable[[AlignedIntensities], Tensor]
+# A loss reduces one orientation's aligned intensities to a scalar term (calculated vs observed).
+# The engine sums these per-orientation terms into the scalar ``objective`` ``refine`` minimises.
+type LossFn = Callable[[AlignedIntensities], Tensor]
 
 
 @dataclass(frozen=True)
@@ -44,7 +51,7 @@ class RefinementEngine:
 
     Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,
     the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations``, the sample
-    ``thicknesses``, the ``objective``, and the propagation ``method``.
+    ``thicknesses``, the per-orientation ``loss``, and the propagation ``method``.
     """
 
     spec: ConstraintSpec
@@ -53,16 +60,21 @@ class RefinementEngine:
     grid: ScatteringGrid
     orientations: tuple[OrientationPlan, ...]
     thicknesses: Tensor
-    objective: Objective
+    loss: LossFn
     method: Method = "matrix_exp"
 
     def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
         """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
+        if not self.orientations:
+            raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
         return tuple(self._solve(orientation, fgb) for orientation in self.orientations)
 
-    def forward(self, params: RefinableParams) -> Tensor:
-        """Return the scalar objective summed over orientations (differentiable in ``params``)."""
+    def objective(self, params: RefinableParams) -> Tensor:
+        """Return the scalar objective: the per-orientation ``loss`` summed over orientations.
+
+        Differentiable in ``params``; this is the quantity ``refine`` minimises.
+        """
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
@@ -70,7 +82,12 @@ class RefinementEngine:
         for orientation in self.orientations:
             solution = self._solve(orientation, fgb)
             aligned = align(solution, orientation.pattern, orientation.alignment)
-            total = total + self.objective(aligned)
+            term = self.loss(aligned)
+            # Catch a non-reducing loss here, where the mistake is, rather than letting a
+            # non-scalar surface much later as an opaque ``backward()`` failure.
+            if term.ndim != 0:
+                raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
+            total = total + term
         return total
 
     def refine(
@@ -85,12 +102,16 @@ class RefinementEngine:
         """Optimize the selected ``targets`` to minimise the objective; return a result snapshot.
 
         Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
-        ``forward``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
+        ``objective``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
         (per-group rates deferred); ``least_squares`` and component ``activate`` are deferred --
         see ``design/decisions/stage10-refinement-loop.md``.
         """
+        # Deferred import: keeps this forward-spine module free of the torch.optim loop at import
+        # time, so the documented refine -> forward -> core arrow holds for the import graph too.
+        from diffBloch.engine.refine import run_refinement
+
         return run_refinement(
-            self.forward,
+            self.objective,
             params,
             steps=steps,
             targets=targets,

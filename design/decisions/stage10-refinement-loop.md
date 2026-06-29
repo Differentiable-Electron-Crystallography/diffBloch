@@ -2,7 +2,7 @@
 
 ## Context
 
-Stages 1–9 are pure, differentiable, frozen-dataclass code. Stage 10's `RefinementEngine.forward`
+Stages 1–9 are pure, differentiable, frozen-dataclass code. Stage 10's `RefinementEngine.objective`
 is the same: `params -> simulated diffraction -> scalar loss`, differentiable end to end. But
 *refinement* — actually minimising that loss — needs a `torch.optim` optimizer, and torch optimizers
 are irreducibly imperative: they mutate `.grad` and leaf tensors in place and carry internal state
@@ -19,19 +19,21 @@ lives and how the imperativeness is contained.
 engine/
   __init__.py   # re-exports the public surface
   plan.py       # ScatteringGrid, OrientationPlan        (refinement-invariant geometry)
-  engine.py     # RefinementEngine.forward / simulate      (pure, differentiable spine)
+  forward.py    # RefinementEngine.objective / simulate    (pure, differentiable spine)
   refine.py     # run_refinement + RefinementResult        (the torch.optim loop)
 ```
 
-- The dependency points **one way**: `refine -> forward -> core`. `core/` never imports
-  `torch.optim`; it stays pure.
+- The dependency points **one way**: `refine -> forward -> core` (where *forward* is the pure
+  forward-model layer, exposed as `RefinementEngine.objective` / `simulate`). `core/` never imports
+  `torch.optim`; it stays pure, and so does the forward spine — `run_refinement` is imported lazily
+  inside `RefinementEngine.refine` so the spine module stays free of the loop at import time too.
 - `RefinementEngine.refine(...)` stays a method (faithful to the roadmap's chainable-engine design)
-  but is a thin delegate: it hands its own pure `forward` callable to
+  but is a thin delegate: it hands its own pure `objective` callable to
   `engine.refine.run_refinement`, which owns all the mutation.
 
 ### The functional contract over the imperative core
 
-`run_refinement(forward, params, ...)` does **not** mutate the caller's `params`:
+`run_refinement(objective, params, ...)` does **not** mutate the caller's `params`:
 
 1. The selected *target* fields are cloned into fresh `requires_grad=True` leaves; every non-target
    field becomes a detached constant clone (`_to_leaves`).

@@ -2,7 +2,7 @@
 
 ``torch.optim`` optimizers mutate ``.grad`` and leaf tensors in place and carry internal state, so a
 training loop cannot be a pure function. This module quarantines that imperativeness behind a
-functional contract: :func:`run_refinement` takes the engine's pure ``forward`` callable and the
+functional contract: :func:`run_refinement` takes the engine's pure ``objective`` callable and the
 caller's parameters, clones the *target* fields into fresh ``requires_grad`` leaves (the rest become
 detached constants), steps a chosen backend, and returns a new detached :class:`RefinementResult`.
 The caller's parameters are never touched. ``core/`` stays free of ``torch.optim`` entirely.
@@ -66,7 +66,7 @@ class RefinementResult:
 
 
 def run_refinement(
-    forward: Callable[[RefinableParams], Tensor],
+    objective: Callable[[RefinableParams], Tensor],
     params: RefinableParams,
     *,
     steps: int,
@@ -74,7 +74,7 @@ def run_refinement(
     optimizer: OptimizerName,
     lr: float,
 ) -> RefinementResult:
-    """Optimize the selected ``targets`` to minimise ``forward(params)``; return a result snapshot.
+    """Optimize the selected ``targets`` to minimise ``objective(params)``; return a result.
 
     Functional contract over an unavoidably imperative core: the caller's ``params`` are never
     mutated. Target fields become fresh ``requires_grad`` leaves (non-target fields detached
@@ -89,7 +89,7 @@ def run_refinement(
 
     def closure() -> float:
         opt.zero_grad()
-        loss = forward(leaf_params)
+        loss = objective(leaf_params)
         loss.backward()  # type: ignore[no-untyped-call]
         return float(loss.detach())
 
@@ -149,11 +149,10 @@ def _to_leaves(
 
 def _detach_params(params: RefinableParams) -> RefinableParams:
     """Return a fully-detached clone of ``params`` (no grad history)."""
-    detached: dict[str, Any] = {
-        field.name: (None if value is None else value.detach().clone())
-        for field in dataclasses.fields(RefinableParams)
-        for value in (getattr(params, field.name),)
-    }
+    detached: dict[str, Any] = {}
+    for field in dataclasses.fields(RefinableParams):
+        value = getattr(params, field.name)
+        detached[field.name] = None if value is None else value.detach().clone()
     return dataclasses.replace(params, **detached)
 
 

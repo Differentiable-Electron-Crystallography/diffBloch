@@ -1,7 +1,7 @@
 """Refinement-invariant geometry plans: the shared scattering grid and per-orientation bundles.
 
 These are the static (refinement-invariant) inputs the
-:class:`~diffBloch.engine.engine.RefinementEngine` composes. The grid is owned once by
+:class:`~diffBloch.engine.forward.RefinementEngine` composes. The grid is owned once by
 :class:`ScatteringGrid` and reused by both ``structure_factors`` and every ``BeamPlan``, so the two
 sides cannot silently disagree on the ``Fgb`` support (the difference-support constraint is
 validated when the beam plans are built).
