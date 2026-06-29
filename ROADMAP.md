@@ -130,6 +130,12 @@ commit — the executable form of *"the core physics model has not changed."*
     Rejected: `calibrate` (excludes numeric convergence), `setup` (vaguer, less signal). The precise
     sub-verbs `converge_numerics` / `fit_orientation` / `fit_thickness` carry the meaning the
     umbrella elides.
+  - **Slices.** (1/n) the `preprocess/` spine + `Plan -> Plan` combinators (`Plan` value object;
+    `pipeline` sequencing, `iterate_until` fixpoint with a `RuntimeError` on non-convergence,
+    `identity`) — pure scaffolding, engine unaware of `Plan` (done). Remaining: (2/n)
+    `from_experiment`/beam selection (closes the stage-10 `from_config` deferral); (3/n) orientation
+    in the physics (anchor-guarded core change, highest risk); (4/n) `fit_orientation`; (5/n)
+    per-rotation thickness in `OrientationPlan` + `fit_thickness`; (6/n) `converge_numerics`.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
