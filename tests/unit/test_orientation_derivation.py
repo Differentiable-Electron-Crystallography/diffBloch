@@ -88,3 +88,15 @@ def test_invalid_shapes_raise(golden: dict[str, np.ndarray]) -> None:
         )
     with pytest.raises(ValueError, match="shape"):
         orientation_basis(np.eye(3), np.ones((3, 2)))
+
+
+def test_busing_levy_rejects_degenerate_cells() -> None:
+    # Guard against poisoned inf/nan B matrices from invalid geometry (NumPy only warns otherwise).
+    with pytest.raises(ValueError, match="finite"):
+        busing_levy_matrix(np.array([5.0, 5.0, np.inf, 90.0, 90.0, 120.0]))
+    with pytest.raises(ValueError, match="lengths must be positive"):
+        busing_levy_matrix(np.array([5.0, 0.0, 5.0, 90.0, 90.0, 120.0]))
+    with pytest.raises(ValueError, match=r"sin\(gamma\)"):
+        busing_levy_matrix(np.array([5.0, 5.0, 5.0, 90.0, 90.0, 180.0]))
+    with pytest.raises(ValueError, match="geometrically inconsistent"):
+        busing_levy_matrix(np.array([5.0, 5.0, 5.0, 20.0, 20.0, 170.0]))

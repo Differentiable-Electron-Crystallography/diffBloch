@@ -47,11 +47,20 @@ def busing_levy_matrix(cell_parameters: FloatArray) -> FloatArray:
     params = np.asarray(cell_parameters, dtype=np.float64)
     if params.shape != (6,):
         raise ValueError("cell_parameters must have shape (6,)")
+    if not np.all(np.isfinite(params)):
+        raise ValueError("cell_parameters must be finite")
     a, b, c = params[:3]
+    if a <= 0.0 or b <= 0.0 or c <= 0.0:
+        raise ValueError("cell lengths must be positive")
     alpha, beta, gamma = np.deg2rad(params[3:])
     ca, cb, cg = np.cos([alpha, beta, gamma])
     sg = np.sin(gamma)
-    volume = a * b * c * np.sqrt(1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg)
+    if abs(sg) < 1e-12:
+        raise ValueError("gamma must not be a multiple of 180 degrees (sin(gamma) ~ 0)")
+    radicand = 1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg
+    if radicand <= 0.0:
+        raise ValueError("cell angles are geometrically inconsistent (non-positive cell volume)")
+    volume = a * b * c * np.sqrt(radicand)
     return np.array(
         [
             [1.0 / a, 0.0, 0.0],
