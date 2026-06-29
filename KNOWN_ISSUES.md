@@ -4,4 +4,50 @@ Latent bugs and deferred fixes discovered during development, recorded here so t
 discoverable instead of being buried in commit messages. Each entry gives a precise location, the
 impact, and the intended fix. Close an entry by deleting it in the commit that fixes it.
 
-_No open issues._
+## Precision is hardcoded to float64, which blocks Apple-GPU runs and throttles consumer NVIDIA GPUs
+
+The codebase hardcodes `torch.float64` in ~75 places. That keeps the dynamical-diffraction maths
+(a dense `matrix_exp` / `eigh` of the Bloch operator, ill-conditioned near degenerate eigenvalues)
+numerically safe, but it boxes in where the code can run:
+
+- **Apple Silicon GPUs (MPS) cannot do float64 at all** -- Metal has no `double` type, so PyTorch
+  raises *"Cannot convert a MPS Tensor to float64 dtype..."*. This is a hardware floor, not a
+  PyTorch bug that will be fixed. On a Mac this code is therefore CPU-only.
+- **NVIDIA segments float64 by market**, which is the surprising part: consumer GeForce cards
+  (Ampere/Ada, e.g. RTX 3090/4090) run float64 at **1/64** of their float32 rate -- a deliberate
+  product-tiering choice, not a silicon limit -- while datacenter cards run it fast (A100 ~1:2,
+  9.7 TFLOPS FP64; H100 ~60 TFLOPS FP64). So "GPU-accelerated *and* float64" is only genuinely fast
+  on datacenter hardware; on a consumer card float64 works but is heavily throttled.
+
+So the realistic story today is: **Mac = CPU/float64; fast GPU = Linux + datacenter NVIDIA + CUDA.**
+Intended fix is a *precision policy* rather than a hardcode: thread a configurable `dtype` (float64
+on CPU/datacenter, float32 on consumer/MPS GPUs) -- gated on first **validating that float32 is
+numerically adequate for the propagator** (the `matrix_exp`/`eigh` conditioning is the open
+question). This couples with the device co-location issue below and is deferred future work, not a
+stage-10 change. Sources: PyTorch MPS notes (docs.pytorch.org/docs/stable/notes/mps.html); NVIDIA
+Ada FP64 1:64 ratio (en.wikipedia.org/wiki/GeForce_RTX_40_series); A100/H100 FP64 TFLOPS
+(nvidia.com data-center pages).
+
+## Each operation moves its static tensors onto the GPU by hand, and CPU-only CI can't catch a miss
+
+To run refinement on a GPU you put the parameters on the GPU, so everything derived from them (the
+structure factors, the Bloch operator, the exit wave) lands there too. But the static, build-once
+inputs -- the hkl grid, reciprocal basis, atomic numbers, beam plans, thicknesses -- are created on
+the CPU. PyTorch refuses to combine tensors on different devices, so just before each such input
+meets a parameter-derived tensor it is copied onto the parameter's device with `.to(device)`.
+
+Today that copy is written out by hand at every place it is needed -- in `engine/forward.py`
+(`_structure_factors`, `_solve`), `core/products.py::align`, and the `core/solver.py` propagators.
+Because it is repeated in many places, forgetting a single `.to(device)` is a real bug -- but one
+that is invisible on CPU (there the copy is a harmless no-op) so the CPU-only CI stays green and the
+failure only appears when someone actually runs on a GPU. That is exactly the gap commit `ae8eb78`
+had to fix for `propagate`. Intended fix: do the move in one place instead of many -- e.g. a single
+`.to(device)` on the plan/engine objects -- and/or add a GPU smoke test so a missed copy is caught.
+
+## `ScatteringGrid` stores its grid as tensors, then immediately converts them back to NumPy
+
+`ScatteringGrid.from_cell` computes the grid in NumPy, then stores `grid_hkl`/`reciprocal_basis` as
+tensors (`engine/plan.py:52`). But `OrientationPlan.build` turns them straight back into NumPy with
+`np.asarray(...)` to call `build_beam_plan` (`engine/plan.py:86`). So neither form is clearly the
+owner, and the back-and-forth conversion is wasted work. Intended fix: pick one representation --
+either also keep the NumPy arrays on the grid, or let `build_beam_plan` take tensors directly.
