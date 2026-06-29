@@ -67,4 +67,5 @@ rotation, or that re-orthonormalizes these matrices (e.g. via polar/SVD), will s
 cell correction and shift every `|g|` by ~1%. If orientation is re-fit, the measured-cell scale must
 be preserved (fit the rotation *around* the existing `U`, or carry the cell correction separately).
 Pinned by `tests/unit/test_orientation_oracle.py` (including a guard that the `M^T` convention is
-observably wrong); see `design/stage11-preprocess-plan.md` decision (a).
+observably wrong); see commit `f8b82bd` and `tests/unit/test_orientation_oracle.py` for the
+pinned convention.

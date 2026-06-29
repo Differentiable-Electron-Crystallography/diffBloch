@@ -62,8 +62,8 @@ def _pattern(beam_hkl: np.ndarray) -> PatternBatch:
     n = hkl.shape[0]
     return PatternBatch(
         hkl=hkl,
-        intensities=torch.zeros(1, n, dtype=torch.float64),
-        sigmas=torch.ones(1, n, dtype=torch.float64),
+        intensities=torch.zeros(n, dtype=torch.float64),
+        sigmas=torch.ones(n, dtype=torch.float64),
     )
 
 
