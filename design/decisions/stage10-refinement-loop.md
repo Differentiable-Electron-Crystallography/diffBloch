@@ -23,10 +23,14 @@ engine/
   refine.py     # run_refinement + RefinementResult        (the torch.optim loop)
 ```
 
-- The dependency points **one way**: `refine -> forward -> core` (where *forward* is the pure
-  forward-model layer, exposed as `RefinementEngine.objective` / `simulate`). `core/` never imports
-  `torch.optim`; it stays pure, and so does the forward spine — `run_refinement` is imported lazily
-  inside `RefinementEngine.refine` so the spine module stays free of the loop at import time too.
+- The invariant is **method-level, not module-graph-level**: `simulate()` and `objective()` are
+  optimizer-free pure functions, `refine()` is the single imperative entry point, and `core/` never
+  imports `torch.optim`. `forward.py` *does* import `refine.py` at the top level (the
+  `RefinementEngine.refine` facade delegates to `run_refinement`) — and that is fine: there is no
+  import cycle (`refine.py` imports only `params` + torch), and the property worth protecting is the
+  purity of `simulate`/`objective`, which holds regardless of the import edge. We deliberately do
+  *not* hide that edge behind a lazy in-method import: doing so would advertise a module decoupling
+  that does not exist (the class still calls the optimizer loop) at the cost of comprehension.
 - `RefinementEngine.refine(...)` stays a method (faithful to the roadmap's chainable-engine design)
   but is a thin delegate: it hands its own pure `objective` callable to
   `engine.refine.run_refinement`, which owns all the mutation.
@@ -71,6 +75,11 @@ that produced the lowest recorded loss, paired correctly by snapshotting *before
   the stateful/resumable surface from the roadmap. `RefinementResult` is the minimal honest result
   for now; the richer state is a later slice.
 - **Multi-thickness reduction policy** beyond summation, and refinable thickness wiring.
+- **Thickness placement is provisional.** `thicknesses` lives on the engine as one shared tensor
+  across orientations; this is adequate for the synthetic/anchor case but not physically right for
+  real multi-rotation data (an irregular specimen presents a different path length per rotation).
+  Stage 11 moves thickness *per-rotation* into `OrientationPlan` (fit in preprocess, frozen into the
+  `Plan`) — see ROADMAP stage 11.
 
 ## Sensitivity note (for test authors)
 

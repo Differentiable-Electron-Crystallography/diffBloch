@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from torch import Tensor
 
@@ -27,13 +26,8 @@ from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import Method, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
-
-if TYPE_CHECKING:
-    # Type-only: the optimizer-loop module is imported lazily inside refine() (see below) so this
-    # pure forward-spine module stays importable without dragging in the torch.optim loop -- keeping
-    # the documented refine -> forward -> core dependency one-directional at import time too.
-    from diffBloch.engine.refine import OptimizerName, RefinementResult
 
 __all__ = [
     "LossFn",
@@ -106,10 +100,6 @@ class RefinementEngine:
         (per-group rates deferred); ``least_squares`` and component ``activate`` are deferred --
         see ``design/decisions/stage10-refinement-loop.md``.
         """
-        # Deferred import: keeps this forward-spine module free of the torch.optim loop at import
-        # time, so the documented refine -> forward -> core arrow holds for the import graph too.
-        from diffBloch.engine.refine import run_refinement
-
         return run_refinement(
             self.objective,
             params,

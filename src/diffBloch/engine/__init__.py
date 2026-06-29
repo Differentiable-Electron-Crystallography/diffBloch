@@ -9,6 +9,13 @@ The dependency points one way (refine -> forward -> core); ``core/`` stays free 
 """
 
 from diffBloch.engine.forward import LossFn, RefinementEngine
+from diffBloch.engine.losses import (
+    l1_loss,
+    mse_loss,
+    rbragg_loss,
+    w_rbragg_loss,
+    weighted_mse_loss,
+)
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
 
@@ -19,5 +26,10 @@ __all__ = [
     "RefinementEngine",
     "RefinementResult",
     "ScatteringGrid",
+    "l1_loss",
+    "mse_loss",
+    "rbragg_loss",
     "run_refinement",
+    "w_rbragg_loss",
+    "weighted_mse_loss",
 ]

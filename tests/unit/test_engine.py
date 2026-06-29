@@ -9,7 +9,13 @@ import torch
 from diffBloch.core.losses import mse
 from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid
+from diffBloch.engine import (
+    LossFn,
+    OrientationPlan,
+    RefinementEngine,
+    ScatteringGrid,
+    mse_loss,
+)
 from diffBloch.params import ConstraintSpec, RefinableParams
 
 _ENERGY = 200e3
@@ -17,10 +23,7 @@ _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5)
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 
 
-def _engine(
-    loss=lambda aligned: mse(aligned.calculated, aligned.observed).sum(),
-    pattern=None,
-):
+def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> RefinementEngine:
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
     asu_plan = build_asu_expansion_plan(
         np.zeros((1, 3)),
@@ -51,7 +54,9 @@ def _engine(
     )
 
 
-def _params(*, requires_grad: bool = False, u_iso_scale: float = 0.1, occupancy_logit=None):
+def _params(
+    *, requires_grad: bool = False, u_iso_scale: float = 0.1, occupancy_logit: float | None = None
+) -> RefinableParams:
     uij = torch.eye(3, dtype=torch.float64)[None] * u_iso_scale
     fields = {
         "asu_positions": torch.zeros((1, 3), dtype=torch.float64, requires_grad=requires_grad),
@@ -63,7 +68,7 @@ def _params(*, requires_grad: bool = False, u_iso_scale: float = 0.1, occupancy_
     return RefinableParams(**fields)
 
 
-def _observed_pattern(true_params, *, sigma: float = 0.01):
+def _observed_pattern(true_params: RefinableParams, *, sigma: float = 0.01) -> PatternBatch:
     """Self-consistent observations: the intensities the engine produces at ``true_params``."""
     dummy = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
@@ -160,16 +165,12 @@ def test_scattering_grid_from_cell_spans_difference_support() -> None:
         OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY)
 
 
-def _mse_loss(aligned):
-    return mse(aligned.calculated, aligned.observed).sum()
-
-
 @pytest.mark.parametrize("optimizer", ["adam", "lbfgs"])
 def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> None:
     # Observations are the engine's own output at occupancy ~0.9 (logit 2.2); start from 0.5.
     # Occupancy scales every F linearly -> strong, monotonic leverage on the diffracted intensity.
     true_params = _params(occupancy_logit=2.2)
-    engine = _engine(loss=_mse_loss, pattern=_observed_pattern(true_params))
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(true_params))
     start = _params(occupancy_logit=0.0)
 
     result = engine.refine(start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
@@ -180,7 +181,7 @@ def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> No
 
 
 def test_refine_does_not_mutate_caller_params() -> None:
-    engine = _engine(loss=_mse_loss)
+    engine = _engine(loss=mse_loss)
     start = _params(u_iso_scale=0.05)
     before = start.uij_raw.detach().clone()
 
@@ -193,7 +194,7 @@ def test_refine_does_not_mutate_caller_params() -> None:
 
 def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
     observed = _observed_pattern(_params(occupancy_logit=2.2))
-    engine = _engine(loss=_mse_loss, pattern=observed)
+    engine = _engine(loss=mse_loss, pattern=observed)
     result = engine.refine(
         _params(occupancy_logit=0.0), steps=12, targets=("occupancy",), optimizer="adam", lr=0.2
     )
@@ -206,7 +207,7 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
 
 def test_refine_only_selected_targets_change() -> None:
     # With only "adp" selected, positions must be carried through as an untouched constant.
-    engine = _engine(loss=_mse_loss, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
     start = RefinableParams(
         asu_positions=torch.full((1, 3), 0.1, dtype=torch.float64),
         uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.05,
