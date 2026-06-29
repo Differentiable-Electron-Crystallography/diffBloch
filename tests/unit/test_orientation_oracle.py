@@ -78,7 +78,7 @@ def test_orientation_plan_default_basis_is_byte_identical_to_grid() -> None:
         beam_hkl,
         pattern,
         energy=float(o["energy"]),
-        reciprocal_basis=np.asarray(grid.reciprocal_basis),
+        orientation=np.eye(3),
     )
     assert torch.equal(default.beam_plan.diagonal, explicit.beam_plan.diagonal)
 
@@ -86,17 +86,34 @@ def test_orientation_plan_default_basis_is_byte_identical_to_grid() -> None:
 def test_orientation_plan_per_orientation_basis_shifts_excitation() -> None:
     o = _oracle()
     grid = _grid(o)
-    cell = cell_matrix_from_parameters(o["cellpar"])
     beam_hkl = o["hkl"][:24]
     pattern = _pattern(beam_hkl)
     untilted = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
-    rotated_basis = reciprocal_cell(cell @ o["orientation"][0].T)
     tilted = OrientationPlan.build(
         grid,
         beam_hkl,
         pattern,
         energy=float(o["energy"]),
-        reciprocal_basis=rotated_basis,
+        orientation=o["orientation"][0],
     )
     # diagonal = 2 k_n Sg Mii: a real orientation moves it well clear of the untilted case.
     assert not torch.allclose(untilted.beam_plan.diagonal, tilted.beam_plan.diagonal)
+
+
+def test_orientation_plan_is_self_describing() -> None:
+    # The plan carries its source/rebuild inputs (orientation/energy/u0), not just compiled
+    # geometry, so a later Plan->Plan step can recompile without the original record. orientation
+    # is the source of truth; None records the identity (untilted).
+    o = _oracle()
+    grid = _grid(o)
+    beam_hkl = o["hkl"][:24]
+    pattern = _pattern(beam_hkl)
+    m = o["orientation"][0]
+    plan = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=float(o["energy"]), u0=1.5, orientation=m
+    )
+    assert plan.energy == float(o["energy"])
+    assert plan.u0 == 1.5
+    assert torch.allclose(plan.orientation, torch.tensor(m, dtype=torch.float64))
+    untilted = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
+    assert torch.equal(untilted.orientation, torch.eye(3, dtype=torch.float64))

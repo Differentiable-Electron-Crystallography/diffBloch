@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from diffBloch.core.crystal import cell_volume as _cell_volume
-from diffBloch.core.crystal import reciprocal_cell
+from diffBloch.core.crystal import orientation_basis, reciprocal_cell
 from diffBloch.core.dynamical import BeamPlan, build_beam_plan
 from diffBloch.core.products import AlignmentPlan, PatternBatch, build_alignment_plan
 from diffBloch.core.reciprocal import make_hkl_grid, reciprocal_space_gpts
@@ -33,12 +33,14 @@ class ScatteringGrid:
     """The shared ``Fgb`` support grid, owned once and reused by structure factors and beam plans.
 
     ``grid_hkl`` ``(G, 3)`` are the Miller indices ``Fgb`` is tabulated on (``|g| <= g_max``);
-    ``reciprocal_basis`` ``(3, 3)`` and ``cell_volume`` fix the metric; ``gpts`` is the ravel box.
-    ``g_max`` must span the beam difference support (~2x the beam ``g_max``) or beam-plan
-    construction raises.
+    ``cell`` ``(3, 3)`` is the real-space basis and ``reciprocal_basis`` ``(3, 3)`` /
+    ``cell_volume`` the metric it derives (kept together; only :meth:`from_cell` constructs them, so
+    they cannot desync). ``gpts`` is the ravel box. ``g_max`` must span the beam difference support
+    (~2x the beam ``g_max``) or beam-plan construction raises.
     """
 
     grid_hkl: Tensor
+    cell: Tensor
     reciprocal_basis: Tensor
     gpts: tuple[int, int, int]
     cell_volume: float
@@ -50,6 +52,7 @@ class ScatteringGrid:
         cell = np.asarray(cell, dtype=np.float64)
         return cls(
             grid_hkl=torch.tensor(make_hkl_grid(cell, g_max), dtype=torch.int64),
+            cell=torch.tensor(cell, dtype=torch.float64),
             reciprocal_basis=torch.tensor(reciprocal_cell(cell), dtype=torch.float64),
             gpts=reciprocal_space_gpts(cell, g_max),
             cell_volume=_cell_volume(cell),
@@ -61,10 +64,17 @@ class ScatteringGrid:
 class OrientationPlan:
     """The refinement-invariant plans for a single rotation/orientation.
 
-    Bundles the geometry-only ``BeamPlan``, the observed ``PatternBatch``, the precomputed
-    calculated<->observed ``AlignmentPlan``, and the beam Miller indices the solution is keyed on.
+    Self-describing: it carries both its **source / rebuild inputs** (``orientation``, ``energy``,
+    ``u0`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` consume to
+    recompile) and the **compiled geometry** (``beam_plan``, ``alignment`` -- what
+    ``engine.simulate`` consumes). Source and compiled are only ever set together by :meth:`build`,
+    so they cannot desync (see ``design/decisions/plan-shape-and-step-ordering.md``).
+    ``orientation`` is the source of truth; the lab-frame basis is derived from it, never stored.
     """
 
+    orientation: Tensor
+    energy: float
+    u0: float
     beam_hkl: Tensor
     beam_plan: BeamPlan
     pattern: PatternBatch
@@ -79,22 +89,26 @@ class OrientationPlan:
         *,
         energy: float,
         u0: float = 0.0,
-        reciprocal_basis: NDArray[np.float64] | None = None,
+        orientation: NDArray[np.float64] | None = None,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
-        ``reciprocal_basis`` ``(3, 3)`` is the lab-frame reciprocal cell for this orientation
-        (``reciprocal_cell(cell @ orientation.T)``); it drives ``g`` -> ``Sg`` / ``Mii`` only. When
-        ``None`` the shared ``grid.reciprocal_basis`` is used (the untilted / single-orientation
-        case), making that path byte-identical to the unoriented build. The rotation convention
-        (and the measured-cell correction folded into ``orientation``) lives upstream in
-        ``preprocess`` / ``io``; the ``Fgb`` gather is keyed on ``grid.grid_hkl`` and is unaffected.
+        ``orientation`` ``(3, 3)`` is the crystal orientation matrix for this rotation; the
+        lab-frame reciprocal cell is derived from it and the grid's real-space ``cell`` via
+        ``orientation_basis(grid.cell, orientation) = reciprocal_cell(cell @ orientation.T)`` and
+        drives ``g`` -> ``Sg`` / ``Mii`` only. When ``None`` the orientation is the identity and the
+        shared ``grid.reciprocal_basis`` is used directly (the untilted / single-orientation case),
+        making that path byte-identical to the unoriented build. The rotation convention (and the
+        measured-cell correction folded into ``orientation``) is derived upstream in ``preprocess``;
+        the ``Fgb`` gather is keyed on ``grid.grid_hkl`` and is unaffected.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
-        if reciprocal_basis is None:
+        if orientation is None:
+            rotation = np.eye(3, dtype=np.float64)
             basis = np.asarray(grid.reciprocal_basis)
         else:
-            basis = np.asarray(reciprocal_basis, dtype=np.float64)
+            rotation = np.asarray(orientation, dtype=np.float64)
+            basis = orientation_basis(np.asarray(grid.cell), rotation)
         beam_plan = build_beam_plan(
             beam_hkl,
             np.asarray(grid.grid_hkl),
@@ -105,6 +119,9 @@ class OrientationPlan:
         )
         beam_hkl_t = torch.tensor(beam_hkl, dtype=torch.int64)
         return cls(
+            orientation=torch.tensor(rotation, dtype=torch.float64),
+            energy=float(energy),
+            u0=float(u0),
             beam_hkl=beam_hkl_t,
             beam_plan=beam_plan,
             pattern=pattern,

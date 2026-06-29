@@ -61,6 +61,21 @@ def cell_volume(cell: FloatArray) -> float:
     return float(abs(np.linalg.det(matrix)))
 
 
+def orientation_basis(cell: FloatArray, orientation: FloatArray) -> FloatArray:
+    """Lab-frame reciprocal basis for one orientation: ``reciprocal_cell(cell @ orientation.T)``.
+
+    The single home for the orientation convention. ``orientation`` is generally non-orthonormal
+    (it folds the ~1% measured-vs-ideal cell correction; see ``preprocess.orientation``), so this is
+    NOT ``reciprocal_basis @ orientation.T``. ``cell`` rows are the real-space basis; returns rows
+    ``a*, b*, c*`` in inverse Angstrom. ``orientation = I`` reproduces ``reciprocal_cell(cell)``.
+    """
+    matrix = _cell_array(cell)
+    rotation = np.asarray(orientation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError("orientation must have shape (3, 3)")
+    return reciprocal_cell(matrix @ rotation.T)
+
+
 def reflection_condition(hkl: IntArray, centering: str) -> NDArray[np.bool_]:
     """Return the mask of reflections allowed by a lattice-centering rule."""
     miller = np.asarray(hkl, dtype=np.int64)

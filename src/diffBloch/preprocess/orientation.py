@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-from diffBloch.core.crystal import reciprocal_cell
+from diffBloch.core.crystal import orientation_basis
 
 type FloatArray = NDArray[np.float64]
 
@@ -106,17 +106,3 @@ def orientation_matrices(
     return np.stack(
         [goniometer_rotation(a, b, o) @ u for a, b, o in zip(alphas, betas, omegas, strict=True)]
     )
-
-
-def orientation_basis(cell: FloatArray, orientation: FloatArray) -> FloatArray:
-    """Lab-frame reciprocal basis for one orientation: ``reciprocal_cell(cell @ orientation.T)``.
-
-    The single home for the orientation convention. ``orientation`` is generally non-orthonormal, so
-    this is NOT ``reciprocal_basis @ orientation.T``. ``cell`` rows are the real-space basis (the
-    structure cell); returns rows ``a*, b*, c*`` in inverse Angstrom.
-    """
-    cell = np.asarray(cell, dtype=np.float64)
-    orientation = np.asarray(orientation, dtype=np.float64)
-    if cell.shape != (3, 3) or orientation.shape != (3, 3):
-        raise ValueError("cell and orientation must each have shape (3, 3)")
-    return reciprocal_cell(cell @ orientation.T)

@@ -12,6 +12,7 @@ from diffBloch.core.constraints import apply_symmetry_mask, positive, unit_inter
 from diffBloch.core.crystal import (
     cell_matrix_from_parameters,
     cell_volume,
+    orientation_basis,
     reciprocal_cell,
     reflection_condition,
 )
@@ -107,6 +108,7 @@ __all__ = [
     "m_factors",
     "make_hkl_grid",
     "mse",
+    "orientation_basis",
     "positive",
     "propagate",
     "ravel_hkl",
