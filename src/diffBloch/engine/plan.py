@@ -79,13 +79,26 @@ class OrientationPlan:
         *,
         energy: float,
         u0: float = 0.0,
+        reciprocal_basis: NDArray[np.float64] | None = None,
     ) -> OrientationPlan:
-        """Assemble an orientation's plans against the shared grid (enforces grid coupling)."""
+        """Assemble an orientation's plans against the shared grid (enforces grid coupling).
+
+        ``reciprocal_basis`` ``(3, 3)`` is the lab-frame reciprocal cell for this orientation
+        (``reciprocal_cell(cell @ orientation.T)``); it drives ``g`` -> ``Sg`` / ``Mii`` only. When
+        ``None`` the shared ``grid.reciprocal_basis`` is used (the untilted / single-orientation
+        case), making that path byte-identical to the unoriented build. The rotation convention
+        (and the measured-cell correction folded into ``orientation``) lives upstream in
+        ``preprocess`` / ``io``; the ``Fgb`` gather is keyed on ``grid.grid_hkl`` and is unaffected.
+        """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
+        if reciprocal_basis is None:
+            basis = np.asarray(grid.reciprocal_basis)
+        else:
+            basis = np.asarray(reciprocal_basis, dtype=np.float64)
         beam_plan = build_beam_plan(
             beam_hkl,
             np.asarray(grid.grid_hkl),
-            np.asarray(grid.reciprocal_basis),
+            basis,
             energy=energy,
             gpts=grid.gpts,
             u0=u0,

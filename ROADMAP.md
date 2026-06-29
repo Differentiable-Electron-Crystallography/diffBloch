@@ -141,8 +141,12 @@ commit — the executable form of *"the core physics model has not changed."*
     grid-sharing **`(train_plan, val_plan)`** pair (rotation train/val split; closes the stage-10
     `from_*` deferral); (4/n) `select_beams` (`Plan -> Plan`, rsg/dsg filter); (5/n)
     `fit_orientation`; (6/n) per-rotation thickness in `OrientationPlan` + `fit_thickness`; (7/n)
-    `converge_numerics`. Decisions: orientation rotates `g` not `K`; train/val are two `Plan`s
-    sharing one grid (engine stays split-agnostic). Detail: `design/stage11-preprocess-plan.md`.
+    `converge_numerics`. Decisions: orientation enters via a **per-orientation `reciprocal_basis`**
+    (not a rotation in core); the quartz pull-in showed the real orientation matrices are
+    non-orthonormal (a ~1% measured-cell correction), so `reciprocal_cell(cell @ M.T)` is faithful
+    while `@ M.T` is wrong -- pinned by `test_orientation_oracle.py` against a private-impl golden.
+    Train/val are two `Plan`s sharing one grid (engine stays split-agnostic). Detail:
+    `design/stage11-preprocess-plan.md`.
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary

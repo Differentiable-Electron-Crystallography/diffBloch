@@ -51,3 +51,20 @@ tensors (`engine/plan.py:52`). But `OrientationPlan.build` turns them straight b
 `np.asarray(...)` to call `build_beam_plan` (`engine/plan.py:86`). So neither form is clearly the
 owner, and the back-and-forth conversion is wasted work. Intended fix: pick one representation --
 either also keep the NumPy arrays on the grid, or let `build_beam_plan` take tensors directly.
+
+## `fit_orientation` must not re-orthonormalize the orientation matrices
+
+The real `optim_orientation.csv` matrices are `orientation = R_goni . U` with `U = UB . B^-1`,
+which folds a constant ~1% anisotropic *measured-vs-ideal cell correction* into the transform
+(singular values 1.0118/1.0114/1.0095, identical across all 99 rotations -- not optimization drift).
+They are therefore **non-orthonormal** (`det ~ 1.033`), and the per-orientation reciprocal basis the
+geometry uses is `reciprocal_cell(cell @ orientation.T) = reciprocal_basis @ orientation^-1`, which
+is *not* `reciprocal_basis @ orientation^T`. The distinction is observable on real data (~0.008
+A^-1, ~1% on `|g|`, enough to move `Sg`/`Mii`).
+
+The trap: a future `fit_orientation` (stage 11 slice 5) that parametrizes orientation as a pure
+rotation, or that re-orthonormalizes these matrices (e.g. via polar/SVD), will silently discard the
+cell correction and shift every `|g|` by ~1%. If orientation is re-fit, the measured-cell scale must
+be preserved (fit the rotation *around* the existing `U`, or carry the cell correction separately).
+Pinned by `tests/unit/test_orientation_oracle.py` (including a guard that the `M^T` convention is
+observably wrong); see `design/stage11-preprocess-plan.md` decision (a).
