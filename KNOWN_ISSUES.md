@@ -49,8 +49,11 @@ had to fix for `propagate`. Intended fix: do the move in one place instead of ma
 `ScatteringGrid.from_cell` computes the grid in NumPy, then stores `grid_hkl`/`reciprocal_basis` as
 tensors (`engine/plan.py:52`). But `OrientationPlan.build` turns them straight back into NumPy with
 `np.asarray(...)` to call `build_beam_plan` (`engine/plan.py:86`). So neither form is clearly the
-owner, and the back-and-forth conversion is wasted work. Intended fix: pick one representation --
-either also keep the NumPy arrays on the grid, or let `build_beam_plan` take tensors directly.
+owner, and the back-and-forth conversion is wasted work. As of the self-describing reshape this now
+also covers `cell` (stored as a tensor on the grid, `np.asarray`-ed in `build`) and `orientation`
+(stored as a tensor on `OrientationPlan`, normalized back to NumPy in `build`, including the
+rebuild-from-prior-plan path). Intended fix: pick one representation -- either also keep the NumPy
+arrays on the grid, or let `build_beam_plan` take tensors directly.
 
 ## `fit_orientation` must not re-orthonormalize the orientation matrices
 

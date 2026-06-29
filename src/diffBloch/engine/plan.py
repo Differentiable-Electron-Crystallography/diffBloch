@@ -89,7 +89,7 @@ class OrientationPlan:
         *,
         energy: float,
         u0: float = 0.0,
-        orientation: NDArray[np.float64] | None = None,
+        orientation: Tensor | NDArray[np.float64] | None = None,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -101,6 +101,10 @@ class OrientationPlan:
         making that path byte-identical to the unoriented build. The rotation convention (and the
         measured-cell correction folded into ``orientation``) is derived upstream in ``preprocess``;
         the ``Fgb`` gather is keyed on ``grid.grid_hkl`` and is unaffected.
+
+        ``orientation`` accepts either a NumPy array or a ``Tensor`` (e.g. a prior plan's stored
+        ``orientation``), so a later ``Plan -> Plan`` rebuild can pass ``old_plan.orientation``
+        directly without ad-hoc conversion.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         if orientation is None:

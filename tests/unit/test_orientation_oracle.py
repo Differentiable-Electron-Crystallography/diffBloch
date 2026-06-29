@@ -117,3 +117,19 @@ def test_orientation_plan_is_self_describing() -> None:
     assert torch.allclose(plan.orientation, torch.tensor(m, dtype=torch.float64))
     untilted = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
     assert torch.equal(untilted.orientation, torch.eye(3, dtype=torch.float64))
+
+
+def test_orientation_plan_rebuilds_from_its_own_tensor_orientation() -> None:
+    # A later Plan->Plan step recompiles from the stored Tensor orientation -- no record, no copy.
+    o = _oracle()
+    grid = _grid(o)
+    beam_hkl = o["hkl"][:24]
+    pattern = _pattern(beam_hkl)
+    plan = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=float(o["energy"]), orientation=o["orientation"][0]
+    )
+    rebuilt = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=plan.energy, u0=plan.u0, orientation=plan.orientation
+    )
+    assert torch.equal(rebuilt.beam_plan.diagonal, plan.beam_plan.diagonal)
+    assert torch.equal(rebuilt.orientation, plan.orientation)
