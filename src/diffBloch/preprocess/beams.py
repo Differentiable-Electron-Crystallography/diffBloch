@@ -6,7 +6,7 @@ then rebuilds its ``BeamPlan`` + ``AlignmentPlan`` against the shared grid (``pa
 This is the faithful per-orientation selection that replaces the orientation-independent
 ``g_max_refine`` seed laid down by ``from_experiment``.
 
-Divergence from ``diffBloch_private`` (recorded in ``diffBloch_private/KNOWN_ISSUES.md``): the
+Divergence from ``diffBloch_private`` (recorded in ``DIVERGENCE.md``): the
 private ``diffraction_dataset.filter_hkls`` builds ``sg_max`` from ``norm(k[:, 1:])`` -- columns
 ``(y, z)`` -- while its ``excitation_errors`` fixes the beam along ``-z`` (so the transverse plane
 is ``(x, y)``). Mixing the along-beam component ``g_z`` into the transverse distance over-weights

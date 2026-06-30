@@ -58,7 +58,7 @@ new method, dataset, dependency, or studied design adds its credit here.
   selection** (`preprocess.select_beams`): keep a reflection when `|Sg|/sg_max < rsg` *and*
   `sg_max - |Sg| > dsg`, with `sg_max = |g_perp|·deg2rad(semiangle)` the excitation-error spread over
   the integration cone. We take `g_perp = (g_x, g_y)` (perpendicular to the `-z` beam); see
-  `KNOWN_ISSUES` in `diffBloch_private` for the private `filter_hkls` transverse-axis divergence.
+  `DIVERGENCE.md` for the private `filter_hkls` transverse-axis divergence we correct.
 
 - **Crystal orientation from the UB matrix (Busing-Levy formalism).**
   Busing, W. R. & Levy, H. A. (1967). *Angle calculations for 3- and 4-circle X-ray and neutron
