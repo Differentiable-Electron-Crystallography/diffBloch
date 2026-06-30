@@ -14,7 +14,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from diffBloch.specs import HexagonalSearch, ThicknessGrid
+from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
 
 
 class SolverConfig(BaseModel):
@@ -35,6 +35,17 @@ class NumericsConfig(BaseModel):
     dsg: float = 0.0015
     rsg: float = 0.9
     integration_semiangle: float = 1.0
+
+    def to_beam_selection(self) -> BeamSelection:
+        """Parse the beam-selection subset into the value-type ``select_beams`` consumes."""
+        return BeamSelection(
+            rsg=self.rsg, dsg=self.dsg, integration_semiangle=self.integration_semiangle
+        )
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> NumericsConfig:
+        self.to_beam_selection()  # the rules live in BeamSelection; fail fast at config load
+        return self
 
 
 class SampleConfig(BaseModel):

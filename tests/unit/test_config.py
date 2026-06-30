@@ -137,3 +137,12 @@ def test_thickness_grid_bounds_are_validated() -> None:
         )
     with pytest.raises(ValidationError, match="n_steps must be >= 1"):
         ExperimentConfig.model_validate({**base, "preprocess": {"thickness": {"n_steps": 0}}})
+
+
+def test_numerics_beam_selection_cutoffs_are_validated() -> None:
+    # NumericsConfig delegates its beam-selection subset to BeamSelection (fail-fast at load).
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="rsg must be positive"):
+        ExperimentConfig.model_validate({**base, "numerics": {"rsg": 0.0}})
+    with pytest.raises(ValidationError, match="integration_semiangle must be positive"):
+        ExperimentConfig.model_validate({**base, "numerics": {"integration_semiangle": 0.0}})

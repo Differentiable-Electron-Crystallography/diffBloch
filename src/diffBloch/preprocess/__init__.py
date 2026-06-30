@@ -38,9 +38,10 @@ from diffBloch.preprocess.pipeline import (
 )
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine, score_orientations
-from diffBloch.specs import HexagonalSearch, ThicknessGrid
+from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
 
 __all__ = [
+    "BeamSelection",
     "ConvergenceCheck",
     "ExperimentSetup",
     "HexagonalSearch",

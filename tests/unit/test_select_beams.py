@@ -55,11 +55,7 @@ def test_klar_mask_rejects_non_3_column_g() -> None:
 
 def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
     plan, config = _quartz_train_plan()
-    step = select_beams(
-        rsg=config.numerics.rsg,
-        dsg=config.numerics.dsg,
-        semiangle=config.numerics.integration_semiangle,
-    )
+    step = select_beams(config.numerics.to_beam_selection())
     pruned = step(plan)
 
     # Plan -> Plan: the shared grid object is preserved; a new Plan is returned.
@@ -84,11 +80,7 @@ def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
 
 def test_select_beams_keeps_orientation_energy_and_grid_coupling() -> None:
     plan, config = _quartz_train_plan()
-    pruned = select_beams(
-        rsg=config.numerics.rsg,
-        dsg=config.numerics.dsg,
-        semiangle=config.numerics.integration_semiangle,
-    )(plan)
+    pruned = select_beams(config.numerics.to_beam_selection())(plan)
     before = plan.orientations[0]
     after = pruned.orientations[0]
     # Source/rebuild inputs are preserved; only the compiled beam set changes.

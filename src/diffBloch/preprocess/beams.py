@@ -26,19 +26,21 @@ from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
+from diffBloch.specs import BeamSelection
 
 __all__ = ["klar_beam_mask", "select_beams"]
 
 
-def select_beams(*, rsg: float, dsg: float, semiangle: float) -> PlanStep:
+def select_beams(selection: BeamSelection) -> PlanStep:
     """Return a ``Plan -> Plan`` step that prunes each orientation to its Klar active beam set.
 
     For every orientation the beams are re-selected by :func:`klar_beam_mask` against that
     orientation's lab-frame ``g`` (derived from its stored ``orientation`` and the grid cell), and
-    the plan is rebuilt via the self-describing ``OrientationPlan.build`` path. ``rsg`` (relative
-    excitation-error cutoff), ``dsg`` (minimum excitation-error margin), and ``semiangle`` (the
-    integration semi-angle in degrees) come from ``NumericsConfig``. The observed ``pattern`` is
-    untouched; the rebuilt ``AlignmentPlan`` re-bridges it to the pruned beam set.
+    the plan is rebuilt via the self-describing ``OrientationPlan.build`` path. ``selection`` is a
+    pre-validated :class:`~diffBloch.specs.BeamSelection` (``rsg`` relative excitation-error cutoff,
+    ``dsg`` minimum margin, ``integration_semiangle`` in degrees); invalid cutoffs are
+    unrepresentable, so this step never re-validates. The observed ``pattern`` is untouched; the
+    rebuilt ``AlignmentPlan`` re-bridges it to the pruned beam set.
 
     The 000 transmitted beam is retained whenever it is present (the ``from_experiment`` seed always
     includes it): ``BeamPlan`` anchors ``psi0`` on ``hkl == 000``, and 000 has ``g = 0`` so its
@@ -50,10 +52,7 @@ def select_beams(*, rsg: float, dsg: float, semiangle: float) -> PlanStep:
 
     def run(plan: Plan) -> Plan:
         cell = np.asarray(plan.grid.cell)
-        orientations = tuple(
-            _reselect(plan.grid, cell, op, rsg=rsg, dsg=dsg, semiangle=semiangle)
-            for op in plan.orientations
-        )
+        orientations = tuple(_reselect(plan.grid, cell, op, selection) for op in plan.orientations)
         return replace(plan, orientations=orientations)
 
     return run
@@ -63,15 +62,19 @@ def _reselect(
     grid: ScatteringGrid,
     cell: NDArray[np.float64],
     op: OrientationPlan,
-    *,
-    rsg: float,
-    dsg: float,
-    semiangle: float,
+    selection: BeamSelection,
 ) -> OrientationPlan:
     beam_hkl = np.asarray(op.beam_hkl, dtype=np.int64)
     basis = orientation_basis(cell, np.asarray(op.orientation))
     g = g_vectors(beam_hkl, basis)
-    keep = klar_beam_mask(g, energy=op.energy, u0=op.u0, rsg=rsg, dsg=dsg, semiangle=semiangle)
+    keep = klar_beam_mask(
+        g,
+        energy=op.energy,
+        u0=op.u0,
+        rsg=selection.rsg,
+        dsg=selection.dsg,
+        semiangle=selection.integration_semiangle,
+    )
     keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     return OrientationPlan.build(
         grid,

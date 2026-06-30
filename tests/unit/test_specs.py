@@ -9,7 +9,26 @@ from __future__ import annotations
 
 import pytest
 
-from diffBloch.specs import HexagonalSearch, ThicknessGrid
+from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
+
+
+def test_beam_selection_defaults_match_the_private() -> None:
+    selection = BeamSelection()
+    assert selection.rsg == 0.9
+    assert selection.dsg == 0.0015
+    assert selection.integration_semiangle == 1.0
+
+
+def test_beam_selection_rejects_nonpositive_cutoffs() -> None:
+    with pytest.raises(ValueError, match="rsg must be positive"):
+        BeamSelection(rsg=0.0)
+    with pytest.raises(ValueError, match="integration_semiangle must be positive"):
+        BeamSelection(integration_semiangle=0.0)
+
+
+def test_beam_selection_allows_a_loosening_negative_margin() -> None:
+    # dsg carries no positivity invariant: a negative margin legitimately loosens the cone.
+    assert BeamSelection(dsg=-0.01).dsg == -0.01
 
 
 def test_thickness_grid_defaults_match_the_private() -> None:
