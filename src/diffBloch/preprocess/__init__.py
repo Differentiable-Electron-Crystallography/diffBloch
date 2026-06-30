@@ -12,6 +12,7 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 ``from_experiment`` construction land in later slices.
 """
 
+from diffBloch.preprocess.beams import klar_beam_mask, select_beams
 from diffBloch.preprocess.experiment import (
     ExperimentSetup,
     PlanSplit,
@@ -47,9 +48,11 @@ __all__ = [
     "goniometer_rotation",
     "identity",
     "iterate_until",
+    "klar_beam_mask",
     "orientation_basis",
     "orientation_matrices",
     "pipeline",
     "refinement_setup",
+    "select_beams",
     "u_matrix",
 ]

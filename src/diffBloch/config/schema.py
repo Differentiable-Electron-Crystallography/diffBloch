@@ -32,6 +32,7 @@ class NumericsConfig(BaseModel):
     rocking_curve_sampling: int = 42
     dsg: float = 0.0015
     rsg: float = 0.9
+    integration_semiangle: float = 1.0
 
 
 class SampleConfig(BaseModel):

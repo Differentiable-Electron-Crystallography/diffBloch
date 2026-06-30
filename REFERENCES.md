@@ -54,7 +54,11 @@ new method, dataset, dependency, or studied design adds its credit here.
   and absolute configuration determination using dynamical effects in continuous-rotation 3D electron
   diffraction data.* **Nature Chemistry 15, 848–855.** DOI:
   [10.1038/s41557-023-01186-1](https://doi.org/10.1038/s41557-023-01186-1). Loss bodies are ported
-  from the private `diffBloch/metrics.py`.
+  from the private `diffBloch/metrics.py`. The same paper's SI also defines the **rsg/dsg active-beam
+  selection** (`preprocess.select_beams`): keep a reflection when `|Sg|/sg_max < rsg` *and*
+  `sg_max - |Sg| > dsg`, with `sg_max = |g_perp|·deg2rad(semiangle)` the excitation-error spread over
+  the integration cone. We take `g_perp = (g_x, g_y)` (perpendicular to the `-z` beam); see
+  `KNOWN_ISSUES` in `diffBloch_private` for the private `filter_hkls` transverse-axis divergence.
 
 - **Crystal orientation from the UB matrix (Busing-Levy formalism).**
   Busing, W. R. & Levy, H. A. (1967). *Angle calculations for 3- and 4-circle X-ray and neutron
