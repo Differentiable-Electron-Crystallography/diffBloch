@@ -84,3 +84,32 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
                 "refinement": {"objective": {"data_term": "made_up"}},
             }
         )
+
+
+def test_preprocess_orientation_defaults_match_the_private() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    )
+    orientation = cfg.preprocess.orientation
+    assert orientation.max_search_angle == 0.4
+    assert orientation.min_search_angle == 0.001
+    assert orientation.n_steps == 6
+    assert orientation.max_iterations == 200
+
+
+def test_orientation_search_bounds_are_validated() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"orientation": {"min_search_angle": 0.0}}}
+        )
+    with pytest.raises(ValidationError, match="must exceed"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"orientation": {"max_search_angle": 0.001}}}
+        )
+    with pytest.raises(ValidationError, match="n_steps must be >= 1"):
+        ExperimentConfig.model_validate({**base, "preprocess": {"orientation": {"n_steps": 0}}})
+    with pytest.raises(ValidationError, match="max_iterations must be >= 1"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"orientation": {"max_iterations": 0}}}
+        )

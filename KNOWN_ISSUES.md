@@ -109,17 +109,17 @@ path (joint refine / a learned `ThicknessNN` provider, committed v1 future work;
 default value. Until slice 6 lands the per-rotation move, the shared `thicknesses` field is the only
 per-orientation thickness available.
 
-## `fit_orientation`'s `max_iterations` default is an uncalibrated runaway guard
+## `fit_orientation`'s `max_iterations` default is uncalibrated
 
 `fit_orientation` caps the Palatinus search at `max_iterations` passes per orientation and raises
 `RuntimeError` rather than spin (matching `iterate_until`'s posture; see DIVERGENCE.md). The cap is
-sound, but its **default (200) has no empirical basis**: `diffBloch_private`'s search has no cap at
-all, so there is no precedent to port, and we have no real-data convergence statistics yet. On a
+sound and now exposed at the boundary (`OrientationFitConfig.max_iterations`, unpacked into the pure
+function), but its **default (200) has no empirical basis**: `diffBloch_private`'s search has no cap
+at all, so there is no precedent to port, and we have no real-data convergence statistics yet. On a
 non-degenerate objective the search terminates by construction well before any cap; the guard only
 bites on (near-)degenerate landscapes -- so a legitimately long real search *could* trip 200
 spuriously.
 
-It is a function parameter today. It should move into `OrientationFitConfig` (defaults-as-code at
-the boundary, alongside `max_search_angle` / `min_search_angle` / `n_steps`) and be tuned from the
-quartz e2e's observed convergence. Until then, treat 200 as a placeholder, not a tuned value.
-Where: `preprocess/fit_orientation.py` (`fit_orientation(..., max_iterations=200)`).
+The default should be tuned from the quartz e2e's observed convergence. Until then, treat 200 as a
+placeholder, not a tuned value. Where: `config/schema.py` (`OrientationFitConfig.max_iterations`),
+`preprocess/fit_orientation.py` (`fit_orientation(..., max_iterations=200)`).

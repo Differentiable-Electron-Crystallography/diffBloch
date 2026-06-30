@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SolverConfig(BaseModel):
@@ -111,6 +111,60 @@ class RefinementConfig(BaseModel):
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)
 
 
+class OrientationFitConfig(BaseModel):
+    """Bounds for the ``fit_orientation`` Palatinus hexagonal search (preprocess).
+
+    Declarative, sweepable home at the boundary; the preprocess driver unpacks these into the plain
+    keyword arguments of :func:`diffBloch.preprocess.fit_orientation` (no pydantic model reaches the
+    pure function). Defaults are the faithful ``diffBloch_private`` values
+    (``configs/preprocess/base.yaml``); ``max_iterations`` has no private precedent (the private
+    search has no cap) and its default is an uncalibrated runaway guard (see KNOWN_ISSUES.md), to be
+    tuned once real-data convergence is known.
+    """
+
+    max_search_angle: float = 0.4  # degrees: largest tilt radius the search starts from
+    min_search_angle: float = 0.001  # degrees: radius floor that terminates the search
+    n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
+    max_iterations: int = 200  # runaway guard: max search passes per orientation (uncalibrated)
+
+    @field_validator("min_search_angle", "max_search_angle")
+    @classmethod
+    def _positive_angles(cls, value: float) -> float:
+        if value <= 0.0:
+            raise ValueError("search angles must be positive")
+        return value
+
+    @field_validator("n_steps")
+    @classmethod
+    def _at_least_one_step(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("n_steps must be >= 1")
+        return value
+
+    @field_validator("max_iterations")
+    @classmethod
+    def _at_least_one_iteration(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("max_iterations must be >= 1")
+        return value
+
+    @model_validator(mode="after")
+    def _max_exceeds_min(self) -> OrientationFitConfig:
+        if self.max_search_angle <= self.min_search_angle:
+            raise ValueError("max_search_angle must exceed min_search_angle")
+        return self
+
+
+class PreprocessConfig(BaseModel):
+    """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
+
+    Grouping, not composition: each block configures one preprocess step. Only ``fit_orientation``
+    is wired today; ``fit_thickness`` / ``converge_numerics`` blocks join here as those steps land.
+    """
+
+    orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
+
+
 class Inputs(BaseModel):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
@@ -140,6 +194,7 @@ class ExperimentConfig(BaseModel):
     numerics: NumericsConfig = Field(default_factory=NumericsConfig)
     solver: SolverConfig = Field(default_factory=SolverConfig)
     observation: ObservationConfig = Field(default_factory=ObservationConfig)
+    preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
 

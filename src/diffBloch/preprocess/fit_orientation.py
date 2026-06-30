@@ -63,9 +63,9 @@ def fit_orientation(
     The cap is a 2.0 addition: ``diffBloch_private``'s search has none (it relies on monotone wR2
     descent + the radius floor; see DIVERGENCE.md). The search does terminate by construction for a
     non-degenerate objective -- the cap only guards pathological ridge-walking on (near-)degenerate
-    landscapes. The default is an **uncalibrated** runaway guard with no empirical basis yet (see
-    KNOWN_ISSUES.md); it will move into ``OrientationFitConfig`` and be tuned from real-data
-    convergence. Raise it if a legitimate search trips it.
+    landscapes. It is exposed at the boundary (``OrientationFitConfig.max_iterations``), but the
+    default is an **uncalibrated** runaway guard with no empirical basis yet (see KNOWN_ISSUES.md).
+    Raise it if a legitimate search trips it.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations must be >= 1")
