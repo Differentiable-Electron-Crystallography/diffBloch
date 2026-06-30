@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from diffBloch.core.constraints import positive
 from diffBloch.core.dynamical import build_bloch_system
 from diffBloch.core.losses import optimal_scale
 from diffBloch.core.products import AlignedIntensities, BlochSolution, align
@@ -64,7 +65,8 @@ class RefinementEngine:
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
-        return tuple(self._solve(orientation, fgb) for orientation in self.orientations)
+        thicknesses = self._effective_thicknesses(params)
+        return tuple(self._solve(o, fgb, thicknesses) for o in self.orientations)
 
     def fgb(self, params: RefinableParams) -> Tensor:
         """The calculated structure factors ``F_gb`` on the shared grid.
@@ -84,7 +86,11 @@ class RefinementEngine:
         scoring orientation (the private preprocess scored the first thickness). This is the
         objective ``fit_orientation`` minimises (``design/decisions/stage11-fit-orientation.md``).
         """
-        aligned = align(self._solve(orientation, fgb), orientation.pattern, orientation.alignment)
+        aligned = align(
+            self._solve(orientation, fgb, self.thicknesses),
+            orientation.pattern,
+            orientation.alignment,
+        )
         per_thickness = torch.stack(
             [
                 optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
@@ -101,9 +107,10 @@ class RefinementEngine:
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
+        thicknesses = self._effective_thicknesses(params)
         total = params.asu_positions.new_zeros(())
         for orientation in self.orientations:
-            solution = self._solve(orientation, fgb)
+            solution = self._solve(orientation, fgb, thicknesses)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             term = self.loss(aligned)
             # Catch a non-reducing loss here, where the mistake is, rather than letting a
@@ -138,6 +145,20 @@ class RefinementEngine:
             lr=lr,
         )
 
+    def _effective_thicknesses(self, params: RefinableParams) -> Tensor:
+        """The thickness the forward model uses: the refinable ``thickness_raw`` if the params carry
+        one, else the engine's static ``thicknesses`` seed.
+
+        ``thickness_raw`` maps to a positive thickness exactly as
+        :func:`diffBloch.params.constrain` does (``positive(thickness_raw)``), so selecting the
+        ``"thickness"`` refine target now drives the simulation. A single thickness *provider*
+        unifying static / swept / learned thickness is deferred to stage 11 slice 6
+        (``fit_thickness``); see ``KNOWN_ISSUES.md``.
+        """
+        if params.thickness_raw is None:
+            return self.thicknesses
+        return positive(params.thickness_raw)
+
     def _structure_factors(self, params: RefinableParams) -> Tensor:
         state = constrain(params, self.spec)
         device = state.positions.device  # the active (params) device; co-locate invariants here
@@ -161,9 +182,11 @@ class RefinementEngine:
             g_max=self.grid.g_max,
         )
 
-    def _solve(self, orientation: OrientationPlan, fgb: Tensor) -> BlochSolution:
+    def _solve(
+        self, orientation: OrientationPlan, fgb: Tensor, thicknesses: Tensor
+    ) -> BlochSolution:
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
-        thicknesses = self.thicknesses.to(device)
+        thicknesses = thicknesses.to(device)
         system = build_bloch_system(orientation.beam_plan, fgb)
         psi = propagate(system, thicknesses, method=self.method)
         return BlochSolution.from_propagation(psi, orientation.beam_hkl.to(device), thicknesses)

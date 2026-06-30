@@ -101,6 +101,34 @@ def test_objective_returns_scalar() -> None:
     assert torch.isfinite(loss) and loss >= 0.0
 
 
+def test_refinable_thickness_drives_the_forward_model() -> None:
+    # The "thickness" refine target maps to thickness_raw; the forward model must consume it (not
+    # silently use the engine's static thicknesses). engine seed = 300 A.
+    engine = _engine()
+    base = _params()
+    base_params = RefinableParams(asu_positions=base.asu_positions, uij_raw=base.uij_raw)
+    raw_500 = torch.log(torch.expm1(torch.tensor([500.0], dtype=torch.float64)))  # softplus^-1
+    raw_300 = torch.log(torch.expm1(torch.tensor([300.0], dtype=torch.float64)))
+
+    (no_thickness,) = engine.simulate(base_params)
+    (thick_500,) = engine.simulate(
+        RefinableParams(
+            asu_positions=base.asu_positions, uij_raw=base.uij_raw, thickness_raw=raw_500
+        )
+    )
+    (thick_300,) = engine.simulate(
+        RefinableParams(
+            asu_positions=base.asu_positions, uij_raw=base.uij_raw, thickness_raw=raw_300
+        )
+    )
+
+    # Refinable thickness is honoured (carried onto the solution) and changes the intensities...
+    assert torch.allclose(thick_500.thicknesses, torch.tensor([500.0], dtype=torch.float64))
+    assert not torch.allclose(thick_500.intensities, no_thickness.intensities)
+    # ...and equals the static field exactly when set to the same 300 A value (proving the wiring).
+    assert torch.allclose(thick_300.intensities, no_thickness.intensities)
+
+
 def test_objective_is_differentiable_through_the_whole_chain() -> None:
     engine = _engine()
     params = _params(requires_grad=True)

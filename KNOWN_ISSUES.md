@@ -86,21 +86,24 @@ later constraints stage. Until then, treat refined special-position coordinates 
 Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.
 
-## Thickness is modelled twice, and the forward path ignores the refinable copy
+## Thickness is modelled in two places, not yet a single provider
 
-Thickness exists in two places that are not connected. `RefinementEngine.thicknesses` is a static
-tensor field, and it is the *only* one the forward model reads: `_solve` uses `self.thicknesses`
-(`engine/forward.py`). Separately, `RefinableParams.thickness_raw` is a refinable parameter that
-`constrain` already maps to `ConstrainedState.thicknesses` (`params.py`), and `engine/refine.py`
-even exposes a `"thickness"` optimisation target pointing at `thickness_raw`. But nothing in the
-forward path reads the constrained `state.thicknesses` -- so selecting the `"thickness"` target
-refines a value the simulation never uses. It is a **dead seam**: the optimiser can move
-`thickness_raw`, the loss will not change, and the run looks converged while thickness did nothing.
+Thickness is now wired correctly -- the forward model uses the refinable `thickness_raw` when the
+params carry one, else the engine's static `thicknesses` seed (`_effective_thicknesses` /
+`_solve` in `engine/forward.py`), so the `"thickness"` refine target drives the simulation
+(pinned by `test_refinable_thickness_drives_the_forward_model`). That residual is the real risk you'd expect from functional rigor: thickness's *home* is currently
+decided by the **route**, not its role. A thickness fitted in preprocess (`fit_thickness`, slice 6)
+would naturally land in the static field, while a thickness refined in the loop lands in
+`thickness_raw` -- so two paths to the same physics produce **different state shapes**, and "was
+thickness fitted in preprocess?" becomes a question of *location* instead of *value*. That violates
+the self-describing-Plan invariant (`design/decisions/plan-shape-and-step-ordering.md`): equal values
+should be indistinguishable regardless of history.
 
-This also blocks the planned generalisations: hyperparameter sweeps over thickness, and a learned
-thickness (the eventual `ThicknessNN`). Intended fix (best taken at stage 11 slice 6 `fit_thickness`,
-where thickness becomes load-bearing): pick a single source of truth. The clean shape is a thickness
-*provider* -- one seam producing per-orientation thickness -- which subsumes a constant tensor
-(today), a swept grid, and a learned `nn.Module`. Until then, do not rely on the `"thickness"`
-refine target. See `design/decisions/stage11-fit-orientation.md` for the surrounding
-forward-model factoring discussion.
+The fix is to give thickness **one canonical home decided by role** -- it is a (per-rotation)
+refinable forward-model parameter, so it belongs with `RefinableParams`; `fit_thickness` *seeds* that
+parameter and `refine` *optimises* it, both writing the same slot. The static
+`RefinementEngine.thicknesses` then degrades to a pure default. Concretely this is a single thickness
+*provider* -- one callable producing per-orientation thickness -- subsuming a constant (today), a
+swept grid, and a learned `nn.Module`. Best taken at stage 11 slice 6 (`fit_thickness`), where
+thickness becomes load-bearing and the preprocess-vs-refine routing actually exists; see
+`design/decisions/stage11-fit-orientation.md` for the surrounding forward-model factoring.
