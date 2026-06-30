@@ -34,6 +34,7 @@ from diffBloch.preprocess.pipeline import (
     pipeline,
 )
 from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.scoring import build_engine, score_orientations
 
 __all__ = [
     "ConvergenceCheck",
@@ -42,6 +43,7 @@ __all__ = [
     "PlanSplit",
     "PlanStep",
     "RefinementSetup",
+    "build_engine",
     "busing_levy_matrix",
     "from_experiment",
     "goniometer_rotation",
@@ -51,6 +53,7 @@ __all__ = [
     "orientation_basis",
     "orientation_matrices",
     "pipeline",
+    "score_orientations",
     "select_beams",
     "u_matrix",
 ]

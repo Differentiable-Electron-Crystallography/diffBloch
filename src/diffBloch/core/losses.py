@@ -16,10 +16,12 @@ See ``REFERENCES.md`` for the R-factor sources. Differentiable in ``calculated``
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 from torch import Tensor
 
-__all__ = ["l1", "mse", "rbragg", "w_rbragg", "weighted_mse"]
+__all__ = ["l1", "mse", "optimal_scale", "rbragg", "w_rbragg", "weighted_mse"]
 
 
 def _check_pair(calculated: Tensor, observed: Tensor) -> None:
@@ -89,3 +91,32 @@ def w_rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor, *, mu: float 
     numerator = ((w * (calculated - observed)) ** 2).sum(dim=-1)
     denominator = ((w * observed) ** 2).sum(dim=-1)
     return torch.sqrt(numerator / denominator)
+
+
+def optimal_scale(
+    calculated: Tensor,
+    observed: Tensor,
+    sigmas: Tensor,
+    *,
+    metric: Callable[[Tensor, Tensor, Tensor], Tensor] = w_rbragg,
+    num_points: int = 100,
+    lo: float = 0.02,
+    hi: float = 2.0,
+) -> tuple[Tensor, Tensor]:
+    """Grid-search the multiplicative scale on ``calculated`` that minimises ``metric``.
+
+    Pure port of the private ``utils.initialize_scaling_factor``. The search runs ``num_points``
+    factors in ``[lo, hi]`` *relative to* the total ratio ``sum(observed)/sum(calculated)`` (so it
+    is centred near scale 1), evaluates ``metric(scaled, observed, sigmas)`` at each, and returns
+    the **absolute** scale applied to ``calculated`` and the minimum metric value. ``metric``
+    defaults to :func:`w_rbragg` (the wR2 used to score orientations); it must reduce over the final
+    reflection axis so a ``(num_points, N)`` batch yields ``(num_points,)``.
+    """
+    _check_pair(calculated, observed)
+    _check_sigmas(sigmas, observed)
+    grid = torch.linspace(lo, hi, num_points, dtype=calculated.dtype, device=calculated.device)
+    ratio = observed.sum() / calculated.sum()
+    scaled = grid.view(-1, 1) * ratio * calculated  # (num_points, N)
+    values = metric(scaled, observed.expand_as(scaled), sigmas.expand_as(scaled))
+    min_value, index = torch.min(values, dim=0)
+    return grid[index] * ratio, min_value

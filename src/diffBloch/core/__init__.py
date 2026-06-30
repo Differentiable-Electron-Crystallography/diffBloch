@@ -34,7 +34,7 @@ from diffBloch.core.dynamical import (
     wavelength2energy,
     wavevector_magnitude,
 )
-from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg, weighted_mse
 from diffBloch.core.products import (
     AlignedIntensities,
     AlignmentPlan,
@@ -109,6 +109,7 @@ __all__ = [
     "m_factors",
     "make_hkl_grid",
     "mse",
+    "optimal_scale",
     "orientation_basis",
     "positive",
     "propagate",

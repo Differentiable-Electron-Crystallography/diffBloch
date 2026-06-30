@@ -18,9 +18,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor
 
 from diffBloch.core.dynamical import build_bloch_system
+from diffBloch.core.losses import optimal_scale
 from diffBloch.core.products import AlignedIntensities, BlochSolution, align
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import Method, propagate
@@ -63,6 +65,33 @@ class RefinementEngine:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
         return tuple(self._solve(orientation, fgb) for orientation in self.orientations)
+
+    def fgb(self, params: RefinableParams) -> Tensor:
+        """The calculated structure factors ``F_gb`` on the shared grid.
+
+        The orientation-invariant part of the forward model: compute once and reuse across
+        orientations (e.g. when scoring many trial orientations of one structure).
+        """
+        return self._structure_factors(params)
+
+    def score_orientation(self, orientation: OrientationPlan, fgb: Tensor) -> Tensor:
+        """Scaling-optimised weighted-R2 (wR2) for one orientation against its observed pattern.
+
+        Runs the forward Bloch simulation for ``orientation`` from a precomputed ``fgb``
+        (:meth:`fgb`), aligns calculated vs observed intensities, and grid-searches the intensity
+        scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple
+        thicknesses the best-fitting thickness's score is returned -- thickness is a nuisance when
+        scoring orientation (the private preprocess scored the first thickness). This is the
+        objective ``fit_orientation`` minimises (``design/decisions/stage11-fit-orientation.md``).
+        """
+        aligned = align(self._solve(orientation, fgb), orientation.pattern, orientation.alignment)
+        per_thickness = torch.stack(
+            [
+                optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
+                for t in range(aligned.calculated.shape[0])
+            ]
+        )
+        return per_thickness.min()
 
     def objective(self, params: RefinableParams) -> Tensor:
         """Return the scalar objective: the per-orientation ``loss`` summed over orientations.
