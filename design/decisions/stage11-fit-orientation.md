@@ -13,12 +13,19 @@ orientation against electron-diffraction data.
 
 ## Parameterization — right-multiplied delta rotation
 
-Per-rotation correction `new_orientation = orientation @ goniometer_rotation(α, β, ω)`
-(right-multiplied; private convention `rotation @ construct_rotation_matrix(...)`). The three
-correction angles are the only refined quantities per rotation. Because the delta is a true
-rotation, `det` and the non-orthonormal `U = UB·B⁻¹` measured-cell correction are preserved exactly
-— this is how the **re-orthonormalization trap** (`KNOWN_ISSUES.md`) is avoided *by construction*,
-not by a post-hoc guard. Reuses the existing `preprocess.goniometer_rotation`.
+Per-rotation correction `new_orientation = orientation @ delta` (**right-multiplied**; private
+convention). Because `delta` is a true rotation (`det = 1`), `det(orientation)` and the
+non-orthonormal `U = UB·B⁻¹` measured-cell correction are preserved exactly — this is how the
+**re-orthonormalization trap** (`KNOWN_ISSUES.md`) is avoided *by construction*, not by a post-hoc
+guard. The form of `delta` is tied to the optimizer (the two are not interchangeable):
+
+- **(A, chosen — Palatinus) hexagonal tilt** `delta = R_z(φ)·R_x(θ)·R_z(-φ)` — a tilt of magnitude
+  `θ` (the current search radius) about an in-plane axis at azimuth `φ ∈ {0,60,…,300}°`. **2 DOF**
+  per step (`φ, θ`). Private `generate_new_tilt`. This is what `fit_orientation` uses.
+- **(B, recorded option — gradient/continuous) 3-angle goniometer**
+  `delta = goniometer_rotation(α, β, ω)` — the continuous parameterization the private's Nelder-Mead
+  / Bayesian objective (`orientation_optim`, `construct_rotation_matrix`) refines. Pairs with a
+  continuous optimizer, not the hexagonal search.
 
 ## Shape — a `PlanStep` factory over a captured `RefinementSetup` (the Reader pattern)
 

@@ -86,24 +86,25 @@ later constraints stage. Until then, treat refined special-position coordinates 
 Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.
 
-## Thickness is modelled in two places, not yet a single provider
+## Thickness is an engine-level shared field, not yet per-rotation in the Plan
 
-Thickness is now wired correctly -- the forward model uses the refinable `thickness_raw` when the
-params carry one, else the engine's static `thicknesses` seed (`_effective_thicknesses` /
-`_solve` in `engine/forward.py`), so the `"thickness"` refine target drives the simulation
-(pinned by `test_refinable_thickness_drives_the_forward_model`). That residual is the real risk you'd expect from functional rigor: thickness's *home* is currently
-decided by the **route**, not its role. A thickness fitted in preprocess (`fit_thickness`, slice 6)
-would naturally land in the static field, while a thickness refined in the loop lands in
-`thickness_raw` -- so two paths to the same physics produce **different state shapes**, and "was
-thickness fitted in preprocess?" becomes a question of *location* instead of *value*. That violates
-the self-describing-Plan invariant (`design/decisions/plan-shape-and-step-ordering.md`): equal values
-should be indistinguishable regardless of history.
+The dead seam is fixed: the forward model consumes the refinable `thickness_raw` when present, else
+the engine's static `thicknesses` (`_effective_thicknesses` / `_solve` in `engine/forward.py`),
+pinned by `test_refinable_thickness_drives_the_forward_model`. The residual is *shape*, not a dead
+wire.
 
-The fix is to give thickness **one canonical home decided by role** -- it is a (per-rotation)
-refinable forward-model parameter, so it belongs with `RefinableParams`; `fit_thickness` *seeds* that
-parameter and `refine` *optimises* it, both writing the same slot. The static
-`RefinementEngine.thicknesses` then degrades to a pure default. Concretely this is a single thickness
-*provider* -- one callable producing per-orientation thickness -- subsuming a constant (today), a
-swept grid, and a learned `nn.Module`. Best taken at stage 11 slice 6 (`fit_thickness`), where
-thickness becomes load-bearing and the preprocess-vs-refine routing actually exists; see
-`design/decisions/stage11-fit-orientation.md` for the surrounding forward-model factoring.
+Thickness is per-rotation (the specimen's 3D shape is irregular, so each orientation presents a
+different beam path length), but the engine still carries a single shared `thicknesses` field
+applied to every orientation. The faithful model (ROADMAP stage 11 slice 6) is: **default thickness
+is frozen per-rotation conditioning that lives in `OrientationPlan`**, fit by `fit_thickness` (a
+`Plan -> Plan` step that bakes the gridsearch winner), and read by the forward model through a
+**`None`-default provider seam** -- `engine.thickness is None` reads `OrientationPlan.thickness`; a
+provider supersedes it. This keeps the default path-independent: after preprocess thickness is
+always in the `Plan`, so "was it fitted?" is a question of *value*, not *location*
+(`design/decisions/plan-shape-and-step-ordering.md`).
+
+The `RefinableParams.thickness_raw` seam is *not* the default home -- it is the dormant **opt-in**
+path (joint refine / a learned `ThicknessNN` provider, committed v1 future work; see ROADMAP stage
+11). So thickness has two *modes* (frozen conditioning vs learned provider), not two homes for one
+default value. Until slice 6 lands the per-rotation move, the shared `thicknesses` field is the only
+per-orientation thickness available.
