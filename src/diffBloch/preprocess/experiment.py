@@ -17,19 +17,56 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numpy as np
 import torch
+from numpy.typing import NDArray
 from torch import Tensor
 
+from diffBloch.config.schema import DataSplitConfig, ExperimentConfig
 from diffBloch.core.adp import cholesky_raw_from_adp
 from diffBloch.core.crystal import reciprocal_cell
+from diffBloch.core.dynamical import wavelength2energy
+from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
-from diffBloch.io.record import AdpRecord, StructureRecord
+from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
+from diffBloch.preprocess.orientation import orientation_matrices
+from diffBloch.preprocess.plan import Plan
 
 __all__ = [
+    "ExperimentSetup",
+    "PlanSplit",
     "RefinementSetup",
+    "from_experiment",
     "refinement_setup",
 ]
+
+
+@dataclass(frozen=True)
+class PlanSplit:
+    """A ``train`` / ``validation`` :class:`Plan` pair sharing one :class:`ScatteringGrid`.
+
+    ``from_experiment`` splits the rotations into the two plans; the preprocess ``Plan -> Plan``
+    steps sharpen each, and ``refine`` fits on ``train`` while scoring the held-out ``validation``.
+    Both plans reference the *same* grid object, so the shared ``Fgb`` support cannot diverge.
+    """
+
+    train: Plan
+    validation: Plan
+
+
+@dataclass(frozen=True)
+class ExperimentSetup:
+    """The full product of ``from_experiment``: the geometry ``plans`` + structure ``refinement``.
+
+    Two separable concerns from the same records/config: ``plans`` (the ``Plan -> Plan`` geometry
+    spine) and ``refinement`` (the static structure context the engine is built from). Kept distinct
+    so only the ``Plan`` pair flows through the preprocess pipeline.
+    """
+
+    plans: PlanSplit
+    refinement: RefinementSetup
 
 
 @dataclass(frozen=True)
@@ -89,6 +126,80 @@ def refinement_setup(
         numbers=torch.tensor(structure.numbers, dtype=torch.int64),
         thicknesses=torch.tensor(list(thicknesses), dtype=torch.float64),
     )
+
+
+def from_experiment(
+    structure: StructureRecord,
+    observations: ObservationRecord,
+    config: ExperimentConfig,
+) -> ExperimentSetup:
+    """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
+
+    The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
+    ``Plan`` yet). The shared grid is sized from the ideal CIF cell and ``numerics.g_max``; the beam
+    energy is derived from the PETS wavelength; one :class:`OrientationPlan` per rotation carries
+    its crystal orientation matrix (native PETS derivation, no side-car file) and the observed
+    pattern for that zone axis. Rotations split into ``train`` / ``validation`` plans sharing it.
+
+    Each orientation is seeded with the orientation-independent, difference-safe beam set
+    ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the
+    ``g_max`` grid and the 000 transmitted beam is always present). The faithful per-orientation
+    ``sg_max`` / rsg-dsg pruning is the later ``select_beams`` step.
+    """
+    grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=config.numerics.g_max)
+    energy = wavelength2energy(observations.wavelength)
+    beam_hkl = _seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
+    orientations = orientation_matrices(
+        observations.ub_matrix,
+        observations.cell_parameters,
+        observations.alphas,
+        observations.betas,
+        observations.omegas,
+    )
+    plans = tuple(
+        OrientationPlan.build(
+            grid,
+            beam_hkl,
+            PatternBatch.from_observation_record(observations, zone_axis_id=int(zone_id)),
+            energy=energy,
+            orientation=orientations[index],
+        )
+        for index, zone_id in enumerate(observations.zone_axis_ids)
+    )
+
+    validation = _validation_mask(len(plans), config.refinement.split)
+    train_orientations = tuple(p for p, v in zip(plans, validation, strict=True) if not v)
+    val_orientations = tuple(p for p, v in zip(plans, validation, strict=True) if v)
+    return ExperimentSetup(
+        plans=PlanSplit(
+            train=Plan(grid=grid, orientations=train_orientations),
+            validation=Plan(grid=grid, orientations=val_orientations),
+        ),
+        refinement=refinement_setup(structure, thicknesses=config.sample.thicknesses),
+    )
+
+
+def _seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.int64]:
+    """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000)."""
+    grid_hkl = np.asarray(grid.grid_hkl)
+    g_lengths = np.linalg.norm(grid_hkl @ np.asarray(grid.reciprocal_basis), axis=1)
+    beams: NDArray[np.int64] = grid_hkl[g_lengths <= g_max_refine]
+    return beams
+
+
+def _validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool_]:
+    """Boolean per-rotation validation mask from the split policy.
+
+    Only the Stage-1 policies are implemented: ``train='all_except_validation'`` with
+    ``validation='every_10th_rotation'`` (every 10th rotation by 1-based count -> 0-based indices
+    where ``(i + 1) % 10 == 0``). Other selector strings are rejected rather than silently ignored.
+    """
+    if split.train != "all_except_validation":
+        raise ValueError(f"unsupported train split policy: {split.train!r}")
+    if split.validation != "every_10th_rotation":
+        raise ValueError(f"unsupported validation split policy: {split.validation!r}")
+    mask: NDArray[np.bool_] = (np.arange(n_rotations) + 1) % 10 == 0
+    return mask
 
 
 def _initial_adp_params(adp: AdpRecord) -> tuple[Tensor | None, Tensor | None]:
