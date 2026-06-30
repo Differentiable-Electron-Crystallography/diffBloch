@@ -38,7 +38,7 @@ def build_engine(
     Pure assembly, not a forward pass. ``Plan`` and ``RefinementSetup`` are kept deliberately
     separate -- the ``Plan`` (shared grid + per-rotation orientations) flows through the
     ``Plan -> Plan`` preprocess steps, while ``refinement`` (constraint spec, ASU-expansion plan,
-    ASU atomic numbers, sample thicknesses) is static structure context. ``build_engine`` is the
+    ASU atomic numbers) is static structure context. ``build_engine`` is the
     single seam that rejoins them when a simulation is actually needed; both ``score_orientations``
     here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
     minimise (irrelevant to :meth:`RefinementEngine.fgb` /
@@ -50,7 +50,6 @@ def build_engine(
         numbers=refinement.numbers,
         grid=plan.grid,
         orientations=plan.orientations,
-        thicknesses=refinement.thicknesses,
         loss=loss,
         method=method,
     )

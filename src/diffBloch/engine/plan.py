@@ -9,6 +9,7 @@ validated when the beam plans are built).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -65,16 +66,23 @@ class OrientationPlan:
     """The refinement-invariant plans for a single rotation/orientation.
 
     Self-describing: it carries both its **source / rebuild inputs** (``orientation``, ``energy``,
-    ``u0`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` consume to
-    recompile) and the **compiled geometry** (``beam_plan``, ``alignment`` -- what
-    ``engine.simulate`` consumes). Source and compiled are only ever set together by :meth:`build`,
-    so they cannot desync (see ``design/decisions/plan-shape-and-step-ordering.md``).
-    ``orientation`` is the source of truth; the lab-frame basis is derived from it, never stored.
+    ``u0``, ``thickness`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` /
+    ``fit_thickness`` consume to recompile) and the **compiled geometry** (``beam_plan``,
+    ``alignment`` -- what ``engine.simulate`` consumes). Source and compiled are only ever set
+    together by :meth:`build`, so they cannot desync (see
+    ``design/decisions/plan-shape-and-step-ordering.md``). ``orientation`` is the source of truth;
+    the lab-frame basis is derived from it, never stored. ``thickness`` ``(T,)`` is the specimen's
+    thickness for this rotation (its beam path length at this tilt), held fixed during refinement.
+    It is seeded from the sample thickness and later replaced by the best-fitting value
+    ``fit_thickness`` finds. The forward model uses it for this orientation unless the caller is
+    refining thickness directly (see
+    :meth:`~diffBloch.engine.forward.RefinementEngine._thickness_for`).
     """
 
     orientation: Tensor
     energy: float
     u0: float
+    thickness: Tensor
     beam_hkl: Tensor
     beam_plan: BeamPlan
     pattern: PatternBatch
@@ -88,6 +96,7 @@ class OrientationPlan:
         pattern: PatternBatch,
         *,
         energy: float,
+        thickness: Tensor | NDArray[np.float64] | Sequence[float],
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
     ) -> OrientationPlan:
@@ -105,8 +114,15 @@ class OrientationPlan:
         ``orientation`` accepts either a NumPy array or a ``Tensor`` (e.g. a prior plan's stored
         ``orientation``), so a later ``Plan -> Plan`` rebuild can pass ``old_plan.orientation``
         directly without ad-hoc conversion.
+
+        ``thickness`` ``(T,)`` is required: this rotation's frozen per-rotation conditioning,
+        coerced to a 1-D float64 tensor. A rebuild threads ``old_plan.thickness`` through unchanged;
+        ``fit_thickness`` bakes the single gridsearch winner ``(1,)``.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
+        thickness_t = torch.as_tensor(
+            np.atleast_1d(np.asarray(thickness, dtype=np.float64)), dtype=torch.float64
+        )
         if orientation is None:
             rotation = np.eye(3, dtype=np.float64)
             basis = np.asarray(grid.reciprocal_basis)
@@ -126,6 +142,7 @@ class OrientationPlan:
             orientation=torch.tensor(rotation, dtype=torch.float64),
             energy=float(energy),
             u0=float(u0),
+            thickness=thickness_t,
             beam_hkl=beam_hkl_t,
             beam_plan=beam_plan,
             pattern=pattern,

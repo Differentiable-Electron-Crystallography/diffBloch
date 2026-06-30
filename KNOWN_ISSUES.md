@@ -86,28 +86,25 @@ later constraints stage. Until then, treat refined special-position coordinates 
 Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.
 
-## Thickness is an engine-level shared field, not yet per-rotation in the Plan
+## Thickness is per-rotation but not yet fitted (only seeded)
 
-The dead seam is fixed: the forward model consumes the refinable `thickness_raw` when present, else
-the engine's static `thicknesses` (`_effective_thicknesses` / `_solve` in `engine/forward.py`),
-pinned by `test_refinable_thickness_drives_the_forward_model`. The residual is *shape*, not a dead
-wire.
+The structural move is done (stage 11 slice 6a): thickness now lives on each `OrientationPlan` as a
+per-rotation value (the specimen's 3D shape is irregular, so each orientation presents a different
+beam path length). The engine no longer carries a single shared `thicknesses` field; the forward
+model reads `orientation.thickness` per orientation, unless the caller is refining thickness
+directly via `RefinableParams.thickness_raw`, which overrides it for every orientation
+(`RefinementEngine._thickness_for` / `_solve` in `engine/forward.py`, pinned by
+`test_refinable_thickness_drives_the_forward_model`).
 
-Thickness is per-rotation (the specimen's 3D shape is irregular, so each orientation presents a
-different beam path length), but the engine still carries a single shared `thicknesses` field
-applied to every orientation. The faithful model (ROADMAP stage 11 slice 6) is: **default thickness
-is frozen per-rotation conditioning that lives in `OrientationPlan`**, fit by `fit_thickness` (a
-`Plan -> Plan` step that bakes the gridsearch winner), and read by the forward model through a
-**`None`-default provider seam** -- `engine.thickness is None` reads `OrientationPlan.thickness`; a
-provider supersedes it. This keeps the default path-independent: after preprocess thickness is
-always in the `Plan`, so "was it fitted?" is a question of *value*, not *location*
-(`design/decisions/plan-shape-and-step-ordering.md`).
+The residual is that each orientation's thickness is still only the *seed* from
+`config.sample.thicknesses` -- nothing fits it yet. The remaining step (ROADMAP stage 11 slice 6b)
+is `fit_thickness`: a `Plan -> Plan` step that grid-searches candidate thicknesses per rotation and
+replaces each `OrientationPlan.thickness` with the best-fitting value. Until it lands, thickness is
+whatever the sample config seeded.
 
-The `RefinableParams.thickness_raw` seam is *not* the default home -- it is the dormant **opt-in**
-path (joint refine / a learned `ThicknessNN` provider, committed v1 future work; see ROADMAP stage
-11). So thickness has two *modes* (frozen conditioning vs learned provider), not two homes for one
-default value. Until slice 6 lands the per-rotation move, the shared `thicknesses` field is the only
-per-orientation thickness available.
+Letting thickness vary per orientation *while being refined* (a learned `theta -> thickness` model,
+rather than one shared `thickness_raw` for all orientations) is separate future work; see ROADMAP
+stage 11.
 
 ## `fit_orientation`'s `max_iterations` default is uncalibrated
 

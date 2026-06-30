@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 from diffBloch.config import load_config
@@ -65,10 +64,12 @@ def test_from_experiment_patterns_are_per_zone_axis() -> None:
 
 def test_from_experiment_refinement_side_matches_structure() -> None:
     structure, observations, config, setup = _quartz_setup()
-    direct = RefinementSetup.from_structure(structure, thicknesses=config.sample.thicknesses)
+    direct = RefinementSetup.from_structure(structure)
 
     assert setup.refinement.numbers.tolist() == direct.numbers.tolist()
-    assert setup.refinement.thicknesses.tolist() == list(config.sample.thicknesses)
+    # Per-rotation thickness is seeded onto the orientations (from config.sample.thicknesses),
+    # not onto RefinementSetup.
+    assert setup.plans.train.orientations[0].thickness.tolist() == list(config.sample.thicknesses)
     # The structure side constrains cleanly (positions + ADPs round-trip).
     state = constrain(setup.refinement.params, setup.refinement.spec)
     assert state.uij_star.shape == (structure.n_atoms, 3, 3)
@@ -76,11 +77,10 @@ def test_from_experiment_refinement_side_matches_structure() -> None:
 
 def test_refinement_setup_seeds_quartz_uani_structure() -> None:
     structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
-    setup = RefinementSetup.from_structure(structure, thicknesses=(820.0,))
+    setup = RefinementSetup.from_structure(structure)
 
     assert setup.numbers.tolist() == structure.numbers.tolist()
     assert setup.asu_plan.n_asu_sites == structure.n_atoms
-    assert setup.thicknesses.tolist() == [820.0]
     # Positions are seeded at their CIF values (all-free mask, fixed == start).
     assert torch.allclose(
         setup.params.asu_positions, torch.tensor(structure.frac_positions, dtype=torch.float64)
@@ -90,7 +90,7 @@ def test_refinement_setup_seeds_quartz_uani_structure() -> None:
 
 def test_refinement_setup_params_constrain_back_to_the_cif_adps() -> None:
     structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
-    setup = RefinementSetup.from_structure(structure, thicknesses=(820.0,))
+    setup = RefinementSetup.from_structure(structure)
 
     state = constrain(setup.params, setup.spec)
 
@@ -111,7 +111,7 @@ def test_refinement_setup_params_constrain_back_to_the_cif_adps() -> None:
 
 def test_refinement_setup_handles_uiso_structure() -> None:
     structure = read_structure(FIXTURE_ROOT / "paracetamol_min" / "enantiomer_1.cif")
-    setup = RefinementSetup.from_structure(structure, thicknesses=(500.0,))
+    setup = RefinementSetup.from_structure(structure)
 
     assert setup.params.uij_raw is None  # all-Uiso: no anisotropic raw factor
     assert setup.params.u_iso_raw is not None
@@ -124,10 +124,12 @@ def test_refinement_setup_handles_uiso_structure() -> None:
     assert torch.all(torch.linalg.eigvalsh(state.uij_star) >= 0.0)
 
 
-def test_refinement_setup_rejects_empty_thicknesses() -> None:
-    structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
-    with pytest.raises(ValueError, match="thicknesses must contain at least one value"):
-        RefinementSetup.from_structure(structure, thicknesses=())
+def test_from_experiment_seeds_per_rotation_thickness_on_the_orientations() -> None:
+    _, _, config, setup = _quartz_setup()
+    seeded = list(config.sample.thicknesses)
+    for plan in (setup.plans.train, setup.plans.validation):
+        for orientation in plan.orientations:
+            assert orientation.thickness.tolist() == seeded
 
 
 # --- mixed Uani + Uiso ADP path -------------------------------------------------------------------
@@ -169,7 +171,7 @@ def _ortho_structure(kinds: tuple[str, ...]) -> StructureRecord:
 
 
 def test_refinement_setup_mixed_uani_uiso_constrains_each_atom_by_kind() -> None:
-    mixed = RefinementSetup.from_structure(_ortho_structure(("Uani", "Uiso")), thicknesses=(500.0,))
+    mixed = RefinementSetup.from_structure(_ortho_structure(("Uani", "Uiso")))
 
     # Both raw factors are present and span every atom (filler rows for the other kind).
     assert mixed.params.uij_raw is not None and mixed.params.uij_raw.shape == (2, 3, 3)
@@ -191,5 +193,5 @@ def test_refinement_setup_mixed_uani_uiso_constrains_each_atom_by_kind() -> None
 
 
 def _setup_state(structure: StructureRecord) -> tuple:
-    setup = RefinementSetup.from_structure(structure, thicknesses=(500.0,))
+    setup = RefinementSetup.from_structure(structure)
     return setup.params, setup.spec

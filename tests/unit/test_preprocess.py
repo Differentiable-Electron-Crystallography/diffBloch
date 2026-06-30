@@ -24,7 +24,7 @@ def _orientation() -> tuple[ScatteringGrid, OrientationPlan]:
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
-    return grid, OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY)
+    return grid, OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
 
 def _plan(n_orientations: int = 1) -> Plan:

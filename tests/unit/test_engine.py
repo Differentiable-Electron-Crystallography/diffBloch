@@ -36,7 +36,9 @@ def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> Ref
             intensities=torch.tensor([0.9, 0.05, 0.05], dtype=torch.float64),
             sigmas=torch.full((3,), 0.01, dtype=torch.float64),
         )
-    orientation = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY)
+    orientation = OrientationPlan.build(
+        grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,)
+    )  # 300 A: dynamical regime (I_diff ~0.1)
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
         refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
@@ -49,7 +51,6 @@ def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> Ref
         numbers=torch.tensor([14], dtype=torch.int64),  # silicon
         grid=grid,
         orientations=(orientation,),
-        thicknesses=torch.tensor([300.0], dtype=torch.float64),  # dynamical regime (I_diff ~0.1)
         loss=loss,
     )
 
@@ -103,7 +104,7 @@ def test_objective_returns_scalar() -> None:
 
 def test_refinable_thickness_drives_the_forward_model() -> None:
     # The "thickness" refine target maps to thickness_raw; the forward model must consume it (not
-    # silently use the engine's static thicknesses). engine seed = 300 A.
+    # silently use each orientation's frozen thickness). orientation seed = 300 A.
     engine = _engine()
     base = _params()
     base_params = RefinableParams(asu_positions=base.asu_positions, uij_raw=base.uij_raw)
@@ -125,7 +126,7 @@ def test_refinable_thickness_drives_the_forward_model() -> None:
     # Refinable thickness is honoured (carried onto the solution) and changes the intensities...
     assert torch.allclose(thick_500.thicknesses, torch.tensor([500.0], dtype=torch.float64))
     assert not torch.allclose(thick_500.intensities, no_thickness.intensities)
-    # ...and equals the static field exactly when set to the same 300 A value (proving the wiring).
+    # ...and equals the orientation's frozen thickness exactly at 300 A (proving the wiring).
     assert torch.allclose(thick_300.intensities, no_thickness.intensities)
 
 
@@ -145,8 +146,9 @@ def test_objective_is_differentiable_through_the_whole_chain() -> None:
 
 def test_objective_co_locates_invariants_on_the_param_device() -> None:
     # On CPU this is a no-op, but it pins the contract: engine-owned invariants (numbers, grid_hkl,
-    # reciprocal_basis, thicknesses, beam_hkl) are moved to the params device at the use site, so a
-    # simulated solution lands on the same device as the parameter-derived tensors.
+    # reciprocal_basis, beam_hkl) and each orientation's thickness are moved to the params device at
+    # the use site, so a simulated solution lands on the same device as the parameter-derived
+    # tensors.
     engine = _engine()
     params = _params()
     (solution,) = engine.simulate(params)
@@ -162,7 +164,6 @@ def test_objective_rejects_engine_without_orientations() -> None:
         numbers=engine.numbers,
         grid=engine.grid,
         orientations=(),
-        thicknesses=engine.thicknesses,
         loss=engine.loss,
     )
     with pytest.raises(ValueError, match="no orientations"):
@@ -186,11 +187,11 @@ def test_scattering_grid_from_cell_spans_difference_support() -> None:
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
-    OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY)  # ok
+    OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))  # ok
 
     tiny = ScatteringGrid.from_cell(_CELL, g_max=0.15)  # |g|<=0.15 -> only h=0, no differences
     with pytest.raises(ValueError, match="difference support|gpts is too small"):
-        OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY)
+        OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
 
 @pytest.mark.parametrize("optimizer", ["adam", "lbfgs"])

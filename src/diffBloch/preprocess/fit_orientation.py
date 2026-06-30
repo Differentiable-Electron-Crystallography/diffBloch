@@ -123,6 +123,7 @@ def _refine_one(
                 beam_hkl,
                 current.pattern,
                 energy=current.energy,
+                thickness=current.thickness,
                 u0=current.u0,
                 orientation=orientation,
             )

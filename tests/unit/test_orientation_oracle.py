@@ -72,12 +72,15 @@ def test_orientation_plan_default_basis_is_byte_identical_to_grid() -> None:
     grid = _grid(o)
     beam_hkl = o["hkl"][:24]
     pattern = _pattern(beam_hkl)
-    default = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
+    default = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=float(o["energy"]), thickness=(300.0,)
+    )
     explicit = OrientationPlan.build(
         grid,
         beam_hkl,
         pattern,
         energy=float(o["energy"]),
+        thickness=(300.0,),
         orientation=np.eye(3),
     )
     assert torch.equal(default.beam_plan.diagonal, explicit.beam_plan.diagonal)
@@ -88,12 +91,15 @@ def test_orientation_plan_per_orientation_basis_shifts_excitation() -> None:
     grid = _grid(o)
     beam_hkl = o["hkl"][:24]
     pattern = _pattern(beam_hkl)
-    untilted = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
+    untilted = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=float(o["energy"]), thickness=(300.0,)
+    )
     tilted = OrientationPlan.build(
         grid,
         beam_hkl,
         pattern,
         energy=float(o["energy"]),
+        thickness=(300.0,),
         orientation=o["orientation"][0],
     )
     # diagonal = 2 k_n Sg Mii: a real orientation moves it well clear of the untilted case.
@@ -110,12 +116,20 @@ def test_orientation_plan_is_self_describing() -> None:
     pattern = _pattern(beam_hkl)
     m = o["orientation"][0]
     plan = OrientationPlan.build(
-        grid, beam_hkl, pattern, energy=float(o["energy"]), u0=1.5, orientation=m
+        grid,
+        beam_hkl,
+        pattern,
+        energy=float(o["energy"]),
+        thickness=(300.0,),
+        u0=1.5,
+        orientation=m,
     )
     assert plan.energy == float(o["energy"])
     assert plan.u0 == 1.5
     assert torch.allclose(plan.orientation, torch.tensor(m, dtype=torch.float64))
-    untilted = OrientationPlan.build(grid, beam_hkl, pattern, energy=float(o["energy"]))
+    untilted = OrientationPlan.build(
+        grid, beam_hkl, pattern, energy=float(o["energy"]), thickness=(300.0,)
+    )
     assert torch.equal(untilted.orientation, torch.eye(3, dtype=torch.float64))
 
 
@@ -126,10 +140,21 @@ def test_orientation_plan_rebuilds_from_its_own_tensor_orientation() -> None:
     beam_hkl = o["hkl"][:24]
     pattern = _pattern(beam_hkl)
     plan = OrientationPlan.build(
-        grid, beam_hkl, pattern, energy=float(o["energy"]), orientation=o["orientation"][0]
+        grid,
+        beam_hkl,
+        pattern,
+        energy=float(o["energy"]),
+        thickness=(300.0,),
+        orientation=o["orientation"][0],
     )
     rebuilt = OrientationPlan.build(
-        grid, beam_hkl, pattern, energy=plan.energy, u0=plan.u0, orientation=plan.orientation
+        grid,
+        beam_hkl,
+        pattern,
+        energy=plan.energy,
+        thickness=plan.thickness,
+        u0=plan.u0,
+        orientation=plan.orientation,
     )
     assert torch.equal(rebuilt.beam_plan.diagonal, plan.beam_plan.diagonal)
     assert torch.equal(rebuilt.orientation, plan.orientation)

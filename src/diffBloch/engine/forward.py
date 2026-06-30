@@ -47,8 +47,9 @@ class RefinementEngine:
     """Forward from raw parameters to a differentiable scalar objective (plus a refinement driver).
 
     Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,
-    the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations``, the sample
-    ``thicknesses``, the per-orientation ``loss``, and the propagation ``method``.
+    the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations`` (each
+    carrying its own frozen ``thickness``), the per-orientation ``loss``, and the propagation
+    ``method``.
     """
 
     spec: ConstraintSpec
@@ -56,7 +57,6 @@ class RefinementEngine:
     numbers: Tensor
     grid: ScatteringGrid
     orientations: tuple[OrientationPlan, ...]
-    thicknesses: Tensor
     loss: LossFn
     method: Method = "matrix_exp"
 
@@ -65,8 +65,7 @@ class RefinementEngine:
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
-        thicknesses = self._effective_thicknesses(params)
-        return tuple(self._solve(o, fgb, thicknesses) for o in self.orientations)
+        return tuple(self._solve(o, fgb, self._thickness_for(o, params)) for o in self.orientations)
 
     def fgb(self, params: RefinableParams) -> Tensor:
         """The calculated structure factors ``F_gb`` on the shared grid.
@@ -87,7 +86,7 @@ class RefinementEngine:
         objective ``fit_orientation`` minimises (``design/decisions/stage11-fit-orientation.md``).
         """
         aligned = align(
-            self._solve(orientation, fgb, self.thicknesses),
+            self._solve(orientation, fgb, orientation.thickness),
             orientation.pattern,
             orientation.alignment,
         )
@@ -107,10 +106,9 @@ class RefinementEngine:
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         fgb = self._structure_factors(params)
-        thicknesses = self._effective_thicknesses(params)
         total = params.asu_positions.new_zeros(())
         for orientation in self.orientations:
-            solution = self._solve(orientation, fgb, thicknesses)
+            solution = self._solve(orientation, fgb, self._thickness_for(orientation, params))
             aligned = align(solution, orientation.pattern, orientation.alignment)
             term = self.loss(aligned)
             # Catch a non-reducing loss here, where the mistake is, rather than letting a
@@ -145,18 +143,27 @@ class RefinementEngine:
             lr=lr,
         )
 
-    def _effective_thicknesses(self, params: RefinableParams) -> Tensor:
-        """The thickness the forward model uses: the refinable ``thickness_raw`` if the params carry
-        one, else the engine's static ``thicknesses`` seed.
+    def _thickness_for(self, orientation: OrientationPlan, params: RefinableParams) -> Tensor:
+        """The thickness ``(T,)`` the forward model uses for one orientation.
 
-        ``thickness_raw`` maps to a positive thickness exactly as
-        :func:`diffBloch.params.constrain` does (``positive(thickness_raw)``), so selecting the
-        ``"thickness"`` refine target now drives the simulation. A single thickness *provider*
-        unifying static / swept / learned thickness is deferred to stage 11 slice 6
-        (``fit_thickness``); see ``KNOWN_ISSUES.md``.
+        There are two sources of thickness, and this picks between them:
+
+        - **Normally**, each orientation carries its own fixed thickness
+          (``orientation.thickness``), because the specimen presents a different path length at each
+          tilt. It is seeded from the
+          sample thickness and later replaced by the best-fitting value found by ``fit_thickness``.
+        - **When the caller is also refining thickness**, ``params.thickness_raw`` is set, and it
+          overrides the per-orientation value for every orientation (a single refined thickness
+          shared across all of them). It is an unconstrained real number mapped to a positive
+          thickness by ``positive`` -- the same mapping :func:`diffBloch.params.constrain` uses --
+          so selecting the ``"thickness"`` refine target actually changes the simulation.
+
+        ``params.thickness_raw is None`` means "not refining thickness", so the per-orientation
+        value is used. Letting thickness vary per orientation while being refined (a learned
+        ``theta -> thickness`` model) is future work; see ROADMAP / KNOWN_ISSUES.md.
         """
         if params.thickness_raw is None:
-            return self.thicknesses
+            return orientation.thickness
         return positive(params.thickness_raw)
 
     def _structure_factors(self, params: RefinableParams) -> Tensor:

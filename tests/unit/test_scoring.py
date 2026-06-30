@@ -85,7 +85,6 @@ def _engine(
         numbers=numbers,
         grid=grid,
         orientations=(orientation,),
-        thicknesses=torch.tensor([300.0], dtype=torch.float64),
         loss=w_rbragg_loss,
     )
 
@@ -99,14 +98,17 @@ def _self_consistent_orientation(
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
-    seed = OrientationPlan.build(grid, _BEAM_HKL, dummy, energy=_ENERGY)
+    seed = OrientationPlan.build(grid, _BEAM_HKL, dummy, energy=_ENERGY, thickness=(300.0,))
     (solution,) = _engine(grid, asu_plan, spec, numbers, seed).simulate(_params())
     observed = PatternBatch(
         hkl=solution.beam_hkl,
         intensities=solution.intensities[0].detach(),
         sigmas=torch.full((3,), 0.01, dtype=torch.float64),
     )
-    return OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY), solution.intensities[0]
+    return (
+        OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(300.0,)),
+        solution.intensities[0],
+    )
 
 
 def test_score_orientation_vanishes_at_a_self_consistent_pattern() -> None:
@@ -128,7 +130,9 @@ def test_score_orientation_penalises_a_mismatched_pattern() -> None:
         intensities=(intensities.detach().flip(0) + 0.05),
         sigmas=torch.full((3,), 0.01, dtype=torch.float64),
     )
-    perturbed = OrientationPlan.build(grid, _BEAM_HKL, perturbed_pattern, energy=_ENERGY)
+    perturbed = OrientationPlan.build(
+        grid, _BEAM_HKL, perturbed_pattern, energy=_ENERGY, thickness=(300.0,)
+    )
     engine = _engine(grid, asu_plan, spec, numbers, matched)
     fgb = engine.fgb(_params())
 
@@ -146,7 +150,6 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
         spec=spec,
         params=_params(),
         numbers=numbers,
-        thicknesses=torch.tensor([300.0], dtype=torch.float64),
     )
 
     engine = build_engine(plan, refinement)
@@ -155,7 +158,7 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     assert engine.spec is refinement.spec
     assert engine.asu_plan is refinement.asu_plan
     assert engine.numbers is refinement.numbers
-    assert engine.thicknesses is refinement.thicknesses
+    assert engine.orientations[0].thickness.tolist() == [300.0]
 
     scores = score_orientations(plan, refinement)
     assert len(scores) == len(plan.orientations)

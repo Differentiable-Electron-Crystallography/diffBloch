@@ -7,14 +7,13 @@ there is no ``Plan`` yet). It assembles two separable products from the same rec
   geometry the preprocess steps then sharpen and ``refine`` consumes (added in the next slice);
 - a :class:`RefinementSetup` -- the structure-side static + refinable inputs the
   :class:`~diffBloch.engine.forward.RefinementEngine` needs (ASU expansion, constraint spec, initial
-  parameters, atomic numbers, thicknesses).
+  parameters, atomic numbers).
 
 The structure side lives here so the structure/observation split mirrors the two parsed records.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -85,17 +84,17 @@ class RefinementSetup:
     spec: ConstraintSpec
     params: RefinableParams
     numbers: Tensor
-    thicknesses: Tensor
 
     @classmethod
-    def from_structure(
-        cls, structure: StructureRecord, *, thicknesses: Sequence[float]
-    ) -> RefinementSetup:
+    def from_structure(cls, structure: StructureRecord) -> RefinementSetup:
         """Assemble the structure-side refinement inputs from a parsed :class:`StructureRecord`.
 
         Positions and symmetry use the *ideal* CIF cell (the measured-lattice correction enters only
         through the per-orientation matrices in the geometry plan). ADPs are mapped to the
         reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
+        Per-rotation thickness lives elsewhere -- on each ``OrientationPlan`` (seeded by
+        ``from_experiment``, fitted by ``fit_thickness``) -- because it varies per rotation, not per
+        structure.
 
         .. note::
            The ``refinable_position_mask`` is all-free for now: special-position degree-of-freedom
@@ -103,9 +102,6 @@ class RefinementSetup:
            later constraints stage. Until then a special-position atom is over-parameterized and may
            drift off its site under refinement. Recorded in ``KNOWN_ISSUES.md``.
         """
-        if not thicknesses:
-            raise ValueError("thicknesses must contain at least one value")
-
         positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
         uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
         spec = ConstraintSpec(
@@ -126,7 +122,6 @@ class RefinementSetup:
                 asu_positions=positions.clone(), uij_raw=uij_raw, u_iso_raw=u_iso_raw
             ),
             numbers=torch.tensor(structure.numbers, dtype=torch.int64),
-            thicknesses=torch.tensor(list(thicknesses), dtype=torch.float64),
         )
 
 
@@ -170,6 +165,7 @@ def from_experiment(
             beam_hkl,
             PatternBatch.from_observation_record(observations, zone_axis_id=int(zone_id)),
             energy=energy,
+            thickness=config.sample.thicknesses,
             orientation=orientations[index],
         )
         for index, zone_id in enumerate(observations.zone_axis_ids)
@@ -183,7 +179,7 @@ def from_experiment(
             train=Plan(grid=grid, orientations=train_orientations),
             validation=Plan(grid=grid, orientations=val_orientations),
         ),
-        refinement=RefinementSetup.from_structure(structure, thicknesses=config.sample.thicknesses),
+        refinement=RefinementSetup.from_structure(structure),
     )
 
 

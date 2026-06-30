@@ -79,7 +79,6 @@ def _refinement(asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor) -
         spec=spec,
         params=_params(),
         numbers=numbers,
-        thicknesses=torch.tensor([300.0], dtype=torch.float64),
     )
 
 
@@ -96,14 +95,15 @@ def _self_consistent(
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
-    seed = OrientationPlan.build(grid, _BEAM_HKL, dummy, energy=_ENERGY, orientation=orientation)
+    seed = OrientationPlan.build(
+        grid, _BEAM_HKL, dummy, energy=_ENERGY, thickness=(300.0,), orientation=orientation
+    )
     engine = RefinementEngine(
         spec=spec,
         asu_plan=asu_plan,  # type: ignore[arg-type]
         numbers=numbers,
         grid=grid,
         orientations=(seed,),
-        thicknesses=torch.tensor([300.0], dtype=torch.float64),
         loss=w_rbragg_loss,
     )
     (solution,) = engine.simulate(_params())
@@ -112,7 +112,9 @@ def _self_consistent(
         intensities=solution.intensities[0].detach(),
         sigmas=torch.full((3,), 0.01, dtype=torch.float64),
     )
-    return OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, orientation=orientation)
+    return OrientationPlan.build(
+        grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(300.0,), orientation=orientation
+    )
 
 
 def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> None:
@@ -147,6 +149,7 @@ def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
         _BEAM_HKL,
         matched.pattern,
         energy=_ENERGY,
+        thickness=(300.0,),
         orientation=np.eye(3, dtype=np.float64) @ hexagonal_tilt(60.0, 0.2),
     )
     plan = Plan(grid=grid, orientations=(perturbed,))

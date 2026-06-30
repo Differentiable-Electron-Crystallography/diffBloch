@@ -78,6 +78,7 @@ def _reselect(
         beam_hkl[keep],
         op.pattern,
         energy=op.energy,
+        thickness=op.thickness,
         u0=op.u0,
         orientation=op.orientation,
     )
