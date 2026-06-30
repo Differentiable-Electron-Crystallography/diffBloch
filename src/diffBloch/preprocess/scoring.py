@@ -33,11 +33,15 @@ def build_engine(
     loss: LossFn = w_rbragg_loss,
     method: Method = "matrix_exp",
 ) -> RefinementEngine:
-    """Assemble a :class:`RefinementEngine` from a geometry ``plan`` and structure ``refinement``.
+    """Wire a geometry ``plan`` and a structure ``refinement`` into a runnable engine (no compute).
 
-    The ``plan`` supplies the shared grid + per-rotation orientations; ``refinement`` supplies the
-    constraint spec, ASU-expansion plan, ASU atomic numbers, and sample thicknesses. ``loss`` is the
-    per-orientation term ``refine`` would minimise (irrelevant to :meth:`RefinementEngine.fgb` /
+    Pure assembly, not a forward pass. ``Plan`` and ``RefinementSetup`` are kept deliberately
+    separate -- the ``Plan`` (shared grid + per-rotation orientations) flows through the
+    ``Plan -> Plan`` preprocess steps, while ``refinement`` (constraint spec, ASU-expansion plan,
+    ASU atomic numbers, sample thicknesses) is static structure context. ``build_engine`` is the
+    single seam that rejoins them when a simulation is actually needed; both ``score_orientations``
+    here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
+    minimise (irrelevant to :meth:`RefinementEngine.fgb` /
     :meth:`RefinementEngine.score_orientation`, which use a scaling-optimised wR2 internally).
     """
     return RefinementEngine(
