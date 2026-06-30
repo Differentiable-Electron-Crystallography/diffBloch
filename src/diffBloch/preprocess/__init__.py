@@ -12,6 +12,7 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 ``from_experiment`` construction land in later slices.
 """
 
+from diffBloch.preprocess.experiment import RefinementSetup, refinement_setup
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
     goniometer_rotation,
@@ -32,6 +33,7 @@ __all__ = [
     "ConvergenceCheck",
     "Plan",
     "PlanStep",
+    "RefinementSetup",
     "busing_levy_matrix",
     "goniometer_rotation",
     "identity",
@@ -39,5 +41,6 @@ __all__ = [
     "orientation_basis",
     "orientation_matrices",
     "pipeline",
+    "refinement_setup",
     "u_matrix",
 ]
