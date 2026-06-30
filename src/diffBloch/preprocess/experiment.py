@@ -27,6 +27,7 @@ from diffBloch.core.adp import cholesky_raw_from_adp
 from diffBloch.core.crystal import reciprocal_cell
 from diffBloch.core.dynamical import wavelength2energy
 from diffBloch.core.products import PatternBatch
+from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
@@ -182,8 +183,9 @@ def from_experiment(
 def _seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.int64]:
     """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000)."""
     grid_hkl = np.asarray(grid.grid_hkl)
-    g_lengths = np.linalg.norm(grid_hkl @ np.asarray(grid.reciprocal_basis), axis=1)
-    beams: NDArray[np.int64] = grid_hkl[g_lengths <= g_max_refine]
+    beams: NDArray[np.int64] = grid_hkl[
+        gmax_mask(grid_hkl, np.asarray(grid.reciprocal_basis), g_max_refine)
+    ]
     return beams
 
 
