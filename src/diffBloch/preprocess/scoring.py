@@ -1,4 +1,4 @@
-"""The wR2-scoring seam: assemble a :class:`RefinementEngine` and score orientations against data.
+"""Assemble a :class:`RefinementEngine` and score orientations against data (computes wR2).
 
 Bridges the two products :func:`diffBloch.preprocess.from_experiment` returns -- the geometry
 :class:`~diffBloch.preprocess.plan.Plan` and the structure-side
@@ -9,9 +9,9 @@ the orientation refinement (``fit_orientation``, slice 5b) minimises.
 ``build_engine`` is the general ``Plan + RefinementSetup -> engine`` assembly (the same engine
 ``refine`` will consume); ``score_orientations`` is the thin convenience that computes the
 orientation-invariant ``F_gb`` once and scores every orientation of a ``Plan``. The forward
-simulation inside is deterministic, referentially transparent compute -- a captured read-only
-context (the Reader pattern), not a side effect; see
-``design/decisions/stage11-fit-orientation.md``.
+simulation inside is deterministic and depends only on its inputs (same inputs always give the same
+result), so it does not change any shared state -- it is ordinary computation reading captured
+read-only context, not a side effect; see ``design/decisions/stage11-fit-orientation.md``.
 """
 
 from __future__ import annotations
@@ -38,8 +38,8 @@ def build_engine(
     Pure assembly, not a forward pass. ``Plan`` and ``RefinementSetup`` are kept deliberately
     separate -- the ``Plan`` (shared grid + per-rotation orientations) flows through the
     ``Plan -> Plan`` preprocess steps, while ``refinement`` (constraint spec, ASU-expansion plan,
-    ASU atomic numbers) is static structure context. ``build_engine`` is the
-    single seam that rejoins them when a simulation is actually needed; both ``score_orientations``
+    ASU atomic numbers) is static structure context. ``build_engine`` is the single place that
+    rejoins them when a simulation is actually needed; both ``score_orientations``
     here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
     minimise (irrelevant to :meth:`RefinementEngine.fgb` /
     :meth:`RefinementEngine.score_orientation`, which use a scaling-optimised wR2 internally).

@@ -93,9 +93,10 @@ the values -- two paths to the same physics could leave the system in different 
 
 **What 2.0 does.** `Plan`s are fully-populated, self-describing values; equal values are
 indistinguishable regardless of how they were produced. A quantity gets **one home decided by its
-role** (e.g. per-rotation thickness is frozen conditioning in `OrientationPlan`, read through a
-`None`-default provider seam; the learned-thickness path is an explicit opt-in *mode*, not a second
-home). "Was this fitted in preprocess?" is a question of value, never of location.
+role** (e.g. per-rotation thickness is a fixed value stored on each `OrientationPlan`; when
+thickness is being refined the optimiser's value overrides it, but that is an explicit opt-in
+*mode*, not a second home). "Was this fitted in preprocess?" is a question of value, never of
+location.
 
 *Decided in:*
 [`design/decisions/plan-shape-and-step-ordering.md`](design/decisions/plan-shape-and-step-ordering.md);

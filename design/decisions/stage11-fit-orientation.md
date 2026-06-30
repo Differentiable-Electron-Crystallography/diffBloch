@@ -27,7 +27,7 @@ guard. The form of `delta` is tied to the optimizer (the two are not interchange
   / Bayesian objective (`orientation_optim`, `construct_rotation_matrix`) refines. Pairs with a
   continuous optimizer, not the hexagonal search.
 
-## Shape — a `PlanStep` factory over a captured `RefinementSetup` (the Reader pattern)
+## Shape — a `PlanStep` factory that captures the read-only `RefinementSetup`
 
 The objective needs the forward kernel + structure + observed data, so `fit_orientation` is a
 `PlanStep` **factory that closes over the read-only `RefinementSetup`**:
@@ -36,23 +36,29 @@ The objective needs the forward kernel + structure + observed data, so `fit_orie
 fit_orientation(refinement, *, loss, optimizer) -> (Plan -> Plan)
 ```
 
-A functional-references pass (Elm, OCaml, Elixir, the functional-core/imperative-shell pattern)
-settles the "is a simulation inside a `Plan -> Plan` step a side effect?" question:
+A survey of how purely-functional languages draw the line (Elm, OCaml, Elixir, the
+functional-core/imperative-shell pattern) settles the "is a simulation inside a `Plan -> Plan` step
+a side effect?" question. The short answer: no. A side effect is something that touches the outside
+world or is non-deterministic; a calculation that only reads its inputs and returns a value is not,
+no matter how expensive.
 
 - A **deterministic** simulation is **not** an effect. Elm reserves `Cmd`/`Sub` for the *outside
   world / non-determinism* (HTTP, random, time); deterministic transformation "stays in the world of
   Elm, writing functions." OCaml 5 effect handlers are for *control*, not pure compute.
   Functional-core/imperative-shell (Bernhardt) keeps IO in the shell; pure compute is the core.
-  Our forward sim is referentially transparent (same `Plan` + structure → same corrected `Plan`),
-  so it is **pure-but-expensive core compute**, not a side effect.
-- The extra read-only context is supplied by the **Reader / environment monad**: "a value in an
-  environment monad is equivalent to a function with an additional, anonymous argument." Capturing
-  `RefinementSetup` by partial application and returning `Plan -> Plan` is exactly this. Elixir's own
-  anti-pattern guidance echoes it: split arguments into "data that may change" vs "read-only".
+  Our forward sim depends only on its inputs (same `Plan` + structure -> same corrected `Plan`),
+  so it is **expensive-but-pure calculation**, not a side effect.
+- The extra read-only context is supplied by **capturing it as a hidden argument**: a function that
+  needs some unchanging background data can either take it as an explicit parameter every call, or
+  be built once with that data baked in. Capturing `RefinementSetup` by partial application and
+  returning `Plan -> Plan` is the second option. (In functional-programming terms this is the
+  "Reader" or "environment" idea -- "a value in an environment is equivalent to a function with an
+  additional, anonymous argument" -- and Elixir's own guidance echoes it: split arguments into
+  "data that may change" vs "read-only".)
 
-So the `Plan` is the changing data threaded through the pipeline; `RefinementSetup` is captured
-environment. Only the **observation** of the search (trace logging, whole-`Plan` checkpoint, typed
-domain events) is an effect, routed to the imperative shell per
+So the `Plan` is the changing data threaded through the pipeline; `RefinementSetup` is the captured
+background data. Only the **observation** of the search (trace logging, whole-`Plan` checkpoint,
+typed domain events) is an effect, routed to the imperative shell per
 `design/decisions/effects-and-observability.md` (realized in stage 12).
 
 ## Optimizer — A chosen, B recorded
@@ -68,6 +74,6 @@ domain events) is an effect, routed to the imperative shell per
 
 ## Sequencing
 
-`fit_orientation` needs a reusable **wR2-scoring seam** first: `(trial orientation,
+`fit_orientation` needs a reusable **wR2-scoring step** first: `(trial orientation,
 RefinementSetup) → forward sim → integrate intensities → scale against observed → wR2`. Build that
 pure scoring function (**5a**), then the Palatinus search on top (**5b**).

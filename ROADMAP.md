@@ -115,15 +115,16 @@ commit — the executable form of *"the core physics model has not changed."*
     orientation and thickness, fit to the data. **Thickness is per-rotation because the specimen's
     3D shape is irregular** (each orientation presents a different beam path length), so it moves
     into `OrientationPlan`, retiring the engine-level shared `thicknesses`. The forward model reads
-    thickness through a **`None`-default provider seam**: `engine.thickness is None` reads the frozen
-    per-rotation `OrientationPlan.thickness` (the default); a provider supersedes it. Thickness is
-    gridsearch today; a learned **`ThicknessNN`** provider (`theta -> thickness`, swapped in via that
-    seam -- config `thickness.mode: frozen|learned` or programmatic `refine(..., thickness=...)`; its
+    thickness per orientation from `OrientationPlan.thickness`; when thickness is being refined the
+    optimiser's value overrides it for every orientation. Thickness is
+    gridsearch today; a learned **`ThicknessNN`** (`theta -> thickness`, swapped in via that same
+    override point -- config `thickness.mode: frozen|learned` or programmatic
+    `refine(..., thickness=...)`; its
     `.parameters()` join the optimizer and the convexity penalty attaches only in learned mode,
-    optionally warm-started from the baked thicknesses) is **committed future work for the v1 release
-    of the refactor**, faithful to private `ApparentThicknessNN` / `cfg.thicknessNN` /
-    `convexity_loss_fn`. So thickness has two *modes* (frozen conditioning vs learned provider), not
-    two homes for one default value. Orientation likewise — 3D-ED practice already refines per-frame
+    optionally warm-started from the baked thicknesses) is **committed future work for the v1
+    release of the refactor**, faithful to private `ApparentThicknessNN` / `cfg.thicknessNN` /
+    `convexity_loss_fn`. So thickness has two *modes* (a fixed per-rotation value vs a learned
+    model), not two homes for one default value. Orientation likewise — 3D-ED practice already refines per-frame
     orientation by least-squares on simulated patterns (PETS2/Jana2020).
   - **Composition is a partial order, not free reordering.** The steps couple (convergence needs a
     rough orientation; thickness needs converged numerics; orientation/thickness can be mutually

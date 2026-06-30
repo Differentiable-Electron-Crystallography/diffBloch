@@ -10,8 +10,8 @@ the radius when none does, until the radius falls below ``min_search_angle``.
 The trial orientation is ``orientation @ hexagonal_tilt(azimuth, radius)`` -- a right-multiplied
 true rotation, so the non-orthonormal ``U`` measured-cell correction is preserved (no
 re-orthonormalisation; see ``KNOWN_ISSUES.md``). The captured ``refinement`` is read-only context
-(the Reader pattern; ``design/decisions/stage11-fit-orientation.md``); the deterministic simulation
-inside is referentially transparent compute, not a side effect.
+the step never mutates (``design/decisions/stage11-fit-orientation.md``); the simulation inside is
+deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
 The active beam set is held fixed at each orientation's seed selection across the search -- it is
 *not* re-filtered per trial as ``diffBloch_private`` does (see ``DIVERGENCE.md``).
