@@ -13,6 +13,7 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 """
 
 from diffBloch.preprocess.beams import klar_beam_mask, select_beams
+from diffBloch.preprocess.convergence import simulation_converged
 from diffBloch.preprocess.experiment import (
     ExperimentSetup,
     PlanSplit,
@@ -38,11 +39,12 @@ from diffBloch.preprocess.pipeline import (
 )
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine, score_orientations
-from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
+from diffBloch.specs import BeamSelection, ConvergenceTolerance, HexagonalSearch, ThicknessGrid
 
 __all__ = [
     "BeamSelection",
     "ConvergenceCheck",
+    "ConvergenceTolerance",
     "ExperimentSetup",
     "HexagonalSearch",
     "Plan",
@@ -65,5 +67,6 @@ __all__ = [
     "pipeline",
     "score_orientations",
     "select_beams",
+    "simulation_converged",
     "u_matrix",
 ]
