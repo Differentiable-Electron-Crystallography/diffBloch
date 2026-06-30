@@ -19,9 +19,11 @@ from diffBloch.preprocess.experiment import (
     RefinementSetup,
     from_experiment,
 )
+from diffBloch.preprocess.fit_orientation import fit_orientation
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
     goniometer_rotation,
+    hexagonal_tilt,
     orientation_basis,
     orientation_matrices,
     u_matrix,
@@ -45,8 +47,10 @@ __all__ = [
     "RefinementSetup",
     "build_engine",
     "busing_levy_matrix",
+    "fit_orientation",
     "from_experiment",
     "goniometer_rotation",
+    "hexagonal_tilt",
     "identity",
     "iterate_until",
     "klar_beam_mask",

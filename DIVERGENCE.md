@@ -56,6 +56,29 @@ lives in this codebase, and the test that pins it. The defects are also recorded
 
 ---
 
+## Deliberate simplifications (we narrow, with justification)
+
+### `fit_orientation` holds the active beam set fixed across the search
+
+- **Original:** `diffBloch/programs/preprocess.py`, `palatinus_modified_simplex()` /
+  `orientation_optim()`. Every trial orientation re-runs `results.filter_hkls(...)`, so the active
+  beam set -- and hence the set of reflections the wR2 is computed over -- is re-derived for each
+  tilt inside the search loop.
+- **2.0 behaviour:** `fit_orientation` selects beams once (at the seed orientation, via the separate
+  `select_beams` step) and holds that set fixed across the whole hexagonal search. Each trial still
+  recompiles the *dynamics* (`Sg` / structure matrix) for its tilted orientation via
+  `OrientationPlan.build`; only beam *membership* is frozen.
+- **Justification:** the search is sub-degree (`max_search_angle = 0.4`, shrinking to
+  `min_search_angle = 0.001`), over which the Klar rsg/dsg membership is effectively unchanged, so
+  re-filtering per trial is near-identical at much higher cost. Freezing it also keeps each
+  preprocess step single-responsibility (`fit_orientation` tilts + scores, `select_beams` selects --
+  recompose `select_beams` afterwards to re-prune) and keeps the wR2 objective over a *fixed*
+  reflection domain across trials, so trial scores are strictly comparable.
+- **Where:** `preprocess/fit_orientation.py` (`_refine_one`, the fixed `beam_hkl`); exercised by
+  `tests/unit/test_fit_orientation.py`. Decision context in
+  `design/decisions/stage11-fit-orientation.md`.
+- **Found:** diffBloch 2.0 stage 11 (5b) -- `fit_orientation`.
+
 ## Deliberate generalizations (we extend, not correct, the original)
 
 ### Orientation scoring reduces over thickness by the best-fitting value, not the first

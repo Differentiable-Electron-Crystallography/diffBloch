@@ -31,6 +31,7 @@ type FloatArray = NDArray[np.float64]
 __all__ = [
     "busing_levy_matrix",
     "goniometer_rotation",
+    "hexagonal_tilt",
     "orientation_basis",
     "orientation_matrices",
     "u_matrix",
@@ -82,6 +83,28 @@ def goniometer_rotation(alpha: float, beta: float, omega: float) -> FloatArray:
     ry = np.array([[np.cos(b), 0.0, np.sin(b)], [0.0, 1.0, 0.0], [-np.sin(b), 0.0, np.cos(b)]])
     rotation: FloatArray = rz @ rx @ ry
     return rotation
+
+
+def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
+    """Palatinus hexagonal-search tilt ``R_z(azimuth) . R_x(polar) . R_z(-azimuth)``, in degrees.
+
+    A tilt of magnitude ``polar`` about the in-plane axis at ``azimuth`` -- the delta rotation
+    ``fit_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a true
+    rotation (``det = 1``) it preserves the non-orthonormal ``U`` measured-cell correction exactly,
+    so the re-orthonormalisation trap (KNOWN_ISSUES.md) is dodged by construction.
+
+    Faithful to ``diffBloch_private``'s ``generate_new_tilt``. Reference: L. Palatinus et al.,
+    *Acta Cryst.* **A69**, 171-188 (2013), the hexagonal modified-simplex search.
+    """
+    phi, theta = np.deg2rad([azimuth, polar])
+    rz = np.array(
+        [[np.cos(phi), -np.sin(phi), 0.0], [np.sin(phi), np.cos(phi), 0.0], [0.0, 0.0, 1.0]]
+    )
+    rx = np.array(
+        [[1.0, 0.0, 0.0], [0.0, np.cos(theta), -np.sin(theta)], [0.0, np.sin(theta), np.cos(theta)]]
+    )
+    tilt: FloatArray = rz @ rx @ rz.T  # rz.T = R_z(-azimuth)
+    return tilt
 
 
 def u_matrix(ub_matrix: FloatArray, cell_parameters: FloatArray) -> FloatArray:
