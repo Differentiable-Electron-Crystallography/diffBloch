@@ -53,3 +53,25 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   (`test_klar_mask_keeps_near_ewald_in_plane_drops_on_axis` -- keeps an x-offset beam, drops a
   z-offset one, the exact swap of the original convention). See `REFERENCES.md` (Klar 2023 rsg/dsg).
 - **Found:** diffBloch 2.0 stage 11 (preprocess) port.
+
+---
+
+## Deliberate generalizations (we extend, not correct, the original)
+
+### Orientation scoring reduces over thickness by the best-fitting value, not the first
+
+- **Original:** `diffBloch/programs/preprocess.py`, `orientation_optim()`. When scoring an
+  orientation it simulates over the candidate thicknesses and then uses
+  `combined_filtered_intensities[0]` -- the **first** thickness -- to compute the wR2 the simplex
+  minimizes.
+- **2.0 behaviour:** `RefinementEngine.score_orientation` computes the scaling-optimized wR2 per
+  thickness and returns the **minimum** (the best-fitting thickness's score). Thickness is a nuisance
+  when scoring orientation, so "orientation's best achievable fit over the candidate thicknesses" is
+  the more faithful objective than "the fit at whichever thickness happens to be first".
+- **Equivalence:** identical to the original whenever a single thickness is in play -- which is the
+  preprocess case the original ran (one current thickness per rotation). The two differ only when
+  more than one thickness is scored at once, where the original's `[0]` is order-dependent.
+- **Where:** `engine/forward.py` (`RefinementEngine.score_orientation`); exercised by
+  `tests/unit/test_scoring.py`. Decision context in
+  `design/decisions/stage11-fit-orientation.md`.
+- **Found:** diffBloch 2.0 stage 11 (5a) -- the wR2-scoring seam.
