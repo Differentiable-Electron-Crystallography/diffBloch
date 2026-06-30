@@ -81,6 +81,23 @@ lives in this codebase, and the test that pins it. The defects are also recorded
 
 ## Deliberate generalizations (we extend, not correct, the original)
 
+### `fit_orientation` enforces an iteration cap; the private search has none
+
+- **Original:** `diffBloch/programs/preprocess.py`, `palatinus_modified_simplex()`. A bare
+  `while search_angle > min_search_angle:` with no iteration counter -- termination rests entirely
+  on monotone wR2 descent plus the halving radius reaching the floor.
+- **2.0 behaviour:** `fit_orientation` caps the total passes per orientation at `max_iterations`
+  and raises `RuntimeError` if it is reached, matching this package's `iterate_until` posture that
+  silent non-convergence is never returned. The search still terminates by construction on a
+  non-degenerate objective; the cap only guards pathological ridge-walking on (near-)degenerate
+  landscapes (e.g. the trivial high-symmetry synthetic system, which walks 900+ passes toward a
+  symmetry-equivalent minimum).
+- **Caveat:** the default cap is uncalibrated -- there is no private precedent and no real-data
+  statistics yet (KNOWN_ISSUES.md tracks moving it into `OrientationFitConfig` and tuning it).
+- **Where:** `preprocess/fit_orientation.py` (`fit_orientation` / `_refine_one`); exercised by
+  `tests/unit/test_fit_orientation.py`.
+- **Found:** diffBloch 2.0 stage 11 (5b) -- `fit_orientation`.
+
 ### Orientation scoring reduces over thickness by the best-fitting value, not the first
 
 - **Original:** `diffBloch/programs/preprocess.py`, `orientation_optim()`. When scoring an

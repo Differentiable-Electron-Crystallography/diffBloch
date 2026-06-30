@@ -25,7 +25,7 @@ import numpy as np
 from torch import Tensor
 
 from diffBloch.core.solver import Method
-from diffBloch.engine import LossFn, RefinementEngine, w_rbragg_loss
+from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
@@ -42,7 +42,7 @@ def fit_orientation(
     max_search_angle: float = 0.4,
     min_search_angle: float = 0.001,
     n_steps: int = 6,
-    loss: LossFn = w_rbragg_loss,
+    max_iterations: int = 200,
     method: Method = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
@@ -52,13 +52,26 @@ def fit_orientation(
     orientation-invariant ``F_gb`` is computed once and reused across every orientation and trial.
     ``max_search_angle`` / ``min_search_angle`` (degrees) bound the shrinking tilt radius, and
     ``n_steps`` is the number of hexagonal azimuths (6 -> 0, 60, ..., 300 deg, matching the
-    private); defaults are the faithful ``diffBloch_private`` values. ``loss`` / ``method``
-    configure the engine (``score_orientation`` uses a scaling-optimised wR2 internally,
-    independent of ``loss``).
+    private); defaults are the faithful ``diffBloch_private`` values. ``method`` configures the
+    engine's solver (``score_orientation`` uses a scaling-optimised wR2 internally).
+
+    The greedy search restarts at the same radius on every accepting (improving) pass, so the
+    radius schedule alone does not bound the pass count. Mirroring :func:`iterate_until`,
+    ``max_iterations`` caps the total passes *per orientation* and a ``RuntimeError`` is raised if
+    it is reached -- silent non-convergence is never returned. ``max_iterations`` must be >= 1.
+
+    The cap is a 2.0 addition: ``diffBloch_private``'s search has none (it relies on monotone wR2
+    descent + the radius floor; see DIVERGENCE.md). The search does terminate by construction for a
+    non-degenerate objective -- the cap only guards pathological ridge-walking on (near-)degenerate
+    landscapes. The default is an **uncalibrated** runaway guard with no empirical basis yet (see
+    KNOWN_ISSUES.md); it will move into ``OrientationFitConfig`` and be tuned from real-data
+    convergence. Raise it if a legitimate search trips it.
     """
+    if max_iterations < 1:
+        raise ValueError("max_iterations must be >= 1")
 
     def run(plan: Plan) -> Plan:
-        engine = build_engine(plan, refinement, loss=loss, method=method)
+        engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
         orientations = tuple(
             _refine_one(
@@ -69,6 +82,7 @@ def fit_orientation(
                 max_search_angle=max_search_angle,
                 min_search_angle=min_search_angle,
                 n_steps=n_steps,
+                max_iterations=max_iterations,
             )
             for op in plan.orientations
         )
@@ -86,6 +100,7 @@ def _refine_one(
     max_search_angle: float,
     min_search_angle: float,
     n_steps: int,
+    max_iterations: int,
 ) -> OrientationPlan:
     """Palatinus hexagonal search over one orientation; returns the best-scoring OrientationPlan."""
     current = op
@@ -94,7 +109,9 @@ def _refine_one(
         op.beam_hkl, dtype=np.int64
     )  # fixed across the search (see DIVERGENCE.md)
     search_angle = max_search_angle
-    while search_angle > min_search_angle:
+    for _ in range(max_iterations):
+        if search_angle <= min_search_angle:
+            return current
         improved = False
         for n in range(n_steps):
             azimuth = n * 360.0 / n_steps  # hexagonal: 0, 60, ..., 300 deg at n_steps = 6
@@ -116,4 +133,6 @@ def _refine_one(
                 break
         if not improved:
             search_angle /= 2.0
-    return current
+    raise RuntimeError(
+        f"fit_orientation search did not converge within {max_iterations} iterations"
+    )

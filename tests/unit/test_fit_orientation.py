@@ -3,14 +3,17 @@
 ``hexagonal_tilt`` is checked as a proper rotation (and that right-multiplying it preserves a
 non-orthonormal determinant -- the re-orthonormalisation trap). ``fit_orientation`` is then
 exercised end-to-end on the same fast synthetic silicon system as ``test_scoring``: an already
-self-consistent orientation must be left essentially unchanged. Recovery of a *specific* perturbed
-orientation needs a unique minimum, which this trivial high-symmetry system does not have -- that is
-deferred to the real quartz e2e.
+self-consistent orientation is left essentially unchanged; the ``iterate_until``-style iteration cap
+is validated and shown to trip on an actively-descending search (which doubles as proof the
+accept-and-restart path is live, not a no-op). Recovery of a *specific* perturbed orientation needs
+a unique minimum, which this trivial high-symmetry system does not have -- that is deferred to the
+real quartz e2e.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from diffBloch.core.products import PatternBatch
@@ -122,3 +125,31 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
 
     # Already optimal: the search must not wander it away from the seed.
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
+
+
+def test_fit_orientation_rejects_a_nonpositive_iteration_cap() -> None:
+    _, asu_plan, spec, numbers = _silicon()
+    with pytest.raises(ValueError, match="max_iterations must be >= 1"):
+        fit_orientation(_refinement(asu_plan, spec, numbers), max_iterations=0)
+
+
+def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
+    # Tests the iterate_until-style cap, and doubles as the descent check: a non-improving search
+    # halts in ~10 passes (~log2(0.4 / 0.001) radius halvings), so tripping a cap of 15 *requires*
+    # repeated acceptances -- proof the greedy accept-and-restart path is live, not a no-op. On this
+    # degenerate system the accepted steps ridge-walk toward a symmetry-equivalent, well past 15.
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    # Azimuth 60 (counter 240, both in the hex set) tilts the x-axis beams out-of-plane so the score
+    # responds; azimuth 0 (R_x) would leave the [+-100] g-vectors -- and the score -- invariant.
+    perturbed = OrientationPlan.build(
+        grid,
+        _BEAM_HKL,
+        matched.pattern,
+        energy=_ENERGY,
+        orientation=np.eye(3, dtype=np.float64) @ hexagonal_tilt(60.0, 0.2),
+    )
+    plan = Plan(grid=grid, orientations=(perturbed,))
+    refinement = _refinement(asu_plan, spec, numbers)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        fit_orientation(refinement, max_iterations=15)(plan)
