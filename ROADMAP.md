@@ -181,3 +181,10 @@ commit — the executable form of *"the core physics model has not changed."*
 - Every stage: discrete tested commit, comprehensive message, `just check` + e2e anchor green.
 - Scientific deps (numpy, torch, gemmi, diffpy.structure, abtem) are added to `pyproject.toml` as
   their modules land — not all up front.
+- **De-jargonify comments (housekeeping sweep).** Comments and docstrings should stand on their own
+  against the code in their immediate context — not lean on other docs, decision records, or past
+  conversation to be understood. The goal is not merely "use fewer fancy terms" but "a reader of
+  this function needs nothing but this function to understand the comment." Known residue: the word
+  "seam" used in the milder boundary sense in `params.py`, `core/dynamical/assembly.py`,
+  `io/symmetry_setup.py`, `design/decisions/stage10-refinement-loop.md`, and ROADMAP's "Solver
+  seam"; plus any remaining cross-doc pointers in comments. Sweep these in a dedicated pass.
