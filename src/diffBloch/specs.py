@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["BeamSelection", "HexagonalSearch", "ThicknessGrid"]
+__all__ = ["BeamSelection", "ConvergenceTolerance", "HexagonalSearch", "ThicknessGrid"]
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,30 @@ class BeamSelection:
             raise ValueError("rsg must be positive")
         if self.integration_semiangle <= 0.0:
             raise ValueError("integration_semiangle must be positive")
+
+
+@dataclass(frozen=True)
+class ConvergenceTolerance:
+    """Stopping rule for a convergence sweep: stability threshold + a runaway cap.
+
+    A convergence sweep grows a simulation-accuracy knob and stops once *consecutive* simulations
+    stop changing: ``r_factor_threshold`` is the largest consecutive-simulation R-factor still
+    counted as "converged" (the private's ``r_factor_threshold = 0.005``). ``max_iterations`` is the
+    hard cap on sweep steps before non-convergence is raised (the private's
+    ``MAX_SWEEP_ITERATIONS = 100``); it also gives ``iterate_until``'s previously-bare cap a home.
+
+    Defaults are the faithful ``diffBloch_private`` values
+    (``configs/convergence_test/base.yaml`` + ``convergence_testing.MAX_SWEEP_ITERATIONS``).
+    """
+
+    r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
+    max_iterations: int = 100  # hard cap on sweep steps before raising non-convergence
+
+    def __post_init__(self) -> None:
+        if self.r_factor_threshold <= 0.0:
+            raise ValueError("r_factor_threshold must be positive")
+        if self.max_iterations < 1:
+            raise ValueError("max_iterations must be >= 1")
 
 
 @dataclass(frozen=True)

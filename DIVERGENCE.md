@@ -115,3 +115,22 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   `tests/unit/test_scoring.py`. Decision context in
   `design/decisions/stage11-fit-orientation.md`.
 - **Found:** diffBloch 2.0 stage 11 (5a) -- the wR2-scoring seam.
+
+### Convergence revisits knobs to a fixpoint, not the private's fixed two order-varying passes
+
+- **Original:** `diffBloch/programs/convergence_testing.py`, `_run_hyperparams_optimization` /
+  `run_pass`. The hyperparameter suite runs a hard-coded `num_passes = 2`, and *changes the sweep
+  order between passes* (pass 1: `g_max`, `tilt_steps`, `sg_max`; pass 2: `tilt_steps`, `g_max`,
+  `sg_max`). The revisit count and the per-pass order are empirical -- no stated principle.
+- **2.0 behaviour:** the suite is one ordered `pipeline` (`converge_g_max`, `converge_sampling`,
+  `converge_beams` -- respecting the hard grid-before-beams partial order) driven by `iterate_until`
+  to a genuine cross-knob fixpoint: the pass repeats until a whole pass leaves every knob unchanged,
+  or the `ConvergenceTolerance` cap raises (silent non-convergence is never returned, matching the
+  `iterate_until` posture). This **generalises** the private's fixed 2 passes (a fixpoint subsumes
+  any sufficient fixed count) and drops the unprincipled per-pass order-swap.
+- **Equivalence:** when two ordered passes already reach the fixpoint, 2.0 stops after detecting it
+  rather than running a hard-coded second pass; results coincide whenever the private's 2 passes
+  were themselves converged.
+- **Where:** `preprocess/` convergence steps + `iterate_until` (`preprocess/pipeline.py`). Decision
+  context in `design/decisions/stage11-convergence.md`.
+- **Found:** diffBloch 2.0 stage 11 -- convergence testing.
