@@ -98,7 +98,7 @@ class RefinementSetup:
         reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
 
         .. note::
-           The ``position_mask`` is all-free for now: special-position degree-of-freedom
+           The ``refinable_position_mask`` is all-free for now: special-position degree-of-freedom
            constraints (the diffpy-backed expansion behind :mod:`diffBloch.io.symmetry_setup`) are a
            later constraints stage. Until then a special-position atom is over-parameterized and may
            drift off its site under refinement. Recorded in ``KNOWN_ISSUES.md``.
@@ -110,7 +110,7 @@ class RefinementSetup:
         uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
         spec = ConstraintSpec(
             fixed_positions=positions,
-            position_mask=torch.ones_like(positions),
+            refinable_position_mask=torch.ones_like(positions),
             occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
             adp_kind=structure.adp.kind,
             reciprocal_basis=torch.tensor(

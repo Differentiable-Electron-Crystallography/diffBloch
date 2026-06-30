@@ -39,10 +39,16 @@ class ConstraintSpec:
     ``reciprocal_basis`` (``B`` = ``reciprocal_cell``, rows ``a*, b*, c*``) is required whenever
     ADPs are constrained: it carries the cell frame used to map raw ADPs into the reciprocal ``U*``
     frame that :func:`diffBloch.core.scattering.structure_factors` consumes.
+
+    ``refinable_position_mask`` is a shape-preserving ``(N, 3)`` gate with polarity
+    ``1 = refinable``, ``0 = frozen`` (applied as ``raw * mask + fixed * (1 - mask)`` in
+    :func:`diffBloch.core.constraints.apply_symmetry_mask`). Naming convention in this codebase:
+    *mask* = a shape-preserving 0/1 selector named by its subject and polarity; *filter* /
+    *select* = an operation that shrinks a set.
     """
 
     fixed_positions: Tensor
-    position_mask: Tensor
+    refinable_position_mask: Tensor
     occupancies: Tensor
     adp_kind: tuple[AdpKind, ...] | None = None
     reciprocal_basis: Tensor | None = None
@@ -78,7 +84,7 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
     return PhysicalState(
         positions=apply_symmetry_mask(
             params.asu_positions,
-            mask=spec.position_mask,
+            mask=spec.refinable_position_mask,
             fixed=spec.fixed_positions,
         ),
         uij_star=_constrain_adps(params, spec),
@@ -95,8 +101,8 @@ def _validate_shapes(params: RefinableParams, spec: ConstraintSpec) -> None:
         raise ValueError("asu_positions must have shape (N, 3)")
     if spec.fixed_positions.shape != params.asu_positions.shape:
         raise ValueError("fixed_positions must match asu_positions")
-    if spec.position_mask.shape != params.asu_positions.shape:
-        raise ValueError("position_mask must match asu_positions")
+    if spec.refinable_position_mask.shape != params.asu_positions.shape:
+        raise ValueError("refinable_position_mask must match asu_positions")
     if spec.occupancies.shape != (n_atoms,):
         raise ValueError("occupancies must have shape (N,)")
     if params.occupancy_raw is not None and params.occupancy_raw.shape != (n_atoms,):

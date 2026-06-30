@@ -40,7 +40,7 @@ def test_constrain_accepts_paracetamol_uiso_adps() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.tensor(record.occupancies, dtype=torch.float64),
         adp_kind=record.adp.kind,
         reciprocal_basis=torch.tensor(reciprocal_cell(record.unit_cell), dtype=torch.float64),

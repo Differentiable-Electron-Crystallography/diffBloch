@@ -39,7 +39,7 @@ def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> Ref
     orientation = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY)
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        position_mask=torch.ones((1, 3), dtype=torch.float64),
+        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
         occupancies=torch.ones(1, dtype=torch.float64),
         reciprocal_basis=grid.reciprocal_basis,
     )

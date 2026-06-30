@@ -54,7 +54,7 @@ def test_constrain_requires_reciprocal_basis_for_adps() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=positions,
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.ones(1, dtype=torch.float64),
     )
     with pytest.raises(ValueError, match="reciprocal_basis is required"):
@@ -70,7 +70,7 @@ def test_constrain_coerces_reciprocal_basis_to_param_dtype() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=positions,
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.ones(1, dtype=torch.float32),
         adp_kind=("Uiso",),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
@@ -179,7 +179,9 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
-        position_mask=torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64),
+        refinable_position_mask=torch.tensor(
+            [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64
+        ),
         occupancies=torch.ones(2, dtype=torch.float64),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
@@ -216,7 +218,7 @@ def test_constrain_honors_mixed_adp_kinds() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.ones(2, dtype=torch.float64),
         adp_kind=("Uani", "Uiso"),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
@@ -243,7 +245,7 @@ def test_constrain_rejects_missing_adps_until_policy_exists() -> None:
     params = RefinableParams(asu_positions=positions)
     spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.ones(1, dtype=torch.float64),
         adp_kind=("missing",),
     )
@@ -260,7 +262,7 @@ def test_constrain_uses_default_occupancies_when_not_refined() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=positions,
-        position_mask=torch.ones_like(positions),
+        refinable_position_mask=torch.ones_like(positions),
         occupancies=torch.tensor([0.75], dtype=torch.float64),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
@@ -277,7 +279,7 @@ def test_constrain_validates_shapes() -> None:
     )
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        position_mask=torch.ones((1, 3), dtype=torch.float64),
+        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
         occupancies=torch.ones(1, dtype=torch.float64),
     )
 

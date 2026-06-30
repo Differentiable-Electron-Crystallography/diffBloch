@@ -75,7 +75,7 @@ pinned convention.
 
 ## `from_experiment` uses an all-free position mask (no special-position constraints)
 
-`RefinementSetup.from_structure` builds the `ConstraintSpec.position_mask` as all-ones, so every
+`RefinementSetup.from_structure` builds the `ConstraintSpec.refinable_position_mask` as all-ones, so every
 atomic
 coordinate is refined freely. Special-position atoms (e.g. quartz Si on `(x, 0, 1/3)`) have fewer
 free degrees of freedom than 3; with an all-free mask they are over-parameterized and can drift off
