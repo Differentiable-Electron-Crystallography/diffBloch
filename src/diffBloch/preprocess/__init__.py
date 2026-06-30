@@ -38,14 +38,17 @@ from diffBloch.preprocess.pipeline import (
 )
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine, score_orientations
+from diffBloch.specs import HexagonalSearch, ThicknessGrid
 
 __all__ = [
     "ConvergenceCheck",
     "ExperimentSetup",
+    "HexagonalSearch",
     "Plan",
     "PlanSplit",
     "PlanStep",
     "RefinementSetup",
+    "ThicknessGrid",
     "build_engine",
     "busing_levy_matrix",
     "fit_orientation",

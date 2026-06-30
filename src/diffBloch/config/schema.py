@@ -14,6 +14,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from diffBloch.specs import HexagonalSearch, ThicknessGrid
+
 
 class SolverConfig(BaseModel):
     """Which dynamical solver to use for each phase."""
@@ -114,12 +116,9 @@ class RefinementConfig(BaseModel):
 class OrientationFitConfig(BaseModel):
     """Bounds for the ``fit_orientation`` Palatinus hexagonal search (preprocess).
 
-    Declarative, sweepable home at the boundary; the preprocess driver unpacks these into the plain
-    keyword arguments of :func:`diffBloch.preprocess.fit_orientation` (no pydantic model reaches the
-    pure function). Defaults are the faithful ``diffBloch_private`` values
-    (``configs/preprocess/base.yaml``); ``max_iterations`` has no private precedent (the private
-    search has no cap) and its default is an uncalibrated runaway guard (see KNOWN_ISSUES.md), to be
-    tuned once real-data convergence is known.
+    The YAML edge: parses (via :meth:`to_search`) into the validated
+    :class:`~diffBloch.specs.HexagonalSearch` value-type the pure ``fit_orientation`` consumes, and
+    delegates all validation there (one rule home, no drift). Defaults mirror that value-type.
     """
 
     max_search_angle: float = 0.4  # degrees: largest tilt radius the search starts from
@@ -127,67 +126,44 @@ class OrientationFitConfig(BaseModel):
     n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
     max_iterations: int = 200  # runaway guard: max search passes per orientation (uncalibrated)
 
-    @field_validator("min_search_angle", "max_search_angle")
-    @classmethod
-    def _positive_angles(cls, value: float) -> float:
-        if value <= 0.0:
-            raise ValueError("search angles must be positive")
-        return value
-
-    @field_validator("n_steps")
-    @classmethod
-    def _at_least_one_step(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("n_steps must be >= 1")
-        return value
-
-    @field_validator("max_iterations")
-    @classmethod
-    def _at_least_one_iteration(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("max_iterations must be >= 1")
-        return value
+    def to_search(self) -> HexagonalSearch:
+        """Parse into the validated value-type the pure ``fit_orientation`` consumes."""
+        return HexagonalSearch(
+            max_search_angle=self.max_search_angle,
+            min_search_angle=self.min_search_angle,
+            n_steps=self.n_steps,
+            max_iterations=self.max_iterations,
+        )
 
     @model_validator(mode="after")
-    def _max_exceeds_min(self) -> OrientationFitConfig:
-        if self.max_search_angle <= self.min_search_angle:
-            raise ValueError("max_search_angle must exceed min_search_angle")
+    def _parse_fails_fast(self) -> OrientationFitConfig:
+        self.to_search()  # the rules live in HexagonalSearch; fail fast at config load
         return self
 
 
 class ThicknessFitConfig(BaseModel):
     """Bounds for the ``fit_thickness`` per-rotation grid search (preprocess).
 
-    Declarative, sweepable home at the boundary; the preprocess driver unpacks these into the plain
-    keyword arguments of :func:`diffBloch.preprocess.fit_thickness` (no pydantic model reaches the
-    pure function). For each rotation the step evaluates ``n_steps`` candidate thicknesses spaced
-    evenly from ``min_thickness`` to ``max_thickness`` (inclusive) and keeps the one with the lowest
-    weighted R-factor. Defaults are the faithful ``diffBloch_private`` values
-    (``configs/preprocess/base.yaml``: 5 A to 2000 A in 100 steps).
+    The YAML edge: parses (via :meth:`to_grid`) into the validated
+    :class:`~diffBloch.specs.ThicknessGrid` value-type the pure ``fit_thickness`` consumes, and
+    delegates all validation there (one rule home, no drift). Defaults mirror that value-type.
     """
 
     min_thickness: float = 5.0  # Angstroms: smallest candidate thickness
     max_thickness: float = 2000.0  # Angstroms: largest candidate thickness
     n_steps: int = 100  # number of evenly-spaced candidates (inclusive endpoints)
 
-    @field_validator("min_thickness", "max_thickness")
-    @classmethod
-    def _positive_thickness(cls, value: float) -> float:
-        if value <= 0.0:
-            raise ValueError("thickness bounds must be positive")
-        return value
-
-    @field_validator("n_steps")
-    @classmethod
-    def _at_least_one_step(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("n_steps must be >= 1")
-        return value
+    def to_grid(self) -> ThicknessGrid:
+        """Parse into the validated value-type the pure ``fit_thickness`` consumes."""
+        return ThicknessGrid(
+            min_thickness=self.min_thickness,
+            max_thickness=self.max_thickness,
+            n_steps=self.n_steps,
+        )
 
     @model_validator(mode="after")
-    def _max_exceeds_min(self) -> ThicknessFitConfig:
-        if self.max_thickness <= self.min_thickness:
-            raise ValueError("max_thickness must exceed min_thickness")
+    def _parse_fails_fast(self) -> ThicknessFitConfig:
+        self.to_grid()  # the rules live in ThicknessGrid; fail fast at config load
         return self
 
 

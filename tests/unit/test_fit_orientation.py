@@ -22,6 +22,7 @@ from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, 
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_orientation, hexagonal_tilt
 from diffBloch.preprocess.plan import Plan
+from diffBloch.specs import HexagonalSearch
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
@@ -123,16 +124,19 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
     matched = _self_consistent(grid, asu_plan, spec, numbers, true_orientation)
     refinement = _refinement(asu_plan, spec, numbers)
 
-    (refined,) = fit_orientation(refinement)(Plan(grid=grid, orientations=(matched,))).orientations
+    (refined,) = fit_orientation(refinement, HexagonalSearch())(
+        Plan(grid=grid, orientations=(matched,))
+    ).orientations
 
     # Already optimal: the search must not wander it away from the seed.
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
 
 
-def test_fit_orientation_rejects_a_nonpositive_iteration_cap() -> None:
-    _, asu_plan, spec, numbers = _silicon()
+def test_hexagonal_search_rejects_a_nonpositive_iteration_cap() -> None:
+    # Bound validation now lives in HexagonalSearch (parse, don't validate); see test_specs.py for
+    # the full set. This pins that fit_orientation's cap is one of those validated bounds.
     with pytest.raises(ValueError, match="max_iterations must be >= 1"):
-        fit_orientation(_refinement(asu_plan, spec, numbers), max_iterations=0)
+        HexagonalSearch(max_iterations=0)
 
 
 def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
@@ -155,4 +159,4 @@ def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
     plan = Plan(grid=grid, orientations=(perturbed,))
     refinement = _refinement(asu_plan, spec, numbers)
     with pytest.raises(RuntimeError, match="did not converge"):
-        fit_orientation(refinement, max_iterations=15)(plan)
+        fit_orientation(refinement, HexagonalSearch(max_iterations=15))(plan)

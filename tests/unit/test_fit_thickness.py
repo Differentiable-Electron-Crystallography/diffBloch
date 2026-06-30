@@ -8,7 +8,6 @@ known thickness, so the grid search has a ground truth to recover.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 import torch
 
 from diffBloch.core.products import PatternBatch
@@ -17,6 +16,7 @@ from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, 
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_thickness
 from diffBloch.preprocess.plan import Plan
+from diffBloch.specs import ThicknessGrid
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
@@ -101,7 +101,8 @@ def test_fit_thickness_recovers_the_simulated_thickness() -> None:
 
     # grid = [200, 250, 300, 350, 400] includes the true 300 A.
     fitted = fit_thickness(
-        _refinement(asu_plan, spec, numbers), min_thickness=200.0, max_thickness=400.0, n_steps=5
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
     )(plan)
 
     baked = fitted.orientations[0].thickness
@@ -116,7 +117,8 @@ def test_fit_thickness_leaves_geometry_untouched() -> None:
     plan = Plan(grid=grid, orientations=(op,))
 
     fitted = fit_thickness(
-        _refinement(asu_plan, spec, numbers), min_thickness=200.0, max_thickness=400.0, n_steps=5
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
     )(plan)
 
     assert fitted.grid is plan.grid
@@ -138,17 +140,10 @@ def test_fit_thickness_single_step_bakes_the_lower_bound() -> None:
 
     # n_steps == 1 -> the only candidate is min_thickness.
     fitted = fit_thickness(
-        _refinement(asu_plan, spec, numbers), min_thickness=123.0, max_thickness=400.0, n_steps=1
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=123.0, max_thickness=400.0, n_steps=1),
     )(plan)
     assert float(fitted.orientations[0].thickness[0]) == 123.0
 
 
-def test_fit_thickness_rejects_invalid_bounds() -> None:
-    grid, asu_plan, spec, numbers = _silicon()
-    refinement = _refinement(asu_plan, spec, numbers)
-    with pytest.raises(ValueError, match="thickness bounds must be positive"):
-        fit_thickness(refinement, min_thickness=-1.0, max_thickness=400.0)
-    with pytest.raises(ValueError, match="max_thickness must exceed min_thickness"):
-        fit_thickness(refinement, min_thickness=400.0, max_thickness=400.0)
-    with pytest.raises(ValueError, match="n_steps must be >= 1"):
-        fit_thickness(refinement, min_thickness=5.0, max_thickness=400.0, n_steps=0)
+# Bound validation now lives in ThicknessGrid (parse, don't validate); see test_specs.py.

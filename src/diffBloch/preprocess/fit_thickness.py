@@ -32,16 +32,15 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
+from diffBloch.specs import ThicknessGrid
 
 __all__ = ["fit_thickness"]
 
 
 def fit_thickness(
     refinement: RefinementSetup,
+    grid: ThicknessGrid,
     *,
-    min_thickness: float = 5.0,
-    max_thickness: float = 2000.0,
-    n_steps: int = 100,
     method: Method = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
@@ -49,24 +48,18 @@ def fit_thickness(
     ``refinement`` (constraint spec, ASU expansion, atomic numbers, seeded params) is captured
     read-only and rejoined to the geometry ``Plan`` via :func:`build_engine`; the
     orientation-invariant ``F_gb`` is computed once and reused across every orientation. Each
-    rotation is then assigned the lowest-wR2 of ``n_steps`` candidate thicknesses spaced evenly from
-    ``min_thickness`` to ``max_thickness`` (inclusive, in Angstroms); defaults are the faithful
-    ``diffBloch_private`` values. ``method`` configures the engine's solver.
-
-    ``max_thickness`` must exceed ``min_thickness``, both must be positive, and ``n_steps`` must be
-    >= 1 (with ``n_steps == 1`` the single candidate is ``min_thickness``).
+    rotation is then assigned the lowest-wR2 of ``grid.n_steps`` candidate thicknesses spaced evenly
+    from ``grid.min_thickness`` to ``grid.max_thickness`` (inclusive, Angstroms). ``grid`` is a
+    pre-validated :class:`~diffBloch.specs.ThicknessGrid` (invalid bounds are unrepresentable, so
+    this function never re-validates); ``method`` configures the engine's solver.
     """
-    if min_thickness <= 0.0 or max_thickness <= 0.0:
-        raise ValueError("thickness bounds must be positive")
-    if max_thickness <= min_thickness:
-        raise ValueError("max_thickness must exceed min_thickness")
-    if n_steps < 1:
-        raise ValueError("n_steps must be >= 1")
 
     def run(plan: Plan) -> Plan:
         engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
-        candidates = torch.linspace(min_thickness, max_thickness, n_steps, dtype=torch.float64)
+        candidates = torch.linspace(
+            grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
+        )
         orientations = tuple(_fit_one(engine, fgb, op, candidates) for op in plan.orientations)
         return replace(plan, orientations=orientations)
 
