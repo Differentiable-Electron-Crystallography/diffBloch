@@ -8,7 +8,7 @@ import torch
 from diffBloch.config import load_config
 from diffBloch.io import read_observations, read_structure
 from diffBloch.params import constrain
-from diffBloch.preprocess import from_experiment, orientation_matrices, refinement_setup
+from diffBloch.preprocess import RefinementSetup, from_experiment, orientation_matrices
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURE_ROOT / "quartz_anchor"
@@ -63,7 +63,7 @@ def test_from_experiment_patterns_are_per_zone_axis() -> None:
 
 def test_from_experiment_refinement_side_matches_structure() -> None:
     structure, observations, config, setup = _quartz_setup()
-    direct = refinement_setup(structure, thicknesses=config.sample.thicknesses)
+    direct = RefinementSetup.from_structure(structure, thicknesses=config.sample.thicknesses)
 
     assert setup.refinement.numbers.tolist() == direct.numbers.tolist()
     assert setup.refinement.thicknesses.tolist() == list(config.sample.thicknesses)
@@ -74,7 +74,7 @@ def test_from_experiment_refinement_side_matches_structure() -> None:
 
 def test_refinement_setup_seeds_quartz_uani_structure() -> None:
     structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
-    setup = refinement_setup(structure, thicknesses=(820.0,))
+    setup = RefinementSetup.from_structure(structure, thicknesses=(820.0,))
 
     assert setup.numbers.tolist() == structure.numbers.tolist()
     assert setup.asu_plan.n_asu_sites == structure.n_atoms
@@ -88,7 +88,7 @@ def test_refinement_setup_seeds_quartz_uani_structure() -> None:
 
 def test_refinement_setup_params_constrain_back_to_the_cif_adps() -> None:
     structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
-    setup = refinement_setup(structure, thicknesses=(820.0,))
+    setup = RefinementSetup.from_structure(structure, thicknesses=(820.0,))
 
     state = constrain(setup.params, setup.spec)
 
@@ -109,7 +109,7 @@ def test_refinement_setup_params_constrain_back_to_the_cif_adps() -> None:
 
 def test_refinement_setup_handles_uiso_structure() -> None:
     structure = read_structure(FIXTURE_ROOT / "paracetamol_min" / "enantiomer_1.cif")
-    setup = refinement_setup(structure, thicknesses=(500.0,))
+    setup = RefinementSetup.from_structure(structure, thicknesses=(500.0,))
 
     assert setup.params.uij_raw is None  # all-Uiso: no anisotropic raw factor
     assert setup.params.u_iso_raw is not None
@@ -125,4 +125,4 @@ def test_refinement_setup_handles_uiso_structure() -> None:
 def test_refinement_setup_rejects_empty_thicknesses() -> None:
     structure = read_structure(FIXTURE_ROOT / "quartz_anchor" / "enantiomer_1.cif")
     with pytest.raises(ValueError, match="thicknesses must contain at least one value"):
-        refinement_setup(structure, thicknesses=())
+        RefinementSetup.from_structure(structure, thicknesses=())

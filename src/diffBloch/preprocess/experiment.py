@@ -40,7 +40,6 @@ __all__ = [
     "PlanSplit",
     "RefinementSetup",
     "from_experiment",
-    "refinement_setup",
 ]
 
 
@@ -88,45 +87,47 @@ class RefinementSetup:
     numbers: Tensor
     thicknesses: Tensor
 
+    @classmethod
+    def from_structure(
+        cls, structure: StructureRecord, *, thicknesses: Sequence[float]
+    ) -> RefinementSetup:
+        """Assemble the structure-side refinement inputs from a parsed :class:`StructureRecord`.
 
-def refinement_setup(
-    structure: StructureRecord, *, thicknesses: Sequence[float]
-) -> RefinementSetup:
-    """Assemble the structure-side refinement inputs from a parsed :class:`StructureRecord`.
+        Positions and symmetry use the *ideal* CIF cell (the measured-lattice correction enters only
+        through the per-orientation matrices in the geometry plan). ADPs are mapped to the
+        reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
 
-    Positions and symmetry use the *ideal* CIF cell (the measured-lattice correction enters only
-    through the per-orientation matrices in the geometry plan). ADPs are mapped to the reciprocal
-    ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
+        .. note::
+           The ``position_mask`` is all-free for now: special-position degree-of-freedom
+           constraints (the diffpy-backed expansion behind :mod:`diffBloch.io.symmetry_setup`) are a
+           later constraints stage. Until then a special-position atom is over-parameterized and may
+           drift off its site under refinement. Recorded in ``KNOWN_ISSUES.md``.
+        """
+        if not thicknesses:
+            raise ValueError("thicknesses must contain at least one value")
 
-    .. note::
-       The ``position_mask`` is all-free for now: special-position degree-of-freedom constraints
-       (the diffpy-backed expansion behind :mod:`diffBloch.io.symmetry_setup`) are a later
-       constraints stage. Until then a special-position atom is over-parameterized and may drift off
-       its site under refinement. Recorded in ``KNOWN_ISSUES.md``.
-    """
-    if not thicknesses:
-        raise ValueError("thicknesses must contain at least one value")
-
-    positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
-    uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
-    spec = ConstraintSpec(
-        fixed_positions=positions,
-        position_mask=torch.ones_like(positions),
-        occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
-        adp_kind=structure.adp.kind,
-        reciprocal_basis=torch.tensor(reciprocal_cell(structure.unit_cell), dtype=torch.float64),
-    )
-    return RefinementSetup(
-        asu_plan=build_asu_expansion_plan(
-            structure.frac_positions, structure.symops_R, structure.symops_t
-        ),
-        spec=spec,
-        params=RefinableParams(
-            asu_positions=positions.clone(), uij_raw=uij_raw, u_iso_raw=u_iso_raw
-        ),
-        numbers=torch.tensor(structure.numbers, dtype=torch.int64),
-        thicknesses=torch.tensor(list(thicknesses), dtype=torch.float64),
-    )
+        positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
+        uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
+        spec = ConstraintSpec(
+            fixed_positions=positions,
+            position_mask=torch.ones_like(positions),
+            occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
+            adp_kind=structure.adp.kind,
+            reciprocal_basis=torch.tensor(
+                reciprocal_cell(structure.unit_cell), dtype=torch.float64
+            ),
+        )
+        return cls(
+            asu_plan=build_asu_expansion_plan(
+                structure.frac_positions, structure.symops_R, structure.symops_t
+            ),
+            spec=spec,
+            params=RefinableParams(
+                asu_positions=positions.clone(), uij_raw=uij_raw, u_iso_raw=u_iso_raw
+            ),
+            numbers=torch.tensor(structure.numbers, dtype=torch.int64),
+            thicknesses=torch.tensor(list(thicknesses), dtype=torch.float64),
+        )
 
 
 def from_experiment(
@@ -146,6 +147,12 @@ def from_experiment(
     ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the
     ``g_max`` grid and the 000 transmitted beam is always present). The faithful per-orientation
     ``sg_max`` / rsg-dsg pruning is the later ``select_beams`` step.
+
+    This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
+    single documented public boundary of the preprocess pipeline (records + config -> setup), and it
+    returns a *composite* of two products rather than constructing one domain object. The per-object
+    constructors it delegates to follow the classmethod idiom (``ScatteringGrid.from_cell``,
+    ``OrientationPlan.build``, ``RefinementSetup.from_structure``).
     """
     grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=config.numerics.g_max)
     energy = wavelength2energy(observations.wavelength)
@@ -176,7 +183,7 @@ def from_experiment(
             train=Plan(grid=grid, orientations=train_orientations),
             validation=Plan(grid=grid, orientations=val_orientations),
         ),
-        refinement=refinement_setup(structure, thicknesses=config.sample.thicknesses),
+        refinement=RefinementSetup.from_structure(structure, thicknesses=config.sample.thicknesses),
     )
 
 

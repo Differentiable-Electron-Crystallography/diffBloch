@@ -75,12 +75,13 @@ pinned convention.
 
 ## `from_experiment` uses an all-free position mask (no special-position constraints)
 
-`refinement_setup` builds the `ConstraintSpec.position_mask` as all-ones, so every atomic
+`RefinementSetup.from_structure` builds the `ConstraintSpec.position_mask` as all-ones, so every
+atomic
 coordinate is refined freely. Special-position atoms (e.g. quartz Si on `(x, 0, 1/3)`) have fewer
 free degrees of freedom than 3; with an all-free mask they are over-parameterized and can drift off
 their special positions under refinement, breaking the spacegroup symmetry. The faithful fix is the
 diffpy-backed special-position / ADP constraint expansion behind the
 `diffBloch.io.symmetry_setup` seam (currently a placeholder returning only counts), which is a
 later constraints stage. Until then, treat refined special-position coordinates as unconstrained.
-Seeded in `refinement_setup` (`src/diffBloch/preprocess/experiment.py`); see
+Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.

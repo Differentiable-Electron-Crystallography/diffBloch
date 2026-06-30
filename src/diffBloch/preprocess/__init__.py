@@ -18,7 +18,6 @@ from diffBloch.preprocess.experiment import (
     PlanSplit,
     RefinementSetup,
     from_experiment,
-    refinement_setup,
 )
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
@@ -52,7 +51,6 @@ __all__ = [
     "orientation_basis",
     "orientation_matrices",
     "pipeline",
-    "refinement_setup",
     "select_beams",
     "u_matrix",
 ]
