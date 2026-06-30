@@ -23,6 +23,7 @@ from diffBloch.core.dynamical import (
     m_factors,
     structure_matrix,
     structure_matrix_prefactor,
+    wavelength2energy,
     wavevector_magnitude,
 )
 from diffBloch.core.reciprocal import g_vectors
@@ -38,6 +39,19 @@ def test_energy2wavelength_matches_textbook() -> None:
 def test_energy2wavelength_rejects_nonpositive() -> None:
     with pytest.raises(ValueError, match="energy must be positive"):
         energy2wavelength(0.0)
+
+
+def test_wavelength2energy_inverts_energy2wavelength() -> None:
+    # Exact algebraic inverse: round-trips every common voltage to numerical precision.
+    for energy in (100e3, 200e3, 300e3):
+        assert wavelength2energy(energy2wavelength(energy)) == pytest.approx(energy, rel=1e-9)
+    # And recovers the textbook energy from the textbook wavelength.
+    assert wavelength2energy(0.02508) == pytest.approx(200e3, rel=1e-3)
+
+
+def test_wavelength2energy_rejects_nonpositive() -> None:
+    with pytest.raises(ValueError, match="wavelength must be positive"):
+        wavelength2energy(0.0)
 
 
 def test_wavevector_magnitude_is_inverse_wavelength_without_correction() -> None:

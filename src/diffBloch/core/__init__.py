@@ -31,6 +31,7 @@ from diffBloch.core.dynamical import (
     m_factors,
     structure_matrix,
     structure_matrix_prefactor,
+    wavelength2energy,
     wavevector_magnitude,
 )
 from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
@@ -122,6 +123,7 @@ __all__ = [
     "structure_matrix_prefactor",
     "unit_interval",
     "w_rbragg",
+    "wavelength2energy",
     "wavevector_magnitude",
     "weighted_mse",
 ]

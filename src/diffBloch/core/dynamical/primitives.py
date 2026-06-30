@@ -56,6 +56,22 @@ def energy2wavelength(energy: float) -> float:
     return float(metres * 1e10)
 
 
+def wavelength2energy(wavelength: float) -> float:
+    """Beam energy in eV for a relativistic electron ``wavelength`` in angstrom.
+
+    Exact algebraic inverse of :func:`energy2wavelength`: solving
+    ``lambda = h c / sqrt(E e (2 m_e c^2 + E e))`` for ``E e`` gives
+    ``E e = sqrt((m_e c^2)^2 + (h c / lambda)^2) - m_e c^2``. Lets the boundary derive the beam
+    energy the dynamical path needs from the wavelength a PETS file records.
+    """
+    if wavelength <= 0.0:
+        raise ValueError("wavelength must be positive")
+    rest = _ELECTRON_MASS * _SPEED_OF_LIGHT**2
+    hc_over_lambda = _PLANCK * _SPEED_OF_LIGHT / (wavelength * 1e-10)
+    charge_energy = np.sqrt(rest**2 + hc_over_lambda**2) - rest
+    return float(charge_energy / _ELEMENTARY_CHARGE)
+
+
 def energy2sigma(energy: float) -> float:
     """Electron interaction parameter ``sigma`` in 1/(angstrom*eV) for a beam ``energy`` in eV.
 

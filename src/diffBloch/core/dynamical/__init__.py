@@ -22,6 +22,7 @@ from diffBloch.core.dynamical.primitives import (
     kappa,
     m_factors,
     structure_matrix_prefactor,
+    wavelength2energy,
     wavevector_magnitude,
 )
 
@@ -40,5 +41,6 @@ __all__ = [
     "m_factors",
     "structure_matrix",
     "structure_matrix_prefactor",
+    "wavelength2energy",
     "wavevector_magnitude",
 ]
