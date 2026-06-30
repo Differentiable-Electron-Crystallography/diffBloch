@@ -20,6 +20,7 @@ from diffBloch.preprocess.experiment import (
     from_experiment,
 )
 from diffBloch.preprocess.fit_orientation import fit_orientation
+from diffBloch.preprocess.fit_thickness import fit_thickness
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
     goniometer_rotation,
@@ -48,6 +49,7 @@ __all__ = [
     "build_engine",
     "busing_levy_matrix",
     "fit_orientation",
+    "fit_thickness",
     "from_experiment",
     "goniometer_rotation",
     "hexagonal_tilt",

@@ -155,14 +155,51 @@ class OrientationFitConfig(BaseModel):
         return self
 
 
+class ThicknessFitConfig(BaseModel):
+    """Bounds for the ``fit_thickness`` per-rotation grid search (preprocess).
+
+    Declarative, sweepable home at the boundary; the preprocess driver unpacks these into the plain
+    keyword arguments of :func:`diffBloch.preprocess.fit_thickness` (no pydantic model reaches the
+    pure function). For each rotation the step evaluates ``n_steps`` candidate thicknesses spaced
+    evenly from ``min_thickness`` to ``max_thickness`` (inclusive) and keeps the one with the lowest
+    weighted R-factor. Defaults are the faithful ``diffBloch_private`` values
+    (``configs/preprocess/base.yaml``: 5 A to 2000 A in 100 steps).
+    """
+
+    min_thickness: float = 5.0  # Angstroms: smallest candidate thickness
+    max_thickness: float = 2000.0  # Angstroms: largest candidate thickness
+    n_steps: int = 100  # number of evenly-spaced candidates (inclusive endpoints)
+
+    @field_validator("min_thickness", "max_thickness")
+    @classmethod
+    def _positive_thickness(cls, value: float) -> float:
+        if value <= 0.0:
+            raise ValueError("thickness bounds must be positive")
+        return value
+
+    @field_validator("n_steps")
+    @classmethod
+    def _at_least_one_step(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("n_steps must be >= 1")
+        return value
+
+    @model_validator(mode="after")
+    def _max_exceeds_min(self) -> ThicknessFitConfig:
+        if self.max_thickness <= self.min_thickness:
+            raise ValueError("max_thickness must exceed min_thickness")
+        return self
+
+
 class PreprocessConfig(BaseModel):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
-    Grouping, not composition: each block configures one preprocess step. Only ``fit_orientation``
-    is wired today; ``fit_thickness`` / ``converge_numerics`` blocks join here as those steps land.
+    Grouping, not composition: each block configures one preprocess step. ``fit_orientation`` and
+    ``fit_thickness`` are wired today; the ``converge_numerics`` block joins here when it lands.
     """
 
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
+    thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
 
 
 class Inputs(BaseModel):

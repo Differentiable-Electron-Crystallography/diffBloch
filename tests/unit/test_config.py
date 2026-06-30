@@ -113,3 +113,27 @@ def test_orientation_search_bounds_are_validated() -> None:
         ExperimentConfig.model_validate(
             {**base, "preprocess": {"orientation": {"max_iterations": 0}}}
         )
+
+
+def test_preprocess_thickness_defaults_match_the_private() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    )
+    thickness = cfg.preprocess.thickness
+    assert thickness.min_thickness == 5.0
+    assert thickness.max_thickness == 2000.0
+    assert thickness.n_steps == 100
+
+
+def test_thickness_grid_bounds_are_validated() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="thickness bounds must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"thickness": {"min_thickness": 0.0}}}
+        )
+    with pytest.raises(ValidationError, match="max_thickness must exceed min_thickness"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"thickness": {"min_thickness": 100.0, "max_thickness": 100.0}}}
+        )
+    with pytest.raises(ValidationError, match="n_steps must be >= 1"):
+        ExperimentConfig.model_validate({**base, "preprocess": {"thickness": {"n_steps": 0}}})

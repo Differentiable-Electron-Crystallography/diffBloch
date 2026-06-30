@@ -85,18 +85,31 @@ class RefinementEngine:
         scoring orientation (the private preprocess scored the first thickness). This is the
         objective ``fit_orientation`` minimises (``design/decisions/stage11-fit-orientation.md``).
         """
+        return self.score_orientation_per_thickness(orientation, fgb).min()
+
+    def score_orientation_per_thickness(self, orientation: OrientationPlan, fgb: Tensor) -> Tensor:
+        """Scaling-optimised wR2 for each of the orientation's thicknesses (shape ``(T,)``).
+
+        One forward Bloch simulation from a precomputed ``fgb`` (:meth:`fgb`) covers all ``T``
+        thicknesses at once: the expensive eigendecomposition depends only on the orientation and
+        ``fgb``, while thickness enters only the cheap propagation tail. The calculated and observed
+        intensities are aligned once (alignment is thickness-independent), then for each thickness
+        the intensity scale minimising wR2 is found (:func:`diffBloch.core.losses.optimal_scale`).
+
+        ``fit_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;
+        :meth:`score_orientation` collapses it with ``.min()`` (thickness is a nuisance there).
+        """
         aligned = align(
             self._solve(orientation, fgb, orientation.thickness),
             orientation.pattern,
             orientation.alignment,
         )
-        per_thickness = torch.stack(
+        return torch.stack(
             [
                 optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
                 for t in range(aligned.calculated.shape[0])
             ]
         )
-        return per_thickness.min()
 
     def objective(self, params: RefinableParams) -> Tensor:
         """Return the scalar objective: the per-orientation ``loss`` summed over orientations.

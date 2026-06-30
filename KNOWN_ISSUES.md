@@ -86,26 +86,6 @@ later constraints stage. Until then, treat refined special-position coordinates 
 Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.
 
-## Thickness is per-rotation but not yet fitted (only seeded)
-
-The structural move is done (stage 11 slice 6a): thickness now lives on each `OrientationPlan` as a
-per-rotation value (the specimen's 3D shape is irregular, so each orientation presents a different
-beam path length). The engine no longer carries a single shared `thicknesses` field; the forward
-model reads `orientation.thickness` per orientation, unless the caller is refining thickness
-directly via `RefinableParams.thickness_raw`, which overrides it for every orientation
-(`RefinementEngine._thickness_for` / `_solve` in `engine/forward.py`, pinned by
-`test_refinable_thickness_drives_the_forward_model`).
-
-The residual is that each orientation's thickness is still only the *seed* from
-`config.sample.thicknesses` -- nothing fits it yet. The remaining step (ROADMAP stage 11 slice 6b)
-is `fit_thickness`: a `Plan -> Plan` step that grid-searches candidate thicknesses per rotation and
-replaces each `OrientationPlan.thickness` with the best-fitting value. Until it lands, thickness is
-whatever the sample config seeded.
-
-Letting thickness vary per orientation *while being refined* (a learned `theta -> thickness` model,
-rather than one shared `thickness_raw` for all orientations) is separate future work; see ROADMAP
-stage 11.
-
 ## `fit_orientation`'s `max_iterations` default is uncalibrated
 
 `fit_orientation` caps the Palatinus search at `max_iterations` passes per orientation and raises
