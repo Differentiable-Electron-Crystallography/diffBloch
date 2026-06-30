@@ -40,13 +40,15 @@ def select_beams(*, rsg: float, dsg: float, semiangle: float) -> PlanStep:
     integration semi-angle in degrees) come from ``NumericsConfig``. The observed ``pattern`` is
     untouched; the rebuilt ``AlignmentPlan`` re-bridges it to the pruned beam set.
 
-    The 000 transmitted beam is always retained regardless of the filter: ``BeamPlan`` anchors
-    ``psi0`` on ``hkl == 000``, and 000 has ``g = 0`` so its ``sg_max = 0`` would otherwise reject
-    it. The grid is sized from ``g_max`` and beams stay within ``g_max_refine < g_max``, so the
-    ``Fgb`` difference support remains valid after reselection.
+    The 000 transmitted beam is retained whenever it is present (the ``from_experiment`` seed always
+    includes it): ``BeamPlan`` anchors ``psi0`` on ``hkl == 000``, and 000 has ``g = 0`` so its
+    ``sg_max = 0`` would otherwise reject it. ``select_beams`` retains 000 rather than synthesising
+    it -- a 000-less input set would still fail ``build_beam_plan``'s ``psi0`` anchor. The grid is
+    sized from ``g_max`` and beams stay within ``g_max_refine < g_max``, so the ``Fgb`` difference
+    support remains valid after reselection.
     """
 
-    def step(plan: Plan) -> Plan:
+    def run(plan: Plan) -> Plan:
         cell = np.asarray(plan.grid.cell)
         orientations = tuple(
             _reselect(plan.grid, cell, op, rsg=rsg, dsg=dsg, semiangle=semiangle)
@@ -54,7 +56,7 @@ def select_beams(*, rsg: float, dsg: float, semiangle: float) -> PlanStep:
         )
         return replace(plan, orientations=orientations)
 
-    return step
+    return run
 
 
 def _reselect(
@@ -70,7 +72,7 @@ def _reselect(
     basis = orientation_basis(cell, np.asarray(op.orientation))
     g = g_vectors(beam_hkl, basis)
     keep = klar_beam_mask(g, energy=op.energy, u0=op.u0, rsg=rsg, dsg=dsg, semiangle=semiangle)
-    keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; always retained
+    keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     return OrientationPlan.build(
         grid,
         beam_hkl[keep],
