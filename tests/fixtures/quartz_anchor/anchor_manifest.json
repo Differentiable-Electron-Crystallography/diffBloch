@@ -14,12 +14,6 @@
     "N_int_all": 1740,
     "N_int_obs": 958
   },
-  "rotation_selection": {
-    "default": "first:1",
-    "env_var": "DIFFBLOCH_ANCHOR_ROTATIONS",
-    "supported": ["first:N", "all", "comma-separated rotation_idx values"],
-    "source_reference_rotations": 99
-  },
   "execution": {
     "seed": 42,
     "device": "cpu",

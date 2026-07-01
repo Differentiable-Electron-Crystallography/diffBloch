@@ -15,7 +15,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel
@@ -110,32 +110,6 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
 def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
     """Write ``run_manifest.json`` in a stable, human-readable form."""
     Path(path).write_text(manifest.model_dump_json(indent=2) + "\n")
-
-
-def select_reference_rotations(
-    rotations: list[dict[str, object]], selector: str
-) -> list[dict[str, object]]:
-    """Select reference rotations by ``all``, ``first:N``, or comma-separated ``rotation_idx``."""
-    selector = selector.strip()
-    if not selector:
-        raise ValueError("rotation selector must not be empty")
-    if selector == "all":
-        return rotations
-    if selector.startswith("first:"):
-        count = int(selector.split(":", 1)[1])
-        if count < 1:
-            raise ValueError("first:N requires N >= 1")
-        return rotations[:count]
-    requested = {int(value.strip()) for value in selector.split(",") if value.strip()}
-    if not requested:
-        raise ValueError("rotation selector must not be empty")
-    selected = [
-        rotation for rotation in rotations if cast(int, rotation["rotation_idx"]) in requested
-    ]
-    missing = requested - {cast(int, rotation["rotation_idx"]) for rotation in selected}
-    if missing:
-        raise ValueError(f"unknown rotation_idx values: {sorted(missing)}")
-    return selected
 
 
 def pack_run(
