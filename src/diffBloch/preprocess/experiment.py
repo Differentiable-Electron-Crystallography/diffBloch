@@ -46,13 +46,33 @@ __all__ = [
 class PlanSplit:
     """A ``train`` / ``validation`` :class:`Plan` pair sharing one :class:`ScatteringGrid`.
 
-    ``from_experiment`` splits the rotations into the two plans; the preprocess ``Plan -> Plan``
-    steps sharpen each, and ``refine`` fits on ``train`` while scoring the held-out ``validation``.
-    Both plans reference the *same* grid object, so the shared ``Fgb`` support cannot diverge.
+    ``from_experiment`` splits the rotations into the two plans (``validation`` = every 10th
+    rotation by default); both reference the *same* grid object, so the shared ``Fgb`` support
+    cannot diverge.
+
+    The split is currently **dormant machinery**: nothing downstream distinguishes ``train`` from
+    ``validation`` yet (inference and the engine take a single :class:`Plan`), and whole-experiment
+    work uses :attr:`combined` (all rotations). A whole-*rotation* holdout is a weak
+    cross-validation guard for over-determined physics refinement anyway -- the principled analog
+    holds out *reflections* (R_free), not orientations. The split is kept because it becomes
+    genuinely informative for the future learned modes (a learned ``theta -> thickness`` can overfit
+    per rotation). See ``design/decisions/train-validation-split.md`` and ``KNOWN_ISSUES.md``.
     """
 
     train: Plan
     validation: Plan
+
+    @property
+    def combined(self) -> Plan:
+        """One :class:`Plan` over *all* rotations (train + validation) on the shared grid.
+
+        For whole-experiment evaluation (e.g. inference over every rotation), where the train/val
+        split is irrelevant. ``train`` orientations come first, then ``validation``.
+        """
+        return Plan(
+            grid=self.train.grid,
+            orientations=self.train.orientations + self.validation.orientations,
+        )
 
 
 @dataclass(frozen=True)

@@ -123,3 +123,20 @@ through the loop and only re-solve the `candidate`, e.g. a measure that takes a 
 previous-solution -- deferred as a hot-path optimisation, not a correctness issue (the sweep is a
 one-off preprocess step, not in the refinement inner loop). Where: `preprocess/convergence.py`
 (`converge_scalar` / `simulation_rfactor`).
+
+## The train/validation split is constructed but unconsumed (and over-documented)
+
+`from_experiment` builds a `train` / `validation` `Plan` pair (`PlanSplit`), and `PlanSplit` is
+documented as if the split were live ("`refine` fits on `train` while scoring the held-out
+`validation`"). Nothing downstream actually distinguishes them: both `run_inference` and the engine
+take a single `Plan`, and whole-experiment work uses `PlanSplit.combined` (all rotations). Worse, a
+whole-*rotation* holdout is a weak cross-validation guard for over-determined physics refinement --
+the principled analog holds out *reflections* (R_free, Brünger 1992), not orientations, and the
+private ran this experiment with no holdout (`val_prop = 1.0`). The split machinery is kept dormant
+because it earns its keep for the future learned modes (`ThicknessNN`), but until refinement wiring
+lands it should either be wired to a real use (learned modes, and/or an R_free-style reflection
+holdout for physics refinement) or stop advertising an unimplemented behaviour. The `PlanSplit`
+docstring has been corrected to describe reality; the deeper wiring decision is deferred. Crosses
+the config / preprocess / engine layers. Where: `preprocess/experiment.py` (`PlanSplit`,
+`from_experiment`), `config/schema.py` (`DataSplitConfig`). See
+`design/decisions/train-validation-split.md`.

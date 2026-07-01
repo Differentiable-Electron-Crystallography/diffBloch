@@ -87,6 +87,15 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
   on Optuna / Ray Tune / Ax / scikit-optimize / Weights & Biases. See
   `design/decisions/stage11-convergence.md`.
 
+- **Cross-validation for crystallographic refinement (concept, no dependency).** The decision that a
+  whole-*rotation* train/validation split is a weak cross-validation guard for over-determined
+  physics refinement -- and that the principled analog holds out *reflections*, not orientations --
+  rests on the **free R-factor** (R_free): Brünger, A. T. (1992). *Free R value: a novel statistical
+  quantity for assessing the accuracy of crystal structures.* **Nature 355, 472-475.** DOI:
+  [10.1038/355472a0](https://doi.org/10.1038/355472a0). We adopt the *idea* (unbiased held-out
+  reflection cross-validation) as the reference point; nothing is taken as a dependency. See
+  `design/decisions/train-validation-split.md`.
+
 ## Vendored reference data
 
 - **`src/diffBloch/core/data/lobato.json`** — Lobato–Van Dyck (2014) parametrization coefficients
