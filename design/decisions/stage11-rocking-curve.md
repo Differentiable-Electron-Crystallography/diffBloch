@@ -55,6 +55,35 @@ they are precomputed into the `Plan` like `BeamPlan`, not regenerated at simulat
 bolting an "integrated intensities" mode onto the forward model (the private shape), which couples
 the integrator to the solver and is harder to test in isolation.
 
+### 1b. Rocking-curve integration is itself a composable, toggleable step (not baked in)
+
+By the composable-methods principle (`design/decisions/composable-methods.md`) a scientist must be
+able to claim *"enabling rocking-curve integration improved `R_obs` from 0.30 to 0.05"* -- the
+headline result of this slice -- by composing one unit *in or out*. So the integration is **not**
+wired unconditionally at `from_experiment`; it is a composable `Plan -> Plan` step,
+`integrate_rocking_curve(rocking)`, appended to the preprocess pipeline:
+
+    preprocess = pipeline([
+        select_beams(...), fit_orientation(...), fit_thickness(...),
+        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),  # omit -> single static solve
+    ])
+
+- **Off/identity by default holds the invariant.** No `integrate_rocking_curve` step = each rotation
+  keeps its single nominal orientation = one Bloch solve = today's behaviour, byte-identical. A
+  rocking curve with `sampling = 1` is the identity. The unit toggles the physics with no mode flag
+  threaded through the solver.
+- **It is the enabling structure; mosaicity is a modifier on top (#4).** Mosaicity weights the
+  tilt-axis reduction, so it only has meaning once the tilt set exists -- it composes *onto* this
+  step, not independently. Rocking curve is the primary toggle, mosaicity a secondary one within it
+  (correcting the earlier asymmetry of a composable mosaicity over a baked-in rocking curve).
+- **Ordering.** `integrate_rocking_curve` runs after `select_beams` (it reuses the once-selected
+  nominal beam set across tilts, #2) and after `fit_orientation` / `fit_thickness` (which search on
+  fast single-solve scoring; integration is for the final evaluation).
+- **Representation (#1), no optional field.** The step rebuilds each `OrientationPlan` with the N
+  tilt geometries baked in (N beam plans sharing the one beam set); the engine reduces `|psi|^2`
+  over the tilt axis (a no-op at N=1). The plan *always* carries a tilt tuple, length 1 = identity,
+  so no optional field or discriminated union is introduced.
+
 ### 2. Shared beam set across tilts
 
 Select beams **once at the nominal orientation** (`select_beams` unchanged), and reuse that beam set
@@ -73,9 +102,11 @@ field. This needs `data_collection_geometry` surfaced from the PETS reader.
 
 This is scientific software: a modeller must be able to claim *"enabling mosaicity improved (or
 degraded) `R_obs`"* by toggling one thing and re-running. So mosaicity broadening (the private
-moving-average over the tilt axis before the sum) is factored as an **optional, composable step** —
-selected by a `mosaicity` config/value-type, **off by default**, added to the pipeline as its own
-function (`mosaicity(...)`) rather than hard-wired into the integrator. Consequences:
+moving-average over the tilt axis before the sum) is factored as an **optional, composable step** --
+selected by a `mosaicity` config/value-type, **off by default**, layered *onto* the rocking-curve
+step (#1b) as its own function (`mosaicity(...)`) rather than hard-wired into the integrator. It
+modifies the tilt-axis reduction, so it presupposes the tilt set that `integrate_rocking_curve`
+bakes in. Consequences:
 
 - The rocking-curve slice lands **plain tilt-integration first**; mosaicity is a **second slice**.
 - The private reference has `mosaicity: true`, so the full per-rotation `atol ≈ 1e-4` match against

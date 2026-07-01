@@ -237,7 +237,11 @@ tilt the nominal orientation → one Bloch solve per tilt (shared beam set, per-
 1. **A tilt is just another orientation.** Model the rocking curve as **N tilted sub-orientations of
    one rotation + a sum-over-tilts reduction**, reusing the existing per-orientation
    `reciprocal_basis` machinery (no new physics primitive; `simulate` stays pure). Tilt matrices are
-   pure geometry → precompute into the `Plan` like `BeamPlan`.
+   pure geometry → precompute into the `Plan` like `BeamPlan`. The integration itself is a
+   **composable, toggleable `Plan → Plan` step** (`integrate_rocking_curve(...)`), off/identity by
+   default (no step, or `sampling = 1`, = single static solve, byte-identical) — so a run can claim
+   *"enabling rocking-curve integration improved/degraded R_obs"* by composing one unit in or out,
+   the same modularity as mosaicity (#4), of which the rocking curve is the enabling structure.
 2. **Shared beam set across tilts.** Select beams **once at the nominal orientation**
    (`select_beams` as-is), reuse for every tilt; only the geometry (Sg/A) varies per tilt (the
    non-adaptive private path; `union_adaptive: false`).
