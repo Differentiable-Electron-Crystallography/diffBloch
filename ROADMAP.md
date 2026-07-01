@@ -256,6 +256,21 @@ tilt the nominal orientation → one Bloch solve per tilt (shared beam set, per-
 Once (C3)+mosaicity land, `converge_sampling` (deferred from stage 11) unblocks — it sweeps
 `rocking_curve_sampling` against the now-real rocking-curve forward model.
 
+### Deferred: explicit rotation exclusion
+
+Some datasets need rotations dropped (bad frames, misindexing, outliers). The private does this
+implicitly via a hand-edited `dataloader.ignore_orientations` list; 2.0 will make it **explicit,
+reproducible config** — an `exclude_rotations` list `from_experiment` honours, versioned in
+`experiment.yaml` + `experiment.lock`, justified per index. An **automatic** mechanism is also
+planned, framed as a *robust-outlier fixpoint* (not a `converge_scalar` scalar sweep but an
+`iterate_until` fixpoint over the excluded set: flag statistical outliers → exclude → refit until
+the set stabilizes). The non-negotiable constraint: the flag criterion is an **independent
+robustness statistic** of the residual distribution (e.g. `> k*MAD` from the median per-rotation
+`R`), *never* chosen to minimize the reported `R` (that is data-dredging), report-first, and
+recorded in config + lock. Auto-dropping search non-convergers stays report-only (it hides signal).
+The executable quartz anchor needs no exclusions (the `max_iterations` calibration fixed its only
+failing searches). See `design/decisions/rotation-exclusion.md`.
+
 ## Design corrections folded in (review round)
 
 1. **Solver seam** widened to a `BlochSystem` value object (the bare `(A, thickness, k_n, mask)` seam
