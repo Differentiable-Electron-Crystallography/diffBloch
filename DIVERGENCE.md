@@ -54,6 +54,29 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   z-offset one, the exact swap of the original convention). See `REFERENCES.md` (Klar 2023 rsg/dsg).
 - **Found:** diffBloch 2.0 stage 11 (preprocess) port.
 
+### `rbragg_abs()` applies the `I > 3*sigma` cut by multiplication, poisoning the sum with `NaN`
+
+- **Original:** `diffBloch/metrics.py`, `rbragg_abs()` (~line 200). The Bragg R(obs) factor takes
+  `sqrt(I_obs)` / `sqrt(I_calc)` over *all* reflections, then applies the `I_obs > 3*sigma`
+  significance cut by multiplying a 0/1 mask: `sum(|sqrt(I_obs) - sqrt(I_calc)| * mask)`. But
+  experimental intensities can be **negative** (background-subtracted), and a negative reflection is
+  always below the `3*sigma` cut, so `sqrt(negative) = NaN` at a masked-*out* reflection and
+  `NaN * 0 = NaN` poisons the reduced sum -- the R-factor is `NaN` for any rotation with a single
+  negative observed intensity.
+- **Effect:** latent in the private (its upstream data path never presented a negative to this
+  function). In 2.0 the observed patterns include negatives (real PETS data: e.g. the quartz
+  anchor's first rotation has 6), so the multiply-mask returns `NaN` and the rotation silently drops
+  out of the aggregate `R_obs`.
+- **2.0 behaviour:** `core.losses.rbragg` applies the cut by *selection* (`torch.where`), with
+  `clamp(min=0)` guarding the square roots against numerical noise. Masked-in reflections have
+  `I_obs > 3*sigma > 0` and `I_calc = |psi|^2 >= 0`, so the result is identical to the original on
+  all-positive data and merely finite (excluding them) where the original was `NaN`.
+- **Where:** `core/losses.py` (`rbragg`); pinned by `tests/unit/test_core_losses.py`
+  (`test_rbragg_is_nan_safe_for_negative_masked_reflections` -- a negative masked reflection leaves
+  the result finite and equal to the observed-subset R). `test_rbragg_matches_private` still holds
+  on clean data.
+- **Found:** diffBloch 2.0 stage 11 (preprocess) port, wiring the executable quartz anchor.
+
 ---
 
 ## Deliberate simplifications (we narrow, with justification)

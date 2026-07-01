@@ -108,6 +108,19 @@ def test_rbragg_masks_weak_reflections() -> None:
     assert torch.allclose(rbragg(calc_match, obs, sigmas), torch.zeros(1, dtype=torch.float64))
 
 
+def test_rbragg_is_nan_safe_for_negative_masked_reflections() -> None:
+    # Experimental intensities can be negative (background-subtracted). A negative reflection is
+    # always below the I > 3*sigma cut, so it must be excluded -- and must not poison the sum with a
+    # NaN from sqrt(negative). The result must equal rbragg over the observed subset alone.
+    obs = torch.tensor([[1.0, 4.0, -0.5]], dtype=torch.float64)
+    sigmas = torch.tensor([[0.05, 0.10, 0.10]], dtype=torch.float64)
+    calc = torch.tensor([[1.2, 3.6, 9.0]], dtype=torch.float64)
+    full = rbragg(calc, obs, sigmas)
+    subset = rbragg(calc[:, :2], obs[:, :2], sigmas[:, :2])
+    assert torch.isfinite(full).all()
+    assert torch.allclose(full, subset)
+
+
 def test_w_rbragg_matches_private(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
     assert torch.allclose(w_rbragg(calc, obs, sigmas), _private_wrbragg(calc, obs, sigmas))

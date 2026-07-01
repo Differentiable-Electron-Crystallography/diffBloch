@@ -63,13 +63,22 @@ def rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor) -> Tensor:
 
     Restricted to observed reflections (``I_obs > 3*sigma``), the standard crystallographic
     significance cut. Reduces over the reflection axis.
+
+    The ``I_obs > 3*sigma`` cut is applied by *selection* (``torch.where``), not by multiplying a
+    0/1 mask: experimental intensities can be negative (background-subtracted), so ``sqrt`` of an
+    excluded reflection is ``NaN``, and ``NaN * 0`` would poison the sum. Masked-in reflections have
+    ``I_obs > 3*sigma > 0`` (and calculated ``|psi|^2 >= 0``), so their square roots are always
+    finite; the clamps guard only against numerical noise. This diverges from the private
+    ``metrics.rbragg_abs`` (multiply-mask, ``NaN``-unsafe on negatives) -- see ``DIVERGENCE.md``.
     """
     _check_pair(calculated, observed)
     _check_sigmas(sigmas, observed)
     mask = observed > 3 * sigmas
-    sqrt_obs, sqrt_calc = observed.sqrt(), calculated.sqrt()
-    numerator = ((sqrt_obs - sqrt_calc).abs() * mask).sum(dim=-1)
-    denominator = (sqrt_obs * mask).sum(dim=-1)
+    sqrt_obs = observed.clamp(min=0.0).sqrt()
+    sqrt_calc = calculated.clamp(min=0.0).sqrt()
+    zero = torch.zeros_like(observed)
+    numerator = torch.where(mask, (sqrt_obs - sqrt_calc).abs(), zero).sum(dim=-1)
+    denominator = torch.where(mask, sqrt_obs, zero).sum(dim=-1)
     return numerator / denominator
 
 
