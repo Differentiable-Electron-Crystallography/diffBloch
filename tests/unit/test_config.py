@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from diffBloch.config.schema import BeamDamageConfig, ExperimentConfig
-from diffBloch.specs import HexagonalSearch, ThicknessGrid
+from diffBloch.specs import HexagonalSearch, RockingCurve, ThicknessGrid
 
 
 def test_minimal_config_validates_with_defaults() -> None:
@@ -124,6 +124,17 @@ def test_preprocess_thickness_defaults_match_the_private() -> None:
     # 1:1 edge over ThicknessGrid: a default config round-trips to the value-type's defaults; the
     # concrete values are pinned once, in test_specs.
     assert thickness.to_grid() == ThicknessGrid()
+
+
+def test_numerics_to_rocking_curve_shares_the_integration_semiangle() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    )
+    numerics = cfg.numerics
+    # integration_semiangle doubles as the tilt half-width; rocking_curve_sampling = the tilt count.
+    assert numerics.to_rocking_curve() == RockingCurve(
+        semiangle=numerics.integration_semiangle, sampling=numerics.rocking_curve_sampling
+    )
 
 
 def test_thickness_grid_bounds_are_validated() -> None:

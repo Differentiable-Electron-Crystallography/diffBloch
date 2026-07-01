@@ -34,6 +34,7 @@ __all__ = [
     "hexagonal_tilt",
     "orientation_basis",
     "orientation_matrices",
+    "rocking_curve_tilts",
     "u_matrix",
 ]
 
@@ -105,6 +106,44 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     )
     tilt: FloatArray = rz @ rx @ rz.T  # rz.T = R_z(-azimuth)
     return tilt
+
+
+def rocking_curve_tilts(
+    semiangle: float, sampling: int, *, geometry: str = "continuous_rotation"
+) -> FloatArray:
+    """Rocking-curve integration tilts as ``(N, 3, 3)`` rotation matrices, ``N = sampling``.
+
+    ``sampling`` tilts at angles ``linspace(-semiangle, +semiangle, sampling)`` degrees, each a
+    rotation about **x** -- the goniometer axis in the PETS coordinate frame, where these matrices
+    left-multiply the already-PETS-rotated orientation (``R_tilt @ orientation``). ``sampling = 1``
+    is special-cased to a single tilt at angle 0 (the identity), so composing the integration with a
+    unit sampling is a no-op -- ``np.linspace`` would otherwise return the *start* ``-semiangle``
+    for ``num = 1``; the private only ever runs the ``sampling >= 2`` symmetric-endpoint case, so
+    this
+    edge-case centering diverges from nothing it exercises.
+
+    Continuous-rotation geometry only; ``precession`` (a cone) is a later discriminated mode and
+    raises ``NotImplementedError`` here. Callers unpack a validated
+    :class:`~diffBloch.specs.RockingCurve` into these raw arguments (the value-type owns the
+    invariants), matching :func:`hexagonal_tilt`'s raw-float style.
+
+    Faithful to ``diffBloch_private``'s ``generate_integration_rotation_matrices``; see
+    ``design/decisions/stage11-rocking-curve.md``.
+    """
+    if geometry != "continuous_rotation":
+        raise NotImplementedError(f"rocking-curve geometry {geometry!r} is not implemented")
+    if sampling == 1:
+        angles = np.zeros(1)  # single sample sits at the nominal orientation -> identity tilt
+    else:
+        angles = np.deg2rad(np.linspace(-semiangle, semiangle, sampling))
+    cos, sin = np.cos(angles), np.sin(angles)
+    tilts = np.zeros((sampling, 3, 3), dtype=np.float64)
+    tilts[:, 0, 0] = 1.0
+    tilts[:, 1, 1] = cos
+    tilts[:, 1, 2] = -sin
+    tilts[:, 2, 1] = sin
+    tilts[:, 2, 2] = cos
+    return tilts
 
 
 def u_matrix(ub_matrix: FloatArray, cell_parameters: FloatArray) -> FloatArray:

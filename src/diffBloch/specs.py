@@ -21,8 +21,15 @@ these raising constructors -- Result stays at that boundary and never enters a s
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
-__all__ = ["BeamSelection", "ConvergenceTolerance", "HexagonalSearch", "ThicknessGrid"]
+__all__ = [
+    "BeamSelection",
+    "ConvergenceTolerance",
+    "HexagonalSearch",
+    "RockingCurve",
+    "ThicknessGrid",
+]
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,38 @@ class HexagonalSearch:
             raise ValueError("n_steps must be >= 1")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be >= 1")
+
+
+@dataclass(frozen=True)
+class RockingCurve:
+    """Validated geometry for rocking-curve integration (tilts as sub-orientations).
+
+    A rotation-electron-diffraction frame integrates each reflection's intensity as the crystal
+    sweeps through the Ewald sphere, so the forward model samples ``sampling`` slightly-tilted
+    sub-orientations spanning +/- ``semiangle`` and sums their intensities. ``semiangle`` (degrees)
+    is the tilt half-width -- the same physical angular integration range as the Klar beam-selection
+    window (``BeamSelection.integration_semiangle``), here setting the tilt span, so the two share
+    one value. ``sampling`` is the number of tilts; ``sampling = 1`` is the identity (a single
+    static solve), which is how the integration composes off by default. ``geometry`` selects the
+    sweep: ``continuous_rotation`` (goniometer x-axis tilts, implemented) or ``precession`` (a cone;
+    a deferred discriminated mode -- see the decision doc).
+
+    Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``rocking_curve_sampling`` /
+    ``data_collection_geometry``; ``rotation_dataset.generate_integration_rotation_matrices``); see
+    ``design/decisions/stage11-rocking-curve.md``.
+    """
+
+    semiangle: float = 1.0  # degrees: tilt half-width (shares BeamSelection.integration_semiangle)
+    sampling: int = 42  # number of tilts across +/- semiangle; 1 = single static solve (identity)
+    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
+
+    def __post_init__(self) -> None:
+        if self.semiangle <= 0.0:
+            raise ValueError("semiangle must be positive")
+        if self.sampling < 1:
+            raise ValueError("sampling must be >= 1")
+        if self.geometry not in ("continuous_rotation", "precession"):
+            raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
 
 
 @dataclass(frozen=True)

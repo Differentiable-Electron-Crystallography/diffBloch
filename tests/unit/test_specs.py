@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import pytest
 
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, HexagonalSearch, ThicknessGrid
+from diffBloch.specs import (
+    BeamSelection,
+    ConvergenceTolerance,
+    HexagonalSearch,
+    RockingCurve,
+    ThicknessGrid,
+)
 
 
 def test_convergence_tolerance_defaults_match_the_private() -> None:
@@ -86,3 +92,19 @@ def test_value_types_are_frozen() -> None:
     grid = ThicknessGrid()
     with pytest.raises((AttributeError, TypeError)):
         grid.min_thickness = 1.0  # type: ignore[misc]
+
+
+def test_rocking_curve_defaults_and_double_role() -> None:
+    rocking = RockingCurve()
+    assert rocking.semiangle == 1.0  # shares BeamSelection.integration_semiangle
+    assert rocking.sampling == 42  # the quartz reference tilt count
+    assert rocking.geometry == "continuous_rotation"
+
+
+def test_rocking_curve_rejects_invalid_geometry_and_bounds() -> None:
+    with pytest.raises(ValueError, match="semiangle must be positive"):
+        RockingCurve(semiangle=0.0)
+    with pytest.raises(ValueError, match="sampling must be >= 1"):
+        RockingCurve(sampling=0)
+    with pytest.raises(ValueError, match="geometry must be"):
+        RockingCurve(geometry="spiral")  # type: ignore[arg-type]

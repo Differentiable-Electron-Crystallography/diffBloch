@@ -19,6 +19,7 @@ from diffBloch.preprocess.orientation import (
     goniometer_rotation,
     orientation_basis,
     orientation_matrices,
+    rocking_curve_tilts,
     u_matrix,
 )
 
@@ -100,3 +101,27 @@ def test_busing_levy_rejects_degenerate_cells() -> None:
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 90.0, 90.0, 180.0]))
     with pytest.raises(ValueError, match="geometrically inconsistent"):
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 20.0, 20.0, 170.0]))
+
+
+def test_rocking_curve_tilts_are_x_axis_rotations_spanning_the_semiangle() -> None:
+    tilts = rocking_curve_tilts(1.0, 42)
+    assert tilts.shape == (42, 3, 3)
+    # Each tilt is a proper rotation about x: det = 1 and the x-axis is fixed.
+    assert np.allclose(np.linalg.det(tilts), 1.0)
+    assert np.allclose(tilts[:, 0, :], np.tile([1.0, 0.0, 0.0], (42, 1)))
+    assert np.allclose(tilts[:, :, 0], np.tile([1.0, 0.0, 0.0], (42, 1)))
+    # Endpoints are +/- semiangle about x; the span is symmetric.
+    end = np.deg2rad(1.0)
+    assert np.allclose(tilts[0], goniometer_rotation(-1.0, 0.0, 0.0))
+    assert np.allclose(tilts[-1], goniometer_rotation(1.0, 0.0, 0.0))
+    assert np.isclose(tilts[0, 2, 1], np.sin(-end))
+
+
+def test_rocking_curve_tilts_unit_sampling_is_the_identity() -> None:
+    # sampling = 1 puts the single tilt at angle 0 -> identity: the integration composes off.
+    assert np.allclose(rocking_curve_tilts(1.0, 1), np.eye(3)[None])
+
+
+def test_rocking_curve_tilts_reject_unimplemented_geometry() -> None:
+    with pytest.raises(NotImplementedError, match="precession"):
+        rocking_curve_tilts(1.0, 42, geometry="precession")

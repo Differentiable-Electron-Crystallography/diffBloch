@@ -14,7 +14,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
+from diffBloch.specs import BeamSelection, HexagonalSearch, RockingCurve, ThicknessGrid
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
 # defaults derive from these default instances so the boundary value cannot drift from the
@@ -50,9 +50,23 @@ class NumericsConfig(BaseModel):
             rsg=self.rsg, dsg=self.dsg, integration_semiangle=self.integration_semiangle
         )
 
+    def to_rocking_curve(self) -> RockingCurve:
+        """Parse the rocking-curve subset into the value-type ``integrate_rocking_curve`` consumes.
+
+        ``integration_semiangle`` doubles as the tilt half-width (one physical angular integration
+        range shared with the Klar beam window; see the decision doc), and
+        ``rocking_curve_sampling`` is the tilt count. Geometry defaults to continuous rotation until
+        ``data_collection_geometry`` is surfaced from the PETS reader (a deferred discriminated
+        mode).
+        """
+        return RockingCurve(
+            semiangle=self.integration_semiangle, sampling=self.rocking_curve_sampling
+        )
+
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> NumericsConfig:
         self.to_beam_selection()  # the rules live in BeamSelection; fail fast at config load
+        self.to_rocking_curve()  # the rules live in RockingCurve; fail fast at config load
         return self
 
 
