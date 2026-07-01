@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from diffBloch.config.schema import BeamDamageConfig, ExperimentConfig
+from diffBloch.specs import HexagonalSearch, ThicknessGrid
 
 
 def test_minimal_config_validates_with_defaults() -> None:
@@ -91,10 +92,10 @@ def test_preprocess_orientation_defaults_match_the_private() -> None:
         {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
     )
     orientation = cfg.preprocess.orientation
-    assert orientation.max_search_angle == 0.4
-    assert orientation.min_search_angle == 0.001
-    assert orientation.n_steps == 6
-    assert orientation.max_iterations == 600
+    # The config is a 1:1 edge over HexagonalSearch: its defaults derive from the value-type, so a
+    # default config round-trips to the value-type's own defaults. The concrete values (the private
+    # numbers, incl. the quartz-calibrated max_iterations) are pinned once, in test_specs.
+    assert orientation.to_search() == HexagonalSearch()
 
 
 def test_orientation_search_bounds_are_validated() -> None:
@@ -120,9 +121,9 @@ def test_preprocess_thickness_defaults_match_the_private() -> None:
         {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
     )
     thickness = cfg.preprocess.thickness
-    assert thickness.min_thickness == 5.0
-    assert thickness.max_thickness == 2000.0
-    assert thickness.n_steps == 100
+    # 1:1 edge over ThicknessGrid: a default config round-trips to the value-type's defaults; the
+    # concrete values are pinned once, in test_specs.
+    assert thickness.to_grid() == ThicknessGrid()
 
 
 def test_thickness_grid_bounds_are_validated() -> None:

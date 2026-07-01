@@ -16,6 +16,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from diffBloch.specs import BeamSelection, HexagonalSearch, ThicknessGrid
 
+# The preprocess config classes below are 1:1 YAML edges over their value-types; their field
+# defaults derive from these default instances so the boundary value cannot drift from the
+# value-type it parses into. The value-type in ``specs`` is the single source of truth for both the
+# default value and its validation rules (e.g. the quartz-calibrated ``max_iterations`` lives once,
+# in ``HexagonalSearch``).
+_HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
+_THICKNESS_GRID_DEFAULTS = ThicknessGrid()
+
 
 class SolverConfig(BaseModel):
     """Which dynamical solver to use for each phase."""
@@ -129,13 +137,14 @@ class OrientationFitConfig(BaseModel):
 
     The YAML edge: parses (via :meth:`to_search`) into the validated
     :class:`~diffBloch.specs.HexagonalSearch` value-type the pure ``fit_orientation`` consumes, and
-    delegates all validation there (one rule home, no drift). Defaults mirror that value-type.
+    delegates all validation there (one rule home, no drift). Defaults derive from that value-type
+    (``_HEXAGONAL_SEARCH_DEFAULTS``), so the boundary value cannot drift from it either.
     """
 
-    max_search_angle: float = 0.4  # degrees: largest tilt radius the search starts from
-    min_search_angle: float = 0.001  # degrees: radius floor that terminates the search
-    n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
-    max_iterations: int = 600  # runaway guard: max search passes per orientation (quartz max 526)
+    max_search_angle: float = _HEXAGONAL_SEARCH_DEFAULTS.max_search_angle  # degrees
+    min_search_angle: float = _HEXAGONAL_SEARCH_DEFAULTS.min_search_angle  # degrees
+    n_steps: int = _HEXAGONAL_SEARCH_DEFAULTS.n_steps  # hexagonal azimuths per ring
+    max_iterations: int = _HEXAGONAL_SEARCH_DEFAULTS.max_iterations  # runaway guard
 
     def to_search(self) -> HexagonalSearch:
         """Parse into the validated value-type the pure ``fit_orientation`` consumes."""
@@ -157,12 +166,13 @@ class ThicknessFitConfig(BaseModel):
 
     The YAML edge: parses (via :meth:`to_grid`) into the validated
     :class:`~diffBloch.specs.ThicknessGrid` value-type the pure ``fit_thickness`` consumes, and
-    delegates all validation there (one rule home, no drift). Defaults mirror that value-type.
+    delegates all validation there (one rule home, no drift). Defaults derive from that value-type
+    (``_THICKNESS_GRID_DEFAULTS``), so the boundary value cannot drift from it either.
     """
 
-    min_thickness: float = 5.0  # Angstroms: smallest candidate thickness
-    max_thickness: float = 2000.0  # Angstroms: largest candidate thickness
-    n_steps: int = 100  # number of evenly-spaced candidates (inclusive endpoints)
+    min_thickness: float = _THICKNESS_GRID_DEFAULTS.min_thickness  # Angstroms
+    max_thickness: float = _THICKNESS_GRID_DEFAULTS.max_thickness  # Angstroms
+    n_steps: int = _THICKNESS_GRID_DEFAULTS.n_steps  # evenly-spaced candidates
 
     def to_grid(self) -> ThicknessGrid:
         """Parse into the validated value-type the pure ``fit_thickness`` consumes."""
