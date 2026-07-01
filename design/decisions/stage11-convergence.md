@@ -24,48 +24,164 @@ This is a different *kind* of comparison than the existing scoring path (which i
 simulation-vs-observed wR2), so it needs a **simulation-vs-simulation R-factor** — a new, small
 function, not a reuse of `score_orientation`.
 
-## Three cost axes, each its own single-responsibility `Plan -> Plan` step
+### Why comparing a simulation to a *previous simulation* is valid
 
-The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`). They control independent axes of
-simulation cost, so — per "decompose by coupled home, not false independence" — each axis is one
-single-responsibility step, mirroring the private's `optimize_gmax` / `optimize_sgmax` /
-`optimize_tilt_steps`:
+Convergence testing does not ask *"is the pattern more accurate?"* — accuracy needs observed data
+and is the refinement's job. It asks *"has the calculation stopped depending on this numerical
+knob?"* — a standard resolution / truncation study. Beam count and rocking-curve sampling are
+numerical truncation parameters: a Bloch calculation with too few beams is *wrong*, but wrong from
+under-resolution, not from a bad model. Growing the knob and watching the pattern stop moving
+locates the regime where truncation error is below tolerance, independent of experiment. The two
+questions are orthogonal and sequential: converge the numerics first (sim-vs-sim), so that the
+residual the refinement later minimises (sim-vs-observed) is model error, not truncation noise. A
+converged simulation can still be *wrong* (converged ≠ correct); resolving that is refinement, not
+convergence.
 
-- **`converge_g_max`** — the Plan-level shared reciprocal-grid extent (the `ScatteringGrid` sizing).
-- **`converge_beams`** — per-orientation beam-set inclusiveness (the `select_beams` active set).
-- **`converge_sampling`** — the rocking-curve integration density
-  (`rocking_curve_sampling` / the private `tilt_steps`).
+## The knobs consolidate: the private's `g_max`/`sg_max` are two levers on *one* quantity
 
-Each step has the **same internal shape** as the private sweep: from the current value, repeatedly
-increment by a fixed step, re-simulate, compute the consecutive-simulation R-factor, and stop the
-first time it drops below threshold; raise if a hard iteration cap (`MAX_SWEEP_ITERATIONS = 100`) is
-reached without converging — silent non-convergence is never returned (the same posture as
-`iterate_until`).
+The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`) as three independent `optimize_*`
+passes. Porting them showed that framing is a *false independence*: in 2.0 they do not correspond to
+three independent cost axes, because 2.0 separates concerns the private conflates. Applying
+"decompose by coupled home, not false independence", the corrected model has **one** beam concern
+(with two coupled levers) plus a separate, deferred sampling axis.
 
-### Open question — the `sg_max` → 2.0 knob mapping
+- **The reciprocal-grid `g_max` is not a 2.0 convergence knob.** The Bloch structure matrix is
+  a gather `A[i, j] = F(g_j - g_i)` over the *active beam pairs*; the grid only has to *cover the
+  beam differences* (~2x the beam `g_max`). Growing the grid `g_max` past that bound adds `Fgb`
+  entries that are never gathered — a strict no-op that would "converge" trivially at R = 0. The
+  private's `g_max` sweep only bites because *its* grid **is** the beam source (`filter_hkls` draws
+  beams from the structure-factor grid); 2.0 splits the `Fgb` support grid from the active beam set,
+  so grid extent is *sized-to-cover*, never converged. (Recorded in `DIVERGENCE.md`.)
 
-The private's `sg_max` is a standalone scalar passed to `filter_hkls`. In 2.0 the Klar filter
-*derives* its per-reflection `sg_max` from `integration_semiangle` inside `klar_beam_mask`, so there
-is no standalone `sg_max` knob to sweep; the beam-set inclusiveness is governed by the
-`BeamSelection` cutoffs (`rsg`, `integration_semiangle`). **Which `BeamSelection` field
-`converge_beams` increments — and whether 2.0's derived `sg_max` changes the convergence behaviour —
-is deferred to the implementation slice** (confirm against a private run rather than guess here).
-`NumericsConfig.sg_max = 0.01` exists separately today; its role under the Klar filter must be
-pinned before `converge_beams` is written.
+- **Both private beam knobs are levers on one quantity — beam-set inclusiveness — and they are
+  coupled.** The active set is `seed(g_max_refine) ∩ Klar-window(integration_semiangle)`:
+  - `g_max` (private candidate pool) -> **`g_max_refine`**, seed radius `from_experiment` uses to
+    lay down each orientation's candidate reflections.
+  - `sg_max` (private excitation-error cutoff in `filter_hkls`) -> **`integration_semiangle`**, the
+    `BeamSelection` field that sets the Klar window `sg_max = |g_transverse|*deg2rad(semiangle)` in
+    `klar_beam_mask`; growing it monotonically widens the excitation-error window and admits more
+    near-Ewald beams.
+  Because the set is the *intersection*, each lever is bounded by the other — widening the window
+  admits nothing the pool has already clipped, and vice versa. That mutual bounding is the whole
+  reason the private needs its multi-pass revisiting, and the reason 2.0 files both levers under one
+  beam-inclusiveness concern reached by a cross-lever fixpoint, rather than as two "independent"
+  axes. It is the same principle as `select_beams` owning the whole active-set selection.
 
-## Composition — `pipeline` orders the suite, `iterate_until` is the cross-knob fixpoint
+- **Rocking-curve sampling (`tilt_steps`) is a genuinely separate axis — and has nothing to converge
+  yet.** It drives a rocking-curve integration (the pattern averaged over many beam tilts) that
+  **2.0's forward model does not implement**; `rocking_curve_sampling` is an unused config field
+  today. `converge_sampling` therefore waits on that forward-model feature, recorded as a subsequent
+  task in `ROADMAP.md`.
 
-The three steps compose with the existing combinators, no new machinery:
+### First step — `converge_beams` sweeps the Klar window (`integration_semiangle`)
 
-- **Partial order (hard constraint):** the grid must contain any beam the selection might keep, so
-  `converge_g_max` runs **before** `converge_beams`; `converge_sampling` is independent of grid
-  extent. The private's pass-1 order (`g_max`, `tilt_steps`, `beams`) respects this; 2.0 follows it.
-- **`pipeline([converge_g_max, converge_sampling, converge_beams])`** orders one pass.
-- **Cross-knob fixpoint:** changing one knob can un-converge another, so the suite must revisit. The
-  private hard-codes `num_passes = 2` and *varies the order* between passes (pass 2 leads with
-  `tilt_steps`). 2.0 instead expresses the revisit as **`iterate_until(pipeline(...), until=...)`**
-  — a fixpoint over the whole pass, driven to stability rather than a fixed count. This is a
-  **two-level fixpoint**: each knob converges internally, the composer converges across knobs.
+`converge_beams` grows **`integration_semiangle`** from its starting value by a fixed step,
+re-selecting each orientation's beams (reusing `select_beams`) and re-simulating, comparing each new
+simulation to the previous with `simulation_converged`, until the stopping rule below is met or the
+`max_iterations` cap is hit. It is the direct analogue of the private's `sg_max` sweep and the
+physically-primary "how many near-Ewald beams" lever — reusing `select_beams` +
+`simulation_converged`, no new machinery.
+
+The **pool lever** (`g_max_refine`) is the coupled second beam knob: growing the seed radius
+re-seeds the candidate reflections and — to keep the `Fgb` difference-support valid — may grow the
+grid `g_max` as a *dependent sizing* constraint. It is deferred until the window sweep is
+calibrated; when it lands, the two levers are driven to a joint fixpoint together (block coordinate
+descent, below).
+
+### Stopping rule — established convergence utilities, not the private's fixed-step stop
+
+The private stops the first time the consecutive-simulation R-factor drops below threshold. That has
+a real premature-termination failure: `integration_semiangle` is continuous but the beam set is
+*discrete*, so two increments can yield the **same** beam set, an identical simulation, R = 0, and a
+false "converged" — even though a larger increment would still admit beams. 2.0 does not replicate
+the flaw; it corrects it with standard convergence utilities (recorded in `DIVERGENCE.md`):
+
+- **Skip null steps.** "Improvement" is only defined when the active beam set actually changes; an
+  increment that leaves every orientation's set unchanged is not an evaluation — keep growing the
+  angle until the set changes, *then* compare. This removes the R = 0 plateau at its source (the
+  discrete-knob analogue of only measuring where the model can move).
+- **Patience.** Across *real* changes the R-factor need not be monotone, so — as in early-stopping
+  *patience* — require R below threshold for **`patience` consecutive** changed steps before
+  declaring convergence, not one dip. This targets the *asymptotic range* (where more beams stop
+  mattering), the same idea grid-convergence studies (Richardson / the Grid Convergence Index)
+  formalise for mesh refinement.
+- **Hard cap.** `max_iterations` bounds increments; exceeding it raises rather than returning a
+  silently non-converged plan (the `iterate_until` posture).
+
+This makes composition **block coordinate descent**: `iterate_until(pipeline([...]))` sweeps each
+lever to its own fixpoint and repeats until a sweep leaves every lever unchanged — the textbook
+cyclic-coordinate stopping rule, matching the two-level fixpoint chosen below. The stopping-rule
+parameters (`r_factor_threshold`, `patience`, `max_iterations`) are the invariant bundle carried by
+**`ConvergenceTolerance`**; `patience`'s default is a calibration target (`KNOWN_ISSUES.md`), like
+`max_iterations`. See `REFERENCES.md` for coordinate descent, early-stopping patience, and the Grid
+Convergence Index.
+
+### Build vs adopt a sweep framework
+
+The sweep is expressed with the project's own `pipeline` + `iterate_until` combinators plus a small
+reusable `converge_scalar` higher-order component (skip-null + patience + cap, written once and
+shared by the window lever, the pool lever, and later `converge_sampling`) — **not** a
+hyperparameter-optimization framework (Optuna, Ray Tune, Ax, scikit-optimize, Weights & Biases
+Sweeps, the Hydra sweeper). Those tools solve a *different* problem: black-box optimization that
+*samples* a search space (random / TPE / Bayesian) to minimise an objective, with pruners to abandon
+poor trials, at the cost of 4–11 transitive runtime dependencies (and, variously, a study database,
+a cloud service, or a distributed runtime). Convergence testing is not optimization: the knob grows
+*monotonically* until the output stops changing (a fixpoint at diminishing returns), there is no
+objective to search, and the structure is fully known — sampling would be pointless. Adopting one
+would also contradict the project's deliberate minimal-dependency, anti-Hydra posture. We borrow the
+*concepts* (pruning/patience, coordinate descent, the GCI asymptotic range) and cite them; we do not
+take the dependency.
+
+## The convergence engine is a higher-order component (parameter-agnostic)
+
+The loop knows nothing about beams. Its essence is *propose a clicked knob, rebuild the Plan,
+re-simulate, and compare against the previous simulation* — so it is written once as a higher-order
+component and reused for any parameter:
+
+    converge_scalar(build, *, start, step, stabilized, tolerance) -> PlanStep
+
+- **`build: value -> Plan`** rebuilds the Plan at a knob value (for beams,
+  `select_beams(replace(selection, integration_semiangle=value))`). `start` / `step` seed and
+  *click* the value; a negative `step` clicks *down*.
+- **`stabilized: (previous, candidate) -> bool`** is the in-loop check against the previous
+  simulation (`simulation_converged`). It is what makes the loop wait for the *diffraction pattern*
+  to settle, independent of which knob moved.
+- **`tolerance`** carries `patience` + `max_iterations`; skip-null + patience + cap live in-loop.
+
+`converge_beams` is a small adapter that binds `build` to the beam re-selection; the pool lever,
+`converge_sampling`, and any other experiment-config scalar are further adapters supplying their own
+`build`. **Independently vs together** and **up vs down** are not special cases — they are just how
+the click is supplied:
+
+- **one param, up:** `converge_scalar(build, start, +step, ...)`.
+- **one param, down (minimal-sufficient):** `step` negative.
+- **several params together:** a `build` over a small parameter *tuple* clicked by a step *vector*.
+- **several params independently:** separate `converge_scalar` steps composed by
+  `iterate_until(pipeline([...]))` — coordinate descent (the cross-lever fixpoint below).
+
+**Guardrail (typed closures, not config reflection).** The genericity comes from *higher-order
+functions over typed closures*, exactly the `Plan -> Plan` / combinator idiom in the codebase
+— **not** a stringly-typed engine that introspects a config by key path and mutates it. Each `build`
+is a small, explicit, type-checked function the caller writes; the convergence engine stays a pure
+combinator with no knowledge of the config schema, keeping the value-object vocabulary and the
+"no `DictConfig` in the core" posture intact.
+
+## Composition — `pipeline` orders the levers, `iterate_until` is the cross-lever fixpoint
+
+Today only `converge_beams` (the window lever) exists, and it is self-contained. The composition
+below — block coordinate descent — activates once the pool lever (`g_max_refine`) and, later,
+`converge_sampling` join:
+
+- **Partial order (sizing dependency):** the grid must contain any beam a wider pool keeps, so
+  growing `g_max_refine` implies a grid-`g_max` *sizing* step **before** re-selection.
+  `converge_sampling` is independent of the beam levers.
+- **`pipeline([...])`** orders one pass over the levers.
+- **Cross-lever fixpoint:** because the pool and window levers are coupled (each bounded by the
+  other), widening one can leave the other room to grow, so the suite must revisit. The private
+  hard-codes `num_passes = 2` and *varies order* between passes (pass 2 leads with `tilt_steps`).
+  2.0 expresses the revisit as **`iterate_until(pipeline(...), until=...)`** — a fixpoint over
+  the whole pass, driven to stability rather than a fixed count. This is a **two-level fixpoint**:
+  each lever converges internally, the composer converges across levers.
 
 ### Decision — `iterate_until`-until-stable (chosen), generalising the private's fixed 2 passes
 
@@ -97,10 +213,11 @@ parameters handed to the self-stability suite as its starting point (the private
 
 The stopping rule compares a step's (previous, just-produced) Plans, so it is a
 `ConvergenceCheck = (Plan, Plan) -> bool` — the type `iterate_until` already takes. Its parameters
-(`r_factor_threshold` and the `max_iterations` / `MAX_SWEEP_ITERATIONS` cap) are a small invariant
-bundle that crosses into the algorithm, so by the convention below they become **one frozen
-value-type, `ConvergenceTolerance`** (`specs.py`), validated once at construction
-(`r_factor_threshold > 0`, `max_iterations >= 1`). This also folds in `iterate_until`'s lone
+(`r_factor_threshold` and the `patience` + `max_iterations` / `MAX_SWEEP_ITERATIONS` caps) are a
+small invariant bundle that crosses into the algorithm, so by the convention below they become **one
+frozen value-type, `ConvergenceTolerance`** (`specs.py`), validated once at construction
+(`r_factor_threshold > 0`, `patience >= 1`, `max_iterations >= 1`). This also folds in
+`iterate_until`'s lone
 `max_iterations` guard — the
 borderline scalar flagged in the value-type audit — giving it a proper home.
 
@@ -136,7 +253,7 @@ dataclass value-type** (`HexagonalSearch`, `ThicknessGrid`, `BeamSelection`, and
 | `fit_orientation` | `HexagonalSearch` | done (`f5b0676`) |
 | `fit_thickness` | `ThicknessGrid` | done (`f5b0676`) |
 | `select_beams` | `BeamSelection` | done (`5fc7250`) |
-| `converge_*` | `ConvergenceTolerance` | this slice |
+| `converge_beams` | `BeamSelection` + `ConvergenceTolerance` | this slice |
 | `klar_beam_mask`, `excitation_errors`, `resolution_cutoff`, `hexagonal_tilt`, … | scalars | not candidates (pure math) |
 
 The convergence steps complete the convention: after them, every config-derived parameter bundle
@@ -155,9 +272,12 @@ same errors-as-values-to-the-shell posture as `design/decisions/effects-and-obse
 
 ## Sequencing
 
-1. `ConvergenceTolerance` value-type + the simulation-vs-simulation R-factor check
-   (`ConvergenceCheck`).
-2. `converge_g_max` / `converge_sampling` / `converge_beams` (resolving the `sg_max` mapping first).
-3. The coverage `initial_minimum_param_sweep` step (match-count objective).
+1. `ConvergenceTolerance` value-type + the sim-vs-sim R-factor check (`simulation_converged`).
+   **Done** (`6f3d694`, `1b5681e`) — `patience` field lands with `converge_beams`.
+2. `converge_scalar` HOF + `converge_beams` — the `integration_semiangle` window sweep
+   (skip-null-steps + patience + cap).
+3. The coupled pool lever (`g_max_refine` + dependent grid sizing) and the cross-lever fixpoint.
+4. `converge_sampling` — waits on rocking-curve integration in the forward model (`ROADMAP.md`).
+5. The coverage `initial_minimum_param_sweep` step (match-count objective).
 4. The operation discriminated union + the `both` pipeline, wired by the preprocess driver
    (lands with `refine`).

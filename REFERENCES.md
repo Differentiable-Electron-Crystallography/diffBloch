@@ -72,6 +72,21 @@ new method, dataset, dependency, or studied design adds its credit here.
 
 _(PETS / observation-model references will be added when stage 9+ lands the observation model.)_
 
+- **Convergence-testing method (concepts borrowed, no dependency).** The `converge_*` sweep design
+  draws on established numerical-convergence and optimization practice, not a hyperparameter-search
+  framework: **block coordinate descent** (cyclic per-parameter minimization to a joint fixpoint --
+  Wright, S. J. (2015). *Coordinate descent algorithms.* **Math. Programming 151, 3-34.** DOI:
+  [10.1007/s10107-015-0892-3](https://doi.org/10.1007/s10107-015-0892-3)); **early-stopping
+  patience** (require several consecutive non-improving steps before stopping -- Prechelt, L.
+  (1998). *Early Stopping - But When?*, in *Neural Networks: Tricks of the Trade*, LNCS 1524. DOI:
+  [10.1007/3-540-49430-8_3](https://doi.org/10.1007/3-540-49430-8_3)); and the **Grid Convergence
+  Index / Richardson extrapolation** asymptotic-range criterion for discretization studies (Roache,
+  P. J. (1994). *A Method for Uniform Reporting of Grid Refinement Studies.* **J. Fluids Eng.
+  116(3), 405-413.** DOI: [10.1115/1.2910291](https://doi.org/10.1115/1.2910291)). We adopt the
+  *ideas* (skip-null + patience + cap, coordinate descent) and do **not** take a runtime dependency
+  on Optuna / Ray Tune / Ax / scikit-optimize / Weights & Biases. See
+  `design/decisions/stage11-convergence.md`.
+
 ## Vendored reference data
 
 - **`src/diffBloch/core/data/lobato.json`** — Lobato–Van Dyck (2014) parametrization coefficients

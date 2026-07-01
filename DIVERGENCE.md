@@ -79,6 +79,25 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   `design/decisions/stage11-fit-orientation.md`.
 - **Found:** diffBloch 2.0 stage 11 (5b) -- `fit_orientation`.
 
+### Convergence drops the grid-`g_max` knob and treats the beam knobs as coupled levers
+
+- **Original:** `convergence_testing.py` sweeps three independent knobs (`g_max`, `sg_max`,
+  `tilt_steps`) as separate `optimize_*` passes; `g_max` grows the structure-factor grid that *is*
+  the beam source (`filter_hkls` draws beams from it).
+- **2.0 behaviour:** 2.0 splits the `Fgb` support grid from the active beam set. The Bloch matrix is
+  a gather `A[i, j] = F(g_j - g_i)` over active beam pairs, so the grid only has to cover the beam
+  differences (~2x the beam `g_max`); growing grid `g_max` beyond that changes nothing. There is
+  therefore **no `converge_g_max`** -- grid extent is *sized-to-cover*, not converged. The private's
+  `g_max` and `sg_max` instead map onto two coupled levers of one quantity, beam-set inclusiveness:
+  `g_max -> g_max_refine` (seed pool) and `sg_max -> integration_semiangle` (the Klar excitation
+  window), whose intersection is the active set. `tilt_steps` (rocking-curve sampling) is a separate
+  axis, deferred until the forward model integrates rocking curves.
+- **Justification:** the gather makes grid extent a sizing constraint, not an accuracy knob;
+  consolidating the two beam knobs under one concern reflects their actual coupling (each bounded by
+  the other) and follows "decompose by coupled home, not false independence".
+- **Where:** `preprocess/convergence.py`; `design/decisions/stage11-convergence.md`.
+- **Found:** diffBloch 2.0 stage 11 -- implementing `converge_beams`.
+
 ## Deliberate generalizations (we extend, not correct, the original)
 
 ### `fit_orientation` enforces an iteration cap; the private search has none

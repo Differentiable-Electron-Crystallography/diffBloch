@@ -111,6 +111,14 @@ commit — the executable form of *"the core physics model has not changed."*
     fit-to-data, and several are discrete (beam count, sampling) so it is a sweep, not backprop.
     These *parameterize Plan construction*: `g_max` sizes the `ScatteringGrid`, `sg_max` selects the
     `BeamPlan` beams, sampling drives the rocking-curve integration.
+    - *2.0 correction (stage 11):* the private's three knobs do **not** map 1:1. The `Fgb` support
+      grid is sized-to-cover (the Bloch gather only needs the beam differences), so grid `g_max` is
+      **not** a convergence knob; the real levers are beam-set inclusiveness
+      (`g_max_refine` pool + `integration_semiangle` window, coupled) plus rocking-curve sampling.
+      **Deferred subsequent task:** 2.0's forward model has **no rocking-curve integration** yet
+      (`rocking_curve_sampling` is an unused config field), so `converge_sampling` waits on that
+      forward-model feature (its own decision + oracle). See
+      `design/decisions/stage11-convergence.md` and `DIVERGENCE.md`.
   - **Physical nuisance calibration** (`fit_orientation()` / `fit_thickness()`): per-rotation
     orientation and thickness, fit to the data. **Thickness is per-rotation because the specimen's
     3D shape is irregular** (each orientation presents a different beam path length), so it moves
