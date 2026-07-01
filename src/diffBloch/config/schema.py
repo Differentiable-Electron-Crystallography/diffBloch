@@ -135,7 +135,7 @@ class OrientationFitConfig(BaseModel):
     max_search_angle: float = 0.4  # degrees: largest tilt radius the search starts from
     min_search_angle: float = 0.001  # degrees: radius floor that terminates the search
     n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
-    max_iterations: int = 200  # runaway guard: max search passes per orientation (uncalibrated)
+    max_iterations: int = 600  # runaway guard: max search passes per orientation (quartz max 526)
 
     def to_search(self) -> HexagonalSearch:
         """Parse into the validated value-type the pure ``fit_orientation`` consumes."""

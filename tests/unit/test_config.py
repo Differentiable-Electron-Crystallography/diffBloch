@@ -94,7 +94,7 @@ def test_preprocess_orientation_defaults_match_the_private() -> None:
     assert orientation.max_search_angle == 0.4
     assert orientation.min_search_angle == 0.001
     assert orientation.n_steps == 6
-    assert orientation.max_iterations == 200
+    assert orientation.max_iterations == 600
 
 
 def test_orientation_search_bounds_are_validated() -> None:

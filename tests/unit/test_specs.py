@@ -59,7 +59,7 @@ def test_hexagonal_search_defaults_match_the_private() -> None:
     assert search.max_search_angle == 0.4
     assert search.min_search_angle == 0.001
     assert search.n_steps == 6
-    assert search.max_iterations == 200
+    assert search.max_iterations == 600
 
 
 def test_thickness_grid_rejects_invalid_bounds() -> None:

@@ -62,8 +62,9 @@ def fit_orientation(
     The cap is a 2.0 addition: ``diffBloch_private``'s search has none (it relies on monotone wR2
     descent + the radius floor; see DIVERGENCE.md). The search does terminate by construction for a
     non-degenerate objective -- the cap only guards pathological ridge-walking on (near-)degenerate
-    landscapes. Its default is an **uncalibrated** runaway guard with no empirical basis yet (see
-    KNOWN_ISSUES.md); raise it if a legitimate search trips it.
+    landscapes. Its default of ``600`` is **calibrated on the quartz anchor** (slowest legitimate
+    search: 526 passes across 99 rotations, so 600 has headroom); raise it via config if a dataset
+    with shallower minima trips it (see KNOWN_ISSUES.md).
     """
 
     def run(plan: Plan) -> Plan:

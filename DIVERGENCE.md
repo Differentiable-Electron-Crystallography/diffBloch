@@ -134,8 +134,9 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   non-degenerate objective; the cap only guards pathological ridge-walking on (near-)degenerate
   landscapes (e.g. the trivial high-symmetry synthetic system, which walks 900+ passes toward a
   symmetry-equivalent minimum).
-- **Caveat:** the default cap is uncalibrated -- there is no private precedent and no real-data
-  statistics yet (KNOWN_ISSUES.md tracks moving it into `OrientationFitConfig` and tuning it).
+- **Caveat:** the default cap (600) is calibrated on quartz only -- the private has no precedent,
+  and the quartz anchor's slowest legitimate search needs 526 passes, so 600 has headroom but a
+  shallower-minima dataset could need more (KNOWN_ISSUES.md; overridable via config).
 - **Where:** `preprocess/fit_orientation.py` (`fit_orientation` / `_refine_one`); exercised by
   `tests/unit/test_fit_orientation.py`.
 - **Found:** diffBloch 2.0 stage 11 (5b) -- `fit_orientation`.

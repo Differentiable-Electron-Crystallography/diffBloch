@@ -88,15 +88,18 @@ class HexagonalSearch:
     """Validated bounds for the ``fit_orientation`` Palatinus hexagonal search (degrees).
 
     Defaults are the faithful ``diffBloch_private`` values (``configs/preprocess/base.yaml``).
-    ``max_iterations`` has no private precedent (the private search has no cap); its default is an
-    uncalibrated runaway guard (see ``KNOWN_ISSUES.md``), to be tuned once real-data convergence is
-    known.
+    ``max_iterations`` has no private precedent (the private search has no cap -- it relies on
+    monotone wR2 descent plus the radius floor). Its default of ``600`` is **calibrated on the
+    quartz anchor**: across its 99 rotations the slowest legitimate search converged in 526 passes,
+    so 600 leaves headroom while still catching a genuine runaway. A dataset with shallower minima
+    may need a larger cap -- raise it via ``preprocess.orientation.max_iterations`` (see
+    ``KNOWN_ISSUES.md``).
     """
 
     max_search_angle: float = 0.4  # largest tilt radius the search starts from
     min_search_angle: float = 0.001  # radius floor that terminates the search
     n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
-    max_iterations: int = 200  # runaway guard: max search passes per orientation (uncalibrated)
+    max_iterations: int = 600  # runaway guard: max search passes per orientation (quartz max 526)
 
     def __post_init__(self) -> None:
         if self.min_search_angle <= 0.0 or self.max_search_angle <= 0.0:

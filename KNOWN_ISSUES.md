@@ -86,20 +86,21 @@ later constraints stage. Until then, treat refined special-position coordinates 
 Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment.py`); see
 `tests/unit/test_from_experiment.py`.
 
-## `fit_orientation`'s `max_iterations` default is uncalibrated
+## `fit_orientation`'s `max_iterations` default is calibrated on quartz only
 
 `fit_orientation` caps the Palatinus search at `max_iterations` passes per orientation and raises
 `RuntimeError` rather than spin (matching `iterate_until`'s posture; see DIVERGENCE.md). The cap is
-sound and now exposed at the boundary (`OrientationFitConfig.max_iterations`, unpacked into the pure
-function), but its **default (200) has no empirical basis**: `diffBloch_private`'s search has no cap
-at all, so there is no precedent to port, and we have no real-data convergence statistics yet. On a
-non-degenerate objective the search terminates by construction well before any cap; the guard only
-bites on (near-)degenerate landscapes -- so a legitimately long real search *could* trip 200
-spuriously.
+sound and exposed at the boundary (`OrientationFitConfig.max_iterations`, unpacked into the pure
+function). Its default (**600**) is **calibrated on the quartz anchor**: across the 99 rotations the
+slowest legitimate search converged in 526 passes (four rotations exceed 200 -- 526, 505, 220,
+207 -- which is why the earlier placeholder of 200 spuriously aborted them), so 600 leaves headroom
+while still catching a genuine runaway.
 
-The default should be tuned from the quartz e2e's observed convergence. Until then, treat 200 as a
-placeholder, not a tuned value. Where: `config/schema.py` (`OrientationFitConfig.max_iterations`),
-`preprocess/fit_orientation.py` (`fit_orientation(..., max_iterations=200)`).
+The calibration is single-dataset: `diffBloch_private`'s search has no cap at all, so there is no
+ported precedent, and a dataset with shallower minima than quartz could still need a larger cap. It
+is overridable via `preprocess.orientation.max_iterations`. Where: `config/schema.py`
+(`OrientationFitConfig.max_iterations`), `specs.py` (`HexagonalSearch.max_iterations`),
+`preprocess/fit_orientation.py`.
 
 ## `ConvergenceTolerance.patience` default is uncalibrated
 
