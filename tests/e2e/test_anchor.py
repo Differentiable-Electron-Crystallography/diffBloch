@@ -1,36 +1,57 @@
-"""North-star characterization anchor: selected quartz rotations from the private reference.
+"""North-star characterization anchor: the quartz reference experiment, run end-to-end.
 
-Migration stage 2 (see ``ROADMAP.md``) makes the fixture self-contained: the real quartz input
-files and private reference metrics are present in this package and hash-verified. Later stages make
-the final physics assertions executable. The copied private reference contains 99 rotations; the
-anchor selects a deterministic subset so local checks stay fast while full-reference checks remain
-available. Set ``DIFFBLOCH_ANCHOR_ROTATIONS`` to ``all``, ``first:N``, or comma-separated
-``rotation_idx`` values to change the subset. When ported it will pin, on a fixed seed / CPU /
-float64:
+The fixture is self-contained: the real quartz input files and the private reference metrics are
+present in this package and hash-verified. This test loads the experiment from the filesystem
+through the **public API** (``from_experiment`` + the ``preprocess`` pipeline + ``run_inference``),
+runs the whole 99-rotation experiment, and pins the aggregate observed R-factor -- it reads like a
+real experiment, reaching into no engine internals.
 
-  * ``R_obs`` for the selected rotation(s), and
-  * the intermediates ``Fgb``, the structure matrix ``A``, the exit wave ``psi``, and ``I_sim`` for
-    each selected rotation.
+What is pinned today (deterministic; CPU / float64; no RNG):
 
-Until the ``io/`` + ``core/`` kernels are ported, only the physics execution is skipped. Fixture
-discovery, lock verification, and reference metadata checks run now.
+  * ``n_evaluated == 99`` -- every rotation yields a finite ``R_obs`` (guards the ``rbragg``
+    NaN-safety regression directly), and
+  * ``mean_r_obs`` -- the captured C2 baseline of the ``select_beams -> fit_orientation ->
+    fit_thickness`` pipeline **without** rocking-curve integration.
 
-The default ``first:1`` is selection plumbing for the later physics assertion. Today the test still
-checks the aggregate 99-rotation reference metadata before the skip.
+The C2 baseline (~0.298) sits above the private reference ``R_obs`` (0.043766) by exactly the
+rocking-curve gap: the reference integrates 42 tilts per rotation, which C3 will add and then
+tighten this pin toward the reference (see ``ROADMAP.md`` plan C, and
+``design/decisions/stage11-rocking-curve.md``). The reference metadata is checked first as an
+independent provenance guard.
+
+Still pending: the finer-grained per-rotation intermediate-tensor goldens (``Fgb``, the structure
+matrix ``A``, the exit wave ``psi``, ``I_sim``) -- a separate, heavier deliverable.
+
+This is an opt-in ``e2e`` test (excluded from ``just check``); the full run takes ~80s.
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
-from diffBloch.config import load_experiment, select_reference_rotations, sha256_file
+from diffBloch.config import load_experiment, sha256_file
 from diffBloch.io import read_observations, read_structure
+from diffBloch.preprocess import (
+    fit_orientation,
+    fit_thickness,
+    from_experiment,
+    pipeline,
+    run_inference,
+    select_beams,
+)
 
 pytestmark = pytest.mark.e2e
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
+
+# Captured C2 baseline: the fit pipeline (select_beams -> fit_orientation -> fit_thickness)
+# evaluated over all 99 rotations without rocking-curve integration. C3 (rocking curve) will lower
+# this toward the private reference R_obs (0.043766) and tighten the tolerance. The tolerance is
+# loose enough to absorb cross-platform eigensolver differences (degenerate-eigenvector ordering)
+# while still catching a physics regression; tighten once CI confirms the value is stable.
+EXPECTED_MEAN_R_OBS = 0.2977
+MEAN_R_OBS_TOL = 1e-2
 
 
 @pytest.mark.parametrize("material", ["quartz"])
@@ -53,6 +74,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     assert observations.n_rotations == 99
     assert observations.n_reflections == 6666
 
+    # Independent provenance guard: the private reference metadata matches the anchor manifest.
     manifest = json.loads((FIXTURE_ROOT / "anchor_manifest.json").read_text())
     reference = json.loads((FIXTURE_ROOT / manifest["reference_results"]["path"]).read_text())
     assert (
@@ -68,20 +90,25 @@ def test_quartz_reference_anchor(material: str) -> None:
     )
     assert cfg.sample.thicknesses == tuple(manifest["execution"]["thicknesses"])
 
-    selected = select_reference_rotations(
-        reference["rotations"],
-        os.environ.get(
-            manifest["rotation_selection"]["env_var"],
-            manifest["rotation_selection"]["default"],
-        ),
+    # Run the whole experiment through the public API over all 99 rotations.
+    setup = from_experiment(structure, observations, cfg)
+    refinement = setup.refinement
+    preprocess = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            fit_orientation(
+                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+            ),
+            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        ]
     )
-    # Until physics lands, selection only proves that a future fast anchor can choose rotations; the
-    # aggregate reference summary above remains the active metadata check.
-    assert selected
-    assert len(selected) <= reference["n_rotations"]
-    assert selected[0]["rotation_idx"] == reference["rotations"][0]["rotation_idx"]
+    result = run_inference(
+        setup.plans.combined, refinement, preprocess=preprocess, method=cfg.solver.inference
+    )
 
+    assert result.n_evaluated == observations.n_rotations
+    assert result.mean_r_obs == pytest.approx(EXPECTED_MEAN_R_OBS, abs=MEAN_R_OBS_TOL)
+
+    # Finer-grained per-rotation tensor goldens remain a separate deliverable.
     for tensor in ("Fgb", "A", "psi", "I_sim"):
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
-
-    pytest.skip("pending physics execution — IO/core kernels land in migration stages 3-8")

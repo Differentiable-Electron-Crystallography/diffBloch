@@ -201,7 +201,7 @@ private `evaluate_over_rotations`). Building it is part of this work.
 
 **Sequencing — plan C (slice, tightening the tolerance at each step):**
 
-- [ ] **(C1) Public inference harness.** Stand up the idiomatic surface: `load_experiment(root)` →
+- [x] **(C1) Public inference harness.** Stand up the idiomatic surface: `load_experiment(root)` →
   a public `run_inference`/driver → per-rotation `R_obs`. **Decision (b): C1 is the harness plus a
   synthetic-system unit test only** — the quartz aggregate `R_obs` is *not* pinned here (a captured
   pre-fit baseline over 20/99 finite rotations at `R_obs ≈ 0.71` would be a meaningless regression
@@ -209,11 +209,16 @@ private `evaluate_over_rotations`). Building it is part of this work.
   value-type contract bite (the preprocess driver). *(landed: `run_inference` / `InferenceResult` /
   `RotationInference` in `preprocess/inference.py`, built from public `engine.simulate` +
   `core.products.align` + `core.losses`, with `PlanSplit.combined`; synthetic `test_inference.py`.)*
-- [ ] **(C2) Fit orientations (closes gaps 2/3).** Wire `select_beams → fit_orientation` (and
+- [x] **(C2) Fit orientations (closes gaps 2/3).** Wire `select_beams → fit_orientation` (and
   `fit_thickness`) through the harness so the anchor runs the fit pipeline, not raw derived
   orientations. **Rewrite the anchor to run `run_inference` over `PlanSplit.combined` and pin the
   quartz aggregate `R_obs`** (the C1-deferred pin). Tighten the tolerance toward the reference; the
-  residual is then just the rocking-curve gap.
+  residual is then just the rocking-curve gap. *(landed: `test_anchor.py` runs the full
+  `select_beams → fit_orientation → fit_thickness` pipeline over all 99 rotations via the public
+  API and pins `n_evaluated == 99` + `mean_r_obs ≈ 0.2977` at `abs=1e-2`. Two blockers were cleared
+  first: the `rbragg` NaN-safety fix (`1c79693`, all 99 now finite) and calibrating
+  `fit_orientation`'s `max_iterations` to 600 (`768786b`, the four slow-but-legitimate searches now
+  converge). The residual 0.298 → 0.044 is the rocking-curve gap (C3).)*
 - [ ] **(C3) Rocking-curve integration (closes gap 1).** New forward-model feature (see below).
   Tighten to a per-rotation `atol` approaching the private `1e-4`.
 
