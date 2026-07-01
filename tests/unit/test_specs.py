@@ -15,12 +15,15 @@ from diffBloch.specs import BeamSelection, ConvergenceTolerance, HexagonalSearch
 def test_convergence_tolerance_defaults_match_the_private() -> None:
     tol = ConvergenceTolerance()
     assert tol.r_factor_threshold == 0.005
+    assert tol.patience == 2
     assert tol.max_iterations == 100
 
 
 def test_convergence_tolerance_rejects_invalid_bounds() -> None:
     with pytest.raises(ValueError, match="r_factor_threshold must be positive"):
         ConvergenceTolerance(r_factor_threshold=0.0)
+    with pytest.raises(ValueError, match="patience must be >= 1"):
+        ConvergenceTolerance(patience=0)
     with pytest.raises(ValueError, match="max_iterations must be >= 1"):
         ConvergenceTolerance(max_iterations=0)
 

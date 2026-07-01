@@ -1,19 +1,32 @@
-"""Convergence testing: stop growing a simulation-accuracy knob once the pattern stops changing.
+"""Convergence testing: grow a simulation-accuracy knob until the diffraction pattern stops moving.
 
 A convergence sweep is *self-referential* -- unlike ``fit_orientation`` / ``fit_thickness`` (which
 match the simulation to *observed* data), it asks whether two *consecutive* simulations still
-differ.
-:func:`simulation_converged` is that comparison expressed as a
-:data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` (a ``(previous, current) -> bool`` that
-:func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint): it simulates both Plans
-and returns whether their mean per-orientation R-factor has dropped below a tolerance.
+differ,
+so it is a numerical resolution study (has the calculation stopped depending on the knob?), run
+before and orthogonally to the accuracy fit. This module has three layers:
 
-Faithful to ``diffBloch_private`` ``convergence_testing._compute_step_rfactor`` (per-orientation
-``rbragg_abs`` between two simulation tables, averaged). See
-``design/decisions/stage11-convergence.md``.
+- :func:`simulation_rfactor` -- the measurement: ``(previous, current) -> float``, the mean
+  per-orientation R-factor between two Plans' simulations (0 when they are identical).
+- :func:`converge_scalar` -- the parameter-agnostic driver: given a ``build(value) -> object`` and a
+  ``measure`` it clicks a scalar knob upward until the built object settles (skip-null + patience +
+  cap). It knows nothing about beams (or even Plans); adapters instantiate it.
+- :func:`converge_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
+  ``integration_semiangle`` until the pattern stabilises, re-running ``select_beams`` from the seed.
+
+:func:`simulation_converged` wraps :func:`simulation_rfactor` with a threshold to give the boolean
+:data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
+:func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint.
+
+Faithful to ``diffBloch_private`` ``convergence_testing`` (``_compute_step_rfactor`` per-orientation
+``rbragg_abs`` averaged; ``optimize_sgmax`` window sweep), correcting its plateau bug (skip-null +
+patience) and consolidating its knobs. See ``design/decisions/stage11-convergence.md``.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import replace
 
 import numpy as np
 import torch
@@ -22,18 +35,61 @@ from torch import Tensor
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution
 from diffBloch.core.solver import Method
+from diffBloch.preprocess.beams import select_beams
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.pipeline import ConvergenceCheck
+from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import ConvergenceTolerance
+from diffBloch.specs import BeamSelection, ConvergenceTolerance
 
-__all__ = ["simulation_converged"]
+__all__ = ["converge_beams", "converge_scalar", "simulation_converged", "simulation_rfactor"]
+
+# ``(previous, current) -> mean consecutive-simulation R-factor``.
+type SimulationRfactor = Callable[[Plan, Plan], float]
 
 # The R-factor compares two simulations, not simulation-vs-data, so there is no measurement noise to
 # weight by; a near-zero sigma makes ``rbragg`` effectively unweighted while keeping its
 # ``I > 3*sigma`` mask inclusive (the private uses sigmas = 1e-10 for the same reason).
 _UNWEIGHTED_SIGMA = 1e-10
+
+# A candidate whose simulation is bit-identical to the previous one yields exactly R = 0 (the
+# ``optimal_scale`` grid contains scale 1.0 and the intensities match), so anything at or below this
+# is a *null* step -- the knob grew but the discrete beam set, hence the pattern, did not change.
+_NULL_RFACTOR = 1e-9
+
+
+def simulation_rfactor(
+    refinement: RefinementSetup,
+    *,
+    method: Method = "matrix_exp",
+) -> SimulationRfactor:
+    """Return ``(previous, current) -> float``: the mean consecutive-simulation R-factor.
+
+    ``refinement`` (the read-only structure context) is captured and rejoined to each Plan via
+    :func:`build_engine`; ``method`` configures the solver. The returned measure simulates both
+    Plans, computes the scale-optimised ``rbragg`` R-factor between them on each orientation's
+    shared
+    reflections, and averages over orientations. The comparison is a control-flow decision, not a
+    gradient path, so the simulated intensities are detached. It is 0 exactly when the two Plans
+    produce identical simulations (the *null*-step signal the sweep skips).
+
+    The two Plans must describe the same orientations in the same order (a convergence step rebuilds
+    each orientation, changing only its beam set), and each pair must share at least one reflection
+    (the retained 000 guarantees this in practice).
+    """
+
+    def measure(previous: Plan, current: Plan) -> float:
+        previous_solutions = _simulate(previous, refinement, method)
+        current_solutions = _simulate(current, refinement, method)
+        if len(previous_solutions) != len(current_solutions):
+            raise ValueError("convergence check requires the two Plans to share their orientations")
+        r_factors = [
+            _orientation_rfactor(prev, curr)
+            for prev, curr in zip(previous_solutions, current_solutions, strict=True)
+        ]
+        return float(np.mean(r_factors))
+
+    return measure
 
 
 def simulation_converged(
@@ -44,30 +100,97 @@ def simulation_converged(
 ) -> ConvergenceCheck:
     """Return a ``(previous, current) -> bool`` check: have consecutive simulations stabilised?
 
-    ``refinement`` (the read-only structure context) is captured and rejoined to each Plan via
-    :func:`build_engine`; ``method`` configures the solver. The returned check simulates both Plans,
-    computes the scale-optimised ``rbragg`` R-factor between the two on each orientation's shared
-    reflections, averages over orientations, and returns whether that mean is below
-    ``tolerance.r_factor_threshold``. The comparison is a control-flow decision, not a gradient
-    path, so the simulated intensities are detached.
-
-    The two Plans must describe the same orientations in the same order (a convergence step rebuilds
-    each orientation, changing only its beam set), and each pair must share at least one reflection
-    (the retained 000 guarantees this in practice).
+    Thin threshold wrapper over :func:`simulation_rfactor`: the mean per-orientation R-factor is
+    compared against ``tolerance.r_factor_threshold``. This is the boolean
+    :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
+    :func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint (the cross-lever
+    composition); :func:`converge_scalar` uses the underlying float measure directly so it can also
+    detect null steps.
     """
+    measure = simulation_rfactor(refinement, method=method)
 
     def check(previous: Plan, current: Plan) -> bool:
-        previous_solutions = _simulate(previous, refinement, method)
-        current_solutions = _simulate(current, refinement, method)
-        if len(previous_solutions) != len(current_solutions):
-            raise ValueError("convergence check requires the two Plans to share their orientations")
-        r_factors = [
-            _orientation_rfactor(prev, curr)
-            for prev, curr in zip(previous_solutions, current_solutions, strict=True)
-        ]
-        return float(np.mean(r_factors)) < tolerance.r_factor_threshold
+        return measure(previous, current) < tolerance.r_factor_threshold
 
     return check
+
+
+def converge_scalar[T](
+    build: Callable[[float], T],
+    measure: Callable[[T, T], float],
+    tolerance: ConvergenceTolerance,
+    *,
+    start: float,
+    step: float,
+) -> T:
+    """Grow a scalar knob until the built object stops changing; return the converged object.
+
+    The parameter-agnostic convergence driver -- it knows nothing about beams or Plans.
+    ``build(value)`` rebuilds the object at a knob value; ``measure(previous, candidate)`` is the
+    consecutive-output R-factor (0 when identical). Starting from ``start`` and clicking by ``step``
+    each iteration, it declares convergence after ``tolerance.patience`` consecutive *settled*
+    steps, where a step is settled when its R-factor is below ``tolerance.r_factor_threshold`` or
+    (once settling has begun) is *null* (the output did not change). A null step **before** any
+    settling is skipped -- the knob is merely too coarse to have moved the discrete output yet, not
+    evidence of convergence; counting it is exactly the private's plateau bug, which this corrects.
+    A changed step at or above the threshold resets the streak. Raises ``RuntimeError`` if
+    ``tolerance.max_iterations`` steps pass without convergence (silent non-convergence is never
+    returned, matching :func:`~diffBloch.preprocess.pipeline.iterate_until`).
+    """
+    current = build(start)
+    value = start
+    settled = 0
+    for _ in range(tolerance.max_iterations):
+        value += step
+        candidate = build(value)
+        r = measure(current, candidate)
+        changed = r > _NULL_RFACTOR
+        if changed and r >= tolerance.r_factor_threshold:
+            settled = 0
+            current = candidate
+            continue
+        if not changed and settled == 0:
+            continue  # coarse/plateau step before settling: keep growing, no information
+        settled += 1
+        if changed:
+            current = candidate
+        if settled >= tolerance.patience:
+            return current
+    raise RuntimeError(f"converge_scalar did not converge within {tolerance.max_iterations} steps")
+
+
+def converge_beams(
+    selection: BeamSelection,
+    refinement: RefinementSetup,
+    tolerance: ConvergenceTolerance,
+    *,
+    step: float,
+    method: Method = "matrix_exp",
+) -> PlanStep:
+    """Return a ``Plan -> Plan`` step: widen ``integration_semiangle`` until the pattern stabilises.
+
+    The window lever of beam-set convergence (the physically primary "how many near-Ewald beams").
+    Each candidate re-runs :func:`~diffBloch.preprocess.beams.select_beams` from the incoming *seed*
+    Plan at a wider ``integration_semiangle`` -- selecting from the fixed seed each time, not from
+    the
+    previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
+    sweep starts at ``selection.integration_semiangle`` and clicks up by ``step`` (degrees) until
+    :func:`converge_scalar` settles the pattern (skip-null + patience + cap); ``rsg`` / ``dsg`` are
+    held fixed. ``step`` must be positive. See ``design/decisions/stage11-convergence.md``.
+    """
+    if step <= 0.0:
+        raise ValueError("step must be positive")
+    measure = simulation_rfactor(refinement, method=method)
+
+    def run(seed: Plan) -> Plan:
+        def build(semiangle: float) -> Plan:
+            return select_beams(replace(selection, integration_semiangle=semiangle))(seed)
+
+        return converge_scalar(
+            build, measure, tolerance, start=selection.integration_semiangle, step=step
+        )
+
+    return run
 
 
 def _simulate(plan: Plan, refinement: RefinementSetup, method: Method) -> tuple[BlochSolution, ...]:
