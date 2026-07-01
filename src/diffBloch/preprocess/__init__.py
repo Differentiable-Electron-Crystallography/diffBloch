@@ -48,8 +48,15 @@ from diffBloch.preprocess.pipeline import (
     pipeline,
 )
 from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.rocking_curve import integrate_rocking_curve
 from diffBloch.preprocess.scoring import build_engine, score_orientations
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, HexagonalSearch, ThicknessGrid
+from diffBloch.specs import (
+    BeamSelection,
+    ConvergenceTolerance,
+    HexagonalSearch,
+    RockingCurve,
+    ThicknessGrid,
+)
 
 __all__ = [
     "BeamSelection",
@@ -62,6 +69,7 @@ __all__ = [
     "PlanSplit",
     "PlanStep",
     "RefinementSetup",
+    "RockingCurve",
     "RotationInference",
     "ThicknessGrid",
     "build_engine",
@@ -74,6 +82,7 @@ __all__ = [
     "goniometer_rotation",
     "hexagonal_tilt",
     "identity",
+    "integrate_rocking_curve",
     "iterate_until",
     "klar_beam_mask",
     "orientation_basis",

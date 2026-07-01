@@ -71,7 +71,12 @@ class OrientationPlan:
     ``alignment`` -- what ``engine.simulate`` consumes). Source and compiled are only ever set
     together by :meth:`build`, so they cannot desync (see
     ``design/decisions/plan-shape-and-step-ordering.md``). ``orientation`` is the source of truth;
-    the lab-frame basis is derived from it, never stored. ``thickness`` ``(T,)`` is the specimen's
+    the lab-frame basis is derived from it, never stored. ``tilts`` ``(N, 3, 3)`` is the
+    rocking-curve integration tilt set (source): N goniometer sub-orientations, each compiled into
+    the matching entry of ``beam_plans`` (``N = len(beam_plans)``). The default is a single identity
+    tilt ``(1, 3, 3)`` -- one static solve, byte-identical to the pre-integration plan; a longer set
+    is baked by ``integrate_rocking_curve`` and summed as ``|psi|^2`` over the tilts by the engine.
+    ``thickness`` ``(T,)`` is the specimen's
     thickness for this rotation (its beam path length at this tilt), held fixed during refinement.
     It is seeded from the sample thickness and later replaced by the best-fitting value
     ``fit_thickness`` finds. The forward model uses it for this orientation unless the caller is
@@ -80,11 +85,12 @@ class OrientationPlan:
     """
 
     orientation: Tensor
+    tilts: Tensor
     energy: float
     u0: float
     thickness: Tensor
     beam_hkl: Tensor
-    beam_plan: BeamPlan
+    beam_plans: tuple[BeamPlan, ...]
     pattern: PatternBatch
     alignment: AlignmentPlan
 
@@ -99,6 +105,7 @@ class OrientationPlan:
         thickness: Tensor | NDArray[np.float64] | Sequence[float],
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
+        tilts: NDArray[np.float64] | None = None,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -118,6 +125,13 @@ class OrientationPlan:
         ``thickness`` ``(T,)`` is required: this rotation's frozen per-rotation conditioning,
         coerced to a 1-D float64 tensor. A rebuild threads ``old_plan.thickness`` through unchanged;
         ``fit_thickness`` bakes the single gridsearch winner ``(1,)``.
+
+        ``tilts`` ``(N, 3, 3)`` is the optional rocking-curve integration set: N goniometer
+        rotations, each left-multiplying ``orientation`` (``R_tilt @ orientation``) into its own
+        compiled ``beam_plan``, sharing this orientation's one beam set. ``None`` (the default) is a
+        single identity tilt, so ``beam_plans`` has length 1 and the untilted path is byte-identical
+        to before; ``integrate_rocking_curve`` passes the tilt matrices from
+        :func:`~diffBloch.preprocess.orientation.rocking_curve_tilts`.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         thickness_t = torch.as_tensor(
@@ -125,26 +139,40 @@ class OrientationPlan:
         )
         if orientation is None:
             rotation = np.eye(3, dtype=np.float64)
-            basis = np.asarray(grid.reciprocal_basis)
+            nominal_basis = np.asarray(grid.reciprocal_basis)
         else:
             rotation = np.asarray(orientation, dtype=np.float64)
-            basis = orientation_basis(np.asarray(grid.cell), rotation)
-        beam_plan = build_beam_plan(
-            beam_hkl,
-            np.asarray(grid.grid_hkl),
-            basis,
-            energy=energy,
-            gpts=grid.gpts,
-            u0=u0,
+            nominal_basis = orientation_basis(np.asarray(grid.cell), rotation)
+        if tilts is None:
+            tilt_mats = np.eye(3, dtype=np.float64)[None]
+            # No tilts: reuse the nominal basis exactly, keeping the untilted build byte-identical.
+            bases = [nominal_basis]
+        else:
+            tilt_mats = np.asarray(tilts, dtype=np.float64)
+            if tilt_mats.ndim != 3 or tilt_mats.shape[1:] != (3, 3):
+                raise ValueError(f"tilts must have shape (N, 3, 3), got {tilt_mats.shape}")
+            cell = np.asarray(grid.cell)
+            bases = [orientation_basis(cell, tilt @ rotation) for tilt in tilt_mats]
+        beam_plans = tuple(
+            build_beam_plan(
+                beam_hkl,
+                np.asarray(grid.grid_hkl),
+                basis,
+                energy=energy,
+                gpts=grid.gpts,
+                u0=u0,
+            )
+            for basis in bases
         )
         beam_hkl_t = torch.tensor(beam_hkl, dtype=torch.int64)
         return cls(
             orientation=torch.tensor(rotation, dtype=torch.float64),
+            tilts=torch.tensor(tilt_mats, dtype=torch.float64),
             energy=float(energy),
             u0=float(u0),
             thickness=thickness_t,
             beam_hkl=beam_hkl_t,
-            beam_plan=beam_plan,
+            beam_plans=beam_plans,
             pattern=pattern,
             alignment=build_alignment_plan(beam_hkl_t, pattern.hkl),
         )

@@ -207,6 +207,17 @@ class RefinementEngine:
     ) -> BlochSolution:
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device)
-        system = build_bloch_system(orientation.beam_plan, fgb)
-        psi = propagate(system, thicknesses, method=self.method)
-        return BlochSolution.from_propagation(psi, orientation.beam_hkl.to(device), thicknesses)
+        beam_hkl = orientation.beam_hkl.to(device)
+        # One sub-solution per rocking-curve tilt (length 1 = the untilted static solve). The tilts
+        # share this orientation's beam set; the engine sums |psi|^2 over them (BlochSolution.
+        # integrate) -- an incoherent rotation-frame integration. N=1 returns the sub-solution
+        # directly, byte-identical to the pre-integration path.
+        sub = [
+            BlochSolution.from_propagation(
+                propagate(build_bloch_system(beam_plan, fgb), thicknesses, method=self.method),
+                beam_hkl,
+                thicknesses,
+            )
+            for beam_plan in orientation.beam_plans
+        ]
+        return sub[0] if len(sub) == 1 else BlochSolution.integrate(sub)

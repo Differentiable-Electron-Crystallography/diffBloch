@@ -25,6 +25,8 @@ import torch
 from torch import Tensor
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from diffBloch.io.record import ObservationRecord
 
 __all__ = [
@@ -77,6 +79,31 @@ class BlochSolution:
         if thicknesses.shape != (n_thick,):
             raise ValueError(f"thicknesses must have shape (T,) = ({n_thick},) matching amplitudes")
         return cls(amplitudes, intensities(amplitudes), beam_hkl, thicknesses)
+
+    @classmethod
+    def integrate(cls, solutions: Sequence[BlochSolution]) -> Self:
+        """Incoherently sum tilt sub-solutions into one rocking-curve-integrated solution.
+
+        Rocking-curve integration samples N slightly-tilted sub-orientations sharing one beam set
+        and sums their *intensities* ``|psi|^2`` -- an incoherent sum, the physical rotation-frame
+        integration -- not their amplitudes. All sub-solutions must share the beam set
+        (``beam_hkl``) and ``thicknesses``: the tilts reuse the one nominal beam set, varying only
+        geometry. The integrated observable has no single exit-wave, so ``amplitudes`` is stored as
+        the real effective amplitude ``sqrt(total intensity)`` (phase is physically lost in an
+        incoherent sum); only ``intensities`` feeds alignment/losses (``amplitudes`` has no
+        downstream consumer). A single-element sequence returns an equivalent solution (the N=1
+        identity is handled by the caller returning the sub-solution directly).
+        """
+        if not solutions:
+            raise ValueError("integrate requires at least one solution")
+        first = solutions[0]
+        total = first.intensities
+        for other in solutions[1:]:
+            if not torch.equal(other.beam_hkl, first.beam_hkl):
+                raise ValueError("integrated solutions must share the same beam set")
+            total = total + other.intensities
+        amplitudes = total.sqrt().to(first.amplitudes.dtype)
+        return cls(amplitudes, total, first.beam_hkl, first.thicknesses)
 
 
 @dataclass(frozen=True)

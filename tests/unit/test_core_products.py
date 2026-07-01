@@ -64,6 +64,41 @@ def test_bloch_solution_rejects_bad_shapes(amplitudes, beam_hkl, thicknesses, ma
         )
 
 
+def test_integrate_sums_tilt_intensities_incoherently() -> None:
+    beam_hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
+    thicknesses = torch.tensor([1.0, 8.0])
+    a = BlochSolution.from_propagation(
+        torch.tensor([[3 + 4j, 1 + 0j], [0 + 1j, 2 + 0j]], dtype=torch.complex128),
+        beam_hkl,
+        thicknesses,
+    )
+    b = BlochSolution.from_propagation(
+        torch.tensor([[0 + 2j, 2 + 0j], [1 + 0j, 0 + 1j]], dtype=torch.complex128),
+        beam_hkl,
+        thicknesses,
+    )
+    integrated = BlochSolution.integrate([a, b])
+    # incoherent sum of |psi|^2, not of amplitudes.
+    assert torch.allclose(integrated.intensities, a.intensities + b.intensities)
+    # amplitudes is the real effective sqrt(total): the invariant |amplitudes|^2 == intensities.
+    assert torch.allclose(integrated.amplitudes.abs().square(), integrated.intensities)
+    assert torch.equal(integrated.beam_hkl, beam_hkl)
+    assert torch.equal(integrated.thicknesses, thicknesses)
+
+
+def test_integrate_rejects_empty_and_mismatched_beam_sets() -> None:
+    hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
+    thick = torch.tensor([1.0])
+    a = BlochSolution.from_propagation(torch.ones((1, 2), dtype=torch.complex128), hkl, thick)
+    other = BlochSolution.from_propagation(
+        torch.ones((1, 2), dtype=torch.complex128), torch.tensor([[0, 0, 0], [2, 0, 0]]), thick
+    )
+    with pytest.raises(ValueError, match="at least one solution"):
+        BlochSolution.integrate([])
+    with pytest.raises(ValueError, match="share the same beam set"):
+        BlochSolution.integrate([a, other])
+
+
 def test_pattern_batch_from_observation_record_full() -> None:
     pattern = PatternBatch.from_observation_record(_observation_record())
     assert pattern.hkl.shape == (3, 3)

@@ -83,7 +83,7 @@ def test_orientation_plan_default_basis_is_byte_identical_to_grid() -> None:
         thickness=(300.0,),
         orientation=np.eye(3),
     )
-    assert torch.equal(default.beam_plan.diagonal, explicit.beam_plan.diagonal)
+    assert torch.equal(default.beam_plans[0].diagonal, explicit.beam_plans[0].diagonal)
 
 
 def test_orientation_plan_per_orientation_basis_shifts_excitation() -> None:
@@ -103,7 +103,7 @@ def test_orientation_plan_per_orientation_basis_shifts_excitation() -> None:
         orientation=o["orientation"][0],
     )
     # diagonal = 2 k_n Sg Mii: a real orientation moves it well clear of the untilted case.
-    assert not torch.allclose(untilted.beam_plan.diagonal, tilted.beam_plan.diagonal)
+    assert not torch.allclose(untilted.beam_plans[0].diagonal, tilted.beam_plans[0].diagonal)
 
 
 def test_orientation_plan_is_self_describing() -> None:
@@ -156,5 +156,5 @@ def test_orientation_plan_rebuilds_from_its_own_tensor_orientation() -> None:
         u0=plan.u0,
         orientation=plan.orientation,
     )
-    assert torch.equal(rebuilt.beam_plan.diagonal, plan.beam_plan.diagonal)
+    assert torch.equal(rebuilt.beam_plans[0].diagonal, plan.beam_plans[0].diagonal)
     assert torch.equal(rebuilt.orientation, plan.orientation)

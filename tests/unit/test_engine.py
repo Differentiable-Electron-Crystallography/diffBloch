@@ -23,7 +23,11 @@ _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5)
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 
 
-def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> RefinementEngine:
+def _engine(
+    loss: LossFn = mse_loss,
+    pattern: PatternBatch | None = None,
+    tilts: np.ndarray | None = None,
+) -> RefinementEngine:
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
     asu_plan = build_asu_expansion_plan(
         np.zeros((1, 3)),
@@ -37,7 +41,7 @@ def _engine(loss: LossFn = mse_loss, pattern: PatternBatch | None = None) -> Ref
             sigmas=torch.full((3,), 0.01, dtype=torch.float64),
         )
     orientation = OrientationPlan.build(
-        grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,)
+        grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,), tilts=tilts
     )  # 300 A: dynamical regime (I_diff ~0.1)
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
@@ -94,6 +98,22 @@ def test_simulate_returns_a_solution_per_orientation() -> None:
     assert solution.intensities.shape == (1, _BEAM_HKL.shape[0])  # (T=1, N=3)
     # matrix_exp is unitary on this Hermitian system -> incident flux conserved
     assert torch.allclose(solution.intensities.sum(dim=1), torch.ones(1, dtype=torch.float64))
+
+
+def test_simulate_sums_intensities_over_rocking_curve_tilts() -> None:
+    from diffBloch.preprocess.orientation import rocking_curve_tilts
+
+    params = _params()
+    tilts = rocking_curve_tilts(0.5, 3)  # 3 tilts about x spanning +/- 0.5 deg (middle = angle 0)
+    (integrated,) = _engine(tilts=tilts).simulate(params)
+    # _solve sums |psi|^2 over the tilts: integrated intensity == the sum of the per-tilt solves.
+    per_tilt = [_engine(tilts=tilts[i : i + 1]).simulate(params)[0].intensities for i in range(3)]
+    assert torch.allclose(integrated.intensities, per_tilt[0] + per_tilt[1] + per_tilt[2])
+    # incoherent: the stored amplitude is the real effective sqrt(total intensity).
+    assert torch.allclose(integrated.amplitudes.abs().square(), integrated.intensities)
+    # a genuine rocking curve differs from a single static solve.
+    (static,) = _engine().simulate(params)
+    assert not torch.allclose(integrated.intensities, static.intensities)
 
 
 def test_objective_returns_scalar() -> None:
