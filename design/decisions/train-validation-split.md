@@ -50,6 +50,20 @@ mode (ROADMAP stage 11 thickness modes); the rotation split earns its keep there
 - **Inference and physics refinement evaluate over all rotations** (`PlanSplit.combined`). The
   executable anchor and `run_inference` use `combined`; the whole-rotation split is not treated as a
   meaningful cross-validation guard for pure physics refinement.
+
+## Latent invariant: `combined` assumes a shared grid (rule 3)
+
+`PlanSplit.combined` rebuilds one `Plan` by concatenating `train.orientations +
+validation.orientations` under `train.grid` — so it silently assumes `train` and `validation` share
+*the same* `ScatteringGrid`. Today that holds because `from_experiment` builds both plans from one
+grid, but nothing at the `PlanSplit` boundary *enforces* it: a `PlanSplit` constructed with two
+different grids would produce a `combined` plan whose `validation` orientations are silently
+reinterpreted under `train`'s grid (or, if the grids' beam layouts differ, break downstream). The
+shared grid is the whole point of the split (one reciprocal sampling, two orientation subsets), so
+the honest fix — when the split wiring is next touched — is to make the invariant explicit: validate
+`train.grid is validation.grid` (or the equivalent value equality) in `PlanSplit.__post_init__`,
+rather than leaving `combined` to assume it. Recorded, not silently patched, since `PlanSplit` is
+otherwise dormant machinery (below).
 - **Keep the split machinery, dormant and forward-compatible**, for the learned modes where a
   rotation-level holdout is genuinely informative. It costs nothing to construct and gives those
   modes a ready seam.
