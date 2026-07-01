@@ -173,6 +173,84 @@ commit — the executable form of *"the core physics model has not changed."*
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
   (orchestration §18) when a production orchestrator actually arrives.
 
+## The executable e2e anchor — the physically-real R-factor pin (plan C)
+
+The quartz anchor (`tests/e2e/test_anchor.py`) currently verifies fixture discovery + hashes then
+**skips the physics**. The goal is to make it *run a real experiment end to end* and pin
+`R_obs ≈ 0.0438` (the private reference `reference_results.json`, mean of per-rotation `R_obs`,
+matched per rotation the way the private `evaluate_over_rotations` does). A spike showed 2.0's
+current single-orientation forward gives `R_obs ≈ 0.6`/NaN — **three gaps** separate us from the
+reference:
+
+1. **No rocking-curve integration.** The reference integrates each rotation over **42 tilts**
+   (`rocking_curve_sampling: 42`, `linspace(−1°,+1°,42)`, `mosaicity: true`); 2.0 point-samples one
+   orientation. A point sample of a rapidly-varying rocking curve cannot match an integrated
+   measurement — this is the dominant gap.
+2. **Unfit orientations.** The reference loads post-`fit_orientation` values
+   (`optim_orientation.csv`, `apply_u_matrix: true`); 2.0 uses native-derived (pre-fit)
+   orientations, which is why R sits near 0.6 (unfit) rather than ~0.05.
+3. **`0/0` NaN** on rotations where no reflection passes `I > 3σ` in the current (unfit) beam set —
+   secondary, expected to resolve once orientations are fit.
+
+**Idiomatic-API principle (confirmed steer).** The e2e must read like a real experiment — load from
+the **filesystem** experiment directory through the **public API** and assert a metric — *not* reach
+into internals (`build_engine` / `engine._solve` / `align` / `optimal_scale`). That public surface
+does not yet exist (there is `load_experiment`/`load_config` at the boundary but no public
+"build the experiment → run the forward model → per-rotation metrics" entry, the 2.0 analog of the
+private `evaluate_over_rotations`). Building it is part of this work.
+
+**Sequencing — plan C (slice, tightening the tolerance at each step):**
+
+- [ ] **(C1) Public inference harness.** Stand up the idiomatic surface: `load_experiment(root)` →
+  a public `run_inference`/driver → per-rotation `R_obs`. Rewrite the anchor to use it. Pin
+  against a captured 2.0 baseline first (self-regression guard) with the private-reference match
+  tracked as the closing goal. First `src/` caller that makes the value-type contract bite.
+- [ ] **(C2) Fit orientations (closes gaps 2/3).** Wire `select_beams → fit_orientation` (and
+  `fit_thickness`) through the harness so the anchor runs the fit pipeline, not raw derived
+  orientations. Tighten the tolerance toward the reference; the residual is then just the
+  rocking-curve gap.
+- [ ] **(C3) Rocking-curve integration (closes gap 1).** New forward-model feature (see below).
+  Tighten to a per-rotation `atol` approaching the private `1e-4`.
+
+### Rocking-curve integration — design decisions (approved)
+
+*What it is:* a rotation-electron-diffraction frame integrates each reflection's intensity as it
+sweeps through the Ewald sphere during the exposure (goniometer sweep + convergence + mosaicity). A
+static single-orientation Bloch solve is a point sample of that curve; integrating over a spread of
+tilts approximates the measured (integrated) intensity. Private mechanics: tilt matrices
+`linspace(−semiangle,+semiangle, sampling)` about the goniometer axis (**x** in the PETS frame) →
+tilt the nominal orientation → one Bloch solve per tilt (shared beam set, per-tilt geometry) →
+**sum** `|ψ|²` over tilts per hkl. Faithful to private
+`generate_integration_rotation_matrices` / `BlochNet.forward(tilts=…)` /
+`DiffractionDataset.get_integrated_intensities`.
+
+1. **A tilt is just another orientation.** Model the rocking curve as **N tilted sub-orientations of
+   one rotation + a sum-over-tilts reduction**, reusing the existing per-orientation
+   `reciprocal_basis` machinery (no new physics primitive; `simulate` stays pure). Tilt matrices are
+   pure geometry → precompute into the `Plan` like `BeamPlan`.
+2. **Shared beam set across tilts.** Select beams **once at the nominal orientation**
+   (`select_beams` as-is), reuse for every tilt; only the geometry (Sg/A) varies per tilt (the
+   non-adaptive private path; `union_adaptive: false`).
+3. **Geometry mode.** Continuous-rotation (x-axis tilts) now; precession as a later discriminated
+   mode. Needs `data_collection_geometry` from the PETS reader.
+4. **Mosaicity is a composable knob (scientific-modularity steer).** Mosaicity broadening (private:
+   a moving average over the tilt axis before the sum) is factored as an **optional, toggleable step
+   composed into the pipeline** — not baked into the integrator — so a run can claim *"enabling
+   mosaicity improved/degraded R_obs"* by adding or removing one composed function
+   (`mosaicity(...)`, off by default; a `Plan → Plan` or a tilt-reduction transform selected by a
+   `mosaicity: bool`/window config). This means (C3) lands plain tilt-integration first, then
+   mosaicity as a second composable slice; the reference has `mosaicity: true`, so the full
+   `1e-4` match needs the knob on.
+5. **`integration_semiangle` double role.** The same angle sets **both** the Klar beam window *and*
+   the rocking-curve tilt half-width; `rocking_curve_sampling` (currently an unused `NumericsConfig`
+   field) is the tilt count and the axis `converge_sampling` sweeps. Introduce a
+   `RockingCurve(semiangle, sampling, geometry)` value-type sharing `integration_semiangle`.
+6. **Cost.** Naive N×-loop of Bloch solves first (correctness), batched `eigh` over tilts as a later
+   optimization; the e2e is slow until then.
+
+Once (C3)+mosaicity land, `converge_sampling` (deferred from stage 11) unblocks — it sweeps
+`rocking_curve_sampling` against the now-real rocking-curve forward model.
+
 ## Design corrections folded in (review round)
 
 1. **Solver seam** widened to a `BlochSystem` value object (the bare `(A, thickness, k_n, mask)` seam
