@@ -11,6 +11,7 @@ import pytest
 
 from diffBloch.specs import (
     BeamSelection,
+    ConvergenceTest,
     ConvergenceTolerance,
     HexagonalSearch,
     RockingCurve,
@@ -29,6 +30,25 @@ def test_convergence_tolerance_rejects_invalid_bounds() -> None:
         ConvergenceTolerance(r_factor_threshold=0.0)
     with pytest.raises(ValueError, match="max_iterations must be >= 1"):
         ConvergenceTolerance(max_iterations=0)
+
+
+def test_convergence_test_defaults() -> None:
+    test = ConvergenceTest()
+    assert test.operation == "both"  # the private's full operation
+    assert test.num_passes == 2  # the e2e's fixed pass count
+    assert test.start_g_max_refine == 0.5
+    assert (test.pool_step, test.window_step, test.tilt_step) == (0.1, 0.2, 2.0)
+
+
+def test_convergence_test_rejects_invalid_operation_and_bounds() -> None:
+    with pytest.raises(ValueError, match="operation must be"):
+        ConvergenceTest(operation="coverage_and_stability")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="start_g_max_refine must be positive"):
+        ConvergenceTest(start_g_max_refine=0.0)
+    with pytest.raises(ValueError, match="pool_step, window_step and tilt_step must be positive"):
+        ConvergenceTest(window_step=0.0)
+    with pytest.raises(ValueError, match="num_passes must be >= 1"):
+        ConvergenceTest(num_passes=0)
 
 
 def test_beam_selection_defaults_match_the_private() -> None:

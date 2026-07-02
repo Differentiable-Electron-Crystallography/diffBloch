@@ -18,11 +18,12 @@ from tests.unit.test_convergence import _beam_count, _seed_system
 from diffBloch.preprocess.driver import (
     ConvergenceState,
     _windowed_pool,
+    converge_numerics,
     run_coverage_phase,
     run_stability_phase,
 )
 from diffBloch.preprocess.steps.coverage import plan_coverage
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
+from diffBloch.specs import BeamSelection, ConvergenceTest, ConvergenceTolerance, RockingCurve
 
 _SELECTION = BeamSelection(integration_semiangle=1.0)  # rsg/dsg/geometry fixed; angle from state
 
@@ -138,3 +139,48 @@ def test_stability_phase_rejects_bad_steps_and_passes() -> None:
         _stability(refinement, seed, tilt_step=0.0)
     with pytest.raises(ValueError, match="num_passes must be at least 1"):
         _stability(refinement, seed, num_passes=0)
+
+
+# --- converge_numerics: the operation dispatch + evalState boundary (the public driver entry) ---
+
+_SEL_NARROW = BeamSelection(integration_semiangle=0.68)  # narrow window start, as in the probes
+
+
+def _numerics(refinement, seed, operation: str):
+    test = ConvergenceTest(
+        operation=operation,
+        start_g_max_refine=0.5,
+        pool_step=0.1,
+        window_step=0.2,
+        tilt_step=2,
+        num_passes=2,
+    )
+    return converge_numerics(test, _SEL_NARROW, _ROCKING, refinement, _TOLERANCE)(seed)
+
+
+def test_converge_numerics_coverage_runs_only_the_coverage_phase() -> None:
+    refinement, seed = _seed_system()
+    # coverage grows pool+window (13 beams) but leaves the tilt count untouched -- no rocking
+    # integration -- so the returned Plan keeps its single nominal tilt (unlike the two below).
+    plan = _numerics(refinement, seed, "coverage")
+    assert _beam_count(plan) == 13
+    assert len(plan.orientations[0].tilts) == 1
+
+
+def test_converge_numerics_self_stability_runs_only_the_stability_phase() -> None:
+    refinement, seed = _seed_system()
+    # self_stability grows all three knobs to consecutive-sim stability: 27 beams, 9 rocking tilts.
+    plan = _numerics(refinement, seed, "self_stability")
+    assert _beam_count(plan) == 27
+    assert len(plan.orientations[0].tilts) == 9
+
+
+def test_converge_numerics_both_chains_coverage_into_stability() -> None:
+    refinement, seed = _seed_system()
+    # both = coverage then stability seeded from coverage's settled scalars; it runs the stability
+    # phase (so it grows past coverage's 13 beams / 1 tilt), landing at 27 beams / 9 tilts here.
+    plan = _numerics(refinement, seed, "both")
+    assert _beam_count(plan) == 27
+    assert len(plan.orientations[0].tilts) == 9
+    # the seed is untouched (converge_numerics is a pure Plan -> Plan step)
+    assert _beam_count(seed) == 343

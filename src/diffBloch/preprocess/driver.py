@@ -26,15 +26,17 @@ from dataclasses import dataclass, replace
 
 from diffBloch.core.solver import Method
 from diffBloch.preprocess.experiment import RefinementSetup
+from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.steps.beams import reseed_pool
 from diffBloch.preprocess.steps.convergence import converge_scalar, simulation_rfactor
 from diffBloch.preprocess.steps.coverage import maximize_scalar, plan_coverage
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
+from diffBloch.specs import BeamSelection, ConvergenceTest, ConvergenceTolerance, RockingCurve
 
 __all__ = [
     "ConvergenceState",
+    "converge_numerics",
     "run_coverage_phase",
     "run_stability_phase",
 ]
@@ -55,6 +57,86 @@ class ConvergenceState:
     g_max_refine: float
     integration_semiangle: float
     tilt_sampling: int
+
+
+def converge_numerics(
+    test: ConvergenceTest,
+    selection: BeamSelection,
+    rocking: RockingCurve,
+    refinement: RefinementSetup,
+    tolerance: ConvergenceTolerance,
+    *,
+    method: Method = "matrix_exp",
+) -> PlanStep:
+    """Return a ``Plan -> Plan`` step running the selected convergence operation (the driver entry).
+
+    The driver's outer ``evalState`` boundary: it seeds the initial :class:`ConvergenceState` (pool
+    from ``test.start_g_max_refine``, window from ``selection.integration_semiangle``, tilt from
+    ``rocking.sampling``), runs the ``test.operation`` phase(s), and returns just the converged
+    ``Plan`` -- the settled scalars are dropped, so downstream steps never see driver state and this
+    nests as one *optional* ordinary step in the preprocess pipeline (convergence stays entirely
+    opt-in by construction). ``both`` runs :func:`run_coverage_phase` first and seeds
+    :func:`run_stability_phase` from its settled state (the private's ``initial_*`` handoff); the
+    single-phase operations run one and discard the state. Faithful to the private
+    ``convergence_testing`` dispatch on ``convergence_test.operation``.
+    """
+
+    def run(plan: Plan) -> Plan:
+        start = ConvergenceState(
+            g_max_refine=test.start_g_max_refine,
+            integration_semiangle=selection.integration_semiangle,
+            tilt_sampling=rocking.sampling,
+        )
+        if test.operation == "coverage":
+            converged, _ = run_coverage_phase(
+                plan,
+                start,
+                selection,
+                pool_step=test.pool_step,
+                window_step=test.window_step,
+                max_iterations=tolerance.max_iterations,
+            )
+            return converged
+        if test.operation == "self_stability":
+            converged, _ = run_stability_phase(
+                plan,
+                start,
+                selection,
+                rocking,
+                refinement,
+                tolerance,
+                pool_step=test.pool_step,
+                window_step=test.window_step,
+                tilt_step=test.tilt_step,
+                num_passes=test.num_passes,
+                method=method,
+            )
+            return converged
+        # "both": coverage's settled scalars seed self-stability (the private's initial_* handoff).
+        covered, settled = run_coverage_phase(
+            plan,
+            start,
+            selection,
+            pool_step=test.pool_step,
+            window_step=test.window_step,
+            max_iterations=tolerance.max_iterations,
+        )
+        converged, _ = run_stability_phase(
+            covered,
+            settled,
+            selection,
+            rocking,
+            refinement,
+            tolerance,
+            pool_step=test.pool_step,
+            window_step=test.window_step,
+            tilt_step=test.tilt_step,
+            num_passes=test.num_passes,
+            method=method,
+        )
+        return converged
+
+    return run
 
 
 def run_coverage_phase(

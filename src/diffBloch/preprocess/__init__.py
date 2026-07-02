@@ -12,6 +12,7 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 ``from_experiment`` construction land in later slices.
 """
 
+from diffBloch.preprocess.driver import converge_numerics
 from diffBloch.preprocess.experiment import (
     ExperimentSetup,
     PlanSplit,
@@ -60,6 +61,7 @@ from diffBloch.preprocess.steps.fit_thickness import fit_thickness
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     BeamSelection,
+    ConvergenceTest,
     ConvergenceTolerance,
     HexagonalSearch,
     RockingCurve,
@@ -69,6 +71,7 @@ from diffBloch.specs import (
 __all__ = [
     "BeamSelection",
     "ConvergenceCheck",
+    "ConvergenceTest",
     "ConvergenceTolerance",
     "ExperimentSetup",
     "HexagonalSearch",
@@ -83,6 +86,7 @@ __all__ = [
     "build_engine",
     "busing_levy_matrix",
     "converge_beams",
+    "converge_numerics",
     "converge_pool",
     "converge_sampling",
     "converge_scalar",

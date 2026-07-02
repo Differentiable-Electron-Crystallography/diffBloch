@@ -25,6 +25,7 @@ from typing import Literal
 
 __all__ = [
     "BeamSelection",
+    "ConvergenceTest",
     "ConvergenceTolerance",
     "HexagonalSearch",
     "RockingCurve",
@@ -88,6 +89,48 @@ class ConvergenceTolerance:
             raise ValueError("r_factor_threshold must be positive")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be >= 1")
+
+
+@dataclass(frozen=True)
+class ConvergenceTest:
+    """Which convergence operation the preprocess driver runs, and how it sweeps the knobs.
+
+    ``operation`` selects the driver's phase(s): ``coverage`` grows the beam pool + window to the
+    minimum that maximises matched-reflection coverage (pure geometry, tilt untouched);
+    ``self_stability`` grows the pool, window and rocking-curve tilt count until consecutive
+    simulations stop changing; ``both`` runs coverage first and seeds self-stability from its
+    settled scalars (the private's ``initial_*`` handoff). ``start_g_max_refine`` is the pool
+    sweep's start
+    radius -- the window and tilt starts come from :class:`BeamSelection.integration_semiangle` and
+    :class:`RockingCurve.sampling`, so they are not duplicated here. ``pool_step`` / ``window_step``
+    / ``tilt_step`` are the per-knob increments; ``num_passes`` is the fixed self-stability
+    coordinate-sweep count (each pass revisits every knob after the others moved). The R-factor
+    stopping rule + runaway cap live on :class:`ConvergenceTolerance`, not here (single
+    responsibility: this type is *what to sweep*, that one is *when to stop*).
+
+    ``operation`` and ``num_passes`` are faithful to ``diffBloch_private`` ``convergence_test``
+    (branch ``pattern-vis-convergence-testing``: ``operation in {initial_minimum_param_sweep,
+    hyperparams_optimization, both}`` renamed to the 2.0 phase names; ``num_passes`` the e2e's 2).
+    The step magnitudes are 2.0 defaults -- the private branch's config yaml was not captured, so
+    they are calibrated for the convergence tutorial rather than ported verbatim (tune per dataset).
+    """
+
+    operation: Literal["coverage", "self_stability", "both"] = "both"
+    start_g_max_refine: float = 0.5  # pool sweep start radius (window/tilt starts from the specs)
+    pool_step: float = 0.1  # g_max_refine increment per sweep step
+    window_step: float = 0.2  # integration_semiangle increment per sweep step (degrees)
+    tilt_step: float = 2.0  # rocking_curve_sampling increment per sweep step (tilt count)
+    num_passes: int = 2  # fixed self-stability coordinate-sweep passes (per-pass order-swap)
+
+    def __post_init__(self) -> None:
+        if self.operation not in ("coverage", "self_stability", "both"):
+            raise ValueError("operation must be 'coverage', 'self_stability', or 'both'")
+        if self.start_g_max_refine <= 0.0:
+            raise ValueError("start_g_max_refine must be positive")
+        if self.pool_step <= 0.0 or self.window_step <= 0.0 or self.tilt_step <= 0.0:
+            raise ValueError("pool_step, window_step and tilt_step must be positive")
+        if self.num_passes < 1:
+            raise ValueError("num_passes must be >= 1")
 
 
 @dataclass(frozen=True)
