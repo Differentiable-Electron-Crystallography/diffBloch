@@ -1,6 +1,7 @@
 # Decision: rocking-curve integration — tilts as sub-orientations, mosaicity as a composable knob
 
-**Status:** accepted (stage 11, pre-implementation).
+**Status:** accepted (stage 11, pre-implementation); **ordering corrected 2026-07** (see the dated
+correction below — integration precedes the fits, measured).
 **Context:** 2.0's forward model point-samples one crystal orientation per rotation. A
 rotation-electron-diffraction frame instead records each reflection's intensity *integrated* as it
 sweeps through the Ewald sphere during the exposure. A point sample of a rapidly-varying rocking
@@ -67,8 +68,9 @@ wired unconditionally at `from_experiment`; it is a composable `Plan -> Plan` st
 `integrate_rocking_curve(rocking)`, appended to the preprocess pipeline:
 
     preprocess = pipeline([
-        select_beams(...), fit_orientation(...), fit_thickness(...),
-        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),  # omit -> single static solve
+        select_beams(...),
+        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),  # BEFORE the fits (see correction)
+        fit_orientation(...), fit_thickness(...),                  # omit integrate -> static solve
     ])
 
 - **Off/identity by default holds the invariant.** No `integrate_rocking_curve` step = each rotation
@@ -79,9 +81,12 @@ wired unconditionally at `from_experiment`; it is a composable `Plan -> Plan` st
   tilt-axis reduction, so it only has meaning once the tilt set exists -- it composes *onto* this
   step, not independently. Rocking curve is the primary toggle, mosaicity a secondary one within it
   (correcting the earlier asymmetry of a composable mosaicity over a baked-in rocking curve).
-- **Ordering.** `integrate_rocking_curve` runs after `select_beams` (it reuses the once-selected
-  nominal beam set across tilts, #2) and after `fit_orientation` / `fit_thickness` (which search on
-  fast single-solve scoring; integration is for the final evaluation).
+- **Ordering (corrected 2026-07 — see the dated section below).** `integrate_rocking_curve` runs
+  after `select_beams` (it reuses the once-selected nominal beam set across tilts, #2) but **before**
+  `fit_orientation` / `fit_thickness`. The original plan put it *last* ("the fits search on fast
+  single-solve scoring; integration is for the final evaluation") — that is a **fit/eval consistency
+  violation**: a fit scored statically converges to *static-optimal* orientations the integration
+  barely improves. Measured payoff below.
 - **Representation (#1), no optional field.** The step rebuilds each `OrientationPlan` with the N
   tilt geometries baked in (N beam plans sharing the one beam set); the engine reduces `|psi|^2`
   over the tilt axis (a no-op at N=1). The plan *always* carries a tilt tuple, length 1 = identity,
@@ -132,7 +137,35 @@ validation) that shares `integration_semiangle` with beam selection.
 N× the Bloch solves per rotation (42× for quartz), the eigendecomposition being the expensive part.
 Land a **naive N×-loop first** (correctness), then a batched `eigh` over tilts as an optimization
 (the private amortizes via `union_splits`). The e2e will be slow until the batch optimization lands;
-this matches the codebase's correctness-first posture.
+this matches the codebase's correctness-first posture. **Measured (2026-07):** at `sampling = 42`
+the fit-under-integration costs ~15.6 s/rotation vs ~0.4 s/rotation static (~40×, one solve per
+tilt) — ~26 min over all 99 anchor rotations. That is why encoding the integrated recipe as the
+anchor pin waits on this batching perf pass (`KNOWN_ISSUES.md`); the fast static anchor stays the
+routine pin meanwhile.
+
+### Correction (2026-07): integration precedes the fits — the fit/eval consistency invariant (measured)
+
+The original "ordered last" rationale (above, #1b) optimised the *fit's* runtime by scoring on a
+fast single solve, then bolted integration on for evaluation. That violates the fit/eval consistency
+invariant: **tilts must be present *during* the fit, not after it.** A statically-scored
+`fit_orientation` converges to static-optimal orientations, which the rocking-curve integration then
+barely improves (the "negligible on static-fit orientations" observation in `LESSONS.md`).
+
+The engine already integrates over `op.tilts` when scoring, and `fit_orientation` now threads
+`op.tilts` through every trial (`2f3be01`), so the coupling is realised purely by **pipeline order**:
+put `integrate_rocking_curve` *before* the fits. Measured on the first 6 quartz-anchor rotations,
+same public API, `sampling = 42`:
+
+| pipeline | mean `R_obs` | per-rotation |
+|---|---|---|
+| static (integration last / absent) | 0.2484 | 0.355, 0.379, 0.163, 0.144, 0.324, 0.127 |
+| integrated-first | **0.0519** | 0.044, 0.076, 0.044, 0.041, 0.050, 0.056 |
+
+A ~5× drop that lands the per-rotation values on the private reference `R_obs = 0.0438`. This is the
+core C3 result: the coupling reaches the reference. The remaining `0.0519 → 0.0438` is the deferred
+residual. **Encoding this as an anchor test is deferred to after the tilt-batching perf pass** (#6):
+the full-99 integrated run is ~26 min today, too slow for a routine opt-in e2e. Approach recorded
+here; the anchor keeps its fast static pin until the perf pass lands.
 
 ## Consequences
 

@@ -255,13 +255,17 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > **Scheduling: stage 11 is complete; the residual chase is deliberately *last*.** With the
 > convergence driver landed (pool lever + cross-lever fixpoint, the coverage sweep, the
 > self-stability phase, and `converge_numerics`), stage 11 is closed. The post-stage-11 workstream
-> runs in order: **(1)** C3 fit-coupling (thread `op.tilts` through `fit_orientation` so the fit
-> scores under the integrated model — the fit/eval consistency invariant), **(2)** mosaicity, **(3)**
-> `converge_sampling` on the real rocking curve, **(4)** the convergence tutorial, **(5)**
-> config-schema wiring of `ConvergenceTest`, and **(6)** the `0.0594 -> 0.0438` residual chase
-> **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor forward-model details) — it is only
-> meaningful once the fit/eval coupling and the integrated model are in place. Tracked in
-> `design/stage11-preprocess-plan.md` (Open / deferred).
+> runs in order: **(1)** C3 fit-coupling — *step 1 done* (`2f3be01`: `fit_orientation` threads
+> `op.tilts` through every trial, so ordering `integrate_rocking_curve` before the fits couples them
+> to the integrated model; **measured** 2026-07: on the first 6 anchor rotations the reorder drops
+> mean `R_obs` 0.248 -> 0.052, landing on the reference 0.0438 — the core C3 result). **(1b)** a
+> **tilt-batching perf pass** (batch the Bloch `eigh` over the 42 tilts; today ~26 min full-99, see
+> `KNOWN_ISSUES.md`) — which then unblocks **(1c)** encoding the integrated recipe as an anchor pin
+> (~0.05). Then **(2)** mosaicity, **(3)** `converge_sampling` on the real rocking curve, **(4)** the
+> convergence tutorial, **(5)** config-schema wiring of `ConvergenceTest`, and **(6)** the
+> `0.0594 -> 0.0438` residual chase **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor
+> forward-model details) — it is only meaningful once the fit/eval coupling and the integrated model
+> are in place. Tracked in `design/stage11-preprocess-plan.md` (Open / deferred).
 
 ### Rocking-curve integration — design decisions (approved)
 
