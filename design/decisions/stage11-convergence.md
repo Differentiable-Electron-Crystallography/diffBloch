@@ -332,6 +332,16 @@ coverage or pattern-change, and pick the `(sg_max, g_max)` corner that is cheape
 it delivers. Natural home: a convergence tutorial notebook (`../notebooks/iain/tutorials/`), driven
 by the `converge_*` / `plan_coverage` public API once the driver lands.
 
+**The raw beam count is boring — the useful count is the point.** Total beams included is *always*
+maximal in the **top-right quadrant** (both knobs wide open admit the most beams): it is a trivially
+monotone ramp toward `(max sg_max, max g_max)`, so a colormap of it alone says nothing. The signal
+is the *useful*-beam overlay: the count of beams that match an observed reflection / carry real
+intensity **saturates** somewhere well short of the top-right, and past that contour every extra
+beam is pure cost. So the target is not the top-right corner but the **cheapest point on the
+useful-saturation contour** — the lower-left-most `(sg_max, g_max)` that still captures every useful
+beam. The viz earns its keep precisely by showing that gap between the (monotone) total-count ramp
+and the (saturating) useful-count contour.
+
 ## Sequencing
 
 1. `ConvergenceTolerance` value-type + the sim-vs-sim R-factor check (`simulation_converged`).
