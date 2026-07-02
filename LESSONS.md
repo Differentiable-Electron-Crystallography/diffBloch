@@ -102,3 +102,33 @@ location.
 [`design/decisions/plan-shape-and-step-ordering.md`](design/decisions/plan-shape-and-step-ordering.md);
 see also the thickness two-mode note in [`ROADMAP.md`](ROADMAP.md) and
 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
+
+## "Correcting" the private requires matching its *experiment geometry*, not a generic textbook one
+
+**The trap.** During the stage-11 beam-selection port, the private's Klar `sg_max` lever arm
+`norm(k[:, 1:]) = |(g_y, g_z)|` looked wrong: the beam is along `-z`, so "the plane perpendicular to
+the beam" is `(x, y)`, and mixing the along-beam `g_z` into a *transverse* distance seemed like an
+obvious bug. The port "corrected" it to `|(g_x, g_y)|`, recorded a `DIVERGENCE.md` entry, and even
+filed an upstream bug report against the private. All of it was wrong.
+
+**Why it hurt.** `sg_max` is not "distance from the beam" -- it is the excitation-error span a
+reflection *sweeps during the integration*, and this data is collected by **continuous rotation
+about the goniometer `x` axis**, not by precession about the beam. For a single-axis rock the swept
+amplitude is the distance from the **rock axis**, `|(g_y, g_z)|` -- exactly what the private
+computed. The "correction" made beam-selection inconsistent with our *own* integrator (which rocks
+about x via `R_x`), admitted ~1.7x too many reflections (the extras sit near the rock axis and never
+sweep), and inflated the anchor `R_obs` from ~0.06 to 0.337. The private was right and had even
+documented the goniometer-axis frame; we had applied the precession lever arm to a rotation
+experiment.
+
+**The lesson.** Rule 4/5 ("don't faithfully replicate a private flaw") cuts both ways: before
+declaring something a flaw, reconstruct the *physical setup the code models*, not the generic
+picture. A geometric term is only "wrong" relative to a geometry; here two axes (beam ∥ z, rock ∥ x)
+were in play and the relevant one for `sg_max` is the rock axis. The tell was empirical and was
+ignored for too long: a "geometrically correct" change that makes agreement with **real measured
+data** dramatically *worse* is almost certainly not correct -- let the data referee the geometry
+before rewriting ledgers. The fix makes the lever arm explicitly geometry-aware
+(`BeamSelection.geometry`: rock-axis distance for `continuous_rotation`, beam distance for
+`precession`) so the selection can never again silently disagree with the integrator. Full narrative
+in [`SCIENCE_FORK.md`](SCIENCE_FORK.md) and [`DEBUGGING.md`](DEBUGGING.md); the retracted divergence
+in [`DIVERGENCE.md`](DIVERGENCE.md).

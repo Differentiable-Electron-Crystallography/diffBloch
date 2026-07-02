@@ -10,14 +10,18 @@ What is pinned today (deterministic; CPU / float64; no RNG):
 
   * ``n_evaluated == 99`` -- every rotation yields a finite ``R_obs`` (guards the ``rbragg``
     NaN-safety regression directly), and
-  * ``mean_r_obs`` -- the captured C2 baseline of the ``select_beams -> fit_orientation ->
-    fit_thickness`` pipeline **without** rocking-curve integration.
+  * ``mean_r_obs`` -- the from-scratch ``select_beams -> fit_orientation -> fit_thickness``
+    pipeline **without** rocking-curve integration.
 
-The C2 baseline (~0.298) sits above the private reference ``R_obs`` (0.043766) by exactly the
-rocking-curve gap: the reference integrates 42 tilts per rotation, which C3 will add and then
-tighten this pin toward the reference (see ``ROADMAP.md`` plan C, and
-``design/decisions/stage11-rocking-curve.md``). The reference metadata is checked first as an
-independent provenance guard.
+The from-scratch static baseline (~0.174) sits above the private reference ``R_obs`` (0.043766)
+because the reference evaluates *pre-optimised* orientations with 42-tilt rocking-curve integration,
+whereas this pins a from-scratch static fit. With the reference's own optim orientations + the
+integrated recipe our forward model reaches 0.0594 (see ``DEBUGGING.md`` / ``SCIENCE_FORK.md``); the
+remaining path to the reference is the fit/eval integration coupling (C3) plus a small residual. An
+earlier, larger baseline (~0.298) was an artefact of a beam-selection geometry bug (the ``sg_max``
+lever arm used the beam-transverse plane instead of the goniometer-rock-axis distance); fixing it
+lowered this baseline and is what makes the integrated recipe reproduce the reference reflection
+counts. The reference metadata is checked first as an independent provenance guard.
 
 Still pending: the finer-grained per-rotation intermediate-tensor goldens (``Fgb``, the structure
 matrix ``A``, the exit wave ``psi``, ``I_sim``) -- a separate, heavier deliverable.
@@ -45,12 +49,14 @@ pytestmark = pytest.mark.e2e
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
-# Captured C2 baseline: the fit pipeline (select_beams -> fit_orientation -> fit_thickness)
-# evaluated over all 99 rotations without rocking-curve integration. C3 (rocking curve) will lower
-# this toward the private reference R_obs (0.043766) and tighten the tolerance. The tolerance is
-# loose enough to absorb cross-platform eigensolver differences (degenerate-eigenvector ordering)
-# while still catching a physics regression; tighten once CI confirms the value is stable.
-EXPECTED_MEAN_R_OBS = 0.2977
+# From-scratch static baseline: the fit pipeline (select_beams -> fit_orientation -> fit_thickness)
+# evaluated over all 99 rotations without rocking-curve integration, under the corrected
+# goniometer-rock-axis sg_max lever arm. The reference R_obs (0.043766) is reached only with the
+# reference's optim orientations + integrated recipe (which our model matches to 0.0594); C3 (fit/
+# eval integration coupling) closes the rest. The tolerance is loose enough to absorb cross-platform
+# eigensolver differences (degenerate-eigenvector ordering) while still catching a physics
+# regression; tighten once CI confirms the value is stable.
+EXPECTED_MEAN_R_OBS = 0.174
 MEAN_R_OBS_TOL = 1e-2
 
 

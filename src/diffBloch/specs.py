@@ -36,12 +36,16 @@ __all__ = [
 class BeamSelection:
     """Validated cutoffs for the ``select_beams`` Klar et al. (2023) active-set filter.
 
-    The three knobs *jointly* define each orientation's active beam set, so they share one value:
-    ``rsg`` (relative excitation-error cutoff -- a reflection is kept when ``|Sg| / sg_max < rsg``)
-    and ``integration_semiangle`` (degrees, which scales ``sg_max``) must both be positive, since
-    either at zero rejects every reflection. ``dsg`` (the absolute excitation-error margin in the
-    ``sg_max - |Sg| > dsg`` test) carries no positivity invariant -- a negative margin legitimately
-    loosens the cone -- so it is left unconstrained rather than fabricate a bound.
+    The knobs *jointly* define each orientation's active beam set. ``rsg`` (relative excitation
+    error cutoff -- a reflection is kept when ``|Sg| / sg_max < rsg``) and ``integration_semiangle``
+    (degrees, which scales ``sg_max``) must both be positive, since either at zero rejects every
+    reflection. ``dsg`` (the absolute excitation-error margin in the ``sg_max - |Sg| > dsg`` test)
+    carries no positivity invariant -- a negative margin legitimately loosens the cone -- so it is
+    left unconstrained rather than fabricate a bound. ``geometry`` is the data-collection geometry:
+    it fixes which reflection component sets ``sg_max`` (the excitation-error span swept during
+    integration) -- distance from the goniometer rock axis for ``continuous_rotation``, distance
+    from the beam for ``precession`` -- so it must match the integrator's tilt geometry
+    (:class:`RockingCurve`). It shares the ``data_collection_geometry`` of ``RockingCurve``.
 
     Defaults are the faithful ``diffBloch_private`` values (``NumericsConfig``).
     """
@@ -49,12 +53,15 @@ class BeamSelection:
     rsg: float = 0.9  # relative excitation-error cutoff: keep when |Sg| / sg_max < rsg
     dsg: float = 0.0015  # absolute excitation-error margin: keep when sg_max - |Sg| > dsg
     integration_semiangle: float = 1.0  # degrees: integration cone half-angle; scales sg_max
+    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
 
     def __post_init__(self) -> None:
         if self.rsg <= 0.0:
             raise ValueError("rsg must be positive")
         if self.integration_semiangle <= 0.0:
             raise ValueError("integration_semiangle must be positive")
+        if self.geometry not in ("continuous_rotation", "precession"):
+            raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
 
 
 @dataclass(frozen=True)

@@ -6,16 +6,21 @@ then rebuilds its ``BeamPlan`` + ``AlignmentPlan`` against the shared grid (``pa
 This is the faithful per-orientation selection that replaces the orientation-independent
 ``g_max_refine`` seed laid down by ``from_experiment``.
 
-Divergence from ``diffBloch_private`` (recorded in ``DIVERGENCE.md``): the
-private ``diffraction_dataset.filter_hkls`` builds ``sg_max`` from ``norm(k[:, 1:])`` -- columns
-``(y, z)`` -- while its ``excitation_errors`` fixes the beam along ``-z`` (so the transverse plane
-is ``(x, y)``). Mixing the along-beam component ``g_z`` into the transverse distance over-weights
-HOLZ reflections. We use the geometrically consistent transverse component ``(g_x, g_y)`` instead.
+``sg_max`` is the excitation-error span a reflection sweeps *during the actual integration*, so its
+transverse lever arm is set by the tilt geometry (``BeamSelection.geometry``), which must match the
+integrator's (:class:`~diffBloch.specs.RockingCurve`). For ``continuous_rotation`` the crystal rocks
+about the goniometer axis (``x`` in the PETS frame; ``rocking_curve_tilts`` builds ``R_x``), so the
+swept excitation error has amplitude ``|(g_y, g_z)|`` -- the distance from the rock axis -- and a
+reflection *on* that axis (``g_y = g_z = 0``) never sweeps and is correctly dropped. For
+``precession`` (an isotropic cone about the ``-z`` beam) the lever arm is instead ``|(g_x, g_y)|``,
+the distance from the beam. This matches ``diffBloch_private`` ``filter_hkls`` (``norm(k[:, 1:])``
+for its continuous-rotation data), whose beam is ``-z`` and rock axis ``x`` (same frame as ours).
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -74,6 +79,7 @@ def _reselect(
         rsg=selection.rsg,
         dsg=selection.dsg,
         semiangle=selection.integration_semiangle,
+        geometry=selection.geometry,
     )
     keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     return OrientationPlan.build(
@@ -95,22 +101,32 @@ def klar_beam_mask(
     rsg: float,
     dsg: float,
     semiangle: float,
+    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation",
 ) -> NDArray[np.bool_]:
     """Boolean keep-mask for reflections ``g`` ``(N, 3)`` under the Klar (2023) rsg/dsg filter.
 
-    Each reflection's excitation error ``|Sg|`` (Spence & Zuo, via :func:`excitation_errors`) is
-    compared against ``sg_max = |g_transverse| * deg2rad(semiangle)`` -- the excitation-error spread
-    swept as the beam tilts over the integration cone -- where ``g_transverse = (g_x, g_y)`` is the
-    component perpendicular to the ``-z`` beam. A reflection is kept when both
+    Each reflection's excitation error ``|Sg|`` (Spence & Zuo, via :func:`excitation_errors`; beam
+    along ``-z``) is compared against ``sg_max``, the excitation-error span it sweeps during
+    integration: ``sg_max = |g_lever| * deg2rad(semiangle)``. The lever arm depends on ``geometry``
+    -- for ``continuous_rotation`` the rock is about the goniometer ``x`` axis, so
+    ``g_lever = (g_y, g_z)`` (distance from the rock axis); for ``precession`` (cone about the beam)
+    it is ``g_lever = (g_x, g_y)`` (distance from the ``-z`` beam). A reflection is kept when both
     ``|Sg| / sg_max < rsg`` (relative excitation error small) and ``sg_max - |Sg| > dsg`` (a minimum
-    absolute margin). Reflections with ``sg_max = 0`` (on the optic axis) fail the relative test and
-    are dropped; the 000-beam retention required by the Bloch system is handled by the caller.
+    absolute margin). Reflections with ``sg_max = 0`` (on the rock axis, resp. optic axis) fail the
+    relative test and are dropped -- they never sweep through the Ewald sphere; the 000-beam
+    retention required by the Bloch system is handled by the caller.
     """
     g_array = np.asarray(g, dtype=np.float64)
     if g_array.ndim != 2 or g_array.shape[1] != 3:
         raise ValueError("g must have shape (N, 3)")
+    if geometry == "continuous_rotation":
+        g_lever = g_array[:, 1:]  # (g_y, g_z): distance from the x goniometer rock axis
+    elif geometry == "precession":
+        g_lever = g_array[:, :2]  # (g_x, g_y): distance from the -z beam
+    else:
+        raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
     sg = np.abs(excitation_errors(g_array, energy, u0=u0))
-    sg_max = np.linalg.norm(g_array[:, :2], axis=1) * np.deg2rad(semiangle)
+    sg_max = np.linalg.norm(g_lever, axis=1) * np.deg2rad(semiangle)
     with np.errstate(divide="ignore", invalid="ignore"):
         rel_error = np.where(sg_max > 0.0, sg / sg_max, np.inf)
     mask: NDArray[np.bool_] = (rel_error < rsg) & (sg_max - sg > dsg)

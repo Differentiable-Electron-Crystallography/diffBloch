@@ -208,13 +208,14 @@ def _beam_count(plan: Plan) -> int:
 
 def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     refinement, seed = _seed_system()
-    # Loose threshold so the one near-Ewald change (~0.007) counts as settled; the sweep then
-    # confirms via the saturation nulls and returns the fully-selected beam set.
+    # Step wide enough to cross the intermediate count plateaus (the seed admits beams in bands as
+    # the window widens: 15 -> 39 -> 43); the sweep then saturates and the trailing nulls settle it
+    # on the fully-selected beam set.
     step = converge_beams(
         BeamSelection(integration_semiangle=0.68),
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.05, patience=2, max_iterations=20),
-        step=0.06,
+        step=0.6,
     )
     converged = step(seed)
 

@@ -24,17 +24,28 @@ def _quartz_train_plan():
 
 
 def test_klar_mask_keeps_near_ewald_in_plane_drops_on_axis() -> None:
-    # Transverse plane is (x, y) for the -z beam. A near-Ewald reflection offset purely along x is
-    # kept; one offset purely along z (along the beam, sg_max == 0) is dropped. This is the exact
-    # swap of the private filter_hkls (y, z) convention (see KNOWN_ISSUES in diffBloch_private).
-    g = np.array([[0.5, 0.0, 0.0], [0.0, 0.0, 0.5], [0.0, 0.0, 0.0]], dtype=np.float64)
+    # Continuous rotation rocks about the goniometer x axis, so sg_max is the distance from x =
+    # |(g_y, g_z)|. A near-Ewald reflection offset perpendicular to the rock axis (along y) sweeps
+    # and is kept; one offset purely along the rock axis (x) never sweeps (sg_max == 0) and is
+    # dropped. This matches the private filter_hkls norm(k[:, 1:]); see DIVERGENCE.md.
+    g = np.array([[0.0, 0.5, 0.0], [0.5, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float64)
     mask = klar_beam_mask(g, energy=200e3, rsg=0.9, dsg=0.0015, semiangle=1.0)
     assert mask.tolist() == [True, False, False]
 
 
+def test_klar_mask_precession_uses_beam_transverse() -> None:
+    # Precession is an isotropic cone about the -z beam, so sg_max is the distance from z =
+    # |(g_x, g_y)|. Now the x-offset reflection sweeps and is kept; the on-beam (z) one is dropped.
+    g = np.array([[0.5, 0.0, 0.0], [0.0, 0.0, 0.5], [0.0, 0.0, 0.0]], dtype=np.float64)
+    mask = klar_beam_mask(
+        g, energy=200e3, rsg=0.9, dsg=0.0015, semiangle=1.0, geometry="precession"
+    )
+    assert mask.tolist() == [True, False, False]
+
+
 def test_klar_mask_rsg_and_dsg_are_cutoffs() -> None:
-    # One near-Ewald in-plane reflection; tightening rsg/dsg can only drop beams.
-    g = np.array([[0.5, 0.0, 0.0]], dtype=np.float64)
+    # One near-Ewald reflection off the rock axis (along y); tightening rsg/dsg can only drop beams.
+    g = np.array([[0.0, 0.5, 0.0]], dtype=np.float64)
     loose = klar_beam_mask(g, energy=200e3, rsg=0.9, dsg=0.0015, semiangle=1.0)
     tight_rsg = klar_beam_mask(g, energy=200e3, rsg=1e-6, dsg=0.0015, semiangle=1.0)
     tight_dsg = klar_beam_mask(g, energy=200e3, rsg=0.9, dsg=1e3, semiangle=1.0)

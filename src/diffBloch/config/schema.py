@@ -45,7 +45,12 @@ class NumericsConfig(BaseModel):
     integration_semiangle: float = 1.0
 
     def to_beam_selection(self) -> BeamSelection:
-        """Parse the beam-selection subset into the value-type ``select_beams`` consumes."""
+        """Parse the beam-selection subset into the value-type ``select_beams`` consumes.
+
+        ``geometry`` fixes the ``sg_max`` lever arm and must match ``to_rocking_curve``'s tilt
+        geometry; both default to continuous rotation until ``data_collection_geometry`` is surfaced
+        from the PETS reader (a deferred discriminated mode).
+        """
         return BeamSelection(
             rsg=self.rsg, dsg=self.dsg, integration_semiangle=self.integration_semiangle
         )

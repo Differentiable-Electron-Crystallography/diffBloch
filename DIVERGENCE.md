@@ -36,23 +36,37 @@ lives in this codebase, and the test that pins it. The defects are also recorded
 - **Where:** `core/adp.py` (`cartesian_adp_to_star`); see `REFERENCES.md` (ADP frame conventions).
 - **Found:** diffBloch 2.0 stage 10 (params/engine) port.
 
-### `filter_hkls()` transverse component mixes the along-beam axis into `sg_max`
+### `select_beams` `sg_max` lever arm: retracted divergence (2.0 was wrong, the private is correct)
 
-- **Original:** `diffBloch/diffraction_dataset.py`, `filter_hkls()` (~line 345). The Klar et al.
-  (2023) rsg/dsg beam filter uses `sg_max = |k_perp| * deg2rad(semiangle)`, where `k_perp` is the
-  component *perpendicular to the beam*. The code computes `norm(k[:, 1:]) = norm(g_y, g_z)`, but
-  `excitation_errors` fixes the beam along `-z` (`K = [0, 0, -Kmag]`), so the perpendicular plane is
-  `(x, y)` -- the transverse component should be `norm(g_x, g_y) = k[:, :2]`. The `(y, z)` form folds
-  the along-beam component `g_z` into the "transverse" distance.
-- **Effect:** `sg_max` is inflated for reflections with large `g_z` (HOLZ), loosening the filter
-  exactly where it should tighten; ZOLZ reflections (`g_z ~ 0`) are barely affected. The `-z` beam
-  convention is corroborated by the dynamical simulation reaching `R_obs = 0.0438`.
-- **2.0 behaviour:** `preprocess.select_beams` / `klar_beam_mask` use the consistent transverse
-  component `(g_x, g_y)` and do not reproduce the `(y, z)` quantity.
+- **Status: RETRACTED.** An earlier 2.0 port diverged here in error and this entry recorded that
+  divergence; the divergence has been removed and 2.0 now matches `diffBloch_private`. Kept as a
+  record because a false upstream bug report was filed (and has since been retracted from
+  `../diffBloch_private/KNOWN_ISSUES.md`).
+- **What happened:** the Klar et al. (2023) rsg/dsg filter keeps a reflection when its excitation
+  error `|Sg|` is small relative to `sg_max = |g_lever| * deg2rad(semiangle)`, the excitation-error
+  span the reflection *sweeps during integration*. The private computes
+  `sg_max = norm(k[:, 1:]) = norm(g_y, g_z)`. The 2.0 port "corrected" this to `norm(g_x, g_y)`,
+  reasoning that with the beam along `-z` the transverse plane is `(x, y)`.
+- **Why that was wrong:** the integration is a **single-axis continuous rotation about the
+  goniometer `x` axis** (`rocking_curve_tilts` builds `R_x`; the private's own docstring: "in the
+  pets2 coordinate frame, the goniometer axis is x"), *not* an isotropic precession cone about the
+  beam. Under `R_x(phi)` the along-beam component becomes `g_z' = sin(phi) g_y + cos(phi) g_z`, whose
+  excursion amplitude is `norm(g_y, g_z)` -- the distance from the **rock axis**. So `norm(g_y, g_z)`
+  is the geometrically correct lever arm; a reflection on the rock axis (`g_y = g_z = 0`) never
+  sweeps and is correctly dropped. `norm(g_x, g_y)` (distance from the beam) is the lever arm only
+  for precession -- a different experiment. The "in-plane anisotropy" the old entry called a bug is
+  the correct behaviour of a single-axis rock.
+- **Evidence:** with the wrong `(g_x, g_y)` lever arm the anchor admitted ~1.7x too many reflections
+  (1643 vs 958) -- the extras cluster near the `x` rock axis (median 20.6 deg from it), barely sweep,
+  and inflate `R_obs` to 0.337. Restoring `(g_y, g_z)` reproduces the reference reflection counts
+  (965 vs `N_int_obs` 958) and `R_obs = 0.0594` (reference 0.0438).
+- **2.0 behaviour now:** `preprocess.klar_beam_mask` selects the lever arm by `BeamSelection.geometry`
+  -- `(g_y, g_z)` for `continuous_rotation` (matching the private), `(g_x, g_y)` for `precession`.
 - **Where:** `preprocess/beams.py`; pinned by `tests/unit/test_select_beams.py`
-  (`test_klar_mask_keeps_near_ewald_in_plane_drops_on_axis` -- keeps an x-offset beam, drops a
-  z-offset one, the exact swap of the original convention). See `REFERENCES.md` (Klar 2023 rsg/dsg).
-- **Found:** diffBloch 2.0 stage 11 (preprocess) port.
+  (`..._drops_on_axis` keeps a y-offset beam and drops an on-rock-axis one;
+  `..._precession_uses_beam_transverse` covers the precession lever arm). Full narrative in
+  `SCIENCE_FORK.md` and `DEBUGGING.md`; lesson in `LESSONS.md`.
+- **Found / corrected:** diffBloch 2.0 stage 11 (preprocess) port.
 
 ### `rbragg_abs()` applies the `I > 3*sigma` cut by multiplication, poisoning the sum with `NaN`
 
