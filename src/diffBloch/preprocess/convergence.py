@@ -17,6 +17,9 @@ before and orthogonally to the accuracy fit. This module has three layers:
   pool, re-seeding each orientation from the shared grid, until the pattern stabilises. It is the
   standalone lever; the joint window+pool fixpoint needs the driver to thread their shared scalar
   state (the naive ``iterate_until(pipeline([...]))`` does not compose -- see ``converge_pool``).
+- :func:`converge_sampling` -- the forward-model lever: refines the rocking-curve tilt count
+  (``rocking_curve_sampling``) until the integrated pattern stabilises. Independent of the beam
+  levers (the tilt count does not touch the ``Fgb`` support), so it composes as an ordinary lever.
 
 :func:`simulation_converged` wraps :func:`simulation_rfactor` with a threshold to give the boolean
 :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
@@ -44,12 +47,14 @@ from diffBloch.preprocess.beams import select_beams
 from diffBloch.preprocess.experiment import RefinementSetup, seed_beam_hkl
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.rocking_curve import integrate_rocking_curve
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import BeamSelection, ConvergenceTolerance
+from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
 __all__ = [
     "converge_beams",
     "converge_pool",
+    "converge_sampling",
     "converge_scalar",
     "simulation_converged",
     "simulation_rfactor",
@@ -268,6 +273,45 @@ def converge_pool(
             return select_beams(selection)(replace(seed, orientations=reseeded))
 
         return converge_scalar(build, measure, tolerance, start=start_g_max_refine, step=step)
+
+    return run
+
+
+def converge_sampling(
+    rocking: RockingCurve,
+    refinement: RefinementSetup,
+    tolerance: ConvergenceTolerance,
+    *,
+    step: float,
+    method: Method = "matrix_exp",
+) -> PlanStep:
+    """Return a ``Plan -> Plan`` step: refine the rocking-curve tilt count until the pattern stops.
+
+    The forward-model convergence lever (independent of the two beam levers): each candidate bakes
+    the rocking-curve integration geometry at a finer ``rocking_curve_sampling`` (the tilt count)
+    via :func:`~diffBloch.preprocess.rocking_curve.integrate_rocking_curve`, so the summed
+    ``|psi|^2`` over tilts approaches the continuous rotation-frame integral. The sweep starts at
+    ``rocking.sampling`` and clicks up by ``step`` (rounded to a whole tilt count) until
+    :func:`converge_scalar` settles the pattern (skip-null + patience + cap): it settles when a
+    finer tilt grid stops moving the integrated intensities. Only ``sampling`` is swept -- the tilt
+    span (``rocking.semiangle``) and ``rocking.geometry`` are held fixed. Re-integrating from the
+    incoming seed each step (``integrate_rocking_curve`` rebuilds tilts from each nominal
+    orientation, discarding any prior tilts) makes the sweep independent of the seed's tilt state.
+
+    ``step`` must be positive. Unlike the beam levers this needs no grid guard (the tilt count does
+    not touch the ``Fgb`` support) and does not couple to them, so it composes as an ordinary extra
+    lever. See ``design/decisions/stage11-convergence.md`` and ``stage11-rocking-curve.md``.
+    """
+    if step <= 0.0:
+        raise ValueError("step must be positive")
+    measure = simulation_rfactor(refinement, method=method)
+
+    def run(seed: Plan) -> Plan:
+        def build(sampling: float) -> Plan:
+            tilts = replace(rocking, sampling=int(round(sampling)))
+            return integrate_rocking_curve(tilts)(seed)
+
+        return converge_scalar(build, measure, tolerance, start=float(rocking.sampling), step=step)
 
     return run
 

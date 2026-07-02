@@ -16,6 +16,7 @@ from diffBloch.preprocess.beams import klar_beam_mask, select_beams
 from diffBloch.preprocess.convergence import (
     converge_beams,
     converge_pool,
+    converge_sampling,
     converge_scalar,
     simulation_converged,
     simulation_rfactor,
@@ -77,6 +78,7 @@ __all__ = [
     "busing_levy_matrix",
     "converge_beams",
     "converge_pool",
+    "converge_sampling",
     "converge_scalar",
     "fit_orientation",
     "fit_thickness",

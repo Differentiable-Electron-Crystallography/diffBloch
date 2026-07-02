@@ -1,5 +1,5 @@
 """Slice 11: the convergence machinery -- ``simulation_converged``, ``converge_scalar``,
-``converge_beams``, ``converge_pool``.
+``converge_beams``, ``converge_pool``, ``converge_sampling``.
 
 Uses the same fast synthetic silicon system as ``test_fit_thickness`` (no heavy fixture sim). The
 check compares two *simulations*, so the orientations' observed patterns are irrelevant
@@ -12,6 +12,7 @@ sequence and an identity ``build`` -- no simulation -- so the skip-null / patien
 pinned in isolation. ``converge_beams`` is then exercised end-to-end: widening the Klar window over
 a richer seed until the pattern saturates. ``converge_pool`` widens the ``g_max_refine`` candidate
 pool the same way, with a guard that raises past the grid's beam-difference support.
+``converge_sampling`` refines the rocking-curve tilt count until the integrated pattern settles.
 """
 
 from __future__ import annotations
@@ -30,13 +31,15 @@ from diffBloch.preprocess import (
     RefinementSetup,
     converge_beams,
     converge_pool,
+    converge_sampling,
     converge_scalar,
+    integrate_rocking_curve,
     select_beams,
     simulation_converged,
 )
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
-from diffBloch.specs import BeamSelection, ConvergenceTolerance
+from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
@@ -308,3 +311,32 @@ def test_converge_pool_rejects_non_positive_step() -> None:
         converge_pool(
             BeamSelection(), refinement, ConvergenceTolerance(), start_g_max_refine=0.5, step=0.0
         )
+
+
+# --- converge_sampling: the rocking-curve tilt-count (rocking_curve_sampling) lever ---
+
+
+def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
+    refinement, seed = _seed_system()
+    # Refine the tilt count: the summed |psi|^2 approaches the continuous rotation-frame integral,
+    # so the consecutive-simulation change shrinks monotonically and settles below threshold. Each
+    # orientation carries one beam plan per tilt, so len(beam_plans) is the converged tilt count.
+    step = converge_sampling(
+        RockingCurve(semiangle=0.5, sampling=1),
+        refinement,
+        ConvergenceTolerance(r_factor_threshold=0.01, patience=2, max_iterations=30),
+        step=2.0,
+    )
+    converged = step(seed)
+
+    tilt_count = len(converged.orientations[0].beam_plans)
+    assert tilt_count == 11  # deterministic: 1 -> 3 -> ... settles two steps below 0.01 at 11
+    # started from a single static solve (sampling == 1); convergence genuinely refined the grid
+    assert len(integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=1))(seed)
+               .orientations[0].beam_plans) == 1
+
+
+def test_converge_sampling_rejects_non_positive_step() -> None:
+    refinement, seed = _seed_system()
+    with pytest.raises(ValueError, match="step must be positive"):
+        converge_sampling(RockingCurve(), refinement, ConvergenceTolerance(), step=0.0)
