@@ -185,7 +185,10 @@ reference:
 1. **No rocking-curve integration.** The reference integrates each rotation over **42 tilts**
    (`rocking_curve_sampling: 42`, `linspace(−1°,+1°,42)`, `mosaicity: true`); 2.0 point-samples one
    orientation. A point sample of a rapidly-varying rocking curve cannot match an integrated
-   measurement — this is the dominant gap.
+   measurement. *(**Correction, 2026-07:** this was originally called “the dominant gap” — see the
+   dated note under C3. The rocking curve is essential physics, but its benefit is only realised
+   when orientations are scored/fit under the integrated model; the dominant static-baseline
+   correction turned out to be a beam-selection geometry bug, not the rocking curve.)*
 2. **Unfit orientations.** The reference loads post-`fit_orientation` values
    (`optim_orientation.csv`, `apply_u_matrix: true`); 2.0 uses native-derived (pre-fit)
    orientations, which is why R sits near 0.6 (unfit) rather than ~0.05.
@@ -212,15 +215,30 @@ private `evaluate_over_rotations`). Building it is part of this work.
 - [x] **(C2) Fit orientations (closes gaps 2/3).** Wire `select_beams → fit_orientation` (and
   `fit_thickness`) through the harness so the anchor runs the fit pipeline, not raw derived
   orientations. **Rewrite the anchor to run `run_inference` over `PlanSplit.combined` and pin the
-  quartz aggregate `R_obs`** (the C1-deferred pin). Tighten the tolerance toward the reference; the
-  residual is then just the rocking-curve gap. *(landed: `test_anchor.py` runs the full
-  `select_beams → fit_orientation → fit_thickness` pipeline over all 99 rotations via the public
-  API and pins `n_evaluated == 99` + `mean_r_obs ≈ 0.2977` at `abs=1e-2`. Two blockers were cleared
-  first: the `rbragg` NaN-safety fix (`1c79693`, all 99 now finite) and calibrating
-  `fit_orientation`'s `max_iterations` to 600 (`768786b`, the four slow-but-legitimate searches now
-  converge). The residual 0.298 → 0.044 is the rocking-curve gap (C3).)*
+  quartz aggregate `R_obs`** (the C1-deferred pin). Tighten the tolerance toward the reference.
+  *(landed: `test_anchor.py` runs the full `select_beams → fit_orientation → fit_thickness` pipeline
+  over all 99 rotations via the public API and pins `n_evaluated == 99` + `mean_r_obs` at `abs=1e-2`.
+  Two blockers were cleared first: the `rbragg` NaN-safety fix (`1c79693`, all 99 now finite) and
+  calibrating `fit_orientation`'s `max_iterations` to 600 (`768786b`). The captured baseline was
+  `≈ 0.2977`; after the C3-note beam-selection geometry fix (`e198ad1`) it dropped to `≈ 0.174`.)*
 - [ ] **(C3) Rocking-curve integration (closes gap 1).** New forward-model feature (see below).
   Tighten to a per-rotation `atol` approaching the private `1e-4`.
+
+> **Correction (2026-07): the 0.298 → 0.044 gap was *not* the rocking curve.** A diagnostic against
+> the exact reference recipe (optim orientations + 820 Å + 42-tilt integration) found two things.
+> **(i)** The rocking curve is *negligible* on the from-scratch static-fit orientations
+> (full-99 static `0.2977` → integrated `0.2939`) — because `fit_orientation` scored statically and
+> so converged to *static-optimal* orientations, which the integration barely improves. On seed or
+> reference-optim orientations the rocking curve is instead a **7–10×** effect (seed `0.60 → 0.08`;
+> optim `0.63 → 0.06`) — see the tutorial. This is the **fit/eval consistency invariant**: tilts must
+> be present *during* the fit, not bolted on after. **(ii)** The dominant static-baseline error was a
+> **beam-selection geometry bug** — the Klar `sg_max` lever arm used the distance from the *beam*
+> (a precession assumption) instead of from the *goniometer rock axis*, admitting ~1.7× too many
+> non-sweeping reflections and inflating R. Fixing it (`e198ad1`) reproduced the reference reflection
+> counts and, on optim orientations + integration, reached `R_obs = 0.0594` (reference `0.0438`);
+> it also lowered the from-scratch static baseline `0.2977 → 0.174`. Full narrative in
+> `SCIENCE_FORK.md` / `DEBUGGING.md` / `LESSONS.md`. **Remaining residual `0.0594 → 0.0438`** and the
+> fit-coupling wiring are the live C3 work.
 
 ### Rocking-curve integration — design decisions (approved)
 
