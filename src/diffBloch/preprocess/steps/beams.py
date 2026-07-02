@@ -29,11 +29,12 @@ from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import BeamSelection
 
-__all__ = ["klar_beam_mask", "select_beams"]
+__all__ = ["klar_beam_mask", "reseed_pool", "select_beams"]
 
 
 def select_beams(selection: BeamSelection) -> PlanStep:
@@ -61,6 +62,45 @@ def select_beams(selection: BeamSelection) -> PlanStep:
         return replace(plan, orientations=orientations)
 
     return run
+
+
+def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) -> Plan:
+    """Re-seed each orientation from the grid at ``g_max_refine``, then apply the Klar window.
+
+    The shared build step for the pool levers
+    (:func:`~diffBloch.preprocess.steps.convergence.converge_pool`,
+    :func:`~diffBloch.preprocess.steps.coverage.cover_pool`) and the convergence driver: each
+    orientation's *candidate* reflections are re-seeded from the shared grid at ``g_max_refine``
+    (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), every
+    :class:`~diffBloch.engine.plan.OrientationPlan` is rebuilt on that seed, then
+    :func:`select_beams`
+    applies the fixed Klar window -- so the active set is
+    ``seed(g_max_refine) intersect Klar-window(selection)``. Re-seeding from the shared grid (not a
+    previous pruned ``Plan``) lets a widening pool recover beams a narrower one clipped.
+
+    The pool stays inside the existing ``Fgb`` difference support while
+    ``2 * g_max_refine <= grid.g_max``; a candidate past that raises rather than silently truncating
+    (dependent grid resizing is unimplemented; see ``KNOWN_ISSUES.md``).
+    """
+    if 2.0 * g_max_refine > seed.grid.g_max:
+        raise ValueError(
+            f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
+            f"(g_max={seed.grid.g_max:.4g}); dependent grid resizing is not implemented"
+        )
+    beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
+    reseeded = tuple(
+        OrientationPlan.build(
+            seed.grid,
+            beam_hkl,
+            op.pattern,
+            energy=op.energy,
+            thickness=op.thickness,
+            u0=op.u0,
+            orientation=op.orientation,
+        )
+        for op in seed.orientations
+    )
+    return select_beams(selection)(replace(seed, orientations=reseeded))
 
 
 def _reselect(

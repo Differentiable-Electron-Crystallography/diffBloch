@@ -32,11 +32,9 @@ from dataclasses import replace
 
 import numpy as np
 
-from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
-from diffBloch.preprocess.steps.beams import select_beams
+from diffBloch.preprocess.steps.beams import reseed_pool, select_beams
 from diffBloch.specs import BeamSelection
 
 __all__ = [
@@ -150,25 +148,7 @@ def cover_pool(
 
     def run(seed: Plan) -> Plan:
         def build(g_max_refine: float) -> Plan:
-            if 2.0 * g_max_refine > seed.grid.g_max:
-                raise ValueError(
-                    f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
-                    f"(g_max={seed.grid.g_max:.4g}); dependent grid resizing is not implemented"
-                )
-            beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
-            reseeded = tuple(
-                OrientationPlan.build(
-                    seed.grid,
-                    beam_hkl,
-                    op.pattern,
-                    energy=op.energy,
-                    thickness=op.thickness,
-                    u0=op.u0,
-                    orientation=op.orientation,
-                )
-                for op in seed.orientations
-            )
-            return select_beams(selection)(replace(seed, orientations=reseeded))
+            return reseed_pool(seed, selection, g_max_refine=g_max_refine)
 
         return maximize_scalar(
             build,

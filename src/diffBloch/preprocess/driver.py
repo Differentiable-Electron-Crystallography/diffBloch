@@ -24,10 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
-from diffBloch.preprocess.steps.beams import select_beams
+from diffBloch.preprocess.steps.beams import reseed_pool
 from diffBloch.preprocess.steps.coverage import maximize_scalar, plan_coverage
 from diffBloch.specs import BeamSelection
 
@@ -112,30 +110,12 @@ def _windowed_pool(
     integration_semiangle: float,
     selection: BeamSelection,
 ) -> Plan:
-    """Re-seed every orientation from the grid at ``g_max_refine``, then apply the Klar window.
+    """Re-seed the pool at ``g_max_refine`` and apply the window ``integration_semiangle``.
 
-    The driver's build step: ``select_beams(window) applied to seed(g_max_refine)``. Re-seeding from
-    the shared grid (not a previous pruned ``Plan``) is what honours obstruction 1. Guards the
-    ``Fgb`` difference support exactly like
-    :func:`~diffBloch.preprocess.steps.convergence.converge_pool`.
+    The driver's build step, over :func:`~diffBloch.preprocess.steps.beams.reseed_pool` (the shared
+    reseed-and-window builder, which also carries the ``Fgb`` difference-support guard). Unlike the
+    standalone pool levers, the driver *varies the window too*, so it overrides
+    ``selection.integration_semiangle`` with the swept value before delegating.
     """
-    if 2.0 * g_max_refine > plan.grid.g_max:
-        raise ValueError(
-            f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
-            f"(g_max={plan.grid.g_max:.4g}); dependent grid resizing is not implemented"
-        )
-    beam_hkl = seed_beam_hkl(plan.grid, g_max_refine=g_max_refine)
-    reseeded = tuple(
-        OrientationPlan.build(
-            plan.grid,
-            beam_hkl,
-            op.pattern,
-            energy=op.energy,
-            thickness=op.thickness,
-            u0=op.u0,
-            orientation=op.orientation,
-        )
-        for op in plan.orientations
-    )
     windowed = replace(selection, integration_semiangle=integration_semiangle)
-    return select_beams(windowed)(replace(plan, orientations=reseeded))
+    return reseed_pool(plan, windowed, g_max_refine=g_max_refine)

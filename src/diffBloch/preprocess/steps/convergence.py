@@ -47,12 +47,11 @@ from torch import Tensor
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution
 from diffBloch.core.solver import Method
-from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.experiment import RefinementSetup, seed_beam_hkl
+from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.preprocess.steps.beams import select_beams
+from diffBloch.preprocess.steps.beams import reseed_pool, select_beams
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
@@ -245,25 +244,7 @@ def converge_pool(
 
     def run(seed: Plan) -> Plan:
         def build(g_max_refine: float) -> Plan:
-            if 2.0 * g_max_refine > seed.grid.g_max:
-                raise ValueError(
-                    f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
-                    f"(g_max={seed.grid.g_max:.4g}); dependent grid resizing is not implemented"
-                )
-            beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
-            reseeded = tuple(
-                OrientationPlan.build(
-                    seed.grid,
-                    beam_hkl,
-                    op.pattern,
-                    energy=op.energy,
-                    thickness=op.thickness,
-                    u0=op.u0,
-                    orientation=op.orientation,
-                )
-                for op in seed.orientations
-            )
-            return select_beams(selection)(replace(seed, orientations=reseeded))
+            return reseed_pool(seed, selection, g_max_refine=g_max_refine)
 
         return converge_scalar(build, measure, tolerance, start=start_g_max_refine, step=step)
 
