@@ -14,7 +14,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from diffBloch.specs import BeamSelection, HexagonalSearch, RockingCurve, ThicknessGrid
+from diffBloch.specs import BeamSelection, HexagonalSearch, Mosaicity, RockingCurve, ThicknessGrid
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
 # defaults derive from these default instances so the boundary value cannot drift from the
@@ -43,6 +43,7 @@ class NumericsConfig(BaseModel):
     dsg: float = 0.0015
     rsg: float = 0.9
     integration_semiangle: float = 1.0
+    mosaicity_window: int = 5  # moving-average tilt window; faithful private default (Mosaicity)
 
     def to_beam_selection(self) -> BeamSelection:
         """Parse the beam-selection subset into the value-type ``select_beams`` consumes.
@@ -68,10 +69,23 @@ class NumericsConfig(BaseModel):
             semiangle=self.integration_semiangle, sampling=self.rocking_curve_sampling
         )
 
+    def to_mosaicity(self) -> Mosaicity:
+        """Parse the mosaicity subset into the value-type the ``mosaicity`` step consumes.
+
+        ``mosaicity_window`` is the moving-average window over the rocking-curve tilt axis. Unlike
+        the private (which hardcodes 5 and treats its ``mosaicity_num_frames`` config as a mere
+        on/off flag), 2.0 exposes the window as a real, tunable parameter defaulting to the faithful
+        5; see :class:`~diffBloch.specs.Mosaicity` and ``DIVERGENCE.md``. Whether mosaicity is
+        *applied* is a pipeline-composition choice (append the ``mosaicity`` step or not), exactly
+        as for ``integrate_rocking_curve``.
+        """
+        return Mosaicity(window=self.mosaicity_window)
+
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> NumericsConfig:
         self.to_beam_selection()  # the rules live in BeamSelection; fail fast at config load
         self.to_rocking_curve()  # the rules live in RockingCurve; fail fast at config load
+        self.to_mosaicity()  # the rules live in Mosaicity; fail fast at config load
         return self
 
 

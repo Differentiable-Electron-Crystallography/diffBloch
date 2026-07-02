@@ -220,4 +220,6 @@ class RefinementEngine:
             )
             for beam_plan in orientation.beam_plans
         ]
-        return sub[0] if len(sub) == 1 else BlochSolution.integrate(sub)
+        return sub[0] if len(sub) == 1 else BlochSolution.integrate(
+            sub, reduction=orientation.tilt_reduction
+        )

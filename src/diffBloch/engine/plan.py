@@ -20,7 +20,13 @@ from torch import Tensor
 from diffBloch.core.crystal import cell_volume as _cell_volume
 from diffBloch.core.crystal import orientation_basis, reciprocal_cell
 from diffBloch.core.dynamical import BeamPlan, build_beam_plan
-from diffBloch.core.products import AlignmentPlan, PatternBatch, build_alignment_plan
+from diffBloch.core.products import (
+    PLAIN_SUM,
+    AlignmentPlan,
+    PatternBatch,
+    TiltReduction,
+    build_alignment_plan,
+)
 from diffBloch.core.reciprocal import make_hkl_grid, reciprocal_space_gpts
 
 __all__ = [
@@ -93,6 +99,7 @@ class OrientationPlan:
     beam_plans: tuple[BeamPlan, ...]
     pattern: PatternBatch
     alignment: AlignmentPlan
+    tilt_reduction: TiltReduction = PLAIN_SUM
 
     @classmethod
     def build(
@@ -106,6 +113,7 @@ class OrientationPlan:
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
         tilts: NDArray[np.float64] | None = None,
+        tilt_reduction: TiltReduction = PLAIN_SUM,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -132,6 +140,11 @@ class OrientationPlan:
         single identity tilt, so ``beam_plans`` has length 1 and the untilted path is byte-identical
         to before; ``integrate_rocking_curve`` passes the tilt matrices from
         :func:`~diffBloch.preprocess.orientation.rocking_curve_tilts`.
+
+        ``tilt_reduction`` selects how the engine reduces the tilt sub-solutions over the rocking
+        curve: :class:`~diffBloch.core.products.PlainSum` (the default) sums them;
+        :class:`~diffBloch.core.products.MosaicSmoothed` applies mosaicity broadening first. It is a
+        rebuild-preserved attribute (geometry-independent), set by the ``mosaicity`` step.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         thickness_t = torch.as_tensor(
@@ -175,4 +188,5 @@ class OrientationPlan:
             beam_plans=beam_plans,
             pattern=pattern,
             alignment=build_alignment_plan(beam_hkl_t, pattern.hkl),
+            tilt_reduction=tilt_reduction,
         )

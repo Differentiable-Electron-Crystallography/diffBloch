@@ -8,7 +8,9 @@ import torch
 
 from diffBloch.core.products import (
     BlochSolution,
+    MosaicSmoothed,
     PatternBatch,
+    PlainSum,
     align,
     build_alignment_plan,
     intensities,
@@ -97,6 +99,45 @@ def test_integrate_rejects_empty_and_mismatched_beam_sets() -> None:
         BlochSolution.integrate([])
     with pytest.raises(ValueError, match="share the same beam set"):
         BlochSolution.integrate([a, other])
+
+
+def _ramp_tilts(values: list[float]) -> list[BlochSolution]:
+    """One sub-solution per tilt, each a flat intensity ``v`` over a 1-thickness / 2-beam set."""
+    hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
+    thick = torch.tensor([100.0])
+    return [
+        BlochSolution.from_propagation(
+            torch.full((1, 2), v, dtype=torch.float64).to(torch.complex128) ** 0.5, hkl, thick
+        )
+        for v in values
+    ]
+
+
+def test_integrate_default_reduction_is_the_plain_sum() -> None:
+    sols = _ramp_tilts([1.0, 2.0, 3.0, 4.0, 5.0])
+    # The default reduction (PlainSum) is the incoherent sum, identical to passing it explicitly.
+    default = BlochSolution.integrate(sols)
+    plain = BlochSolution.integrate(sols, reduction=PlainSum())
+    assert torch.allclose(default.intensities, torch.full((1, 2), 15.0, dtype=torch.float64))
+    assert torch.allclose(default.intensities, plain.intensities)
+
+
+def test_integrate_mosaic_smoothed_is_moving_average_then_sum() -> None:
+    sols = _ramp_tilts([1.0, 2.0, 3.0, 4.0, 5.0])
+    # window=3 moving average then sum == sum of window means: mean(1,2,3)+mean(2,3,4)+mean(3,4,5)
+    # = 2 + 3 + 4 = 9 (the private zero-pads the smoothed curve, which does not change the sum).
+    mosaic = BlochSolution.integrate(sols, reduction=MosaicSmoothed(3))
+    assert torch.allclose(mosaic.intensities, torch.full((1, 2), 9.0, dtype=torch.float64))
+    # window=1 is the identity: each window mean is the tilt itself, so it equals the plain sum.
+    identity = BlochSolution.integrate(sols, reduction=MosaicSmoothed(1))
+    assert torch.allclose(identity.intensities, torch.full((1, 2), 15.0, dtype=torch.float64))
+    assert torch.allclose(mosaic.amplitudes.abs().square(), mosaic.intensities)
+
+
+def test_integrate_mosaic_window_may_not_exceed_the_tilt_count() -> None:
+    sols = _ramp_tilts([1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match="window 4 exceeds the 3 rocking-curve tilts"):
+        BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
 
 
 def test_pattern_batch_from_observation_record_full() -> None:

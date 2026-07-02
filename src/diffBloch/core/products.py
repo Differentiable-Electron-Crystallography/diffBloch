@@ -33,7 +33,11 @@ __all__ = [
     "AlignedIntensities",
     "AlignmentPlan",
     "BlochSolution",
+    "MosaicSmoothed",
+    "PLAIN_SUM",
     "PatternBatch",
+    "PlainSum",
+    "TiltReduction",
     "align",
     "build_alignment_plan",
     "intensities",
@@ -47,6 +51,49 @@ def intensities(amplitudes: Tensor) -> Tensor:
     Differentiable in ``amplitudes`` (hence back through ``A`` / ``Fgb``).
     """
     return amplitudes.abs().square()
+
+
+@dataclass(frozen=True)
+class PlainSum:
+    """Incoherent sum over the rocking-curve tilts -- the default rotation-frame integration."""
+
+
+@dataclass(frozen=True)
+class MosaicSmoothed:
+    """Mosaicity: a width-``window`` moving average over the tilt axis, applied before the sum.
+
+    Models crystal mosaic spread by broadening the rocking curve (the private ``moving_average``).
+    ``window`` consecutive tilts are averaged in a sliding window, then the smoothed curve is
+    summed. Equivalently the integrated intensity is the sum of the ``N - window + 1`` window means:
+    the private zero-pads the smoothed curve back to length ``N`` before summing, and those zeros do
+    not change the sum. ``window`` must not exceed the tilt count ``N`` (checked at reduction time).
+    """
+
+    window: int
+
+
+# The tilt-axis reduction of a rocking curve: a plain incoherent sum, or a mosaicity-broadened sum.
+# Carried per-orientation on ``OrientationPlan`` (default ``PlainSum``) and applied by
+# :meth:`BlochSolution.integrate`; a discriminated union rather than an optional ``window`` field.
+TiltReduction = PlainSum | MosaicSmoothed
+
+# Shared immutable default (``PlainSum`` is stateless), so signatures avoid a call-in-default.
+PLAIN_SUM: TiltReduction = PlainSum()
+
+
+def _reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
+    """Reduce stacked per-tilt intensities ``(N_tilts, T, N_beams)`` over the tilt axis."""
+    match reduction:
+        case PlainSum():
+            return stacked.sum(dim=0)
+        case MosaicSmoothed(window=window):
+            n_tilts = stacked.shape[0]
+            if window > n_tilts:
+                raise ValueError(
+                    f"mosaicity window {window} exceeds the {n_tilts} rocking-curve tilts"
+                )
+            windows = stacked.unfold(0, window, 1)  # (N - window + 1, T, N_beams, window)
+            return windows.mean(dim=-1).sum(dim=0)
 
 
 @dataclass(frozen=True)
@@ -81,27 +128,31 @@ class BlochSolution:
         return cls(amplitudes, intensities(amplitudes), beam_hkl, thicknesses)
 
     @classmethod
-    def integrate(cls, solutions: Sequence[BlochSolution]) -> Self:
-        """Incoherently sum tilt sub-solutions into one rocking-curve-integrated solution.
+    def integrate(
+        cls, solutions: Sequence[BlochSolution], *, reduction: TiltReduction = PLAIN_SUM
+    ) -> Self:
+        """Incoherently reduce tilt sub-solutions into one rocking-curve-integrated solution.
 
         Rocking-curve integration samples N slightly-tilted sub-orientations sharing one beam set
-        and sums their *intensities* ``|psi|^2`` -- an incoherent sum, the physical rotation-frame
-        integration -- not their amplitudes. All sub-solutions must share the beam set
-        (``beam_hkl``) and ``thicknesses``: the tilts reuse the one nominal beam set, varying only
-        geometry. The integrated observable has no single exit-wave, so ``amplitudes`` is stored as
-        the real effective amplitude ``sqrt(total intensity)`` (phase is physically lost in an
-        incoherent sum); only ``intensities`` feeds alignment/losses (``amplitudes`` has no
-        downstream consumer). A single-element sequence returns an equivalent solution (the N=1
+        and reduces their *intensities* ``|psi|^2`` over the tilt axis (an incoherent reduction, the
+        physical rotation-frame integration -- not their amplitudes). ``reduction`` selects the
+        tilt-axis reduction: :class:`PlainSum` (the default) sums the tilts; :class:`MosaicSmoothed`
+        applies a moving-average mosaicity broadening first. All sub-solutions must share the beam
+        set (``beam_hkl``) and ``thicknesses``: the tilts reuse the one nominal beam set, varying
+        only geometry. The integrated observable has no single exit-wave, so ``amplitudes`` is
+        stored as the real effective amplitude ``sqrt(total intensity)`` (phase is physically lost
+        in an incoherent reduction); only ``intensities`` feeds alignment/losses (``amplitudes`` has
+        no downstream consumer). A single-element sequence returns an equivalent solution (the N=1
         identity is handled by the caller returning the sub-solution directly).
         """
         if not solutions:
             raise ValueError("integrate requires at least one solution")
         first = solutions[0]
-        total = first.intensities
         for other in solutions[1:]:
             if not torch.equal(other.beam_hkl, first.beam_hkl):
                 raise ValueError("integrated solutions must share the same beam set")
-            total = total + other.intensities
+        stacked = torch.stack([s.intensities for s in solutions])  # (N_tilts, T, N_beams)
+        total = _reduce_tilts(stacked, reduction)
         amplitudes = total.sqrt().to(first.amplitudes.dtype)
         return cls(amplitudes, total, first.beam_hkl, first.thicknesses)
 

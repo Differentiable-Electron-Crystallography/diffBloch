@@ -28,6 +28,7 @@ __all__ = [
     "ConvergenceTest",
     "ConvergenceTolerance",
     "HexagonalSearch",
+    "Mosaicity",
     "RockingCurve",
     "ThicknessGrid",
 ]
@@ -192,6 +193,32 @@ class RockingCurve:
             raise ValueError("sampling must be >= 1")
         if self.geometry not in ("continuous_rotation", "precession"):
             raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
+
+
+@dataclass(frozen=True)
+class Mosaicity:
+    """Mosaicity broadening of the rocking curve: a moving-average window over the tilt axis.
+
+    Crystal mosaic spread smears each reflection's rocking curve; the private models it as a
+    ``window``-wide moving average of the per-tilt intensities before the sum-over-tilts
+    integration. ``window`` is the number of consecutive tilts averaged; it must be ``>= 1`` and, at
+    reduction time, ``<= sampling`` (the tilt count). ``window = 1`` is the identity (no
+    broadening), so composing the ``mosaicity`` step with it is a no-op. This is a modifier on top
+    of the rocking-curve integration (:class:`RockingCurve`) -- it only has meaning once the tilt
+    set exists, so the ``mosaicity`` step is ordered after ``integrate_rocking_curve``.
+
+    **Divergence from ``diffBloch_private`` (recorded):** the private hardcodes the moving-average
+    ``window_size = 5`` and uses its ``mosaicity_num_frames`` config only as an on/off flag (the
+    frame count never reaches the window). 2.0 keeps the faithful **default of 5** but exposes
+    ``window`` as a real, tunable config parameter -- a principled fix of the private quirk (the
+    config field name implied a tunable window the code ignored). See ``DIVERGENCE.md``.
+    """
+
+    window: int = 5  # tilts averaged per sliding window; faithful private default (hardcoded there)
+
+    def __post_init__(self) -> None:
+        if self.window < 1:
+            raise ValueError("window must be >= 1")
 
 
 @dataclass(frozen=True)

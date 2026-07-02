@@ -58,12 +58,14 @@ from diffBloch.preprocess.steps.coverage import (
 )
 from diffBloch.preprocess.steps.fit_orientation import fit_orientation
 from diffBloch.preprocess.steps.fit_thickness import fit_thickness
+from diffBloch.preprocess.steps.mosaicity import mosaicity
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     BeamSelection,
     ConvergenceTest,
     ConvergenceTolerance,
     HexagonalSearch,
+    Mosaicity,
     RockingCurve,
     ThicknessGrid,
 )
@@ -76,6 +78,7 @@ __all__ = [
     "ExperimentSetup",
     "HexagonalSearch",
     "InferenceResult",
+    "Mosaicity",
     "Plan",
     "PlanSplit",
     "PlanStep",
@@ -102,6 +105,7 @@ __all__ = [
     "iterate_until",
     "klar_beam_mask",
     "maximize_scalar",
+    "mosaicity",
     "orientation_basis",
     "orientation_matrices",
     "pipeline",

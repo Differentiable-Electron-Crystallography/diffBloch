@@ -192,3 +192,25 @@ lives in this codebase, and the test that pins it. The defects are also recorded
 - **Where:** `preprocess/coverage.py`; decision context in `design/decisions/stage11-convergence.md`
   ("two operations are two kinds of objective").
 - **Found:** diffBloch 2.0 stage 11 -- coverage sweep (slice 5).
+
+### Mosaicity exposes a tunable moving-average window; the private hardcodes 5
+
+- **Original:** `diffBloch/diffraction_dataset.py`, `create_hkl_intensity_map` /
+  `moving_average`. Mosaicity broadening applies a moving average over the tilt axis before the
+  sum-over-tilts integration, but the window is **hardcoded** (`window_size=5`). The config field
+  `mosaicity_num_frames` (threaded from the dataloader) is used only as a truthy on/off flag in
+  `if mosaicity:` -- its value never reaches the window, so the config name implies a tunable
+  window the code silently ignores.
+- **2.0 behaviour:** the moving-average window is a real, validated parameter --
+  `specs.Mosaicity.window` (config `numerics.mosaicity_window`, `NumericsConfig.to_mosaicity`),
+  **defaulting to the faithful 5**. Whether mosaicity is *applied* is a composition choice (append
+  the `mosaicity` step or not), exactly as for `integrate_rocking_curve`; `window = 1` is the
+  identity.
+- **Why extend, not replicate:** the private's quirk (a named config that does nothing to the
+  window) is a latent trap. Exposing the window makes the knob honest and testable while the default
+  reproduces the private behaviour bit-for-bit; a reduction with `window = 5` on the reference's
+  42-tilt curve is exactly the private moving average.
+- **Where:** `core/products.py` (`MosaicSmoothed` / `BlochSolution.integrate`),
+  `preprocess/steps/mosaicity.py`, `specs.py` (`Mosaicity`), `config/schema.py`; exercised by
+  `tests/unit/test_mosaicity.py` and `test_core_products.py::test_integrate_mosaic_*`.
+- **Found:** diffBloch 2.0 post-stage-11 -- mosaicity (C3c).
