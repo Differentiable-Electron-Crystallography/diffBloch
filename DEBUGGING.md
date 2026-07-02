@@ -99,6 +99,12 @@ first-order rate for near-Ewald reflections); the private's filter frame has bea
 *no* fit-coupling yet). Candidates for the last bit: exact obs matching / `I > 3σ` bookkeeping (965 vs
 958), mosaicity (1-frame, tiny), minor forward-model details, and the fit-coupling invariant above.
 
+**Scheduling (decided 2026-07): this residual is post-stage-11 work.** Finishing stage 11 (the
+remaining convergence slices — pool lever + cross-lever fixpoint, `converge_sampling`, the coverage
+`initial_minimum_param_sweep`, and the preprocess driver) takes priority. Only after stage 11 closes
+do we chase `0.0594 → 0.0438` and wire the C3 fit/eval-integration coupling (propagating `op.tilts`
+through `fit_orientation`). This section is the parked home for that workstream until then.
+
 **Superseded lead.** Earlier hypothesis (private takes a per-tilt Klar *union* via
 `collect_unique_hkls`, so we were *missing* reflections) was wrong on direction: `filter_hkls`
 computes the mask **once at the untilted/avg goniometer position**, and we had *more* reflections,
