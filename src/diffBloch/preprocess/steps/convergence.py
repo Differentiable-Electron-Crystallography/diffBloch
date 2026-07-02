@@ -48,12 +48,12 @@ from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution
 from diffBloch.core.solver import Method
 from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.beams import select_beams
 from diffBloch.preprocess.experiment import RefinementSetup, seed_beam_hkl
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
-from diffBloch.preprocess.rocking_curve import integrate_rocking_curve
 from diffBloch.preprocess.scoring import build_engine
+from diffBloch.preprocess.steps.beams import select_beams
+from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
 __all__ = [
@@ -175,7 +175,8 @@ def converge_beams(
     """Return a ``Plan -> Plan`` step: widen ``integration_semiangle`` until the pattern stabilises.
 
     The window lever of beam-set convergence (the physically primary "how many near-Ewald beams").
-    Each candidate re-runs :func:`~diffBloch.preprocess.beams.select_beams` from the incoming *seed*
+    Each candidate re-runs :func:`~diffBloch.preprocess.steps.beams.select_beams` from the incoming
+    *seed*
     Plan at a wider ``integration_semiangle`` -- selecting from the fixed seed each time, not from
     the
     previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
@@ -215,7 +216,8 @@ def converge_pool(
     from the shared grid at a wider ``g_max_refine``
     (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), rebuilds each
     :class:`~diffBloch.engine.plan.OrientationPlan` on that seed, then re-applies the
-    fixed Klar window via :func:`~diffBloch.preprocess.beams.select_beams` -- so the active set is
+    fixed Klar window via :func:`~diffBloch.preprocess.steps.beams.select_beams` -- so the active
+    set is
     ``seed(g_max_refine) intersect Klar-window(selection)`` at each step. The sweep starts at
     ``start_g_max_refine`` and clicks up by ``step`` until :func:`converge_scalar` settles the
     pattern (first sub-threshold step wins); it settles when the widened pool stops admitting beams
@@ -280,7 +282,7 @@ def converge_sampling(
 
     The forward-model convergence lever (independent of the two beam levers): each candidate bakes
     the rocking-curve integration geometry at a finer ``rocking_curve_sampling`` (the tilt count)
-    via :func:`~diffBloch.preprocess.rocking_curve.integrate_rocking_curve`, so the summed
+    via :func:`~diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve`, so the summed
     ``|psi|^2`` over tilts approaches the continuous rotation-frame integral. The sweep starts at
     ``rocking.sampling`` and clicks up by ``step`` (rounded to a whole tilt count) until
     :func:`converge_scalar` settles the pattern (first sub-threshold step wins): it settles when a

@@ -12,29 +12,12 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 ``from_experiment`` construction land in later slices.
 """
 
-from diffBloch.preprocess.beams import klar_beam_mask, select_beams
-from diffBloch.preprocess.convergence import (
-    converge_beams,
-    converge_pool,
-    converge_sampling,
-    converge_scalar,
-    simulation_converged,
-    simulation_rfactor,
-)
-from diffBloch.preprocess.coverage import (
-    cover_beams,
-    cover_pool,
-    maximize_scalar,
-    plan_coverage,
-)
 from diffBloch.preprocess.experiment import (
     ExperimentSetup,
     PlanSplit,
     RefinementSetup,
     from_experiment,
 )
-from diffBloch.preprocess.fit_orientation import fit_orientation
-from diffBloch.preprocess.fit_thickness import fit_thickness
 from diffBloch.preprocess.inference import (
     InferenceResult,
     RotationInference,
@@ -56,8 +39,25 @@ from diffBloch.preprocess.pipeline import (
     pipeline,
 )
 from diffBloch.preprocess.plan import Plan
-from diffBloch.preprocess.rocking_curve import integrate_rocking_curve
 from diffBloch.preprocess.scoring import build_engine, score_orientations
+from diffBloch.preprocess.steps.beams import klar_beam_mask, select_beams
+from diffBloch.preprocess.steps.convergence import (
+    converge_beams,
+    converge_pool,
+    converge_sampling,
+    converge_scalar,
+    simulation_converged,
+    simulation_rfactor,
+)
+from diffBloch.preprocess.steps.coverage import (
+    cover_beams,
+    cover_pool,
+    maximize_scalar,
+    plan_coverage,
+)
+from diffBloch.preprocess.steps.fit_orientation import fit_orientation
+from diffBloch.preprocess.steps.fit_thickness import fit_thickness
+from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     BeamSelection,
     ConvergenceTolerance,

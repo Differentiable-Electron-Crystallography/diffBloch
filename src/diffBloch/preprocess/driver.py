@@ -25,10 +25,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.beams import select_beams
-from diffBloch.preprocess.coverage import maximize_scalar, plan_coverage
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.steps.beams import select_beams
+from diffBloch.preprocess.steps.coverage import maximize_scalar, plan_coverage
 from diffBloch.specs import BeamSelection
 
 __all__ = [
@@ -116,7 +116,8 @@ def _windowed_pool(
 
     The driver's build step: ``select_beams(window) applied to seed(g_max_refine)``. Re-seeding from
     the shared grid (not a previous pruned ``Plan``) is what honours obstruction 1. Guards the
-    ``Fgb`` difference support exactly like :func:`~diffBloch.preprocess.convergence.converge_pool`.
+    ``Fgb`` difference support exactly like
+    :func:`~diffBloch.preprocess.steps.convergence.converge_pool`.
     """
     if 2.0 * g_max_refine > plan.grid.g_max:
         raise ValueError(

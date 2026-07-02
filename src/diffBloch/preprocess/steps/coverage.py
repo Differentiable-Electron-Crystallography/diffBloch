@@ -13,7 +13,8 @@ no new match -- the minimal beam set that still covers the data.
   simulated beam set, with no intensity gate).
 - :func:`maximize_scalar` -- the parameter-agnostic driver: click a scalar knob upward, keep the
   build while the objective strictly increases, return the last build at the first non-increase, or
-  raise at a hard cap. Mirrors :func:`~diffBloch.preprocess.convergence.converge_scalar` for the
+  raise at a hard cap. Mirrors :func:`~diffBloch.preprocess.steps.convergence.converge_scalar` for
+  the
   match-count objective.
 - :func:`cover_beams` / :func:`cover_pool` -- the ``Plan -> Plan`` adapters for the two beam levers
   (Klar window ``integration_semiangle`` and seed pool ``g_max_refine``).
@@ -32,10 +33,10 @@ from dataclasses import replace
 import numpy as np
 
 from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess.beams import select_beams
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.steps.beams import select_beams
 from diffBloch.specs import BeamSelection
 
 __all__ = [
@@ -102,7 +103,8 @@ def cover_beams(selection: BeamSelection, *, step: float, max_iterations: int = 
     """Return a ``Plan -> Plan`` step: widen the Klar window to the minimum that maximises coverage.
 
     The window (``integration_semiangle``) lever of the coverage sweep: each candidate re-runs
-    :func:`~diffBloch.preprocess.beams.select_beams` from the incoming seed at a wider window, and
+    :func:`~diffBloch.preprocess.steps.beams.select_beams` from the incoming seed at a wider window,
+    and
     :func:`maximize_scalar` keeps widening while :func:`plan_coverage` strictly increases, stopping
     at the first window that admits no new matched reflection. ``step`` must be positive. See
     ``design/decisions/stage11-convergence.md``.
@@ -139,7 +141,7 @@ def cover_pool(
     rebuilds each :class:`~diffBloch.engine.plan.OrientationPlan`, then re-applies the fixed Klar
     window (``selection``); :func:`maximize_scalar` keeps widening while :func:`plan_coverage`
     strictly increases. Guards the ``Fgb`` difference support exactly like
-    :func:`~diffBloch.preprocess.convergence.converge_pool`: a candidate with
+    :func:`~diffBloch.preprocess.steps.convergence.converge_pool`: a candidate with
     ``2 * g_max_refine > grid.g_max`` raises (dependent grid resizing is unimplemented; see
     ``KNOWN_ISSUES.md``). ``step`` must be positive.
     """

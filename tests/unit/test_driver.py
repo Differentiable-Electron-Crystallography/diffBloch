@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 from tests.unit.test_convergence import _seed_system
 
-from diffBloch.preprocess.coverage import plan_coverage
 from diffBloch.preprocess.driver import ConvergenceState, _windowed_pool, run_coverage_phase
+from diffBloch.preprocess.steps.coverage import plan_coverage
 from diffBloch.specs import BeamSelection
 
 _SELECTION = BeamSelection(integration_semiangle=1.0)  # rsg/dsg/geometry fixed; angle from state
