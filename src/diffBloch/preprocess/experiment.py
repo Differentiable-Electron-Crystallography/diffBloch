@@ -39,6 +39,7 @@ __all__ = [
     "PlanSplit",
     "RefinementSetup",
     "from_experiment",
+    "seed_beam_hkl",
 ]
 
 
@@ -171,7 +172,7 @@ def from_experiment(
     """
     grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=config.numerics.g_max)
     energy = wavelength2energy(observations.wavelength)
-    beam_hkl = _seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
+    beam_hkl = seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
     orientations = orientation_matrices(
         observations.ub_matrix,
         observations.cell_parameters,
@@ -203,8 +204,14 @@ def from_experiment(
     )
 
 
-def _seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.int64]:
-    """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000)."""
+def seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.int64]:
+    """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000).
+
+    The orientation-independent candidate pool ``{hkl in grid : |g| <= g_max_refine}`` that
+    ``from_experiment`` lays down and the pool-lever convergence step (``converge_pool``) re-seeds
+    at a wider radius. Selecting from the shared ``grid`` keeps every beam difference inside the
+    ``Fgb`` support as long as ``2 * g_max_refine <= grid.g_max`` (the caller's responsibility).
+    """
     grid_hkl = np.asarray(grid.grid_hkl)
     beams: NDArray[np.int64] = grid_hkl[
         gmax_mask(grid_hkl, np.asarray(grid.reciprocal_basis), g_max_refine)

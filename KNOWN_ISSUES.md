@@ -4,6 +4,24 @@ Latent bugs and deferred fixes discovered during development, recorded here so t
 discoverable instead of being buried in commit messages. Each entry gives a precise location, the
 impact, and the intended fix. Close an entry by deleting it in the commit that fixes it.
 
+## `converge_pool` cannot grow `g_max_refine` past the grid: dependent grid-resize is unimplemented
+
+- **Location:** `preprocess/convergence.py`, `converge_pool` (the `build` closure's guard).
+- **What:** the pool lever re-seeds beams from the shared `ScatteringGrid` at a wider
+  `g_max_refine`. That stays inside the `Fgb` difference support only while
+  `2 * g_max_refine <= grid.g_max`; a candidate beyond it needs the grid *itself* to grow (a
+  dependent-sizing step: rebuild `ScatteringGrid.from_cell` at a larger `g_max`, re-tabulate `Fgb`).
+  That resize is **not implemented** -- `converge_pool` raises a `ValueError` instead.
+- **Impact:** none on the quartz anchor (`g_max_refine = 1.6`, `g_max = 4.5`, so the pool can nearly
+  double before the bound bites) and low in general (convergence settles well before the pool
+  approaches half the grid extent). It only bites a dataset whose converged pool would exceed
+  `grid.g_max / 2`, which then fails loudly rather than silently truncating.
+- **Intended fix:** when the guard trips, grow the grid `g_max` as a dependent sizing step before
+  re-seeding (the partial-order dependency already named in `design/decisions/stage11-convergence.md`,
+  "growing `g_max_refine` implies a grid-`g_max` sizing step before re-selection"), then continue the
+  sweep. Deferred until a dataset needs it.
+- **Found:** diffBloch 2.0 stage 11 (convergence, pool lever).
+
 ## Precision is hardcoded to float64, which blocks Apple-GPU runs and throttles consumer NVIDIA GPUs
 
 The codebase hardcodes `torch.float64` in ~75 places. That keeps the dynamical-diffraction maths

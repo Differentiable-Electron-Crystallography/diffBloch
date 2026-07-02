@@ -1,5 +1,5 @@
 """Slice 11: the convergence machinery -- ``simulation_converged``, ``converge_scalar``,
-``converge_beams``.
+``converge_beams``, ``converge_pool``.
 
 Uses the same fast synthetic silicon system as ``test_fit_thickness`` (no heavy fixture sim). The
 check compares two *simulations*, so the orientations' observed patterns are irrelevant
@@ -10,10 +10,13 @@ tolerance threshold gates, and that identical Plans read as converged.
 ``converge_scalar`` (the parameter-agnostic driver) is tested purely with a scripted R-factor
 sequence and an identity ``build`` -- no simulation -- so the skip-null / patience / cap logic is
 pinned in isolation. ``converge_beams`` is then exercised end-to-end: widening the Klar window over
-a richer seed until the pattern saturates.
+a richer seed until the pattern saturates. ``converge_pool`` widens the ``g_max_refine`` candidate
+pool the same way, with a guard that raises past the grid's beam-difference support.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -26,10 +29,12 @@ from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import (
     RefinementSetup,
     converge_beams,
+    converge_pool,
     converge_scalar,
     select_beams,
     simulation_converged,
 )
+from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import BeamSelection, ConvergenceTolerance
 
@@ -243,3 +248,63 @@ def test_converge_beams_rejects_non_positive_step() -> None:
     refinement, seed = _seed_system()
     with pytest.raises(ValueError, match="step must be positive"):
         converge_beams(BeamSelection(), refinement, ConvergenceTolerance(), step=0.0)
+
+
+# --- converge_pool: the coupled seed-radius (g_max_refine) lever ---
+
+
+def _pool_active_count(seed: Plan, g_max_refine: float, semiangle: float) -> int:
+    """Active beam count after re-seeding at ``g_max_refine`` and applying the Klar window."""
+    beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
+    reseeded = tuple(
+        OrientationPlan.build(
+            seed.grid, beam_hkl, op.pattern, energy=op.energy,
+            thickness=op.thickness, u0=op.u0, orientation=op.orientation,
+        )
+        for op in seed.orientations
+    )
+    pruned = select_beams(BeamSelection(integration_semiangle=semiangle))(
+        replace(seed, orientations=reseeded)
+    )
+    return len(pruned.orientations[0].beam_hkl)
+
+
+def test_converge_pool_widens_the_seed_until_the_pattern_settles() -> None:
+    refinement, seed = _seed_system()
+    # Widen the g_max_refine candidate pool (window held at 1.0). The active set grows as the pool
+    # admits more near-Ewald beams, then the consecutive-simulation change settles below threshold.
+    step = converge_pool(
+        BeamSelection(integration_semiangle=1.0),
+        refinement,
+        ConvergenceTolerance(r_factor_threshold=0.05, patience=2, max_iterations=20),
+        start_g_max_refine=0.5,
+        step=0.1,
+    )
+    converged = step(seed)
+
+    started = _pool_active_count(seed, g_max_refine=0.5, semiangle=1.0)
+    assert started < len(converged.orientations[0].beam_hkl)
+
+
+def test_converge_pool_raises_past_the_grid_difference_support() -> None:
+    refinement, seed = _seed_system()
+    # The synthetic grid is g_max=2.2, so the pool is difference-safe only to g_max_refine=1.1;
+    # a tolerance that never settles drives the sweep past that bound, which must raise (not
+    # silently truncate) -- dependent grid resizing is unimplemented (KNOWN_ISSUES.md).
+    step = converge_pool(
+        BeamSelection(integration_semiangle=1.0),
+        refinement,
+        ConvergenceTolerance(r_factor_threshold=1e-9, patience=1, max_iterations=50),
+        start_g_max_refine=1.0,
+        step=0.2,
+    )
+    with pytest.raises(ValueError, match="exceeds the grid's beam-difference support"):
+        step(seed)
+
+
+def test_converge_pool_rejects_non_positive_step() -> None:
+    refinement, seed = _seed_system()
+    with pytest.raises(ValueError, match="step must be positive"):
+        converge_pool(
+            BeamSelection(), refinement, ConvergenceTolerance(), start_g_max_refine=0.5, step=0.0
+        )

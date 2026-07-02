@@ -15,6 +15,7 @@ fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_t
 from diffBloch.preprocess.beams import klar_beam_mask, select_beams
 from diffBloch.preprocess.convergence import (
     converge_beams,
+    converge_pool,
     converge_scalar,
     simulation_converged,
     simulation_rfactor,
@@ -75,6 +76,7 @@ __all__ = [
     "build_engine",
     "busing_levy_matrix",
     "converge_beams",
+    "converge_pool",
     "converge_scalar",
     "fit_orientation",
     "fit_thickness",

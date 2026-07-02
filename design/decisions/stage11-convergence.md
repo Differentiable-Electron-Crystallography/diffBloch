@@ -172,6 +172,17 @@ Today only `converge_beams` (the window lever) exists, and it is self-contained.
 below — block coordinate descent — activates once the pool lever (`g_max_refine`) and, later,
 `converge_sampling` join:
 
+> **Implementation note (slice 3, pool lever landed).** The joint fixpoint is **not** a naive
+> `iterate_until(pipeline([converge_beams, converge_pool]))`. Two obstructions surfaced when the pool
+> lever landed: (1) `converge_beams` re-selects from an *unpruned* seed, but `converge_pool` *emits a
+> window-pruned* Plan, so feeding one into the other loses candidates; (2) the two levers share
+> scalar state — the window `integration_semiangle` and the pool `g_max_refine` — that the `Plan`
+> does not carry, so a fixed-spec composition uses a stale scalar for the other lever. The true block
+> coordinate descent therefore belongs to the **preprocess driver** (a later slice), which holds the
+> unpruned candidate pool and the two scalars as explicit state, converges one lever, feeds its
+> settled scalar to the other, and repeats until a whole pass is stable. `converge_pool` ships as the
+> standalone lever; the cross-lever fixpoint wiring is deferred to the driver.
+
 - **Partial order (sizing dependency):** the grid must contain any beam a wider pool keeps, so
   growing `g_max_refine` implies a grid-`g_max` *sizing* step **before** re-selection.
   `converge_sampling` is independent of the beam levers.
