@@ -10,6 +10,17 @@ match the simulation to *observed* data.
 `programs/convergence_testing.py` + `configs/convergence_test/base.yaml`. The private is the
 authoritative source for the algorithm; this records the faithful 2.0 shape.
 
+**Private structure (accurate names).** `convergence_testing.py` exposes three operations dispatched
+by `convergence_testing(cfg)`: `_run_initial_minimum_param_sweep` (coverage / match-count objective),
+`_run_hyperparams_optimization` (self-stability via `_compute_step_rfactor`, sweeping `g_max` ->
+`tilt_steps` -> `sg_max` **inline** — there are no per-knob `optimize_*` functions), and `both`. The
+2.0 analog of `_run_hyperparams_optimization`'s inline sweeps is the `converge_*` step family
+(`converge_beams` / `converge_pool` / `converge_sampling`); `_run_initial_minimum_param_sweep` is the
+coverage step; `both` is the operation discriminated union. *(Correction of record: commits
+`10fd0f9` and `20ca73b` cited `optimize_gmax` / `optimize_tilt_steps` as the analogs — those function
+names do not exist; the real analog is `_run_hyperparams_optimization`'s inline `g_max` / `tilt_steps`
+sweeps.)*
+
 ## The metric is self-stability, not fit-to-data — so the verb is `converge_*`, not `fit_*`
 
 `fit_orientation` / `fit_thickness` minimise a weighted R-factor of **simulation vs observation**.
@@ -39,8 +50,8 @@ convergence.
 
 ## The knobs consolidate: the private's `g_max`/`sg_max` are two levers on *one* quantity
 
-The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`) as three independent `optimize_*`
-passes. Porting them showed that framing is a *false independence*: in 2.0 they do not correspond to
+The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`) as three inline passes inside
+`_run_hyperparams_optimization`. Porting them showed that framing is a *false independence*: in 2.0 they do not correspond to
 three independent cost axes, because 2.0 separates concerns the private conflates. Applying
 "decompose by coupled home, not false independence", the corrected model has **one** beam concern
 (with two coupled levers) plus a separate, deferred sampling axis.
