@@ -106,6 +106,31 @@ of anchoring to `State` is *conceptual* -- it tells us the shape is correct and 
 not a reason to take the import. Revisiting `returns` is a recorded *possible* roadmap task (if the
 driver / `Result` story ever grows enough to earn it), not a commitment.
 
+## Where `refine` fits (same family, different animal)
+
+`refine` is *also* an iterative loop whose state lives off the threaded value (optimizer momentum,
+iteration, loss history), so by the selection test it too is a "driver", and it is the terminal
+exception to "can it be a `Plan -> Plan`?". But it should **not** share the convergence driver's
+implementation, because it sits on the far side of two boundaries:
+
+- **`Plan -> Plan` vs `Plan -> Result`.** The convergence driver stays *inside* the transformer
+  world -- `evalState` hands back a `Plan` and it nests as one more step. `refine` *leaves* it: it
+  consumes the frozen `Plan` and threads *differentiable parameters* (structure factors, ADPs,
+  thickness) to a `Result`. It is the pipeline's exit, not a step in it.
+- **Pure `State` vs effectful loop.** The convergence driver is a *pure* `State ConvergenceState
+  Plan` runner coordinating several pure, swappable `Plan -> Plan` levers. `refine` has no such
+  structure -- one loss, one autograd + torch-optimizer update rule, device + RNG. Its state is
+  genuinely effectful (`StateT ... IO` -- an ordinary training loop). Dressing it as a pure `State`
+  runner for uniformity would be the god-object anti-pattern this doc already warns against.
+
+They share the abstract *pattern* ("iterate off-value state until a stopping rule") but not a
+shape: different threaded value, effectful state. So `refine` is *not* the second same-shape caller
+that would justify a generic runner (see the abstraction stance above); it stays the settled
+effectful terminal (`stage10-refinement-loop.md`). A `StateT`-over-effects layer only earns its
+place if several cross-cutting *effectful* concerns (device / RNG / telemetry / checkpoint) ever
+thread the
+whole pipeline -- the `returns` roadmap note, not now.
+
 ## Consequences
 
 - **No `pipeline([window, pool])` fixpoint exists or should be added.** The coupled fixpoint is the
