@@ -9,8 +9,9 @@ before and orthogonally to the accuracy fit. This module has three layers:
 - :func:`simulation_rfactor` -- the measurement: ``(previous, current) -> float``, the mean
   per-orientation R-factor between two Plans' simulations (0 when they are identical).
 - :func:`converge_scalar` -- the parameter-agnostic driver: given a ``build(value) -> object`` and a
-  ``measure`` it clicks a scalar knob upward until the built object settles (skip-null + patience +
-  cap). It knows nothing about beams (or even Plans); adapters instantiate it.
+  ``measure`` it clicks a scalar knob upward until two consecutive builds stop changing (the
+  R-factor drops below threshold), or a hard cap raises. It knows nothing about beams (or even
+  Plans); adapters instantiate it.
 - :func:`converge_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
   ``integration_semiangle`` until the pattern stabilises, re-running ``select_beams`` from the seed.
 - :func:`converge_pool` -- the coupled second beam lever: widens the ``g_max_refine`` candidate
@@ -25,9 +26,13 @@ before and orthogonally to the accuracy fit. This module has three layers:
 :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
 :func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint.
 
-Faithful to ``diffBloch_private`` ``convergence_testing`` (``_compute_step_rfactor`` per-orientation
-``rbragg_abs`` averaged; ``optimize_sgmax`` window sweep), correcting its plateau bug (skip-null +
-patience) and consolidating its knobs. See ``design/decisions/stage11-convergence.md``.
+Faithful to ``diffBloch_private`` ``convergence_testing`` (branch
+``pattern-vis-convergence-testing``): ``_run_hyperparams_optimization``'s nested ``optimize_gmax`` /
+``optimize_sgmax`` / ``optimize_tilt_steps`` sweeps, each stopping the first time the
+per-orientation
+``rbragg_abs`` (``_compute_step_rfactor``) drops below ``r_factor_threshold``. 2.0 keeps that exact
+stopping rule (no patience, no skip-null) and consolidates the private's knobs. See
+``design/decisions/stage11-convergence.md``.
 """
 
 from __future__ import annotations
@@ -67,11 +72,6 @@ type SimulationRfactor = Callable[[Plan, Plan], float]
 # weight by; a near-zero sigma makes ``rbragg`` effectively unweighted while keeping its
 # ``I > 3*sigma`` mask inclusive (the private uses sigmas = 1e-10 for the same reason).
 _UNWEIGHTED_SIGMA = 1e-10
-
-# A candidate whose simulation is bit-identical to the previous one yields exactly R = 0 (the
-# ``optimal_scale`` grid contains scale 1.0 and the intensities match), so anything at or below this
-# is a *null* step -- the knob grew but the discrete beam set, hence the pattern, did not change.
-_NULL_RFACTOR = 1e-9
 
 
 def simulation_rfactor(
@@ -120,8 +120,8 @@ def simulation_converged(
     compared against ``tolerance.r_factor_threshold``. This is the boolean
     :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
     :func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint (the cross-lever
-    composition); :func:`converge_scalar` uses the underlying float measure directly so it can also
-    detect null steps.
+    composition); :func:`converge_scalar` uses the underlying float measure directly, applying the
+    same threshold inline.
     """
     measure = simulation_rfactor(refinement, method=method)
 
@@ -139,38 +139,27 @@ def converge_scalar[T](
     start: float,
     step: float,
 ) -> T:
-    """Grow a scalar knob until the built object stops changing; return the converged object.
+    """Grow a scalar knob until two consecutive builds stop changing; return the converged object.
 
     The parameter-agnostic convergence driver -- it knows nothing about beams or Plans.
     ``build(value)`` rebuilds the object at a knob value; ``measure(previous, candidate)`` is the
     consecutive-output R-factor (0 when identical). Starting from ``start`` and clicking by ``step``
-    each iteration, it declares convergence after ``tolerance.patience`` consecutive *settled*
-    steps, where a step is settled when its R-factor is below ``tolerance.r_factor_threshold`` or
-    (once settling has begun) is *null* (the output did not change). A null step **before** any
-    settling is skipped -- the knob is merely too coarse to have moved the discrete output yet, not
-    evidence of convergence; counting it is exactly the private's plateau bug, which this corrects.
-    A changed step at or above the threshold resets the streak. Raises ``RuntimeError`` if
-    ``tolerance.max_iterations`` steps pass without convergence (silent non-convergence is never
-    returned, matching :func:`~diffBloch.preprocess.pipeline.iterate_until`).
+    each iteration, it returns the first candidate whose R-factor against the previous build is
+    below ``tolerance.r_factor_threshold``. This is the private's exact stopping rule -- the first
+    dip stops the sweep, and an unchanged build (R = 0) counts as converged -- with no patience and
+    no null-step handling (a faithful port; see ``design/decisions/stage11-convergence.md``). Raises
+    ``RuntimeError`` if ``tolerance.max_iterations`` steps pass without a dip below threshold
+    (silent non-convergence is never returned, matching
+    :func:`~diffBloch.preprocess.pipeline.iterate_until`).
     """
     current = build(start)
     value = start
-    settled = 0
     for _ in range(tolerance.max_iterations):
         value += step
         candidate = build(value)
         r = measure(current, candidate)
-        changed = r > _NULL_RFACTOR
-        if changed and r >= tolerance.r_factor_threshold:
-            settled = 0
-            current = candidate
-            continue
-        if not changed and settled == 0:
-            continue  # coarse/plateau step before settling: keep growing, no information
-        settled += 1
-        if changed:
-            current = candidate
-        if settled >= tolerance.patience:
+        current = candidate
+        if r < tolerance.r_factor_threshold:
             return current
     raise RuntimeError(f"converge_scalar did not converge within {tolerance.max_iterations} steps")
 
@@ -191,7 +180,8 @@ def converge_beams(
     the
     previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
     sweep starts at ``selection.integration_semiangle`` and clicks up by ``step`` (degrees) until
-    :func:`converge_scalar` settles the pattern (skip-null + patience + cap); ``rsg`` / ``dsg`` are
+    :func:`converge_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
+    are
     held fixed. ``step`` must be positive. See ``design/decisions/stage11-convergence.md``.
     """
     if step <= 0.0:
@@ -228,7 +218,8 @@ def converge_pool(
     fixed Klar window via :func:`~diffBloch.preprocess.beams.select_beams` -- so the active set is
     ``seed(g_max_refine) intersect Klar-window(selection)`` at each step. The sweep starts at
     ``start_g_max_refine`` and clicks up by ``step`` until :func:`converge_scalar` settles the
-    pattern (skip-null + patience + cap); it settles when the widened pool stops admitting beams the
+    pattern (first sub-threshold step wins); it settles when the widened pool stops admitting beams
+    the
     window keeps. Re-seeding from the fixed grid (not the previous pruned set) lets widening recover
     beams a narrower pool clipped, mirroring :func:`converge_beams`.
 
@@ -292,7 +283,7 @@ def converge_sampling(
     via :func:`~diffBloch.preprocess.rocking_curve.integrate_rocking_curve`, so the summed
     ``|psi|^2`` over tilts approaches the continuous rotation-frame integral. The sweep starts at
     ``rocking.sampling`` and clicks up by ``step`` (rounded to a whole tilt count) until
-    :func:`converge_scalar` settles the pattern (skip-null + patience + cap): it settles when a
+    :func:`converge_scalar` settles the pattern (first sub-threshold step wins): it settles when a
     finer tilt grid stops moving the integrated intensities. Only ``sampling`` is swept -- the tilt
     span (``rocking.semiangle``) and ``rocking.geometry`` are held fixed. Re-integrating from the
     incoming seed each step (``integrate_rocking_curve`` rebuilds tilts from each nominal

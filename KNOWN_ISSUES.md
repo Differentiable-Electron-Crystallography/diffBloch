@@ -120,18 +120,6 @@ is overridable via `preprocess.orientation.max_iterations`. Where: `config/schem
 (`OrientationFitConfig.max_iterations`), `specs.py` (`HexagonalSearch.max_iterations`),
 `preprocess/fit_orientation.py`.
 
-## `ConvergenceTolerance.patience` default is uncalibrated
-
-`converge_scalar` declares convergence after `patience` consecutive *settled* steps (below
-threshold, or null once settling has begun), which corrects `diffBloch_private`'s plateau bug (it
-stopped on the first dip -- effectively `patience = 1`). But `patience` has **no private precedent**,
-and its default of `2` (the minimal "not a one-off") is a guess: too small still risks a false stop
-when a coarse `step` lands two below-threshold steps across a plateau before a larger, real change;
-too large wastes sweep steps. It should be tuned jointly with the beam-window `step` from real-data
-sweeps (a step that admits beams roughly one shell at a time, and a `patience` that spans the
-largest expected plateau). Where: `specs.py` (`ConvergenceTolerance.patience`),
-`preprocess/convergence.py` (`converge_scalar`).
-
 ## The convergence driver re-simulates the current Plan every step
 
 `converge_scalar` calls `measure(current, candidate)` each iteration, and `simulation_rfactor`

@@ -8,7 +8,7 @@ what matters is that two Plans with different beam sets produce a non-zero R-fac
 tolerance threshold gates, and that identical Plans read as converged.
 
 ``converge_scalar`` (the parameter-agnostic driver) is tested purely with a scripted R-factor
-sequence and an identity ``build`` -- no simulation -- so the skip-null / patience / cap logic is
+sequence and an identity ``build`` -- no simulation -- so the first-below-threshold / cap logic is
 pinned in isolation. ``converge_beams`` is then exercised end-to-end: widening the Klar window over
 a richer seed until the pattern saturates. ``converge_pool`` widens the ``g_max_refine`` candidate
 pool the same way, with a guard that raises past the grid's beam-difference support.
@@ -136,36 +136,28 @@ def _scripted_measure(r_values: list[float]) -> object:
     return measure
 
 
-def test_converge_scalar_reaches_patience_over_settled_steps() -> None:
-    # Two consecutive below-threshold steps (patience=2) declare convergence; the returned value is
-    # the knob at the settling step (1.0 + 3 clicks of 0.1).
-    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, patience=2, max_iterations=10)
+def test_converge_scalar_returns_first_below_threshold_step() -> None:
+    # Faithful port of the private's rule: the sweep stops the first time the consecutive-build
+    # R-factor drops below threshold. Here that is the second click (1.0 + 2 * 0.1).
+    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=10)
     measure = _scripted_measure([0.02, 0.003, 0.002])
-    result = converge_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
-    assert result == pytest.approx(1.3)
-
-
-def test_converge_scalar_skips_null_steps_before_settling() -> None:
-    # Null steps at the start (R=0, the discrete output has not changed yet) must NOT trigger
-    # convergence -- the sweep keeps growing until a genuine change settles below threshold. This is
-    # the private's plateau bug, corrected.
-    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, patience=2, max_iterations=10)
-    measure = _scripted_measure([0.0, 0.0, 0.02, 0.004, 0.003])
-    result = converge_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
-    assert result == pytest.approx(1.5)
-
-
-def test_converge_scalar_treats_saturation_nulls_as_converged() -> None:
-    # Once a changed step has settled below threshold, a following null step (the knob saturating,
-    # e.g. the beam pool exhausted) confirms convergence rather than being skipped.
-    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, patience=2, max_iterations=10)
-    measure = _scripted_measure([0.02, 0.003, 0.0])
     result = converge_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
     assert result == pytest.approx(1.2)
 
 
+def test_converge_scalar_treats_an_unchanged_build_as_converged() -> None:
+    # No skip-null handling (faithful port): an unchanged build gives R = 0, which is below
+    # threshold, so the very first click declares convergence. This is the private's exact
+    # behaviour -- the discrete-plateau sensitivity is managed by choosing a coarse enough step,
+    # not by second-guessing the reference stop.
+    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=10)
+    measure = _scripted_measure([0.0])
+    result = converge_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
+    assert result == pytest.approx(1.1)
+
+
 def test_converge_scalar_raises_when_it_never_settles() -> None:
-    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, patience=2, max_iterations=3)
+    tolerance = ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=3)
     measure = _scripted_measure([0.02, 0.02, 0.02])
     with pytest.raises(RuntimeError, match="did not converge within 3 steps"):
         converge_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
@@ -222,7 +214,7 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     step = converge_beams(
         BeamSelection(integration_semiangle=0.68),
         refinement,
-        ConvergenceTolerance(r_factor_threshold=0.05, patience=2, max_iterations=20),
+        ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
         step=0.6,
     )
     converged = step(seed)
@@ -233,18 +225,22 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     assert _beam_count(started) < _beam_count(converged) == _beam_count(saturated)
 
 
-def test_converge_beams_raises_when_no_change_settles_below_threshold() -> None:
+def test_converge_beams_fine_step_stops_early_at_an_intermediate_plateau() -> None:
     refinement, seed = _seed_system()
-    # Tight threshold: the near-Ewald change stays above it, so no step settles; the trailing nulls
-    # are skipped and the cap raises rather than declaring false convergence.
+    # Faithful first-dip stop is step-sensitive: too fine a step lets the consecutive-sim R-factor
+    # dip below threshold on an intermediate count plateau, stopping short of the saturated set.
+    # This is the documented discrete-plateau sensitivity (managed by step choice, not patience).
     step = converge_beams(
         BeamSelection(integration_semiangle=0.68),
         refinement,
-        ConvergenceTolerance(r_factor_threshold=0.005, patience=2, max_iterations=6),
+        ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=20),
         step=0.06,
     )
-    with pytest.raises(RuntimeError, match="did not converge"):
-        step(seed)
+    converged = step(seed)
+
+    started = select_beams(BeamSelection(integration_semiangle=0.68))(seed)
+    saturated = select_beams(BeamSelection(integration_semiangle=5.0))(seed)
+    assert _beam_count(started) < _beam_count(converged) < _beam_count(saturated)
 
 
 def test_converge_beams_rejects_non_positive_step() -> None:
@@ -279,7 +275,7 @@ def test_converge_pool_widens_the_seed_until_the_pattern_settles() -> None:
     step = converge_pool(
         BeamSelection(integration_semiangle=1.0),
         refinement,
-        ConvergenceTolerance(r_factor_threshold=0.05, patience=2, max_iterations=20),
+        ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
         start_g_max_refine=0.5,
         step=0.1,
     )
@@ -297,7 +293,7 @@ def test_converge_pool_raises_past_the_grid_difference_support() -> None:
     step = converge_pool(
         BeamSelection(integration_semiangle=1.0),
         refinement,
-        ConvergenceTolerance(r_factor_threshold=1e-9, patience=1, max_iterations=50),
+        ConvergenceTolerance(r_factor_threshold=1e-9, max_iterations=50),
         start_g_max_refine=1.0,
         step=0.2,
     )
@@ -324,13 +320,13 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     step = converge_sampling(
         RockingCurve(semiangle=0.5, sampling=1),
         refinement,
-        ConvergenceTolerance(r_factor_threshold=0.01, patience=2, max_iterations=30),
+        ConvergenceTolerance(r_factor_threshold=0.01, max_iterations=30),
         step=2.0,
     )
     converged = step(seed)
 
     tilt_count = len(converged.orientations[0].beam_plans)
-    assert tilt_count == 11  # deterministic: 1 -> 3 -> ... settles two steps below 0.01 at 11
+    assert tilt_count == 9  # deterministic: first consecutive-sim R below 0.01 is at 9 tilts
     # started from a single static solve (sampling == 1); convergence genuinely refined the grid
     assert len(integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=1))(seed)
                .orientations[0].beam_plans) == 1

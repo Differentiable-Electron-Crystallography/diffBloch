@@ -23,9 +23,11 @@ operations dispatched by `convergence_testing(cfg)`:
 
 The 2.0 analog of `_run_hyperparams_optimization`'s inline sweeps is the `converge_*` step family
 (`converge_beams` / `converge_pool` / `converge_sampling`); `_run_initial_minimum_param_sweep` is
-the coverage step; `both` is the operation discriminated union. *(Correction of record: commits
-`10fd0f9` and `20ca73b` cited `optimize_gmax` / `optimize_tilt_steps` as the analogs — those
-function names do not exist; the real analog is `_run_hyperparams_optimization`'s inline sweeps.)*
+the coverage step; `both` is the operation discriminated union. *(The inline sweeps are the nested
+closures `optimize_gmax` / `optimize_sgmax` / `optimize_tilt_steps` inside
+`_run_hyperparams_optimization`. An earlier note in this doc claimed those names were fabricated —
+that was wrong: they exist as nested functions, which a top-level `def` grep missed. Commits
+`10fd0f9` / `20ca73b` citing `optimize_gmax` / `optimize_tilt_steps` were therefore correct.)*
 
 ## The metric is self-stability, not fit-to-data — so the verb is `converge_*`, not `fit_*`
 
@@ -56,8 +58,9 @@ convergence.
 
 ## The knobs consolidate: the private's `g_max`/`sg_max` are two levers on *one* quantity
 
-The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`) as three inline passes inside
-`_run_hyperparams_optimization`. Porting them showed that framing is a *false independence*: in 2.0
+The private sweeps three knobs (`g_max`, `sg_max`, `tilt_steps`) as three nested closures
+(`optimize_gmax` / `optimize_sgmax` / `optimize_tilt_steps`) inside `_run_hyperparams_optimization`.
+Porting them showed that framing is a *false independence*: in 2.0
 they do not correspond to
 three independent cost axes, because 2.0 separates concerns the private conflates. Applying
 "decompose by coupled home, not false independence", the corrected model has **one** beam concern
@@ -106,37 +109,36 @@ grid `g_max` as a *dependent sizing* constraint. It is deferred until the window
 calibrated; when it lands, the two levers are driven to a joint fixpoint together (block coordinate
 descent, below).
 
-### Stopping rule — established convergence utilities, not the private's fixed-step stop
+### Stopping rule — a faithful port of the private's first-below-threshold stop
 
-The private stops the first time the consecutive-simulation R-factor drops below threshold. That has
-a real premature-termination failure: `integration_semiangle` is continuous but the beam set is
-*discrete*, so two increments can yield the **same** beam set, an identical simulation, R = 0, and a
-false "converged" — even though a larger increment would still admit beams. 2.0 does not replicate
-the flaw; it corrects it with standard convergence utilities (recorded in `DIVERGENCE.md`):
+The private stops the first time the consecutive-simulation R-factor drops below
+`r_factor_threshold`
+(`_run_hyperparams_optimization`'s nested `optimize_gmax` / `optimize_sgmax` / `optimize_tilt_steps`
+each do `if r_value < r_threshold: break`), bounded by a `MAX_SWEEP_ITERATIONS` cap. 2.0 ports that
+rule **exactly**: `converge_scalar` grows the knob, compares consecutive builds, and returns the
+first candidate whose R-factor is below threshold; `max_iterations` is the hard cap that raises
+rather than returning a silently non-converged plan (the `iterate_until` posture).
 
-- **Skip null steps.** "Improvement" is only defined when the active beam set actually changes; an
-  increment that leaves every orientation's set unchanged is not an evaluation — keep growing the
-  angle until the set changes, *then* compare. This removes the R = 0 plateau at its source (the
-  discrete-knob analogue of only measuring where the model can move).
-- **Patience.** Across *real* changes the R-factor need not be monotone, so — as in early-stopping
-  *patience* — require R below threshold for **`patience` consecutive** changed steps before
-  declaring convergence, not one dip. This targets the *asymptotic range* (where more beams stop
-  mattering), the same idea grid-convergence studies (Richardson / the Grid Convergence Index)
-  formalise for mesh refinement.
-- **Hard cap.** `max_iterations` bounds increments; exceeding it raises rather than returning a
-  silently non-converged plan (the `iterate_until` posture).
+> **History (superseded over-correction).** An earlier 2.0 revision added *skip-null* + *patience*
+> to
+> `converge_scalar`, on the theory that the private's first-dip stop was a "plateau bug": because
+> `integration_semiangle` is continuous but the beam set is discrete, two increments can yield the
+> same beam set, R = 0, and a false "converged". That was reverted as an unwarranted divergence (the
+> same over-correction class as the Klar-geometry episode): it invented a stopping rule the
+> reference never had and complicated the driver. The discrete-plateau *sensitivity* is real but is
+> handled by choosing a `step` coarse enough to move the beam set (as the adapters' tuned steps do),
+> not by second-guessing the reference stop. `ConvergenceTolerance` therefore carries only
+> `r_factor_threshold` + `max_iterations`; there is no `patience` field.
 
-This makes composition **block coordinate descent**: each lever is swept to its own fixpoint and
-the sweep repeats until it leaves every lever unchanged — the textbook cyclic-coordinate stopping
-rule. **Note (superseded mechanism):** the paragraphs below originally expressed this descent as
-`iterate_until(pipeline([...]))`. Landing the pool lever showed that naive composition does not
-work (seed/pruned mismatch + shared scalar state the `Plan` does not carry), so the cross-lever
-fixpoint is instead assembled by the **preprocess driver** — see
-`design/decisions/stage11-cross-lever-fixpoint.md`. The descent *model* here is unchanged;
-only *where it is assembled* moved. The stopping-rule parameters (`r_factor_threshold`, `patience`,
-`max_iterations`) are the invariant bundle carried by **`ConvergenceTolerance`**; `patience`'s
-default is a calibration target (`KNOWN_ISSUES.md`), like `max_iterations`. See `REFERENCES.md` for
-coordinate descent, early-stopping patience, and the Grid Convergence Index.
+Composition is **block coordinate descent**: each lever is swept to its own first-below-threshold
+stop and the descent repeats until it leaves every lever unchanged. **Note (superseded mechanism):**
+the paragraphs below originally expressed this descent as `iterate_until(pipeline([...]))`. Landing
+the pool lever showed that naive composition does not work (seed/pruned mismatch + shared scalar
+state the `Plan` does not carry), so the cross-lever fixpoint is instead assembled by the
+**preprocess driver** — see `design/decisions/stage11-cross-lever-fixpoint.md`. The descent *model*
+here is unchanged; only *where it is assembled* moved. The stopping-rule parameters
+(`r_factor_threshold`, `max_iterations`) are the invariant bundle carried by
+**`ConvergenceTolerance`**; `max_iterations`'s default is the private's `MAX_SWEEP_ITERATIONS`.
 
 ### Build vs adopt a sweep framework
 

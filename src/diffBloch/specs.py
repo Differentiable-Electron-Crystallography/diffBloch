@@ -68,31 +68,24 @@ class BeamSelection:
 class ConvergenceTolerance:
     """Stopping rule for a convergence sweep: stability threshold + a runaway cap.
 
-    A convergence sweep grows a simulation-accuracy knob and stops once *consecutive* simulations
-    stop changing: ``r_factor_threshold`` is the largest consecutive-simulation R-factor still
-    counted as "converged" (the private's ``r_factor_threshold = 0.005``). ``patience`` is how many
-    *consecutive settled steps* are required before declaring convergence -- guarding the private's
-    plateau bug, where one below-threshold step (often a no-op step that left the discrete beam set,
-    hence the simulation, unchanged) stopped the sweep prematurely; a single dip no longer suffices.
-    ``max_iterations`` is the hard cap on sweep steps before non-convergence is raised (the
-    private's ``MAX_SWEEP_ITERATIONS = 100``); it also gives ``iterate_until``'s previously-bare cap
-    a home.
+    A convergence sweep grows a simulation-accuracy knob and stops the first time *consecutive*
+    simulations stop changing: ``r_factor_threshold`` is the largest consecutive-simulation R-factor
+    still counted as "converged" (the private's ``r_factor_threshold = 0.005``). ``max_iterations``
+    is the hard cap on sweep steps before non-convergence is raised (the private's
+    ``MAX_SWEEP_ITERATIONS = 100``); it also gives ``iterate_until``'s previously-bare cap a home.
 
     Defaults are the faithful ``diffBloch_private`` values
-    (``configs/convergence_test/base.yaml`` + ``convergence_testing.MAX_SWEEP_ITERATIONS``), except
-    ``patience`` which has no private precedent (the private stops on the first dip); its default of
-    2 is the minimal "not a one-off" and is an uncalibrated target (see ``KNOWN_ISSUES.md``).
+    (``configs/convergence_test/base.yaml`` + ``convergence_testing.MAX_SWEEP_ITERATIONS``). The
+    stopping rule is the private's exactly -- the first below-threshold step stops the sweep, with
+    no patience and no null-step handling (see ``design/decisions/stage11-convergence.md``).
     """
 
     r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
-    patience: int = 2  # consecutive settled steps required before declaring convergence
     max_iterations: int = 100  # hard cap on sweep steps before raising non-convergence
 
     def __post_init__(self) -> None:
         if self.r_factor_threshold <= 0.0:
             raise ValueError("r_factor_threshold must be positive")
-        if self.patience < 1:
-            raise ValueError("patience must be >= 1")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be >= 1")
 
