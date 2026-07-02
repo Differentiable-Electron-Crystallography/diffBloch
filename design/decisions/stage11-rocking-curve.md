@@ -62,7 +62,7 @@ able to claim *"enabling rocking-curve integration improved `R_obs` from 0.60 to
 measured result on the quartz anchor's seed orientations (see the `rocking_curve` tutorial) -- by
 composing one unit *in or out*. (The size of the effect depends on what the orientations were fit
 for: on *static-fit* orientations it is near-nil, on seed/integrated-fit orientations it is 7-10x --
-the fit/eval consistency invariant, see `DEBUGGING.md`.) So the integration is **not**
+the fit/eval consistency invariant.) So the integration is **not**
 wired unconditionally at `from_experiment`; it is a composable `Plan -> Plan` step,
 `integrate_rocking_curve(rocking)`, appended to the preprocess pipeline:
 

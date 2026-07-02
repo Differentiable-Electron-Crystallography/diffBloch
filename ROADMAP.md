@@ -236,8 +236,8 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > (a precession assumption) instead of from the *goniometer rock axis*, admitting ~1.7× too many
 > non-sweeping reflections and inflating R. Fixing it (`e198ad1`) reproduced the reference reflection
 > counts and, on optim orientations + integration, reached `R_obs = 0.0594` (reference `0.0438`);
-> it also lowered the from-scratch static baseline `0.2977 → 0.174`. Full narrative in
-> `SCIENCE_FORK.md` / `DEBUGGING.md` / `LESSONS.md`. **Remaining residual `0.0594 → 0.0438`** and the
+> it also lowered the from-scratch static baseline `0.2977 → 0.174`. Full narrative in `LESSONS.md`.
+> **Remaining residual `0.0594 → 0.0438`** and the
 > fit-coupling wiring are the live C3 work.
 >
 > **Scheduling: the residual chase is deferred to *after* stage 11 completes.** Stage 11's remaining
@@ -245,7 +245,7 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > the preprocess driver) land first; the `0.0594 → 0.0438` residual and the C3 fit/eval-integration
 > coupling are then taken up as a distinct post-stage-11 workstream (candidates: obs matching /
 > `I>3σ` bookkeeping 965 vs 958, mosaicity, minor forward-model details, and threading `op.tilts`
-> through `fit_orientation`). Tracked in `DEBUGGING.md`.
+> through `fit_orientation`). Tracked as post-stage-11 work in this roadmap.
 
 ### Rocking-curve integration — design decisions (approved)
 

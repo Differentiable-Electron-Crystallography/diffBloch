@@ -129,6 +129,5 @@ ignored for too long: a "geometrically correct" change that makes agreement with
 data** dramatically *worse* is almost certainly not correct -- let the data referee the geometry
 before rewriting ledgers. The fix makes the lever arm explicitly geometry-aware
 (`BeamSelection.geometry`: rock-axis distance for `continuous_rotation`, beam distance for
-`precession`) so the selection can never again silently disagree with the integrator. Full narrative
-in [`SCIENCE_FORK.md`](SCIENCE_FORK.md) and [`DEBUGGING.md`](DEBUGGING.md); the retracted divergence
-in [`DIVERGENCE.md`](DIVERGENCE.md).
+`precession`) so the selection can never again silently disagree with the integrator. The retracted
+divergence is recorded in [`DIVERGENCE.md`](DIVERGENCE.md).

@@ -64,8 +64,7 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   -- `(g_y, g_z)` for `continuous_rotation` (matching the private), `(g_x, g_y)` for `precession`.
 - **Where:** `preprocess/beams.py`; pinned by `tests/unit/test_select_beams.py`
   (`..._drops_on_axis` keeps a y-offset beam and drops an on-rock-axis one;
-  `..._precession_uses_beam_transverse` covers the precession lever arm). Full narrative in
-  `SCIENCE_FORK.md` and `DEBUGGING.md`; lesson in `LESSONS.md`.
+  `..._precession_uses_beam_transverse` covers the precession lever arm). Lesson in `LESSONS.md`.
 - **Found / corrected:** diffBloch 2.0 stage 11 (preprocess) port.
 
 ### `rbragg_abs()` applies the `I > 3*sigma` cut by multiplication, poisoning the sum with `NaN`

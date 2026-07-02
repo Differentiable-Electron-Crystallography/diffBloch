@@ -16,7 +16,7 @@ What is pinned today (deterministic; CPU / float64; no RNG):
 The from-scratch static baseline (~0.174) sits above the private reference ``R_obs`` (0.043766)
 because the reference evaluates *pre-optimised* orientations with 42-tilt rocking-curve integration,
 whereas this pins a from-scratch static fit. With the reference's own optim orientations + the
-integrated recipe our forward model reaches 0.0594 (see ``DEBUGGING.md`` / ``SCIENCE_FORK.md``); the
+integrated recipe our forward model reaches 0.0594; the
 remaining path to the reference is the fit/eval integration coupling (C3) plus a small residual. An
 earlier, larger baseline (~0.298) was an artefact of a beam-selection geometry bug (the ``sg_max``
 lever arm used the beam-transverse plane instead of the goniometer-rock-axis distance); fixing it
