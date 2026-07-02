@@ -114,7 +114,7 @@ rule. **Note (superseded mechanism):** the paragraphs below originally expressed
 `iterate_until(pipeline([...]))`. Landing the pool lever showed that naive composition does not
 work (seed/pruned mismatch + shared scalar state the `Plan` does not carry), so the cross-lever
 fixpoint is instead assembled by the **preprocess driver** — see
-`design/decisions/stage11-cross-lever-fixpoint.md`. The coordinate-descent *model* here is unchanged;
+`design/decisions/stage11-cross-lever-fixpoint.md`. The descent *model* here is unchanged;
 only *where it is assembled* moved. The stopping-rule parameters (`r_factor_threshold`, `patience`,
 `max_iterations`) are the invariant bundle carried by **`ConvergenceTolerance`**; `patience`'s
 default is a calibration target (`KNOWN_ISSUES.md`), like `max_iterations`. See `REFERENCES.md` for
@@ -202,8 +202,8 @@ together by the preprocess driver:
 The private's "two passes, with the order changed on the second" is an empirical detail with no
 stated principle; the order-variation in particular looks like a hand-tuned heuristic. 2.0 drives
 one ordered pass to a genuine cross-knob fixpoint — the suite repeats the ordered pass until a whole
-pass leaves every knob unchanged (or the `ConvergenceTolerance` cap raises). This **generalises** the
-private's fixed count and is recorded as a deliberate generalization in `DIVERGENCE.md` (like the
+pass leaves every knob unchanged (or the `ConvergenceTolerance` cap raises). This **generalises**
+the private's fixed count and is recorded as a deliberate generalization in `DIVERGENCE.md` (like the
 `fit_orientation` iteration cap), and removes the unprincipled per-pass order-swap.
 
 The *mechanism* is the **preprocess driver**, not a `pipeline` composition: the pool lever proved
