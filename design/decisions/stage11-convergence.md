@@ -306,6 +306,32 @@ ValidationError]` will wrap these raising constructors. `Result` stays confined 
 adapter and never enters a step; the pure core only ever sees the unwrapped `Ok` value. This is the
 same errors-as-values-to-the-shell posture as `design/decisions/effects-and-observability.md`.
 
+## Why convergence matters: fewer beams = a faster experiment (visualization, for later)
+
+The point of converging is **not** accuracy for its own sake — it is to find the *minimal* beam set
+that still reproduces the pattern. What fundamentally sets the cost of the whole experiment is
+**which beams are included and how many**: the Bloch structure matrix is dense `N x N` in the active
+beam count `N`, solved (`matrix_exp` / `eigh`) *per orientation, per rocking-curve tilt, per
+thickness candidate*, so `N` dominates both simulation and inference time. Converging the beam
+levers down to the minimal sufficient set is therefore a **speed** lever: fewer beams -> a faster
+sim and a faster fit, with no loss of agreement. (This is the flip side of the coverage sweep, which
+finds the *smallest* parameters that still recover the matched reflections.)
+
+**Visualization (future work).** A colormap makes the tradeoff legible over the two beam levers:
+
+- **x-axis:** `sg_max` (the excitation-error window; in 2.0, `integration_semiangle`).
+- **y-axis:** `g_max` (the candidate pool radius; in 2.0, `g_max_refine`).
+- **colour:** the number of beams included at that `(x, y)` — the size of the active set
+  `seed(g_max_refine) ∩ Klar-window(integration_semiangle)`.
+
+Overlaid (or a second panel) on the same axes: **which of those beams are useful** — e.g. how many
+of the included beams actually match an observed reflection (the `plan_coverage` count) and/or carry
+non-negligible dynamical intensity, versus dead weight that only slows the solve. That turns the
+convergence path into a picture: you can see the region where adding beams stops buying either
+coverage or pattern-change, and pick the `(sg_max, g_max)` corner that is cheapest for the accuracy
+it delivers. Natural home: a convergence tutorial notebook (`../notebooks/iain/tutorials/`), driven
+by the `converge_*` / `plan_coverage` public API once the driver lands.
+
 ## Sequencing
 
 1. `ConvergenceTolerance` value-type + the sim-vs-sim R-factor check (`simulation_converged`).
