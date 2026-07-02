@@ -21,6 +21,12 @@ from diffBloch.preprocess.convergence import (
     simulation_converged,
     simulation_rfactor,
 )
+from diffBloch.preprocess.coverage import (
+    cover_beams,
+    cover_pool,
+    maximize_scalar,
+    plan_coverage,
+)
 from diffBloch.preprocess.experiment import (
     ExperimentSetup,
     PlanSplit,
@@ -80,6 +86,8 @@ __all__ = [
     "converge_pool",
     "converge_sampling",
     "converge_scalar",
+    "cover_beams",
+    "cover_pool",
     "fit_orientation",
     "fit_thickness",
     "from_experiment",
@@ -89,9 +97,11 @@ __all__ = [
     "integrate_rocking_curve",
     "iterate_until",
     "klar_beam_mask",
+    "maximize_scalar",
     "orientation_basis",
     "orientation_matrices",
     "pipeline",
+    "plan_coverage",
     "run_inference",
     "score_orientations",
     "select_beams",
