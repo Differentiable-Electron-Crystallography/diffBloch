@@ -1,6 +1,9 @@
 # Decision: the cross-lever convergence fixpoint lives in the driver, not in `pipeline`
 
 **Status:** accepted (stage 11, pool lever landed `10fd0f9`).
+**Generalised by:** `plan-composition-shapes.md` promotes the driver used here to a named pattern
+(the three composition shapes; the driver as a hand-rolled `State`/`StateT`). This ADR is the worked
+convergence instance of that pattern.
 **Context:** beam-set convergence has two coupled levers — the Klar *window*
 (`integration_semiangle`, `converge_beams`) and the candidate *pool* (`g_max_refine`,
 `converge_pool`). `stage11-convergence.md` sketched the joint fixpoint as block coordinate descent

@@ -328,3 +328,10 @@ failing searches). See `design/decisions/rotation-exclusion.md`.
   "seam" used in the milder boundary sense in `params.py`, `core/dynamical/assembly.py`,
   `io/symmetry_setup.py`, `design/decisions/stage10-refinement-loop.md`, and ROADMAP's "Solver
   seam"; plus any remaining cross-doc pointers in comments. Sweep these in a dedicated pass.
+- **Evaluate importing `returns` (typed FP primitives) later.** The preprocess driver hand-rolls a
+  `State`/`StateT`-shaped loop (coordinate descent over levers, state held off the `Plan` -- see the
+  driver-pattern ADR). `returns` (dry-python) provides real typed `State`/`StateT`, `Result`,
+  `Maybe`. We deliberately hand-roll for now (same reason we hand-roll `pipeline`: a small loop typed
+  to `Plan -> Plan` beats a monad framework, and avoids a dependency). Revisit only if the driver /
+  `Result` story grows enough that the typed primitives earn their keep; keep it a *possible* task,
+  not a commitment.

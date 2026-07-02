@@ -162,6 +162,14 @@ and while choosing methods. We adopted ideas, not code.
   `(init, apply)` immutable-state style. <https://github.com/jax-md/jax-md>
 - **Equinox** — params-as-frozen-pytree and static/dynamic leaf filtering, informing
   `RefinableParams`. <https://github.com/patrick-kidger/equinox>
+- **toolz / funcy** — Ramda-style functional utility belts for Python (`pipe`, `compose`, `curry`).
+  Reference point for our own `pipeline` / `iterate_until` combinators; not imported (we keep our
+  combinators typed to `Plan -> Plan`, per `composable-methods.md`).
+  <https://github.com/pytoolz/toolz>
+- **returns** (dry-python) — typed FP primitives for Python, including a real `State` / `StateT`,
+  `Result`, and `Maybe`. The named construct our preprocess driver hand-rolls (a `StateT`-shaped
+  coordinate-descent loop; see `design/decisions/plan-composition-shapes.md`). Not imported for now;
+  a possible future task (see ROADMAP cross-cutting). <https://github.com/dry-python/returns>
 - **Alternative scattering parametrizations examined** (we chose Lobato):
   **Kirkland** (Dirac–Fock Gaussian/Lorentzian fit, *Advanced Computing in Electron Microscopy*; code
   at <https://sourceforge.net/projects/computem/>), **Peng et al.** (Peng, L.-M. et al. (1996),
@@ -172,3 +180,12 @@ and while choosing methods. We adopted ideas, not code.
 ## Conventions credited
 - Reciprocal-cell convention (`pinv(cell).T`) follows the ASE-compatible helper from the research
   codebase; ADP frame conventions follow standard crystallographic (cctbx-compatible) definitions.
+- **State monad / stateful-loop decomposition** — the preprocess driver's shape (pure `Plan -> Plan`
+  levers + a driver holding the loop state off the value) is the standard `State` decomposition:
+  Wadler, *Monads for functional programming* (Advanced Functional Programming, 1995); Haskell
+  `Control.Monad.State` (mtl) and the `iterateUntilM` fixpoint loop of `Control.Monad.Loops`
+  (`monad-loops` on Hackage); the Elm Architecture `Model`/`update` guide
+  (<https://guide.elm-lang.org/architecture/>). See `design/decisions/plan-composition-shapes.md`.
+- **Coordinate descent** — the alternate-one-lever-at-a-time-to-a-joint-fixpoint scheme the driver
+  runs. Wright, S. J. (2015), *Coordinate descent algorithms*, Mathematical Programming 151, 3,
+  DOI: [10.1007/s10107-015-0892-3](https://doi.org/10.1007/s10107-015-0892-3).
