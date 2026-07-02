@@ -85,8 +85,9 @@ three independent cost axes, because 2.0 separates concerns the private conflate
   Because the set is the *intersection*, each lever is bounded by the other — widening the window
   admits nothing the pool has already clipped, and vice versa. That mutual bounding is the whole
   reason the private needs its multi-pass revisiting, and the reason 2.0 files both levers under one
-  beam-inclusiveness concern reached by a cross-lever fixpoint, rather than as two "independent"
-  axes. It is the same principle as `select_beams` owning the whole active-set selection.
+  beam-inclusiveness concern reached by the driver's coupled multi-pass sweep, rather than as two
+  "independent" axes. It is the same principle as `select_beams` owning the whole active-set
+  selection.
 
 - **Rocking-curve sampling (`tilt_steps`) is a genuinely separate axis — and has nothing to converge
   yet.** It drives a rocking-curve integration (the pattern averaged over many beam tilts) that
@@ -106,8 +107,8 @@ physically-primary "how many near-Ewald beams" lever — reusing `select_beams` 
 The **pool lever** (`g_max_refine`) is the coupled second beam knob: growing the seed radius
 re-seeds the candidate reflections and — to keep the `Fgb` difference-support valid — may grow the
 grid `g_max` as a *dependent sizing* constraint. It is deferred until the window sweep is
-calibrated; when it lands, the two levers are driven to a joint fixpoint together (block coordinate
-descent, below).
+calibrated; when it lands, the two levers are driven together by the driver's fixed multi-pass
+coordinate sweep (below).
 
 ### Stopping rule — a faithful port of the private's first-below-threshold stop
 
@@ -130,12 +131,13 @@ rather than returning a silently non-converged plan (the `iterate_until` posture
 > not by second-guessing the reference stop. `ConvergenceTolerance` therefore carries only
 > `r_factor_threshold` + `max_iterations`; there is no `patience` field.
 
-Composition is **block coordinate descent**: each lever is swept to its own first-below-threshold
-stop and the descent repeats until it leaves every lever unchanged. **Note (superseded mechanism):**
-the paragraphs below originally expressed this descent as `iterate_until(pipeline([...]))`. Landing
+Composition is the private's **fixed multi-pass coordinate sweep**: each lever is swept to its own
+first-below-threshold stop and the ordered pass is run a fixed `num_passes` (default 2), with the
+private's per-pass order-swap. **Note (superseded mechanism):**
+the paragraphs below originally expressed this as `iterate_until(pipeline([...]))`. Landing
 the pool lever showed that naive composition does not work (seed/pruned mismatch + shared scalar
-state the `Plan` does not carry), so the cross-lever fixpoint is instead assembled by the
-**preprocess driver** — see `design/decisions/stage11-cross-lever-fixpoint.md`. The descent *model*
+state the `Plan` does not carry), so the coupled sweep is instead assembled by the
+**preprocess driver** — see `design/decisions/stage11-cross-lever-fixpoint.md`. The sweep *model*
 here is unchanged; only *where it is assembled* moved. The stopping-rule parameters
 (`r_factor_threshold`, `max_iterations`) are the invariant bundle carried by
 **`ConvergenceTolerance`**; `max_iterations`'s default is the private's `MAX_SWEEP_ITERATIONS`.
@@ -180,9 +182,9 @@ the click is supplied:
 - **one param, up:** `converge_scalar(build, start, +step, ...)`.
 - **one param, down (minimal-sufficient):** `step` negative.
 - **several params together:** a `build` over a small parameter *tuple* clicked by a step *vector*.
-- **several params independently:** separate `converge_scalar` steps driven as coordinate descent
-  (the cross-lever fixpoint). This was originally sketched as `iterate_until(pipeline([...]))`; that
-  naive composition is superseded — the fixpoint is assembled by the preprocess driver (see
+- **several params independently:** separate `converge_scalar` steps run as the driver's coupled
+  multi-pass sweep. This was originally sketched as `iterate_until(pipeline([...]))`; that naive
+  composition is superseded — the sweep is assembled by the preprocess driver (see
   `design/decisions/stage11-cross-lever-fixpoint.md`).
 
 **Guardrail (typed closures, not config reflection).** The genericity comes from *higher-order
@@ -192,45 +194,45 @@ is a small, explicit, type-checked function the caller writes; the convergence e
 combinator with no knowledge of the config schema, keeping the value-object vocabulary and the
 "no `DictConfig` in the core" posture intact.
 
-## Composition — the driver assembles the cross-lever fixpoint (block coordinate descent)
+## Composition — the driver coordinates the coupled levers (faithful fixed passes)
 
 Today only `converge_beams` (the window lever) and `converge_pool` (the pool lever) exist, each
-self-contained. The composition below — block coordinate descent — activates once they are driven
-together by the preprocess driver:
+self-contained. The composition below — the private's fixed multi-pass coordinate sweep — activates
+once they are driven together by the preprocess driver:
 
-> **Implementation note (slice 3, pool lever landed).** The joint fixpoint is **not** a naive
+> **Implementation note (slice 3, pool lever landed).** The coupled sweep is **not** a naive
 > `iterate_until(pipeline([converge_beams, converge_pool]))` — `converge_beams` re-selects from an
 > *unpruned* seed while `converge_pool` emits a *window-pruned* Plan, and the two levers share
-> scalar state (`integration_semiangle`, `g_max_refine`) the `Plan` does not carry. The cross-lever
-> fixpoint therefore lives in the **preprocess driver**, which holds that state explicitly. See
+> scalar state (`integration_semiangle`, `g_max_refine`) the `Plan` does not carry. The coupled
+> sweep therefore lives in the **preprocess driver**, which holds that state explicitly. See
 > `design/decisions/stage11-cross-lever-fixpoint.md` for the full reasoning.
 
 - **Partial order (sizing dependency):** the grid must contain any beam a wider pool keeps, so
   growing `g_max_refine` implies a grid-`g_max` *sizing* step **before** re-selection.
   `converge_sampling` is independent of the beam levers.
-- **One pass** orders the levers (window, then pool).
-- **Cross-lever fixpoint:** because the pool and window levers are coupled (each bounded by the
-  other), widening one can leave the other room to grow, so the suite must revisit. The private
-  hard-codes `num_passes = 2` and *varies order* between passes (pass 2 leads with `tilt_steps`).
-  2.0 expresses the revisit as a fixpoint over the whole pass — driven to stability rather than a
-  fixed count. This is a **two-level fixpoint**: each lever converges internally, the driver
-  converges across levers. (Originally sketched as `iterate_until(pipeline(...))`; that naive
-  composition is superseded — see `design/decisions/stage11-cross-lever-fixpoint.md`.)
+- **One pass** orders the levers (the private: `g_max` → `tilt_steps` → `sg_max`).
+- **Coupled revisit:** because the pool and window levers are coupled (each bounded by the other),
+  widening one can leave the other room to grow, so the suite revisits. The private hard-codes
+  `num_passes = 2` and *varies order* between passes (pass 1 leads with `g_max`, pass 2 with
+  `tilt_steps`). 2.0 **ports that faithfully**: a fixed `num_passes` (default 2) coordinated sweep,
+  same per-pass order, each lever converging internally to its first-stop and the driver threading
+  each settled scalar into the next lever.
 
-### Decision — fixpoint-until-stable (chosen), assembled by the driver
+### Decision — faithful fixed `num_passes`, assembled by the driver
 
-The private's "two passes, with the order changed on the second" is an empirical detail with no
-stated principle; the order-variation in particular looks like a hand-tuned heuristic. 2.0 drives
-one ordered pass to a genuine cross-knob fixpoint — the suite repeats the ordered pass until a whole
-pass leaves every knob unchanged (or the `ConvergenceTolerance` cap raises). This **generalises**
-the private's fixed count and is recorded as a deliberate generalization in `DIVERGENCE.md` (like
-the `fit_orientation` iteration cap), and removes the unprincipled per-pass order-swap.
+2.0 runs the private's scheme unchanged: `num_passes` fixed passes (default 2) over the ordered
+levers, with the per-pass order-swap, each lever driven to its own first-stop. An earlier revision
+proposed *generalising* the fixed count to a repeat-until-stable cross-knob fixpoint (and dropping
+the order-swap as unprincipled); that was reverted under the faithful-port directive — it invented a
+stopping rule the reference never had, the same over-correction class as the patience/skip-null
+episode. There is therefore **no divergence** here; 2.0 matches the private pass-for-pass.
 
-The *mechanism* is the **preprocess driver**, not a `pipeline` composition: the pool lever proved
-that `iterate_until(pipeline([window, pool]))` cannot compose (seed/pruned mismatch + shared scalar
-state the `Plan` does not carry), so the driver holds the unpruned candidate pool and the two live
-scalars as explicit coordinate-descent state and threads each lever's settled value into the next.
-See `design/decisions/stage11-cross-lever-fixpoint.md`.
+The *mechanism* is still the **preprocess driver**, not a `pipeline` composition: the pool lever
+proved that `iterate_until(pipeline([window, pool]))` cannot compose (seed/pruned mismatch + shared
+scalar state the `Plan` does not carry), so the driver holds the unpruned candidate pool and the two
+live scalars as explicit state and threads each lever's settled value into the next. The driver is
+needed for the fixed passes just as much as it would be for a fixpoint — the coupling, not the
+stopping rule, is what forces it. See `design/decisions/stage11-cross-lever-fixpoint.md`.
 
 ## Two operations are two *kinds* of objective — a discriminated union, not a mode flag
 
@@ -347,13 +349,15 @@ and the (saturating) useful-count contour.
 ## Sequencing
 
 1. `ConvergenceTolerance` value-type + the sim-vs-sim R-factor check (`simulation_converged`).
-   **Done** (`6f3d694`, `1b5681e`) — `patience` field lands with `converge_beams`.
+   **Done** (`6f3d694`, `1b5681e`; faithful strip of `patience`/skip-null landed later, `244c010`).
 2. `converge_scalar` HOF + `converge_beams` — the `integration_semiangle` window sweep
-   (skip-null-steps + patience + cap).
+   (first-below-threshold stop + cap; faithful to the private).
 3. The coupled pool lever (`g_max_refine` + dependent grid sizing). **Done** (`10fd0f9`,
-   `converge_pool`). The cross-lever fixpoint is re-homed to the driver — see
+   `converge_pool`). The coupled multi-pass sweep is re-homed to the driver — see
    `design/decisions/stage11-cross-lever-fixpoint.md`.
 4. `converge_sampling` — waits on rocking-curve integration in the forward model (`ROADMAP.md`).
-5. The coverage `initial_minimum_param_sweep` step (match-count objective).
-6. The operation discriminated union + the `both` pipeline + the cross-lever fixpoint, wired by the
-   preprocess driver (lands with `refine`).
+   **Done** (`20ca73b`).
+5. The coverage `initial_minimum_param_sweep` step (match-count objective). **Done** (`16410c5`,
+   `plan_coverage` / `maximize_scalar` / `cover_beams` / `cover_pool`).
+6. The operation discriminated union + the `both` handoff + the coupled multi-pass sweep, wired by
+   the preprocess driver (lands with `refine`).

@@ -52,8 +52,9 @@ state explicitly:
 - the **two live scalars** `integration_semiangle` and `g_max_refine` (so each lever is
   reconstructed with the *other* lever's just-settled value, honouring obstruction 2);
 
-and runs block coordinate descent over them: converge one lever, read its settled scalar, feed it to
-the other lever's spec, repeat until a whole pass leaves both scalars unchanged. The
+and runs the private's fixed multi-pass coordinate sweep over them: converge one lever, read its
+settled scalar, feed it to the other lever's spec, and repeat for a fixed `num_passes` (default 2)
+with the private's per-pass order-swap. The
 `simulation_rfactor` / `simulation_converged` check still referees stability, and the grid-`g_max`
 dependent-sizing partial order (`stage11-convergence.md`, `KNOWN_ISSUES.md`) is enforced there too.
 

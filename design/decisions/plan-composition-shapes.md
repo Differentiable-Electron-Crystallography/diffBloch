@@ -23,7 +23,7 @@ differ on one axis: **where does the loop/coordination state live?**
 |---|---|---|---|---|
 | **Sequence** | many, order-dependent | none | on the `Plan` | `pipeline([...])` |
 | **Self-fixpoint** | **one** (possibly a composed step) | re-applies itself | on the `Plan` | `iterate_until(step, until=...)` |
-| **Driver** | **many, mutually coupled** | alternating to a joint fixpoint | **off the `Plan`** (held by the driver) | *hand-rolled* (this ADR) |
+| **Driver** | **many, mutually coupled** | a coordinated multi-pass loop (fixed passes or a fixpoint) | **off the `Plan`** (held by the driver) | *hand-rolled* (this ADR) |
 
 The first two are self-threading: the only state a loop needs is the `Plan` it produces, so the
 combinator can carry it and return a `Plan -> Plan`. The third cannot, for the two reasons the pool
@@ -59,12 +59,13 @@ with the pieces mapping exactly onto ours:
 | the state `s` in `State s a` | `DriverState` = un-pruned pool + the two live scalars |
 | the threaded value `a` | the `Plan` |
 | a pure step `a -> a` | each lever, a pure `Plan -> Plan` |
-| the fixpoint loop (`iterateUntilM`, `monad-loops`) | the driver's "repeat the pass until both scalars stop moving" |
+| the loop combinator (a bounded fold, or `iterateUntilM` from `monad-loops` for a fixpoint) | the driver's coordinated multi-pass sweep (fixed `num_passes`, or repeat-until-stable) |
 | `runStateT` | the driver function itself |
 
 So the levers stay **pure and state-free** (they receive their scalar as a plain argument in their
 spec), and the driver is the `runState` harness that (a) holds `s`, (b) reconstructs each lever with
-the *other* lever's just-settled scalar, and (c) runs the fixpoint. This is precisely how Haskell
+the *other* lever's just-settled scalar, and (c) runs the loop (for convergence: a fixed
+`num_passes` coordinate sweep, faithful to the private). This is precisely how Haskell
 keeps `State` (the bookkeeping) separate from `fix` / `iterateUntilM` (the loop) and composes them
 -- which is why our levers are `Plan -> Plan` and the driver is the thing that owns the back-and-
 forth. Elm says the same less formally (loop state goes in a `Model` the driver owns, never in the
@@ -90,7 +91,8 @@ driver / `Result` story ever grows enough to earn it), not a commitment.
   is a driver with its own `DriverState`, not a new combinator and not `Plan` fields.
 - **The levers stay independently testable.** Because each lever is a pure `Plan -> Plan` taking its
   scalar in its spec, it is unit-tested standalone; the driver is tested for the *coordination*
-  (does a pass leave both scalars unchanged at the fixpoint?), not re-testing each lever.
+  (does a pass thread each settled scalar into the next lever correctly?), not re-testing each
+  lever.
 
 ## Status
 

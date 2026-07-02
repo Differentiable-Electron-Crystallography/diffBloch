@@ -173,23 +173,23 @@ lives in this codebase, and the test that pins it. The defects are also recorded
   `design/decisions/stage11-fit-orientation.md`.
 - **Found:** diffBloch 2.0 stage 11 (5a) -- the wR2-scoring seam.
 
-### Convergence revisits knobs to a fixpoint, not the private's fixed two order-varying passes
+### Coverage tunes pool + window only, not the private's three knobs (tilt deferred to stability)
 
-- **Original:** `diffBloch/programs/convergence_testing.py`, `_run_hyperparams_optimization` /
-  `run_pass`. The hyperparameter suite runs a hard-coded `num_passes = 2`, and *changes the sweep
-  order between passes* (pass 1: `g_max`, `tilt_steps`, `sg_max`; pass 2: `tilt_steps`, `g_max`,
-  `sg_max`). The revisit count and the per-pass order are empirical -- no stated principle.
-- **2.0 behaviour:** the suite is one ordered pass over the levers (`converge_pool`,
-  `converge_sampling`, `converge_beams` -- respecting the hard grid-before-beams partial order)
-  driven to a genuine cross-knob fixpoint by the **preprocess driver**: the pass repeats until it
-  leaves every knob unchanged, or the `ConvergenceTolerance` cap raises (silent non-convergence is
-  never returned). This **generalises** the private's fixed 2 passes (a fixpoint subsumes any
-  sufficient fixed count) and drops the unprincipled per-pass order-swap. (The fixpoint is assembled
-  by the driver, not by `iterate_until(pipeline([...]))` -- see
-  `design/decisions/stage11-cross-lever-fixpoint.md`.)
-- **Equivalence:** when two ordered passes already reach the fixpoint, 2.0 stops after detecting it
-  rather than running a hard-coded second pass; results coincide whenever the private's 2 passes
-  were themselves converged.
-- **Where:** `preprocess/` convergence steps + `iterate_until` (`preprocess/pipeline.py`). Decision
-  context in `design/decisions/stage11-convergence.md`.
-- **Found:** diffBloch 2.0 stage 11 -- convergence testing.
+- **Original:** `diffBloch/programs/convergence_testing.py`, `_run_initial_minimum_param_sweep`.
+  The coverage sweep grows **three** knobs (`g_max`, `tilt_steps`, `sg_max`), accepting a candidate
+  only when the number of matched experimental reflections increases. Its match count comes from a
+  full `_run_simulation`, in which adding rocking-curve tilts captures more reflections -- so
+  `tilt_steps` genuinely moves the coverage objective there.
+- **2.0 behaviour:** coverage (`preprocess/coverage.py`, `plan_coverage`) is a **pure geometric
+  membership** count (an observed hkl is matched iff it is in the active beam *set*; no engine, no
+  intensity gate -- itself a deliberate cheaper-by-construction choice). Under pure membership the
+  beam *set* is tilt-independent (tilts reuse the same set), so `tilt_sampling` cannot move the
+  coverage objective. The faithful 2.0 coverage phase therefore sweeps only the **pool**
+  (`cover_pool`) and **window** (`cover_beams`); tilt sampling is tuned in the self-stability phase
+  (`converge_sampling`) instead, where it does move the (simulation-based) objective.
+- **Why not replicate:** replicating the three-knob coverage sweep would require coverage to run the
+  engine (to make tilts matter), discarding the whole point of the pure-membership objective. The
+  divergence is *forced* by the (accepted) pure-coverage decision, not a preference.
+- **Where:** `preprocess/coverage.py`; decision context in `design/decisions/stage11-convergence.md`
+  ("two operations are two kinds of objective").
+- **Found:** diffBloch 2.0 stage 11 -- coverage sweep (slice 5).
