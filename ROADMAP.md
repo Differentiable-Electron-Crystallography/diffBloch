@@ -92,7 +92,7 @@ commit — the executable form of *"the core physics model has not changed."*
     rates; `least_squares` (Gauss–Newton/LM); `OptimizerState` / threaded `Generator` /
     `snapshot`/`history` / `checkpoint_every`; refinable-thickness wiring and multi-thickness
     reduction beyond summation.
-- [ ] **11 — `preprocess/`** (a composable `Plan -> Plan` pipeline; name finalized — see naming
+- [x] **11 — `preprocess/`** (a composable `Plan -> Plan` pipeline; name finalized — see naming
   note). A distinct stage that **emits the invariant `Plan`** the differentiable refinement is
   conditioned on. Structurally a scikit-learn-style **Pipeline**: a sequence of `Plan -> Plan`
   transformers (each *fits* something and returns a sharpened `Plan` via `dataclasses.replace`),
@@ -167,7 +167,19 @@ commit — the executable form of *"the core physics model has not changed."*
     (`design/decisions/effects-and-observability.md`), `fit_orientation`/`fit_thickness` return
     `Plan`s and never write per-facet CSVs (persistence = checkpoint the whole `Plan`; CSV/visualize
     are boundary reporters). Landed: (1/n) spine; (2/n) orientation in physics; (3/n) a -- native
-    orientation derivation pinned to a private golden (8.6e-7) + `orientation_basis` convention home.
+    orientation derivation pinned to a private golden (8.6e-7) + `orientation_basis` convention home;
+    (3/n b) `from_experiment` -> grid-sharing `(train_plan, val_plan)`; (4/n) `select_beams`; (5/n)
+    `fit_orientation`; (6/n) per-rotation thickness + `fit_thickness`; (7/n) `converge_numerics` +
+    the convergence **driver** (`preprocess/driver.py`): a pure `State ConvergenceState Plan` runner
+    with `run_coverage_phase` (pool + window, pure geometry) and `run_stability_phase` (pool +
+    window + rocking tilt, fixed `num_passes` + per-pass order-swap = the cross-lever fixpoint),
+    exposed via `converge_numerics(test, ...) -> PlanStep` dispatching the `operation ∈ {coverage,
+    self_stability, both}` discriminated union (`both` seeds stability from coverage) and returning
+    just the `Plan` (opt-in by construction). `steps/` reorg (spine <- steps <- orchestrators) +
+    `reseed_pool` dedup. `specs.ConvergenceTest` = what-to-sweep, kept separate from
+    `ConvergenceTolerance` = when-to-stop. **Stage 11 complete.** The C3 fit/eval-integration +
+    residual arc is a distinct post-stage-11 workstream (see the anchor section; residual chase is
+    deliberately last).
 - [ ] **12 — `logging` + `app/`.** Pluggable `Logger` (NullLogger default; wandb/CSV/MLflow as
   swappable backends — no vendor SDK in core); thin `cli.py`; pluggable `sweep.py`.
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
@@ -240,12 +252,16 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > **Remaining residual `0.0594 → 0.0438`** and the
 > fit-coupling wiring are the live C3 work.
 >
-> **Scheduling: the residual chase is deferred to *after* stage 11 completes.** Stage 11's remaining
-> convergence slices (pool lever + cross-lever fixpoint, `converge_sampling`, the coverage sweep, and
-> the preprocess driver) land first; the `0.0594 → 0.0438` residual and the C3 fit/eval-integration
-> coupling are then taken up as a distinct post-stage-11 workstream (candidates: obs matching /
-> `I>3σ` bookkeeping 965 vs 958, mosaicity, minor forward-model details, and threading `op.tilts`
-> through `fit_orientation`). Tracked as post-stage-11 work in this roadmap.
+> **Scheduling: stage 11 is complete; the residual chase is deliberately *last*.** With the
+> convergence driver landed (pool lever + cross-lever fixpoint, the coverage sweep, the
+> self-stability phase, and `converge_numerics`), stage 11 is closed. The post-stage-11 workstream
+> runs in order: **(1)** C3 fit-coupling (thread `op.tilts` through `fit_orientation` so the fit
+> scores under the integrated model — the fit/eval consistency invariant), **(2)** mosaicity, **(3)**
+> `converge_sampling` on the real rocking curve, **(4)** the convergence tutorial, **(5)**
+> config-schema wiring of `ConvergenceTest`, and **(6)** the `0.0594 -> 0.0438` residual chase
+> **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor forward-model details) — it is only
+> meaningful once the fit/eval coupling and the integrated model are in place. Tracked in
+> `design/stage11-preprocess-plan.md` (Open / deferred).
 
 ### Rocking-curve integration — design decisions (approved)
 
