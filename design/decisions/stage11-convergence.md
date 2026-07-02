@@ -203,8 +203,8 @@ The private's "two passes, with the order changed on the second" is an empirical
 stated principle; the order-variation in particular looks like a hand-tuned heuristic. 2.0 drives
 one ordered pass to a genuine cross-knob fixpoint — the suite repeats the ordered pass until a whole
 pass leaves every knob unchanged (or the `ConvergenceTolerance` cap raises). This **generalises**
-the private's fixed count and is recorded as a deliberate generalization in `DIVERGENCE.md` (like the
-`fit_orientation` iteration cap), and removes the unprincipled per-pass order-swap.
+the private's fixed count and is recorded as a deliberate generalization in `DIVERGENCE.md` (like
+the `fit_orientation` iteration cap), and removes the unprincipled per-pass order-swap.
 
 The *mechanism* is the **preprocess driver**, not a `pipeline` composition: the pool lever proved
 that `iterate_until(pipeline([window, pool]))` cannot compose (seed/pruned mismatch + shared scalar
