@@ -1,4 +1,4 @@
-# Decision: three composition shapes for `Plan -> Plan`, and the driver as a hand-rolled `State`
+# Decision: three composition shapes for `Plan -> Plan`, and the driver as a `State` runner
 
 **Status:** accepted (stage 11; generalises `stage11-cross-lever-fixpoint.md`).
 **Context:** the preprocess pipeline composes `Plan -> Plan` steps. Two combinators already exist
@@ -43,39 +43,64 @@ not* live on the `Plan` -- which means no `Plan -> Plan` combinator can thread i
 The "no" branch is not a licence to bolt state onto the `Plan`. It is the signal that the loop has
 an owner *other than* the value it transforms.
 
-## The driver is a hand-rolled `State` / `StateT`
+## The driver runs a `State` computation (it is `runState`, not the monad itself)
 
-The driver shape is not bespoke: it is the standard functional decomposition of a stateful loop --
-the **State monad**. In Haskell terms the convergence driver is
+The shape is not bespoke: it is the standard functional decomposition of a stateful loop -- the
+**State monad**, `State s a` (equivalently `s -> (a, s)`). Being precise about the three parts,
+since they are easy to conflate:
 
-```
-StateT DriverState Identity Plan
-```
+- the **state type** `s` is a plain value record (here `ConvergenceState`) -- *not* a monad;
+- the **monad** is `State ConvergenceState`; each *phase* is a `State ConvergenceState Plan` value
+  (a function `ConvergenceState -> (Plan, ConvergenceState)`);
+- the **driver** is the *runner* -- it plays `runState` / `evalState`, executing the phases and
+  threading `s`. "Driver" is an informal role name (orchestrator / runner), **not** a monad and not
+  a kind of monad; there is no "Driver monad".
 
-with the pieces mapping exactly onto ours:
+We use plain `State`, not a transformer stack (`StateT s IO`): the levers are *pure* (expensive but
+side-effect-free), so there is no base effect to stack over -- `State s = StateT s Identity`.
 
 | Haskell | Ours |
 |---|---|
-| the state `s` in `State s a` | `DriverState` = un-pruned pool + the two live scalars |
+| the state `s` in `State s a` | `ConvergenceState` = the live scalars (the un-pruned pool is *derived* from `grid` + `g_max_refine`, not stored) |
+| the monad `State s` | `State ConvergenceState` |
+| a computation `State s a` | a *phase* (`coverage`, `stability`): `State ConvergenceState Plan` |
 | the threaded value `a` | the `Plan` |
 | a pure step `a -> a` | each lever, a pure `Plan -> Plan` |
-| the loop combinator (a bounded fold, or `iterateUntilM` from `monad-loops` for a fixpoint) | the driver's coordinated multi-pass sweep (fixed `num_passes`, or repeat-until-stable) |
-| `runStateT` | the driver function itself |
+| the loop combinator (a bounded fold, or `iterateUntilM` for a fixpoint) | the phase's coordinated multi-pass sweep (fixed `num_passes`, faithful to the private) |
+| `runState` / `evalState` | the **driver** (the runner) |
 
 So the levers stay **pure and state-free** (they receive their scalar as a plain argument in their
-spec), and the driver is the `runState` harness that (a) holds `s`, (b) reconstructs each lever with
+spec), and the driver is the `runState` runner that (a) holds `s`, (b) reconstructs each lever with
 the *other* lever's just-settled scalar, and (c) runs the loop (for convergence: a fixed
-`num_passes` coordinate sweep, faithful to the private). This is precisely how Haskell
-keeps `State` (the bookkeeping) separate from `fix` / `iterateUntilM` (the loop) and composes them
--- which is why our levers are `Plan -> Plan` and the driver is the thing that owns the back-and-
-forth. Elm says the same less formally (loop state goes in a `Model` the driver owns, never in the
-domain record); OCaml most bluntly (recurse with an explicit state record).
+`num_passes` coordinate sweep, faithful to the private). This is precisely how Haskell keeps `State`
+(the bookkeeping) separate from the loop combinator and composes them -- which is why our levers are
+`Plan -> Plan` and the driver is the thing that owns the back-and-forth. Elm says the same less
+formally (loop state goes in a `Model` the driver/runner owns, never in the domain record); OCaml
+most bluntly (recurse with an explicit state record).
+
+At its *outer boundary* the driver is `evalState`: it runs the phases and **discards** the final
+`ConvergenceState`, returning just the converged `Plan`. So the public step
+`converge_numerics : Plan -> Plan` is an ordinary `PlanStep` that nests in `pipeline` /
+`iterate_until` like any other, even though its *phases* are `State` computations. Downstream fits
+never see `s`.
+
+### Abstraction stance: a general pattern, a concrete first instance
+
+This pattern is **generic over the state type** `s` -- a later coupled loop (say a mosaicity <->
+orientation coupling) is an instance with its own `FooState` record and its own runner. But we do
+**not** ship a generic `State[S, A]` / `eval_state[S]` scaffold now: the first driver is written
+concretely against `ConvergenceState`, exactly as we hand-roll `pipeline` rather than import a
+combinator library. The state record stays a self-contained frozen value and the runner logic stays
+separable from the phase bodies, so *if* a second stateful driver appears and genuinely shares
+runner code (rule of three), lifting a generic `eval_state[S]` is a mechanical extraction -- done
+then, when its true shape is known, not guessed for a single caller.
 
 ## Why hand-roll rather than import `returns.State`
 
 Python *has* the named construct -- `returns` (dry-python) ships a typed `State` / `StateT`. We
 hand-roll for the same reason we hand-roll `pipeline` and `iterate_until` (`composable-methods.md`):
-a three-line loop typed to *our* domain (`Plan`, `DriverState`) beats importing a monad framework
+a three-line loop typed to *our* domain (`Plan`, `ConvergenceState`) beats importing a monad
+framework
 and its `bind`/`do`-notation vocabulary, and avoids a dependency for a single call site. The value
 of anchoring to `State` is *conceptual* -- it tells us the shape is correct and names its parts --
 not a reason to take the import. Revisiting `returns` is a recorded *possible* roadmap task (if the
@@ -88,7 +113,7 @@ driver / `Result` story ever grows enough to earn it), not a commitment.
   state-on-the-`Plan` loops only.
 - **New coupled loops reuse this pattern, not re-derive it.** Any future "several levers coupled
   through state we don't want on the `Plan`" (e.g. a later mosaicity <-> orientation coupling)
-  is a driver with its own `DriverState`, not a new combinator and not `Plan` fields.
+  is a driver with its own `FooState` record and runner, not a new combinator and not `Plan` fields.
 - **The levers stay independently testable.** Because each lever is a pure `Plan -> Plan` taking its
   scalar in its spec, it is unit-tested standalone; the driver is tested for the *coordination*
   (does a pass thread each settled scalar into the next lever correctly?), not re-testing each

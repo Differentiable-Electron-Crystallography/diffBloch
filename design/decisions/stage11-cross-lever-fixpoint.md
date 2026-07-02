@@ -2,7 +2,7 @@
 
 **Status:** accepted (stage 11, pool lever landed `10fd0f9`).
 **Generalised by:** `plan-composition-shapes.md` promotes the driver used here to a named pattern
-(the three composition shapes; the driver as a hand-rolled `State`/`StateT`). This ADR is the worked
+(the three composition shapes; the driver as the `State` runner). This ADR is the worked
 convergence instance of that pattern.
 **Context:** beam-set convergence has two coupled levers — the Klar *window*
 (`integration_semiangle`, `converge_beams`) and the candidate *pool* (`g_max_refine`,
@@ -43,14 +43,16 @@ root: **the coordinate-descent state (the unpruned candidate pool + the two live
 
 The individual levers (`converge_beams`, `converge_pool`) ship as **standalone** `Plan -> Plan`
 steps, each self-contained and independently testable. The **cross-lever fixpoint is the preprocess
-driver's responsibility**, not a `pipeline` composition. The driver — the same later slice that owns
-the operation discriminated union and the default pipeline assembly — holds the coordinate-descent
-state explicitly:
+driver's responsibility**, not a `pipeline` composition. The driver -- the same later slice that
+owns the operation discriminated union and the default pipeline assembly -- is the `State` runner
+(`plan-composition-shapes.md`); its state (`ConvergenceState`) holds the coordinate-descent scalars
+explicitly:
 
-- the **unpruned candidate pool** (so each lever re-selects from a stable seed, honouring
-  obstruction 1);
-- the **two live scalars** `integration_semiangle` and `g_max_refine` (so each lever is
-  reconstructed with the *other* lever's just-settled value, honouring obstruction 2);
+- the **live scalars** `integration_semiangle` and `g_max_refine` (and `tilt_sampling`), so each
+  lever is reconstructed with the *other* lever's just-settled value (obstruction 2), and so each
+  lever re-selects from the **un-pruned pool re-derived** as `seed_beam_hkl(grid, g_max_refine)`
+  rather than from the previous lever's pruned `Plan` (obstruction 1). The pool is thus *derived*
+  from `grid` + `g_max_refine`, not stored as a separate field.
 
 and runs the private's fixed multi-pass coordinate sweep over them: converge one lever, read its
 settled scalar, feed it to the other lever's spec, and repeat for a fixed `num_passes` (default 2)
