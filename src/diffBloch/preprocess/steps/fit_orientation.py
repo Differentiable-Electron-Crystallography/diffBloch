@@ -14,7 +14,12 @@ the step never mutates (``design/decisions/stage11-fit-orientation.md``); the si
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
 The active beam set is held fixed at each orientation's seed selection across the search -- it is
-*not* re-filtered per trial as ``diffBloch_private`` does (see ``DIVERGENCE.md``).
+*not* re-filtered per trial as ``diffBloch_private`` does (see ``DIVERGENCE.md``). The rocking-curve
+tilt set carried by the ``Plan`` is likewise threaded through every trial unchanged, so each
+candidate is scored under the *same* integration as the seed -- the fit/eval consistency invariant
+(the private fits under integration too, passing ``tilts`` into every simplex trial). Ordering
+``integrate_rocking_curve`` before this step therefore couples the fit to the integrated model; with
+rocking off the tilt set is a single identity, byte-identical to a static fit.
 """
 
 from __future__ import annotations
@@ -92,6 +97,10 @@ def _refine_one(
     beam_hkl = np.asarray(
         op.beam_hkl, dtype=np.int64
     )  # fixed across the search (see DIVERGENCE.md)
+    # The rocking-curve tilt set is threaded through every trial unchanged, so each candidate is
+    # scored under the same integration as the seed (fit/eval consistency). Identity (N=1) when
+    # rocking is off -> I @ orientation == orientation, byte-identical to the untilted build.
+    tilts = np.asarray(op.tilts, dtype=np.float64)
     search_angle = search.max_search_angle
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
@@ -110,6 +119,7 @@ def _refine_one(
                 thickness=current.thickness,
                 u0=current.u0,
                 orientation=orientation,
+                tilts=tilts,
             )
             trial_score = float(engine.score_orientation(trial, fgb))
             if trial_score < current_score:  # greedy first-improvement; restart at this radius

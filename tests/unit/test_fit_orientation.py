@@ -21,6 +21,7 @@ from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_orientation, hexagonal_tilt
+from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import HexagonalSearch
 
@@ -89,15 +90,21 @@ def _self_consistent(
     spec: ConstraintSpec,
     numbers: torch.Tensor,
     orientation: np.ndarray,
+    tilts: np.ndarray | None = None,
 ) -> OrientationPlan:
-    """An OrientationPlan whose observed pattern is what the engine simulates at ``orientation``."""
+    """An OrientationPlan whose observed pattern is what the engine simulates at ``orientation``.
+
+    When ``tilts`` is given the observed intensities are the engine's rocking-curve *integration*
+    over that tilt set, so the returned plan is self-consistent *under integration*.
+    """
     dummy = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
     seed = OrientationPlan.build(
-        grid, _BEAM_HKL, dummy, energy=_ENERGY, thickness=(300.0,), orientation=orientation
+        grid, _BEAM_HKL, dummy, energy=_ENERGY, thickness=(300.0,), orientation=orientation,
+        tilts=tilts,
     )
     engine = RefinementEngine(
         spec=spec,
@@ -114,7 +121,8 @@ def _self_consistent(
         sigmas=torch.full((3,), 0.01, dtype=torch.float64),
     )
     return OrientationPlan.build(
-        grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(300.0,), orientation=orientation
+        grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(300.0,), orientation=orientation,
+        tilts=tilts,
     )
 
 
@@ -130,6 +138,25 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
 
     # Already optimal: the search must not wander it away from the seed.
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
+
+
+def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() -> None:
+    # A Plan carrying a rocking-curve tilt set must be scored *under integration* at every trial --
+    # the fit/eval consistency invariant. The trial builds thread op.tilts through unchanged, so an
+    # already-integration-optimal orientation stays put AND the returned plan keeps its N tilts. A
+    # dropped tilt set would score current-integrated vs trials-static (the latent bug this closes).
+    grid, asu_plan, spec, numbers = _silicon()
+    tilts = rocking_curve_tilts(0.5, 3, geometry="continuous_rotation")
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3), tilts=tilts)
+    assert len(matched.tilts) == 3  # the seed carries the integration geometry
+    refinement = _refinement(asu_plan, spec, numbers)
+
+    (refined,) = fit_orientation(refinement, HexagonalSearch())(
+        Plan(grid=grid, orientations=(matched,))
+    ).orientations
+
+    assert len(refined.tilts) == 3  # trials preserved the tilt set (not dropped to a static N=1)
+    assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2
 
 
 def test_hexagonal_search_rejects_a_nonpositive_iteration_cap() -> None:
