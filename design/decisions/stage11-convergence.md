@@ -173,15 +173,11 @@ below — block coordinate descent — activates once the pool lever (`g_max_ref
 `converge_sampling` join:
 
 > **Implementation note (slice 3, pool lever landed).** The joint fixpoint is **not** a naive
-> `iterate_until(pipeline([converge_beams, converge_pool]))`. Two obstructions surfaced when the pool
-> lever landed: (1) `converge_beams` re-selects from an *unpruned* seed, but `converge_pool` *emits a
-> window-pruned* Plan, so feeding one into the other loses candidates; (2) the two levers share
-> scalar state — the window `integration_semiangle` and the pool `g_max_refine` — that the `Plan`
-> does not carry, so a fixed-spec composition uses a stale scalar for the other lever. The true block
-> coordinate descent therefore belongs to the **preprocess driver** (a later slice), which holds the
-> unpruned candidate pool and the two scalars as explicit state, converges one lever, feeds its
-> settled scalar to the other, and repeats until a whole pass is stable. `converge_pool` ships as the
-> standalone lever; the cross-lever fixpoint wiring is deferred to the driver.
+> `iterate_until(pipeline([converge_beams, converge_pool]))` — `converge_beams` re-selects from an
+> *unpruned* seed while `converge_pool` emits a *window-pruned* Plan, and the two levers share
+> scalar state (`integration_semiangle`, `g_max_refine`) the `Plan` does not carry. The cross-lever
+> fixpoint therefore lives in the **preprocess driver**, which holds that state explicitly. See
+> `design/decisions/stage11-cross-lever-fixpoint.md` for the full reasoning.
 
 - **Partial order (sizing dependency):** the grid must contain any beam a wider pool keeps, so
   growing `g_max_refine` implies a grid-`g_max` *sizing* step **before** re-selection.
@@ -287,8 +283,10 @@ same errors-as-values-to-the-shell posture as `design/decisions/effects-and-obse
    **Done** (`6f3d694`, `1b5681e`) — `patience` field lands with `converge_beams`.
 2. `converge_scalar` HOF + `converge_beams` — the `integration_semiangle` window sweep
    (skip-null-steps + patience + cap).
-3. The coupled pool lever (`g_max_refine` + dependent grid sizing) and the cross-lever fixpoint.
+3. The coupled pool lever (`g_max_refine` + dependent grid sizing). **Done** (`10fd0f9`,
+   `converge_pool`). The cross-lever fixpoint is re-homed to the driver — see
+   `design/decisions/stage11-cross-lever-fixpoint.md`.
 4. `converge_sampling` — waits on rocking-curve integration in the forward model (`ROADMAP.md`).
 5. The coverage `initial_minimum_param_sweep` step (match-count objective).
-4. The operation discriminated union + the `both` pipeline, wired by the preprocess driver
-   (lands with `refine`).
+6. The operation discriminated union + the `both` pipeline + the cross-lever fixpoint, wired by the
+   preprocess driver (lands with `refine`).

@@ -239,7 +239,7 @@ def converge_pool(
     scalar state (the window ``integration_semiangle`` and the pool ``g_max_refine``) the ``Plan``
     does not carry. Threading that shared state across levers is the preprocess driver's job (block
     coordinate descent: converge one lever, feed its settled scalar to the other, repeat) -- see
-    ``design/decisions/stage11-convergence.md``.
+    ``design/decisions/stage11-cross-lever-fixpoint.md``.
     """
     if step <= 0.0:
         raise ValueError("step must be positive")
