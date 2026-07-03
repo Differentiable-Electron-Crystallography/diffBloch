@@ -148,21 +148,26 @@ the config / preprocess / engine layers. Where: `preprocess/experiment.py` (`Pla
 `from_experiment`), `config/schema.py` (`DataSplitConfig`). See
 `design/decisions/train-validation-split.md`.
 
-## Rocking-curve integration is a naive N×-loop — batching blocks the integrated anchor
+## Rocking-curve integration tilt-batching — LANDED (2026-07); large-N memory seam noted
 
-- **Location:** `engine/forward.py` (`RefinementEngine._solve`, the per-tilt `beam_plans` loop);
-  consumed under integration by `preprocess/steps/fit_orientation.py` (every trial) and
-  `run_inference`.
-- **What:** each rotation's rocking curve is simulated as N independent Bloch solves (one per tilt,
-  N=42 for quartz), looped in Python; the expensive `eigh` is not batched over the tilt axis. The
-  tilts share the beam set and differ only in geometry (`Sg`/`A`), so they are a natural batch.
-- **Impact:** fit-under-integration costs ~15.6 s/rotation vs ~0.4 s/rotation static (~40×, measured
-  2026-07 on the quartz anchor at `sampling=42`) — ~26 min over all 99 rotations. This is why the
-  fit/eval-coupling result (ordering `integrate_rocking_curve` before the fits reaches the reference
-  `R_obs`; see `design/decisions/stage11-rocking-curve.md`) is **not yet encoded as an anchor
-  pin** — the full integrated run is too slow for a routine opt-in e2e. The fast static anchor stays
-  the routine pin until this lands.
-- **Fix:** batch the Bloch solve (build `A` / `eigh` / propagate) over the N tilts — one batched
-  `eigh` per rotation instead of N sequential ones (the private amortizes via `union_splits`). A
-  perf pass, not a correctness change (results are identical); tracked in
-  `design/decisions/stage11-rocking-curve.md` #6.
+- **Location:** `engine/forward.py` (`RefinementEngine._solve`); batched assembly in
+  `core/dynamical/assembly.py` (`stack_beam_plans` / `build_bloch_systems`) and the rank-polymorphic
+  `core/solver.py::propagate`.
+- **Resolved:** each rotation's N rocking-curve tilts (which share the beam set, differing only in
+  the per-tilt geometry `mii`/`diagonal`) are now solved as **one batched `eigh`/`matrix_exp` over
+  `(B, N, N)`** with a single shared F-gather, replacing the Python per-tilt loop. Numerically
+  identical: `matrix_exp` bit-for-bit, `eigh` to machine precision (pinned by
+  `tests/unit/test_core_solver.py::test_batched_propagate_matches_the_per_tilt_loop` and
+  `test_core_products.py::test_integrate_batched_matches_the_per_tilt_integrate`); the untilted
+  (`B=1`) path is byte-identical (anchor unchanged).
+- **Measured win:** ~3× on a full 99-rotation integrated eval (917→302 ms `bloch_eigen`; 1247→400 ms
+  `matrix_exp`, quartz anchor `sampling=42`). Modest rather than the naive ~40× because the selected
+  beam set is small (N=13–31), so per-matrix compute was already cheap and the win is fewer
+  dispatches + one gather. This unblocks encoding the integrated fit/eval-coupling recipe as an
+  anchor pin (`design/decisions/stage11-rocking-curve.md` #6) once the coupled-fit cost is
+  re-measured.
+- **Deferred (large-N memory seam):** the batched `matrix_exp` materialises a `(B, T, N, N)` complex
+  transfer buffer; at anchor scale this is trivial (<0.07 GB even with the 100-step thickness grid),
+  but a future large-N system (hundreds of beams) could make it painful. Fix then would be internal
+  thickness-chunking inside `propagate` (an implementation detail, no API change) or a value-typed
+  strategy (never a boolean toggle). YAGNI now; recorded so the seam is discoverable.

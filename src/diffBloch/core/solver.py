@@ -38,10 +38,14 @@ def propagate(
 ) -> Tensor:
     """Propagate ``system.psi0`` to each thickness, returning the exit wavefunction.
 
-    ``thicknesses`` is a scalar or 1-D sequence/tensor (Å); returns a complex ``(T, N)`` tensor of
-    exit-wave amplitudes (intensities ``|psi|^2`` are a downstream concern). Differentiable in ``A``
-    (hence in ``Fgb``). ``method`` picks the propagator: ``matrix_exp`` (refine default, stable
-    autograd) or ``bloch_eigen`` (eval-only). The no-absorption path assumes ``A`` is Hermitian.
+    ``thicknesses`` is a scalar or 1-D sequence/tensor (Å). Rank-polymorphic in the operator: a
+    single system (``a`` ``(N, N)``) returns ``(T, N)``; a batched system (``a`` ``(B, N, N)``, e.g.
+    an orientation's rocking-curve tilts stacked by :func:`core.dynamical.build_bloch_systems`)
+    returns ``(B, T, N)`` -- one batched ``eigh`` / ``matrix_exp`` over all tilts. The single-system
+    path is byte-identical to the un-batched computation (the batch axis is simply absent).
+    Differentiable in ``A`` (hence in ``Fgb``). ``method`` picks the propagator: ``matrix_exp``
+    (refine default, stable autograd) or ``bloch_eigen`` (eval-only). The no-absorption path
+    assumes ``A`` is Hermitian.
     """
     t = torch.as_tensor(thicknesses, dtype=torch.float64, device=system.a.device)
     if t.ndim == 0:
@@ -57,32 +61,36 @@ def propagate(
 
 
 def _propagate_matrix_exp(system: BlochSystem, thicknesses: Tensor) -> Tensor:
-    a = _complex_operator(system.a)
+    a = _complex_operator(system.a)  # (..., N, N)
     # Co-locate the geometry-plan tensors onto the operator device (they may be built CPU-side while
     # A is parameter-derived on an accelerator); thicknesses is already on a.device, k_n is a float.
     psi0 = system.psi0.to(dtype=a.dtype, device=a.device)
     # i pi t / k_n: the dynamical-diffraction propagation scaling. For a Hermitian A this scalar is
     # pure-imaginary, so matrix_exp(A * scalar) is unitary (flux-conserving).
     scalars = (1j * torch.pi * thicknesses / system.k_n).to(a.dtype)
-    transfer = torch.matrix_exp(a[None] * scalars[:, None, None])  # (T, N, N)
-    return (transfer @ psi0.unsqueeze(-1)).squeeze(-1)  # (T, N)
+    # a.unsqueeze(-3) inserts the thickness axis before (N, N): a single (N, N) becomes (1, N, N)
+    # broadcasting to (T, N, N); a batched (B, N, N) becomes (B, 1, N, N) broadcasting to
+    # (B, T, N, N) -- one matrix_exp over the whole tilt/thickness grid.
+    transfer = torch.matrix_exp(a.unsqueeze(-3) * scalars[:, None, None])  # (..., T, N, N)
+    return (transfer @ psi0.unsqueeze(-1)).squeeze(-1)  # (..., T, N)
 
 
 def _propagate_bloch_eigen(system: BlochSystem, thicknesses: Tensor) -> Tensor:
-    a = _complex_operator(system.a)
+    a = _complex_operator(system.a)  # (..., N, N)
     # Co-locate the geometry-plan tensors onto the operator device (see _propagate_matrix_exp).
-    mii = system.mii.to(device=a.device)
-    psi0 = system.psi0.to(device=a.device)
-    # Hermitian eigendecomposition (no-absorption path); v are the Bloch-wave excitations.
-    v, eigvecs = torch.linalg.eigh(a)
+    mii = system.mii.to(device=a.device)  # (..., N)
+    psi0 = system.psi0.to(device=a.device)  # (N,), shared across the batch
+    # Hermitian eigendecomposition (no-absorption path); v are the Bloch-wave excitations. Batched
+    # over any leading dims: one eigh solves every tilt at once.
+    v, eigvecs = torch.linalg.eigh(a)  # v (..., N), eigvecs (..., N, N)
     gamma = v / (2.0 * system.k_n)
     # Un-symmetrise: A was Mii-symmetrised to be Hermitian, so divide the eigenvectors' diagonal
     # back to recover the physical Bloch coefficients (private dynamical.py:877).
-    physical_diag = torch.diagonal(eigvecs) / mii.to(eigvecs.dtype)
+    physical_diag = torch.diagonal(eigvecs, dim1=-2, dim2=-1) / mii.to(eigvecs.dtype)
     c = _fill_diagonal(eigvecs, physical_diag)
-    alpha = torch.conj(c.mT) @ psi0.to(c.dtype)  # decompose psi0 onto the Bloch waves
-    phase = torch.exp(2.0j * torch.pi * thicknesses[:, None] * gamma[None, :])  # (T, N)
-    return (phase * alpha[None, :]) @ c.mT  # recombine: psi(t) = C @ (phase ⊙ alpha), (T, N)
+    alpha = torch.conj(c.mT) @ psi0.to(c.dtype)  # decompose psi0 onto the Bloch waves, (..., N)
+    phase = torch.exp(2.0j * torch.pi * thicknesses[:, None] * gamma.unsqueeze(-2))  # (..., T, N)
+    return (phase * alpha[..., None, :]) @ c.mT  # psi(t) = C @ (phase ⊙ alpha), (..., T, N)
 
 
 def _complex_operator(operator: Tensor) -> Tensor:

@@ -6,7 +6,13 @@ import numpy as np
 import pytest
 import torch
 
-from diffBloch.core.dynamical import build_beam_plan, build_bloch_system, m_factors
+from diffBloch.core.dynamical import (
+    build_beam_plan,
+    build_bloch_system,
+    build_bloch_systems,
+    m_factors,
+    stack_beam_plans,
+)
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.solver import propagate
 
@@ -51,6 +57,42 @@ def test_matrix_exp_and_bloch_eigen_agree_for_hermitian_system() -> None:
         atol=1e-12,
         rtol=1e-12,
     )
+
+
+@pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
+def test_batched_propagate_matches_the_per_tilt_loop(method: str) -> None:
+    """A batched (B, N, N) solve equals stacking B single solves -- the tilt-batching perf path.
+
+    The rocking-curve tilts share one beam set (same gather / energy), differing only in the
+    per-tilt geometry (here a slight reciprocal-basis scale standing in for the tilt). The batched
+    operator must reproduce the loop bit-for-bit (``matrix_exp``) or to machine precision (eigh).
+    """
+    factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128)
+    plans = [
+        build_beam_plan(_BEAM_HKL, _GRID_HKL, _RECIP_BASIS * s, energy=_ENERGY, gpts=_GPTS)
+        for s in (1.0, 1.002, 0.998)
+    ]
+    thicknesses = torch.tensor([0.0, 12.0, 137.0], dtype=torch.float64)
+
+    looped = torch.stack(
+        [propagate(build_bloch_system(p, factors), thicknesses, method=method) for p in plans]
+    )  # (B, T, N)
+    batched = propagate(
+        build_bloch_systems(stack_beam_plans(plans), factors), thicknesses, method=method
+    )
+
+    assert batched.shape == looped.shape
+    assert batched.shape == (len(plans), thicknesses.shape[0], _BEAM_HKL.shape[0])
+    assert torch.allclose(batched, looped, atol=1e-13, rtol=0.0)
+
+
+def test_stack_beam_plans_rejects_unrelated_beam_sets() -> None:
+    shared = build_beam_plan(_BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS)
+    other_beams = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.int64)
+    other_grid = np.array([[i, j, 0] for i in (-1, 0, 1) for j in (-1, 0, 1)], dtype=np.int64)
+    unrelated = build_beam_plan(other_beams, other_grid, np.eye(3), energy=_ENERGY, gpts=(3, 3, 1))
+    with pytest.raises(ValueError, match="sharing one beam set"):
+        stack_beam_plans([shared, unrelated])
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])

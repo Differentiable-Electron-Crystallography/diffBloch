@@ -156,6 +156,43 @@ class BlochSolution:
         amplitudes = total.sqrt().to(first.amplitudes.dtype)
         return cls(amplitudes, total, first.beam_hkl, first.thicknesses)
 
+    @classmethod
+    def integrate_batched(
+        cls,
+        amplitudes: Tensor,
+        beam_hkl: Tensor,
+        thicknesses: Tensor,
+        *,
+        reduction: TiltReduction = PLAIN_SUM,
+    ) -> Self:
+        """Reduce a batched ``(N_tilts, T, N)`` propagation into one integrated solution.
+
+        The batched-solver sibling of :meth:`integrate`: instead of stacking per-tilt sub-solutions,
+        it takes the stacked exit-wave ``amplitudes`` a single batched
+        :func:`core.solver.propagate` returns for all tilts at once (leading tilt axis), derives
+        their ``intensities = |psi|^2``, and applies the same tilt-axis ``reduction``. Byte-for-byte
+        equivalent to ``integrate`` on the corresponding per-tilt sub-solutions (identical stack,
+        identical ``_reduce_tilts``); only the geometry of *how the tilts were solved* differs.
+        ``amplitudes`` is ``(N_tilts, T, N)`` complex; ``beam_hkl`` ``(N, 3)``; ``thicknesses``
+        ``(T,)`` (the shared beam set / thicknesses the tilts co-vary over).
+        """
+        amplitudes = torch.as_tensor(amplitudes)
+        beam_hkl = torch.as_tensor(beam_hkl, dtype=torch.int64)
+        thicknesses = torch.as_tensor(thicknesses)
+        if amplitudes.ndim != 3:
+            raise ValueError(
+                f"amplitudes must have shape (N_tilts, T, N), got {tuple(amplitudes.shape)}"
+            )
+        _, n_thick, n_beams = amplitudes.shape
+        if beam_hkl.shape != (n_beams, 3):
+            raise ValueError(
+                f"beam_hkl must have shape (N, 3) = ({n_beams}, 3) matching amplitudes"
+            )
+        if thicknesses.shape != (n_thick,):
+            raise ValueError(f"thicknesses must have shape (T,) = ({n_thick},) matching amplitudes")
+        total = _reduce_tilts(intensities(amplitudes), reduction)  # (T, N)
+        return cls(total.sqrt().to(amplitudes.dtype), total, beam_hkl, thicknesses)
+
 
 @dataclass(frozen=True)
 class PatternBatch:

@@ -7,12 +7,15 @@ holds the torch differentiable structure-matrix path built on them. Re-exported 
 
 from diffBloch.core.dynamical.assembly import (
     BeamPlan,
+    BeamPlanBatch,
     BlochSystem,
     StructureFactorGather,
     build_beam_plan,
     build_bloch_system,
+    build_bloch_systems,
     build_structure_factor_gather,
     gather_structure_factors,
+    stack_beam_plans,
     structure_matrix,
 )
 from diffBloch.core.dynamical.primitives import (
@@ -28,10 +31,12 @@ from diffBloch.core.dynamical.primitives import (
 
 __all__ = [
     "BeamPlan",
+    "BeamPlanBatch",
     "BlochSystem",
     "StructureFactorGather",
     "build_beam_plan",
     "build_bloch_system",
+    "build_bloch_systems",
     "build_structure_factor_gather",
     "energy2sigma",
     "energy2wavelength",
@@ -39,6 +44,7 @@ __all__ = [
     "gather_structure_factors",
     "kappa",
     "m_factors",
+    "stack_beam_plans",
     "structure_matrix",
     "structure_matrix_prefactor",
     "wavelength2energy",

@@ -140,6 +140,35 @@ def test_integrate_mosaic_window_may_not_exceed_the_tilt_count() -> None:
         BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
 
 
+def test_integrate_batched_matches_the_per_tilt_integrate() -> None:
+    # integrate_batched takes the stacked (B, T, N) amplitudes a batched solve returns; it must
+    # equal integrate over the corresponding per-tilt sub-solutions (identical stack + reduction).
+    beam_hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
+    thick = torch.tensor([10.0, 40.0])
+    amps = [
+        torch.tensor([[3 + 4j, 1 + 0j], [0 + 1j, 2 + 0j]], dtype=torch.complex128),
+        torch.tensor([[0 + 2j, 2 + 0j], [1 + 0j, 0 + 1j]], dtype=torch.complex128),
+        torch.tensor([[1 + 1j, 0 + 3j], [2 + 0j, 1 + 1j]], dtype=torch.complex128),
+    ]
+    sols = [BlochSolution.from_propagation(a, beam_hkl, thick) for a in amps]
+    stacked = torch.stack(amps)  # (B, T, N)
+    for reduction in (PlainSum(), MosaicSmoothed(2)):
+        looped = BlochSolution.integrate(sols, reduction=reduction)
+        batched = BlochSolution.integrate_batched(stacked, beam_hkl, thick, reduction=reduction)
+        assert torch.equal(batched.intensities, looped.intensities)
+        assert torch.equal(batched.amplitudes, looped.amplitudes)
+        assert torch.equal(batched.beam_hkl, looped.beam_hkl)
+
+
+def test_integrate_batched_rejects_non_3d_amplitudes() -> None:
+    beam_hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
+    thick = torch.tensor([10.0])
+    with pytest.raises(ValueError, match=r"shape \(N_tilts, T, N\)"):
+        BlochSolution.integrate_batched(
+            torch.ones((2, 2), dtype=torch.complex128), beam_hkl, thick
+        )
+
+
 def test_pattern_batch_from_observation_record_full() -> None:
     pattern = PatternBatch.from_observation_record(_observation_record())
     assert pattern.hkl.shape == (3, 3)

@@ -22,7 +22,7 @@ import torch
 from torch import Tensor
 
 from diffBloch.core.constraints import positive
-from diffBloch.core.dynamical import build_bloch_system
+from diffBloch.core.dynamical import build_bloch_system, build_bloch_systems, stack_beam_plans
 from diffBloch.core.losses import optimal_scale
 from diffBloch.core.products import AlignedIntensities, BlochSolution, align
 from diffBloch.core.scattering import structure_factors
@@ -208,18 +208,20 @@ class RefinementEngine:
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device)
         beam_hkl = orientation.beam_hkl.to(device)
-        # One sub-solution per rocking-curve tilt (length 1 = the untilted static solve). The tilts
-        # share this orientation's beam set; the engine sums |psi|^2 over them (BlochSolution.
-        # integrate) -- an incoherent rotation-frame integration. N=1 returns the sub-solution
-        # directly, byte-identical to the pre-integration path.
-        sub = [
-            BlochSolution.from_propagation(
-                propagate(build_bloch_system(beam_plan, fgb), thicknesses, method=self.method),
-                beam_hkl,
-                thicknesses,
+        # Untilted (length 1): the static solve, byte-identical to the pre-integration path.
+        if len(orientation.beam_plans) == 1:
+            amplitudes = propagate(
+                build_bloch_system(orientation.beam_plans[0], fgb), thicknesses, method=self.method
             )
-            for beam_plan in orientation.beam_plans
-        ]
-        return sub[0] if len(sub) == 1 else BlochSolution.integrate(
-            sub, reduction=orientation.tilt_reduction
+            return BlochSolution.from_propagation(amplitudes, beam_hkl, thicknesses)
+        # Rocking-curve integration: the tilts share this orientation's beam set, so ONE batched
+        # solve over (B, N, N) replaces a Python loop of B single solves (the tilt-batching perf
+        # path). The engine then reduces |psi|^2 over the tilt axis (incoherent rotation-frame
+        # integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.
+        batch = stack_beam_plans(orientation.beam_plans)
+        amplitudes = propagate(
+            build_bloch_systems(batch, fgb), thicknesses, method=self.method
+        )  # (B, T, N)
+        return BlochSolution.integrate_batched(
+            amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
         )

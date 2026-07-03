@@ -13,6 +13,7 @@ the codebase's ``core.reciprocal`` (geometry) vs ``core.scattering`` (differenti
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -244,16 +245,18 @@ def structure_matrix(plan: BeamPlan, structure_factors: Tensor) -> Tensor:
 def _fill_diagonal(matrix: Tensor, diagonal: Tensor) -> Tensor:
     """Return a copy of square ``matrix`` with its diagonal replaced by ``diagonal`` (out-of-place).
 
-    Gradient flows through the off-diagonal copy; the diagonal positions are overwritten. Mirrors
-    ``diffBloch_private`` ``utils.py::fill_diagonal_torch``.
+    Gradient flows through the off-diagonal copy; the diagonal positions are overwritten. Rank-
+    polymorphic: ``matrix`` is ``(..., N, N)`` with any leading batch dims and ``diagonal`` is
+    ``(..., N)`` -- for a bare ``(N, N)`` this is exactly the single-matrix fill (byte-identical).
+    Mirrors ``diffBloch_private`` ``utils.py::fill_diagonal_torch``.
     """
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("matrix must be square (N, N)")
-    if diagonal.shape != (matrix.shape[0],):
-        raise ValueError("diagonal must have shape (N,) matching the matrix")
+    if matrix.ndim < 2 or matrix.shape[-1] != matrix.shape[-2]:
+        raise ValueError("matrix must be square (..., N, N)")
+    if diagonal.shape != matrix.shape[:-1]:
+        raise ValueError("diagonal must have shape (..., N) matching the matrix")
     filled = matrix.clone()
-    index = torch.arange(matrix.shape[0], device=matrix.device)
-    filled[index, index] = diagonal
+    index = torch.arange(matrix.shape[-1], device=matrix.device)
+    filled[..., index, index] = diagonal
     return filled
 
 
@@ -298,3 +301,80 @@ def build_bloch_system(plan: BeamPlan, structure_factors: Tensor) -> BlochSystem
         k_n=plan.k_n,
         mask=plan.mask,
     )
+
+
+# ---------------------------------------------------------------------------
+# Batched assembly: one gather + one batched operator over a shared beam set
+# ---------------------------------------------------------------------------
+# The rocking-curve tilts of one orientation share a single beam set (same hkl, energy), so their
+# structure matrices differ only in the geometry-per-tilt ``mii`` / ``diagonal`` (the excitation
+# errors move with the tilt). Stacking them lets the solver run ONE batched eigendecomposition /
+# matrix-exponential over ``(B, N, N)`` instead of a Python loop of B single solves -- the tilt-
+# batching perf path. The shared F-gather is done once and broadcast across the batch.
+
+
+@dataclass(frozen=True)
+class BeamPlanBatch:
+    """A stack of :class:`BeamPlan`\\ s over one shared beam set (an orientation's rocking tilts).
+
+    Invariant (enforced by :func:`stack_beam_plans`): every plan shares the F-``gather``,
+    ``prefactor``, ``k_n``, ``psi0``, and ``mask`` -- only the geometry-per-tilt ``mii`` ``(B, N)``
+    and ``diagonal`` ``(B, N)`` are stacked. :func:`build_bloch_systems` consumes it with ``Fgb``
+    to produce a batched :class:`BlochSystem` (operator ``(B, N, N)``).
+    """
+
+    gather: StructureFactorGather
+    mii: Tensor
+    prefactor: float
+    diagonal: Tensor
+    k_n: float
+    psi0: Tensor
+    mask: Tensor
+
+
+def stack_beam_plans(plans: Sequence[BeamPlan]) -> BeamPlanBatch:
+    """Stack beam plans sharing one beam set into a :class:`BeamPlanBatch`.
+
+    Validates the shared-beam-set invariant -- identical gather indices, ``prefactor``, ``k_n``,
+    ``psi0``, and ``mask`` -- then stacks the per-tilt ``mii`` / ``diagonal`` along a new leading
+    batch axis. Raises if the plans do not share a beam set (the caller passed unrelated plans, not
+    rocking-curve tilts of one orientation). Pure geometry: no dependence on ``Fgb``.
+    """
+    if not plans:
+        raise ValueError("stack_beam_plans requires at least one beam plan")
+    first = plans[0]
+    for plan in plans[1:]:
+        shares_beams = torch.equal(
+            plan.gather.destination_indices, first.gather.destination_indices
+        ) and torch.equal(plan.gather.source_indices, first.gather.source_indices)
+        if not shares_beams:
+            raise ValueError("stack_beam_plans requires plans sharing one beam set (gather)")
+        if plan.prefactor != first.prefactor or plan.k_n != first.k_n:
+            raise ValueError("stack_beam_plans requires plans sharing energy (prefactor, k_n)")
+        if not torch.equal(plan.psi0, first.psi0) or not torch.equal(plan.mask, first.mask):
+            raise ValueError("stack_beam_plans requires plans sharing psi0 and mask")
+    return BeamPlanBatch(
+        gather=first.gather,
+        mii=torch.stack([plan.mii for plan in plans]),
+        prefactor=first.prefactor,
+        diagonal=torch.stack([plan.diagonal for plan in plans]),
+        k_n=first.k_n,
+        psi0=first.psi0,
+        mask=first.mask,
+    )
+
+
+def build_bloch_systems(batch: BeamPlanBatch, structure_factors: Tensor) -> BlochSystem:
+    """Assemble the batched Bloch system for a beam-plan batch and structure factors ``Fgb``.
+
+    Gathers ``Fgb`` **once** onto the shared ``(N, N)`` off-diagonal grid, then scales it per tilt
+    with the stacked ``mii`` and fills the per-tilt ``diagonal`` -- yielding a batched operator
+    ``a`` ``(B, N, N)``. The result is a :class:`BlochSystem` whose fields carry the batch dim
+    (``a`` ``(B, N, N)``, ``mii`` ``(B, N)``); :func:`core.solver.propagate` is rank-polymorphic
+    over it. Differentiable in ``Fgb`` (the shared gather feeds every tilt).
+    """
+    off = gather_structure_factors(batch.gather, structure_factors)  # (N, N), shared across tilts
+    mii = batch.mii.to(device=off.device, dtype=off.real.dtype)  # (B, N)
+    off = off[None] * (batch.prefactor * mii[:, None, :] * mii[:, :, None])  # (B, N, N)
+    a = _fill_diagonal(off, batch.diagonal.to(device=off.device, dtype=off.dtype))
+    return BlochSystem(a=a, mii=batch.mii, psi0=batch.psi0, k_n=batch.k_n, mask=batch.mask)
