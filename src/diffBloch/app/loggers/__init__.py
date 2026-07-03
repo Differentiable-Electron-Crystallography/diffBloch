@@ -7,7 +7,7 @@ third-party backend lives in its own confined submodule that imports its SDK laz
 this package never requires an optional dependency:
 
 - :class:`~diffBloch.app.loggers.wandb.WandbLogger` (``diffBloch.app.loggers.wandb``)
-- Comet ML: ``diffBloch.app.loggers.comet`` *(planned, same shape)*
+- :class:`~diffBloch.app.loggers.comet.CometLogger` (``diffBloch.app.loggers.comet``)
 
 Writing your own backend is one method -- see the "extension" section of the logging tutorial.
 """
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from diffBloch.observability import Event
 
-__all__ = ["ConsoleLogger", "format_measurements"]
+__all__ = ["ConsoleLogger", "format_measurements", "namespaced_measurements"]
 
 _log = logging.getLogger("diffBloch.loggers")
 
@@ -27,6 +27,12 @@ _log = logging.getLogger("diffBloch.loggers")
 def format_measurements(event: Event) -> str:
     """Render an event's measurements as space-joined ``name=value`` pairs (shared by backends)."""
     return " ".join(f"{name}={value:g}" for name, value in event.measurements.items())
+
+
+def namespaced_measurements(event: Event) -> dict[str, float]:
+    """Map an event to ``{channel}/{metric}: value`` (the series convention shared by the
+    wandb/comet backends)."""
+    return {f"{event.channel}/{name}": value for name, value in event.measurements.items()}
 
 
 @dataclass

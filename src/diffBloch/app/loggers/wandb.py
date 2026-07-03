@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from diffBloch.app.loggers import namespaced_measurements
 from diffBloch.observability import Event
 
 
@@ -20,5 +21,4 @@ class WandbLogger:
     def report(self, event: Event) -> None:
         import wandb  # lazy: optional dependency, never imported by the pure core
 
-        payload = {f"{event.channel}/{name}": value for name, value in event.measurements.items()}
-        wandb.log(payload)
+        wandb.log(namespaced_measurements(event))

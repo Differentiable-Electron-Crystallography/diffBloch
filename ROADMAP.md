@@ -185,11 +185,11 @@ commit — the executable form of *"the core physics model has not changed."*
   *(landed: the domain-observation channel — `observability.py` typed events (`RotationScored` /
   `InferenceCompleted`) over a uniform `(channel, measurements)` surface, `Logger` protocol with
   `NullLogger` default + `MultiLogger` fan-out + in-memory `RecordingLogger`, boundary backends
-  `ConsoleLogger` (`app/loggers/`) / `WandbLogger` (`app/loggers/wandb.py`, wandb lazy + optional
-  extra, never in core); `run_inference` emits per-rotation + aggregate events (null default =
-  unchanged return); package-root `NullHandler` for the diagnostics channel. Remaining:
-  `RefinementStep` stream + CSV / Comet ML backend with the refinement terminal; thin run CLI;
-  pluggable `sweep.py`.)*
+  `ConsoleLogger` (`app/loggers/`) / `WandbLogger` (`app/loggers/wandb.py`) / `CometLogger`
+  (`app/loggers/comet.py`) — vendor SDKs lazy + optional extras, never in core; `run_inference`
+  emits per-rotation + aggregate events (null default = unchanged return); package-root
+  `NullHandler` for the diagnostics channel. Remaining: `RefinementStep` stream + CSV backend with
+  the refinement terminal; thin run CLI; pluggable `sweep.py`.)*
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
   (orchestration §18) when a production orchestrator actually arrives.
 

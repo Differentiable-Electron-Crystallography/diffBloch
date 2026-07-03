@@ -14,6 +14,7 @@ import types
 import pytest
 
 from diffBloch.app.loggers import ConsoleLogger
+from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
     Event,
@@ -87,3 +88,17 @@ def test_wandb_logger_maps_measurements_to_a_namespaced_payload(
     assert logged == [
         {"inference/n_rotations": 2.0, "inference/n_evaluated": 2.0, "inference/mean_r_obs": 0.06}
     ]
+
+
+def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
+    logged: list[dict[str, float]] = []
+
+    class _FakeExperiment:  # duck-types comet_ml.Experiment.log_metrics
+        def log_metrics(self, metrics: dict[str, float]) -> None:
+            logged.append(metrics)
+
+    CometLogger(experiment=_FakeExperiment()).report(
+        RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7)
+    )
+
+    assert logged == [{"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}]

@@ -64,13 +64,15 @@ maths.
 ## Status
 
 Domain-observation channel **realized** (stage 12): typed events (``RotationScored`` /
-``InferenceCompleted``) with a uniform ``(channel, measurements)`` surface, a ``Reporter`` protocol
-with ``NullReporter`` default (core installs no sink), ``MultiReporter`` fan-out, and boundary
-backends ``ConsoleReporter`` / ``WandbReporter`` (``diffBloch.app.reporters``; wandb imported
-lazily, never by the core). ``run_inference`` emits per-rotation + aggregate events; the null default
-keeps the returned value unchanged. Diagnostics channel: a ``NullHandler`` at the package root (the
-core installs no handler). Remaining forward-looking: the refinement-loop ``RefinementStep`` stream
-and a CSV/MLflow backend land with the refinement terminal.
+``InferenceCompleted``) with a uniform ``(channel, measurements)`` surface, a ``Logger`` protocol
+with ``NullLogger`` default (core installs no sink), ``MultiLogger`` fan-out + in-memory
+``RecordingLogger``, and boundary backends ``ConsoleLogger`` (``diffBloch.app.loggers``) /
+``WandbLogger`` (``diffBloch.app.loggers.wandb``) / ``CometLogger`` (``diffBloch.app.loggers.comet``)
+-- vendor SDKs imported lazily, optional extras, never by the core. ``run_inference`` emits
+per-rotation + aggregate events; the null default keeps the returned value unchanged. Diagnostics
+channel: a ``NullHandler`` at the package root (the core installs no handler). Remaining
+forward-looking: the refinement-loop ``RefinementStep`` stream and a CSV backend land with the
+refinement terminal.
 
 Recorded now because it settles two live questions — *don't* write orientations to a CSV as state
 (return a `Plan`; checkpoint the `Plan`), and *do* model CSV/visualization as interchangeable
