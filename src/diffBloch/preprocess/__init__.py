@@ -41,6 +41,7 @@ from diffBloch.preprocess.pipeline import (
 )
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine, score_orientations
+from diffBloch.preprocess.serialize import read_plan, write_plan
 from diffBloch.preprocess.steps.beams import klar_beam_mask, select_beams
 from diffBloch.preprocess.steps.convergence import (
     converge_beams,
@@ -110,10 +111,12 @@ __all__ = [
     "orientation_matrices",
     "pipeline",
     "plan_coverage",
+    "read_plan",
     "run_inference",
     "score_orientations",
     "select_beams",
     "simulation_converged",
     "simulation_rfactor",
     "u_matrix",
+    "write_plan",
 ]
