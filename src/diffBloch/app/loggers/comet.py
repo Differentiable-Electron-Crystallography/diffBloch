@@ -28,4 +28,6 @@ class CometLogger:
     experiment: object
 
     def report(self, event: Event) -> None:
-        self.experiment.log_metrics(namespaced_measurements(event))  # type: ignore[attr-defined]
+        self.experiment.log_metrics(  # type: ignore[attr-defined]
+            namespaced_measurements(event), step=event.step
+        )

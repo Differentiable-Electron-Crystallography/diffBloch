@@ -47,4 +47,5 @@ class ConsoleLogger:
     level: int = logging.INFO
 
     def report(self, event: Event) -> None:
-        _log.log(self.level, "%s %s", event.channel, format_measurements(event))
+        label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
+        _log.log(self.level, "%s %s", label, format_measurements(event))

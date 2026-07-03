@@ -30,10 +30,12 @@ from diffBloch.observability import (
 def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
     assert rotation.channel == "rotation"
+    assert rotation.step == 3  # a rotation's step is its index
     assert rotation.measurements == {"r_obs": 0.42, "n_observed": 12.0, "n_beams": 20.0}
 
     completed = InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.065)
     assert completed.channel == "inference"
+    assert completed.step is None  # a run-level aggregate has no per-rotation position
     assert completed.measurements == {
         "n_rotations": 99.0,
         "n_evaluated": 97.0,
@@ -63,42 +65,46 @@ def test_multi_logger_fans_each_event_out_to_every_logger() -> None:
     assert b.events == [event]
 
 
-def test_console_logger_logs_channel_and_measurements(
+def test_console_logger_logs_channel_step_and_measurements(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+        logger.report(RotationScored(index=47, r_obs=0.5, n_observed=4, n_beams=7))
+        logger.report(InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.06))
 
-    (record,) = caplog.records
-    assert "rotation" in record.getMessage()
-    assert "r_obs=0.5" in record.getMessage()
+    rotation_msg, inference_msg = (r.getMessage() for r in caplog.records)
+    assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
+    assert "r_obs=0.5" in rotation_msg
+    assert inference_msg.startswith("inference ")  # aggregate has no step bracket
 
 
 def test_wandb_logger_maps_measurements_to_a_namespaced_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    logged: list[dict[str, float]] = []
+    logged: list[tuple[dict[str, float], int | None]] = []
     fake_wandb = types.ModuleType("wandb")
-    fake_wandb.log = logged.append  # type: ignore[attr-defined]
+    fake_wandb.log = lambda payload, step=None: logged.append((payload, step))  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
-    WandbLogger().report(InferenceCompleted(n_rotations=2, n_evaluated=2, mean_r_obs=0.06))
+    WandbLogger().report(RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7))
 
     assert logged == [
-        {"inference/n_rotations": 2.0, "inference/n_evaluated": 2.0, "inference/mean_r_obs": 0.06}
+        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
     ]
 
 
 def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
-    logged: list[dict[str, float]] = []
+    logged: list[tuple[dict[str, float], int | None]] = []
 
     class _FakeExperiment:  # duck-types comet_ml.Experiment.log_metrics
-        def log_metrics(self, metrics: dict[str, float]) -> None:
-            logged.append(metrics)
+        def log_metrics(self, metrics: dict[str, float], step: int | None = None) -> None:
+            logged.append((metrics, step))
 
     CometLogger(experiment=_FakeExperiment()).report(
-        RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7)
+        RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7)
     )
 
-    assert logged == [{"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}]
+    assert logged == [
+        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
+    ]

@@ -38,10 +38,15 @@ class Event(Protocol):
     """A named domain observation carrying numeric measurements.
 
     ``channel`` is the event's stable name (a class constant); ``measurements`` maps metric name to
-    value. Together they let a generic logger record any event with no per-type knowledge.
+    value; ``step`` is the optional position on the run's x-axis (a rotation index, later a
+    refinement iteration) or ``None`` for a run-level aggregate. Together they let a generic logger
+    record and *place* any event with no per-type knowledge.
     """
 
     channel: ClassVar[str]
+
+    @property
+    def step(self) -> int | None: ...
 
     @property
     def measurements(self) -> Mapping[str, float]: ...
@@ -70,6 +75,10 @@ class RotationScored:
     n_beams: int
 
     @property
+    def step(self) -> int | None:
+        return self.index
+
+    @property
     def measurements(self) -> Mapping[str, float]:
         return {
             "r_obs": self.r_obs,
@@ -86,6 +95,10 @@ class InferenceCompleted:
     n_rotations: int
     n_evaluated: int
     mean_r_obs: float
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level aggregate has no position on the per-rotation axis
 
     @property
     def measurements(self) -> Mapping[str, float]:

@@ -21,4 +21,4 @@ class WandbLogger:
     def report(self, event: Event) -> None:
         import wandb  # lazy: optional dependency, never imported by the pure core
 
-        wandb.log(namespaced_measurements(event))
+        wandb.log(namespaced_measurements(event), step=event.step)
