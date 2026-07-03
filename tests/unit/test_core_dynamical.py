@@ -313,6 +313,31 @@ def test_build_beam_plan_carries_propagation_fields() -> None:
     assert torch.equal(plan.mask, torch.ones(_BEAM_HKL.shape[0], dtype=torch.bool))
 
 
+def test_build_beam_plan_reuses_a_precomputed_gather_byte_identically() -> None:
+    # Passing a precomputed gather (the perf path: build once, reuse across tilts/trials) must
+    # produce a byte-identical plan to deriving it internally -- reuse == recompute.
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    fresh = build_beam_plan(_BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS)
+    reused = build_beam_plan(
+        _BEAM_HKL, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS, gather=gather
+    )
+    assert reused.gather is gather  # the exact object is threaded through, not rebuilt
+    assert torch.equal(reused.diagonal, fresh.diagonal)
+    assert torch.equal(reused.mii, fresh.mii)
+    assert torch.equal(
+        reused.gather.destination_indices, fresh.gather.destination_indices
+    )
+
+
+def test_build_beam_plan_rejects_a_mismatched_precomputed_gather() -> None:
+    gather = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    other_beams = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # different beam count
+    with pytest.raises(ValueError, match="does not match this beam_hkl"):
+        build_beam_plan(
+            other_beams, _GRID_HKL, _RECIP_BASIS, energy=_ENERGY, gpts=_GPTS, gather=gather
+        )
+
+
 def test_build_bloch_system_wires_structure_matrix_and_plan_fields() -> None:
     plan = _small_plan()
     factors = _encoded_factors(_GRID_HKL)

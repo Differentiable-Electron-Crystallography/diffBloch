@@ -19,7 +19,12 @@ from torch import Tensor
 
 from diffBloch.core.crystal import cell_volume as _cell_volume
 from diffBloch.core.crystal import orientation_basis, reciprocal_cell
-from diffBloch.core.dynamical import BeamPlan, build_beam_plan
+from diffBloch.core.dynamical import (
+    BeamPlan,
+    StructureFactorGather,
+    build_beam_plan,
+    build_structure_factor_gather,
+)
 from diffBloch.core.products import (
     PLAIN_SUM,
     AlignmentPlan,
@@ -114,6 +119,7 @@ class OrientationPlan:
         orientation: Tensor | NDArray[np.float64] | None = None,
         tilts: NDArray[np.float64] | None = None,
         tilt_reduction: TiltReduction = PLAIN_SUM,
+        gather: StructureFactorGather | None = None,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -145,8 +151,18 @@ class OrientationPlan:
         curve: :class:`~diffBloch.core.products.PlainSum` (the default) sums them;
         :class:`~diffBloch.core.products.MosaicSmoothed` applies mosaicity broadening first. It is a
         rebuild-preserved attribute (geometry-independent), set by the ``mosaicity`` step.
+
+        ``gather`` may be a precomputed :class:`~diffBloch.core.dynamical.StructureFactorGather` for
+        this beam set against the shared grid. The F-gather is basis- and orientation-free, so all N
+        tilts here share one, and a caller rebuilding this plan over a fixed beam set (rocking
+        integration, orientation-search trials) passes the seed plan's gather
+        (``op.beam_plans[0].gather``) to skip re-deriving it on every rebuild -- the dominant
+        preprocess cost (see ``KNOWN_ISSUES.md`` / private 6bb3031). When ``None`` it is built once
+        here and shared across the tilts.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
+        if gather is None:
+            gather = build_structure_factor_gather(np.asarray(grid.grid_hkl), beam_hkl, grid.gpts)
         thickness_t = torch.as_tensor(
             np.atleast_1d(np.asarray(thickness, dtype=np.float64)), dtype=torch.float64
         )
@@ -174,6 +190,7 @@ class OrientationPlan:
                 energy=energy,
                 gpts=grid.gpts,
                 u0=u0,
+                gather=gather,
             )
             for basis in bases
         )

@@ -102,6 +102,7 @@ def _refine_one(
     # rocking is off -> I @ orientation == orientation, byte-identical to the untilted build.
     tilts = np.asarray(op.tilts, dtype=np.float64)
     reduction = op.tilt_reduction  # mosaicity broadening (if any) is likewise fit under, not after
+    gather = op.beam_plans[0].gather  # beam set is fixed across the search; reuse (avoid rebuild)
     search_angle = search.max_search_angle
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
@@ -122,6 +123,7 @@ def _refine_one(
                 orientation=orientation,
                 tilts=tilts,
                 tilt_reduction=reduction,
+                gather=gather,
             )
             trial_score = float(engine.score_orientation(trial, fgb))
             if trial_score < current_score:  # greedy first-improvement; restart at this radius

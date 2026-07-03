@@ -196,6 +196,7 @@ def build_beam_plan(
     energy: float,
     gpts: tuple[int, int, int],
     u0: float = 0.0,
+    gather: StructureFactorGather | None = None,
 ) -> BeamPlan:
     """Precompute the geometry/numerics for a beam set.
 
@@ -207,8 +208,18 @@ def build_beam_plan(
     ``calculate_structure_matrix`` (no-absorption path) and the ``psi0 = (hkl == 000)``
     convention of its dynamical-scattering propagator. ``mask`` is all-True here: the beams are the
     pre-selected active set (per-orientation ``sg_max`` selection is deferred).
+
+    ``gather`` may be a precomputed :class:`StructureFactorGather` for this exact ``(grid_hkl,
+    beam_hkl, gpts)`` -- the F-gather is basis-independent, so callers rebuilding many plans over a
+    single beam set (rocking-curve tilts, orientation-search trials) build it once and pass it in,
+    skipping the per-call index-map construction and its validation (the dominant cost; ports the
+    private's precomputed HKL->index map, ``diffBloch_private`` 6bb3031). When ``None`` it is built
+    here. A cheap shape guard rejects a gather that does not match this beam set / box.
     """
-    gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts)
+    if gather is None:
+        gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts)
+    elif gather.n_beams != len(beam_hkl) or gather.gpts != tuple(int(p) for p in gpts):
+        raise ValueError("precomputed gather does not match this beam_hkl / gpts")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
     g = g_vectors(beams, reciprocal_basis)
     mii = m_factors(g, energy, u0=u0)

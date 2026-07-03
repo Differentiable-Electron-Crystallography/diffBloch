@@ -171,3 +171,27 @@ the config / preprocess / engine layers. Where: `preprocess/experiment.py` (`Pla
   but a future large-N system (hundreds of beams) could make it painful. Fix then would be internal
   thickness-chunking inside `propagate` (an implementation detail, no API change) or a value-typed
   strategy (never a boolean toggle). YAGNI now; recorded so the seam is discoverable.
+
+## Redundant structure-factor gather rebuild — RESOLVED (2026-07); the real preprocess hog
+
+- **Location (was):** `core/dynamical/assembly.py::build_beam_plan`, which rebuilt the entire
+  `StructureFactorGather` (index-map ravel + `np.unique` + `np.isin` coverage validation) on every
+  call — once per rocking-curve tilt and once per orientation-search trial.
+- **What it was:** the gather (F index topology) is a pure function of `(grid_hkl, beam_hkl, gpts)`,
+  identical across all N tilts of a `build` *and* every trial of a `fit_orientation` search (the beam
+  set is fixed once `select_beams` has run). Profiling one rotation's integrated fit showed
+  `build_structure_factor_gather` called **3403 times = 94% of the fit** (the batched `matrix_exp`
+  was ~2%) — i.e. the tilt-batching perf pass optimised the wrong thing; the bottleneck was this
+  rebuild, not the `eigh`. Lesson recorded: **profile before optimising** (a 30 s profile would have
+  pointed here first).
+- **Fix:** thread a precomputed gather through the build chain (`build_beam_plan(gather=...)`,
+  `OrientationPlan.build(gather=...)`); `OrientationPlan.build` builds it once and shares it across
+  the tilts, and `fit_orientation` / `integrate_rocking_curve` pass the seed plan's
+  `op.beam_plans[0].gather` on every rebuild. 3403 -> 1 gather build per rotation fit. Byte-identical
+  (reuse == recompute; pinned by
+  `tests/unit/test_core_dynamical.py::test_build_beam_plan_reuses_a_precomputed_gather_byte_identically`),
+  a cheap shape guard rejects a mismatched gather. Ports the private's precomputed HKL->index map
+  (`diffBloch_private` 6bb3031).
+- **Measured:** the coupled integrated fit dropped **14 -> 0.78 s/rotation (~18×); full-99 ~1.3 min**
+  (was ~23 min), R_obs unchanged (0.0519 on the first 6 rotations). The static anchor e2e also fell
+  76 -> 28 s. This is what actually unblocks the integrated anchor pin (1c).

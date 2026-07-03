@@ -66,4 +66,5 @@ def _integrate_one(plan: Plan, op: OrientationPlan, tilts: np.ndarray) -> Orient
         u0=op.u0,
         orientation=op.orientation,
         tilts=tilts,
+        gather=op.beam_plans[0].gather,  # same beam set; reuse the seed's gather (avoid rebuild)
     )
