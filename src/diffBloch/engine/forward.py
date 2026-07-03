@@ -30,6 +30,7 @@ from diffBloch.core.solver import Method, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
+from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 
 __all__ = [
@@ -139,13 +140,15 @@ class RefinementEngine:
         targets: Sequence[str] = ("positions", "adp"),
         optimizer: OptimizerName = "lbfgs",
         lr: float = 1e-3,
+        logger: Logger = NULL_LOGGER,
     ) -> RefinementResult:
         """Optimize the selected ``targets`` to minimise the objective; return a result snapshot.
 
         Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
         ``objective``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
         (per-group rates deferred); ``least_squares`` and component ``activate`` are deferred --
-        see ``design/decisions/stage10-refinement-loop.md``.
+        see ``design/decisions/stage10-refinement-loop.md``. ``logger`` streams per-step and
+        completion events (default :data:`NULL_LOGGER` = no-op, result unchanged).
         """
         return run_refinement(
             self.objective,
@@ -154,6 +157,7 @@ class RefinementEngine:
             targets=targets,
             optimizer=optimizer,
             lr=lr,
+            logger=logger,
         )
 
     def _thickness_for(self, orientation: OrientationPlan, params: RefinableParams) -> Tensor:

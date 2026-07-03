@@ -22,6 +22,12 @@ from typing import Any, Literal
 import torch
 from torch import Tensor
 
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Logger,
+    RefinementCompleted,
+    RefinementStep,
+)
 from diffBloch.params import RefinableParams
 
 __all__ = [
@@ -73,6 +79,7 @@ def run_refinement(
     targets: Sequence[str],
     optimizer: OptimizerName,
     lr: float,
+    logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
     """Optimize the selected ``targets`` to minimise ``objective(params)``; return a result.
 
@@ -81,6 +88,11 @@ def run_refinement(
     constants); a backend steps them for ``steps`` iterations via a closure (which unifies LBFGS'
     re-evaluation with Adam/AdamW). ``targets`` names map through ``_TARGET_FIELDS``; a named target
     with no present parameter, or zero ``steps``, raises.
+
+    ``logger`` receives a :class:`RefinementStep` per iteration and one
+    :class:`RefinementCompleted` at the end; the default :data:`NULL_LOGGER` makes emission a no-op,
+    so the returned result is unchanged. Measurements are the already-materialised per-step loss, so
+    emission adds no extra device sync.
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
@@ -101,9 +113,14 @@ def run_refinement(
         snapshot = _detach_params(leaf_params)  # params behind this step's pre-update loss
         loss_value = opt.step(closure)
         assert loss_value is not None  # closure is always provided -> step returns the loss
-        losses.append(float(loss_value))
+        loss_value = float(loss_value)
+        losses.append(loss_value)
+        logger.report(RefinementStep(iteration=step, loss=loss_value))
         if loss_value < best_loss:
-            best_loss, best_step, best_params = float(loss_value), step, snapshot
+            best_loss, best_step, best_params = loss_value, step, snapshot
+    logger.report(
+        RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss)
+    )
     return RefinementResult(
         params=_detach_params(leaf_params),
         losses=torch.tensor(losses, dtype=torch.float64),

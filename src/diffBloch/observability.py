@@ -13,6 +13,10 @@ plug into a common ``Logger``); it is the experiment-tracking sink, orthogonal t
 ``(channel, measurements)`` surface -- the Phoenix ``:telemetry`` "named event + measurements" idea
 -- so a generic logger consumes *any* event without knowing its concrete type; adding an event never
 touches a logger. Callers wanting richer handling can still pattern-match the concrete dataclass.
+
+Events fall into two families: a *per-unit stream* (a :class:`RotationScored` per rotation, a
+:class:`RefinementStep` per optimizer iteration -- each carries a ``step``) and a *run-level
+aggregate* (:class:`InferenceCompleted`, :class:`RefinementCompleted` -- ``step`` is ``None``).
 """
 
 from __future__ import annotations
@@ -29,6 +33,8 @@ __all__ = [
     "MultiLogger",
     "NullLogger",
     "RecordingLogger",
+    "RefinementCompleted",
+    "RefinementStep",
     "RotationScored",
 ]
 
@@ -106,6 +112,51 @@ class InferenceCompleted:
             "n_rotations": float(self.n_rotations),
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
+        }
+
+
+@dataclass(frozen=True)
+class RefinementStep:
+    """One optimizer iteration's pre-update loss, emitted per step by ``run_refinement``."""
+
+    channel: ClassVar[str] = "refinement"
+    iteration: int
+    loss: float
+
+    @property
+    def step(self) -> int | None:
+        return self.iteration
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"loss": self.loss}
+
+
+@dataclass(frozen=True)
+class RefinementCompleted:
+    """The refinement-run aggregate, emitted once when ``run_refinement`` finishes.
+
+    Shares the ``"refinement"`` channel with :class:`RefinementStep`: unlike inference (where a
+    per-rotation score and the run mean are distinct entities on distinct channels), a run's
+    per-step loss and its best-loss summary are the same quantity at different granularities, so
+    ``step`` -- the iteration index vs ``None`` -- is what separates the stream from the summary.
+    """
+
+    channel: ClassVar[str] = "refinement"
+    n_steps: int
+    best_step: int
+    best_loss: float
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level aggregate has no position on the per-iteration axis
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_steps": float(self.n_steps),
+            "best_step": float(self.best_step),
+            "best_loss": self.best_loss,
         }
 
 

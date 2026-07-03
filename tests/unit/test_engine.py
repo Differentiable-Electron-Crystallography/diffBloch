@@ -16,6 +16,7 @@ from diffBloch.engine import (
     ScatteringGrid,
     mse_loss,
 )
+from diffBloch.observability import RecordingLogger, RefinementCompleted, RefinementStep
 from diffBloch.params import ConstraintSpec, RefinableParams
 
 _ENERGY = 200e3
@@ -252,6 +253,28 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
     assert result.best_loss == float(result.losses.min())
     assert result.best_params.occupancy_raw.shape == (1,)
     assert not result.best_params.occupancy_raw.requires_grad
+
+
+def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
+    recorder = RecordingLogger()
+
+    result = engine.refine(
+        _params(occupancy_logit=0.0),
+        steps=6,
+        targets=("occupancy",),
+        optimizer="adam",
+        lr=0.2,
+        logger=recorder,
+    )
+
+    steps = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    (completed,) = [e for e in recorder.events if isinstance(e, RefinementCompleted)]
+    assert [e.iteration for e in steps] == [0, 1, 2, 3, 4, 5]  # one event per step, in order
+    assert [e.loss for e in steps] == [float(x) for x in result.losses]  # the reported curve
+    assert completed.n_steps == 6
+    assert completed.best_step == result.best_step
+    assert completed.best_loss == result.best_loss
 
 
 def test_refine_only_selected_targets_change() -> None:

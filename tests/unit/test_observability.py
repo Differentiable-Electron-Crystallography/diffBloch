@@ -23,6 +23,8 @@ from diffBloch.observability import (
     MultiLogger,
     NullLogger,
     RecordingLogger,
+    RefinementCompleted,
+    RefinementStep,
     RotationScored,
 )
 
@@ -41,6 +43,16 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "n_evaluated": 97.0,
         "mean_r_obs": 0.065,
     }
+
+    refinement = RefinementStep(iteration=4, loss=1.5)
+    assert refinement.channel == "refinement"
+    assert refinement.step == 4  # a refinement step's step is its iteration
+    assert refinement.measurements == {"loss": 1.5}
+
+    refinement_done = RefinementCompleted(n_steps=20, best_step=17, best_loss=0.3)
+    assert refinement_done.channel == "refinement"  # shares the stream's channel
+    assert refinement_done.step is None  # separated from the stream by step, not channel
+    assert refinement_done.measurements == {"n_steps": 20.0, "best_step": 17.0, "best_loss": 0.3}
 
 
 def test_events_and_loggers_satisfy_the_protocols_structurally() -> None:
