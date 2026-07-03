@@ -187,11 +187,32 @@ commit — the executable form of *"the core physics model has not changed."*
   `NullLogger` default + `MultiLogger` fan-out + in-memory `RecordingLogger`, boundary backends
   `ConsoleLogger` (`app/loggers/`) / `WandbLogger` (`app/loggers/wandb.py`) / `CometLogger`
   (`app/loggers/comet.py`) — vendor SDKs lazy + optional extras, never in core; `run_inference`
-  emits per-rotation + aggregate events (null default = unchanged return); package-root
+  emits per-rotation + aggregate events (null default = unchanged return); each event carries a
+  `step` (rotation index / refinement iteration; `None` for aggregates) that `ConsoleLogger`
+  renders as `channel[step]` and wandb/comet pass through as their native `step=`; package-root
   `NullHandler` for the diagnostics channel. Remaining: `RefinementStep` stream + CSV backend with
   the refinement terminal; thin run CLI; pluggable `sweep.py`.)*
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
   (orchestration §18) when a production orchestrator actually arrives.
+- [ ] **14 — Device & scaling (backprop on GPU, HPC).** Refinement/backprop must run on GPU when
+  available and scale. The core is already **device- and dtype-preserving** (no hardcoded `.cuda()`
+  / `float64` in the hot path — `symmetry.py`/`scattering.py` thread `positions.device`, `g.dtype`;
+  `run_refinement` clones preserve device), so GPU is a **boundary placement** concern, not a core
+  rewrite. Cheapest-first, measure-before-building:
+  1. **Device/precision seam** — a `device` + precision policy in config, `.to(device)` on the
+     `Plan` / `RefinableParams`, and a CPU↔GPU parity test.
+  2. **Micro-benchmark the crux** *before* committing infra: the hot op is a complex
+     eigendecomposition / `matrix_exp` at **complex128** on a **small** Bloch matrix (N ≈ n_beams ≈
+     20–30). fp64 is where GPUs choke and tiny matrices underutilize them, so **CPU may beat GPU at
+     the anchor scale**; GPU wins only as N/atoms/rotations grow. Benchmark CPU-fp64 vs GPU-fp64 vs
+     GPU-fp32 (one rotation's batched propagate) to find the crossover and quantify the fp32
+     accuracy cost — a genuine precision-vs-throughput decision, not plumbing.
+  3. **Horizontal = Slurm-array sweeps first** (embarrassingly parallel: seeds / convergence points
+     / config sweeps, one process per array task) — the natural HPC fit, mapping onto stage 12's
+     `sweep.py` + thin CLI; no distributed backprop. **Defer DDP / data-parallel backprop** (heavy;
+     small parameter count + tilt-batched forward) until a *single* run is proven too big for one
+     GPU. Observability is sync-safe here: events emit already-materialized scalars (the loss curve
+     is already `float(loss)` per step), so the `RefinementStep` stream adds ~no GPU→CPU sync.
 
 ## The executable e2e anchor — the physically-real R-factor pin (plan C)
 
