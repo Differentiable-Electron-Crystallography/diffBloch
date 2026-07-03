@@ -29,6 +29,14 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.split.validation == "every_10th_rotation"
 
 
+def test_solver_method_must_be_a_known_method() -> None:
+    # The solver fields are typed as the core Method literal, so an unknown method fails fast at
+    # config load rather than deep in the forward model.
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="Input should be"):
+        ExperimentConfig.model_validate({**base, "solver": {"refine": "nope"}})
+
+
 def test_missing_required_input_fails_fast() -> None:
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate({"name": "quartz"})  # no inputs
