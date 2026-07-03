@@ -258,10 +258,15 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > runs in order: **(1)** C3 fit-coupling — *step 1 done* (`2f3be01`: `fit_orientation` threads
 > `op.tilts` through every trial, so ordering `integrate_rocking_curve` before the fits couples them
 > to the integrated model; **measured** 2026-07: on the first 6 anchor rotations the reorder drops
-> mean `R_obs` 0.248 -> 0.052, landing on the reference 0.0438 — the core C3 result). **(1b)** a
-> **tilt-batching perf pass** (batch the Bloch `eigh` over the 42 tilts; today ~26 min full-99, see
-> `KNOWN_ISSUES.md`) — which then unblocks **(1c)** encoding the integrated recipe as an anchor pin
-> (~0.05). Then **(2)** mosaicity, **(3)** `converge_sampling` on the real rocking curve, **(4)** the
+> mean `R_obs` 0.248 -> 0.052, landing on the reference 0.0438 — the core C3 result). **(1b)** the
+> **tilt-batching perf pass** — *done* (`81c9273`: one batched Bloch `eigh`/`matrix_exp` over the 42
+> tilts via `stack_beam_plans` / `build_bloch_systems` + rank-polymorphic `propagate`; numerically
+> identical, ~3× measured on the 99-rotation integrated eval — modest because the selected beam set
+> is small, see `KNOWN_ISSUES.md`) — which unblocks **(1c)** encoding the integrated recipe as an
+> anchor pin (~0.05), *next once the coupled-fit cost is re-measured on the batched solve*. **(2)**
+> mosaicity — *done* (`ea2caa8`: a `PlainSum | MosaicSmoothed(window)` tilt-reduction set by a
+> composable `mosaicity()` step, config-exposed tunable window; off-by-default byte-identical). Then
+> **(3)** `converge_sampling` on the real rocking curve, **(4)** the
 > convergence tutorial, **(5)** config-schema wiring of `ConvergenceTest`, and **(6)** the
 > `0.0594 -> 0.0438` residual chase **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor
 > forward-model details) — it is only meaningful once the fit/eval coupling and the integrated model
