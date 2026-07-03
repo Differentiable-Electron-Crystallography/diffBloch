@@ -7,13 +7,15 @@ loggers, and the two boundary backends. ``run_inference`` emission is covered in
 
 from __future__ import annotations
 
+import csv
 import logging
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
-from diffBloch.app.loggers import ConsoleLogger
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
@@ -89,6 +91,19 @@ def test_console_logger_logs_channel_step_and_measurements(
     assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
     assert "r_obs=0.5" in rotation_msg
     assert inference_msg.startswith("inference ")  # aggregate has no step bracket
+
+
+def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:
+    path = tmp_path / "run.csv"
+    logger = CSVLogger(path=path)
+    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.report(InferenceCompleted(n_rotations=1, n_evaluated=1, mean_r_obs=0.5))
+
+    with path.open() as handle:
+        rows = list(csv.reader(handle))
+    assert rows[0] == ["channel", "step", "metric", "value"]  # header written once
+    assert ["rotation", "0", "r_obs", "0.5"] in rows  # step = the rotation index
+    assert ["inference", "", "mean_r_obs", "0.5"] in rows  # step None -> empty cell
 
 
 def test_wandb_logger_maps_measurements_to_a_namespaced_payload(

@@ -189,9 +189,10 @@ commit — the executable form of *"the core physics model has not changed."*
   (`app/loggers/comet.py`) — vendor SDKs lazy + optional extras, never in core; `run_inference`
   emits per-rotation + aggregate events (null default = unchanged return); each event carries a
   `step` (rotation index / refinement iteration; `None` for aggregates) that `ConsoleLogger`
-  renders as `channel[step]` and wandb/comet pass through as their native `step=`; package-root
-  `NullHandler` for the diagnostics channel. Remaining: `RefinementStep` stream + CSV backend with
-  the refinement terminal; thin run CLI; pluggable `sweep.py`.)*
+  renders as `channel[step]` and wandb/comet pass through as their native `step=`; `run_refinement`
+  / `engine.refine` stream `RefinementStep` per optimizer step + a `RefinementCompleted` aggregate
+  (sync-safe: the loss is already materialised); package-root `NullHandler` for the diagnostics
+  channel. Remaining: CSV backend; thin run CLI; pluggable `sweep.py`.)*
 - [ ] **13 — Cleanup.** Delete deprecated adapters; final e2e + full unit run. `RunRef` op-boundary
   (orchestration §18) when a production orchestrator actually arrives.
 - [ ] **14 — Device & scaling (backprop on GPU, HPC).** Refinement/backprop must run on GPU when
