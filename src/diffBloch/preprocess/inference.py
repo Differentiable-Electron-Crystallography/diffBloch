@@ -23,6 +23,12 @@ from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution, align
 from diffBloch.core.solver import Method
 from diffBloch.engine.plan import OrientationPlan
+from diffBloch.observability import (
+    NULL_LOGGER,
+    InferenceCompleted,
+    Logger,
+    RotationScored,
+)
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, identity
 from diffBloch.preprocess.plan import Plan
@@ -80,12 +86,19 @@ def run_inference(
     *,
     preprocess: PlanStep = identity,
     method: Method = "bloch_eigen",
+    logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
 
     Optionally sharpens ``plan`` with the ``preprocess`` step first (e.g. ``select_beams``; identity
     by default), builds a :class:`RefinementEngine`, simulates every orientation under ``no_grad``
     with the swappable ``method`` solver, and returns per-rotation :class:`RotationInference`.
+
+    Emits a :class:`~diffBloch.observability.RotationScored` per rotation and one
+    :class:`~diffBloch.observability.InferenceCompleted` aggregate to ``logger`` (the
+    :data:`~diffBloch.observability.NULL_LOGGER` default discards them, so the returned value is
+    unchanged whether or not a sink is attached). Attach a console/wandb logger at the boundary to
+    watch per-rotation ``R_obs`` live -- e.g. while chasing a residual.
     """
     plan = preprocess(plan)
     engine = build_engine(plan, refinement, method=method)
@@ -95,7 +108,21 @@ def run_inference(
         _score_rotation(orientation, solution)
         for orientation, solution in zip(plan.orientations, solutions, strict=True)
     )
-    return InferenceResult(per_rotation=rows)
+    for index, row in enumerate(rows):
+        logger.report(
+            RotationScored(
+                index=index, r_obs=row.r_obs, n_observed=row.n_observed, n_beams=row.n_beams
+            )
+        )
+    result = InferenceResult(per_rotation=rows)
+    logger.report(
+        InferenceCompleted(
+            n_rotations=len(rows),
+            n_evaluated=result.n_evaluated,
+            mean_r_obs=result.mean_r_obs,
+        )
+    )
+    return result
 
 
 def _score_rotation(orientation: OrientationPlan, solution: BlochSolution) -> RotationInference:

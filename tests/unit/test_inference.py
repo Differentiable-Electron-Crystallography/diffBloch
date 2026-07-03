@@ -147,3 +147,29 @@ def test_inference_result_aggregates_only_finite_rotations() -> None:
     assert result.per_rotation[1].n_observed == 0
     assert result.n_evaluated == 1
     assert result.mean_r_obs == result.per_rotation[0].r_obs
+
+
+def test_run_inference_emits_events_to_the_logger() -> None:
+    from diffBloch.observability import InferenceCompleted, RecordingLogger, RotationScored
+
+    grid, asu_plan, spec, numbers = _silicon()
+    intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
+    plan = Plan(
+        grid=grid,
+        orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
+    )
+    logger = RecordingLogger()
+
+    result = run_inference(
+        plan, _refinement(asu_plan, spec, numbers), method=_METHOD, logger=logger
+    )
+
+    # One RotationScored per rotation (in order), then one InferenceCompleted aggregate.
+    rotations = [e for e in logger.events if isinstance(e, RotationScored)]
+    completed = [e for e in logger.events if isinstance(e, InferenceCompleted)]
+    assert [e.index for e in rotations] == [0, 1]
+    assert rotations[0].r_obs == result.per_rotation[0].r_obs
+    assert len(completed) == 1
+    assert completed[0].n_rotations == 2
+    assert completed[0].mean_r_obs == result.mean_r_obs
+    assert isinstance(logger.events[-1], InferenceCompleted)  # aggregate emitted last

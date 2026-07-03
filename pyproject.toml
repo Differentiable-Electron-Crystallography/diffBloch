@@ -17,6 +17,11 @@ dependencies = [
     #   abtem            -> core/scattering (electron form factors), wrapped behind a seam
 ]
 
+[project.optional-dependencies]
+# Logger backends confine their SDK to one module (diffBloch.app.loggers.*) and import it lazily;
+# install the extra to use that backend. The core never imports these.
+wandb = ["wandb>=0.16"]
+
 [project.scripts]
 diffbloch = "diffBloch.app.cli:main"
 
