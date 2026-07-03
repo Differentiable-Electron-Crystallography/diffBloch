@@ -270,8 +270,11 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > recalibrated 600 -> 2000 for the bumpier integrated landscape, which needs up to 1288 passes;
 > opt-in subset via `DIFFBLOCH_ANCHOR_ROTATIONS`). **(2)**
 > mosaicity — *done* (`ea2caa8`: a `PlainSum | MosaicSmoothed(window)` tilt-reduction set by a
-> composable `mosaicity()` step, config-exposed tunable window; off-by-default byte-identical). Then
-> **(3)** `converge_sampling` on the real rocking curve, **(4)** the
+> composable `mosaicity()` step, config-exposed tunable window; off-by-default byte-identical).
+> **(3)** `converge_sampling` on the real rocking curve — *done* (`test_quartz_sampling_convergence`:
+> the tilt-count resolution sweep converges the full-99 integrated quartz pattern at **39 tilts** at
+> the faithful 0.005 threshold, just below the reference's chosen 42 — 42 is mildly oversampled; the
+> lever recovers the resolution requirement from the physics). Then **(4)** the
 > convergence tutorial, **(5)** config-schema wiring of `ConvergenceTest`, and **(6)** the
 > `0.0594 -> 0.0438` residual chase **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor
 > forward-model details) — it is only meaningful once the fit/eval coupling and the integrated model
