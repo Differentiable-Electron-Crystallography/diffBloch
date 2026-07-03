@@ -14,7 +14,15 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from diffBloch.specs import BeamSelection, HexagonalSearch, Mosaicity, RockingCurve, ThicknessGrid
+from diffBloch.specs import (
+    BeamSelection,
+    ConvergenceTest,
+    ConvergenceTolerance,
+    HexagonalSearch,
+    Mosaicity,
+    RockingCurve,
+    ThicknessGrid,
+)
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
 # defaults derive from these default instances so the boundary value cannot drift from the
@@ -23,6 +31,8 @@ from diffBloch.specs import BeamSelection, HexagonalSearch, Mosaicity, RockingCu
 # in ``HexagonalSearch``).
 _HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
+_CONVERGENCE_TEST_DEFAULTS = ConvergenceTest()
+_CONVERGENCE_TOLERANCE_DEFAULTS = ConvergenceTolerance()
 
 
 class SolverConfig(BaseModel):
@@ -221,15 +231,65 @@ class ThicknessFitConfig(BaseModel):
         return self
 
 
+class ConvergenceConfig(BaseModel):
+    """Bounds for the optional ``converge_numerics`` driver (preprocess).
+
+    The YAML edge for convergence testing. It parses into **two** value-types (single
+    responsibility, mirroring how :class:`~diffBloch.specs.ConvergenceTest` and
+    :class:`~diffBloch.specs.ConvergenceTolerance` split *what to sweep* from *when to stop*):
+    :meth:`to_test` and :meth:`to_tolerance`. Defaults derive from those value-types, so the
+    boundary values cannot drift from them, and all validation is delegated there (one rule home).
+
+    Configuring this block does **not** run convergence: like ``integrate_rocking_curve`` /
+    ``mosaicity``, whether the driver runs is a pipeline-composition choice (append
+    :func:`~diffBloch.preprocess.driver.converge_numerics` or not), so convergence stays opt-in.
+    """
+
+    operation: Literal["coverage", "self_stability", "both"] = _CONVERGENCE_TEST_DEFAULTS.operation
+    start_g_max_refine: float = _CONVERGENCE_TEST_DEFAULTS.start_g_max_refine  # pool sweep start
+    pool_step: float = _CONVERGENCE_TEST_DEFAULTS.pool_step  # g_max_refine increment
+    window_step: float = _CONVERGENCE_TEST_DEFAULTS.window_step  # integration_semiangle increment
+    tilt_step: float = _CONVERGENCE_TEST_DEFAULTS.tilt_step  # rocking_curve_sampling increment
+    num_passes: int = _CONVERGENCE_TEST_DEFAULTS.num_passes  # self-stability sweep passes
+    r_factor_threshold: float = _CONVERGENCE_TOLERANCE_DEFAULTS.r_factor_threshold  # stability cut
+    max_iterations: int = _CONVERGENCE_TOLERANCE_DEFAULTS.max_iterations  # per-sweep runaway cap
+
+    def to_test(self) -> ConvergenceTest:
+        """Parse the *what to sweep* fields into the validated :class:`ConvergenceTest`."""
+        return ConvergenceTest(
+            operation=self.operation,
+            start_g_max_refine=self.start_g_max_refine,
+            pool_step=self.pool_step,
+            window_step=self.window_step,
+            tilt_step=self.tilt_step,
+            num_passes=self.num_passes,
+        )
+
+    def to_tolerance(self) -> ConvergenceTolerance:
+        """Parse the *when to stop* fields into the validated :class:`ConvergenceTolerance`."""
+        return ConvergenceTolerance(
+            r_factor_threshold=self.r_factor_threshold,
+            max_iterations=self.max_iterations,
+        )
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> ConvergenceConfig:
+        self.to_test()  # rules live in ConvergenceTest; fail fast at config load
+        self.to_tolerance()  # rules live in ConvergenceTolerance; fail fast at config load
+        return self
+
+
 class PreprocessConfig(BaseModel):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
-    Grouping, not composition: each block configures one preprocess step. ``fit_orientation`` and
-    ``fit_thickness`` are wired today; the ``converge_numerics`` block joins here when it lands.
+    Grouping, not composition: each block configures one preprocess step. ``fit_orientation``,
+    ``fit_thickness`` and the optional ``converge_numerics`` driver are wired; whether the
+    convergence driver runs is a pipeline-composition choice (see :class:`ConvergenceConfig`).
     """
 
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
     thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
+    convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
 
 
 class Inputs(BaseModel):

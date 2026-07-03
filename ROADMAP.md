@@ -275,7 +275,9 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > the tilt-count resolution sweep converges the full-99 integrated quartz pattern at **39 tilts** at
 > the faithful 0.005 threshold, just below the reference's chosen 42 — 42 is mildly oversampled; the
 > lever recovers the resolution requirement from the physics). Then **(4)** the
-> convergence tutorial, **(5)** config-schema wiring of `ConvergenceTest`, and **(6)** the
+> convergence tutorial, **(5)** config-schema wiring of `ConvergenceTest` — *done* (a
+> `ConvergenceConfig` YAML edge parsing into both value-types via `to_test` / `to_tolerance`, wired
+> into `PreprocessConfig.convergence`; opt-in by construction like the other steps), and **(6)** the
 > `0.0594 -> 0.0438` residual chase **last** (obs matching / `I>3σ` bookkeeping 965 vs 958, minor
 > forward-model details) — it is only meaningful once the fit/eval coupling and the integrated model
 > are in place. Tracked in `design/stage11-preprocess-plan.md` (Open / deferred).

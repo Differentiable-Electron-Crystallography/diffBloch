@@ -4,7 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from diffBloch.config.schema import BeamDamageConfig, ExperimentConfig
-from diffBloch.specs import HexagonalSearch, RockingCurve, ThicknessGrid
+from diffBloch.specs import (
+    ConvergenceTest,
+    ConvergenceTolerance,
+    HexagonalSearch,
+    RockingCurve,
+    ThicknessGrid,
+)
 
 
 def test_minimal_config_validates_with_defaults() -> None:
@@ -124,6 +130,45 @@ def test_preprocess_thickness_defaults_match_the_private() -> None:
     # 1:1 edge over ThicknessGrid: a default config round-trips to the value-type's defaults; the
     # concrete values are pinned once, in test_specs.
     assert thickness.to_grid() == ThicknessGrid()
+
+
+def test_preprocess_convergence_defaults_match_the_private() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    )
+    convergence = cfg.preprocess.convergence
+    # 1:1 edge over two value-types (what-to-sweep / when-to-stop): a default config round-trips to
+    # each value-type's defaults. The concrete values are pinned once, in test_specs.
+    assert convergence.to_test() == ConvergenceTest()
+    assert convergence.to_tolerance() == ConvergenceTolerance()
+
+
+def test_convergence_bounds_are_validated() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="Input should be"):  # pydantic Literal guards this
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"operation": "nonsense"}}}
+        )
+    with pytest.raises(ValidationError, match="start_g_max_refine must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"start_g_max_refine": 0.0}}}
+        )
+    with pytest.raises(ValidationError, match="must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"tilt_step": 0.0}}}
+        )
+    with pytest.raises(ValidationError, match="num_passes must be >= 1"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"num_passes": 0}}}
+        )
+    with pytest.raises(ValidationError, match="r_factor_threshold must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"r_factor_threshold": 0.0}}}
+        )
+    with pytest.raises(ValidationError, match="max_iterations must be >= 1"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"convergence": {"max_iterations": 0}}}
+        )
 
 
 def test_numerics_to_rocking_curve_shares_the_integration_semiangle() -> None:
