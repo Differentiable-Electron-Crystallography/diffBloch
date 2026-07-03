@@ -140,17 +140,19 @@ class HexagonalSearch:
 
     Defaults are the faithful ``diffBloch_private`` values (``configs/preprocess/base.yaml``).
     ``max_iterations`` has no private precedent (the private search has no cap -- it relies on
-    monotone wR2 descent plus the radius floor). Its default of ``600`` is **calibrated on the
-    quartz anchor**: across its 99 rotations the slowest legitimate search converged in 526 passes,
-    so 600 leaves headroom while still catching a genuine runaway. A dataset with shallower minima
-    may need a larger cap -- raise it via ``preprocess.orientation.max_iterations`` (see
-    ``KNOWN_ISSUES.md``).
+    monotone wR2 descent plus the radius floor). Its default of ``2000`` is **calibrated on the
+    quartz anchor under the integrated recipe**: every one of its 99 rotations still terminates by
+    the radius floor, but the bumpier rocking-curve-integrated landscape needs many more passes than
+    the static fit -- the slowest legitimate search took 1288 passes (526 without integration), so
+    2000 leaves cross-platform headroom while still catching a genuine runaway. A dataset with
+    shallower minima may need a larger cap -- raise it via ``preprocess.orientation.max_iterations``
+    (see ``KNOWN_ISSUES.md``).
     """
 
     max_search_angle: float = 0.4  # largest tilt radius the search starts from
     min_search_angle: float = 0.001  # radius floor that terminates the search
     n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
-    max_iterations: int = 600  # runaway guard: max search passes per orientation (quartz max 526)
+    max_iterations: int = 2000  # runaway guard: max search passes (integrated quartz max 1288)
 
     def __post_init__(self) -> None:
         if self.min_search_angle <= 0.0 or self.max_search_angle <= 0.0:

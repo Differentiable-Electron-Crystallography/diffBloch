@@ -109,10 +109,14 @@ Seeded in `RefinementSetup.from_structure` (`src/diffBloch/preprocess/experiment
 `fit_orientation` caps the Palatinus search at `max_iterations` passes per orientation and raises
 `RuntimeError` rather than spin (matching `iterate_until`'s posture; see DIVERGENCE.md). The cap is
 sound and exposed at the boundary (`OrientationFitConfig.max_iterations`, unpacked into the pure
-function). Its default (**600**) is **calibrated on the quartz anchor**: across the 99 rotations the
-slowest legitimate search converged in 526 passes (four rotations exceed 200 -- 526, 505, 220,
-207 -- which is why the earlier placeholder of 200 spuriously aborted them), so 600 leaves headroom
-while still catching a genuine runaway.
+function). Its default (**2000**) is **calibrated on the quartz anchor under the integrated recipe**:
+the static from-scratch fit's slowest legitimate search converged in 526 passes, but with
+rocking-curve integration (the C3 coupled recipe, now pinned) the landscape is bumpier and the
+slowest rotation needs **1288** passes -- every rotation still terminates by the radius floor (this
+is not a runaway; monotone descent guarantees termination), it simply takes more passes. Four
+rotations exceed 600 under integration (1288, 764, 715, 699), which is why the earlier static-
+calibrated 600 spuriously aborted the full-99 integrated run. 2000 leaves cross-platform headroom
+over 1288 while still catching a genuine runaway.
 
 The calibration is single-dataset: `diffBloch_private`'s search has no cap at all, so there is no
 ported precedent, and a dataset with shallower minima than quartz could still need a larger cap. It
@@ -163,9 +167,8 @@ the config / preprocess / engine layers. Where: `preprocess/experiment.py` (`Pla
 - **Measured win:** ~3× on a full 99-rotation integrated eval (917→302 ms `bloch_eigen`; 1247→400 ms
   `matrix_exp`, quartz anchor `sampling=42`). Modest rather than the naive ~40× because the selected
   beam set is small (N=13–31), so per-matrix compute was already cheap and the win is fewer
-  dispatches + one gather. This unblocks encoding the integrated fit/eval-coupling recipe as an
-  anchor pin (`design/decisions/stage11-rocking-curve.md` #6) once the coupled-fit cost is
-  re-measured.
+  dispatches + one gather. (This was **not** the fit bottleneck -- the redundant gather rebuild
+  below was; batching contributes on pure-eval paths.)
 - **Deferred (large-N memory seam):** the batched `matrix_exp` materialises a `(B, T, N, N)` complex
   transfer buffer; at anchor scale this is trivial (<0.07 GB even with the 100-step thickness grid),
   but a future large-N system (hundreds of beams) could make it painful. Fix then would be internal
@@ -194,4 +197,6 @@ the config / preprocess / engine layers. Where: `preprocess/experiment.py` (`Pla
   (`diffBloch_private` 6bb3031).
 - **Measured:** the coupled integrated fit dropped **14 -> 0.78 s/rotation (~18×); full-99 ~1.3 min**
   (was ~23 min), R_obs unchanged (0.0519 on the first 6 rotations). The static anchor e2e also fell
-  76 -> 28 s. This is what actually unblocks the integrated anchor pin (1c).
+  76 -> 28 s. This is what actually unblocked the integrated anchor pin (1c), now landed as
+  `tests/e2e/test_anchor.py::test_quartz_integrated_anchor` (full-99 mean R_obs 0.0655; opt-in
+  subset via `DIFFBLOCH_ANCHOR_ROTATIONS`).

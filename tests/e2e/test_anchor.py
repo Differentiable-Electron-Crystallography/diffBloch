@@ -30,6 +30,8 @@ This is an opt-in ``e2e`` test (excluded from ``just check``); the full run take
 """
 
 import json
+import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -40,6 +42,7 @@ from diffBloch.preprocess import (
     fit_orientation,
     fit_thickness,
     from_experiment,
+    integrate_rocking_curve,
     pipeline,
     run_inference,
     select_beams,
@@ -58,6 +61,17 @@ FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 # regression; tighten once CI confirms the value is stable.
 EXPECTED_MEAN_R_OBS = 0.174
 MEAN_R_OBS_TOL = 1e-2
+
+# The integrated recipe: the same fit pipeline with rocking-curve integration inserted before the
+# fits, so each candidate is fit AND evaluated under the 42-tilt integration (the C3 fit/eval
+# coupling). Over all 99 rotations this reaches 0.0655 -- far below the static 0.174 -- the headline
+# coupled result. The tolerance mirrors the static pin (loose enough for cross-platform eigensolver
+# degeneracy, tight enough to catch a physics regression); tighten once CI confirms stability. A
+# subset run (see DIFFBLOCH_ANCHOR_ROTATIONS below) is unrepresentative of this mean, so it only
+# asserts the coupled pipeline runs and beats the static baseline.
+EXPECTED_INTEGRATED_MEAN_R_OBS = 0.0655
+INTEGRATED_MEAN_R_OBS_TOL = 1e-2
+STATIC_BASELINE_R_OBS = 0.174  # subset sanity: coupled must sit comfortably below this
 
 
 @pytest.mark.parametrize("material", ["quartz"])
@@ -118,3 +132,52 @@ def test_quartz_reference_anchor(material: str) -> None:
     # Finer-grained per-rotation tensor goldens remain a separate deliverable.
     for tensor in ("Fgb", "A", "psi", "I_sim"):
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
+
+
+def test_quartz_integrated_anchor() -> None:
+    """Pin the integrated fit/eval-coupled recipe (C3) end-to-end over all 99 rotations.
+
+    This is the coupled counterpart to :func:`test_quartz_reference_anchor`: the same public-API
+    pipeline with ``integrate_rocking_curve`` inserted before the fits, so every candidate is fit
+    *and* scored under the 42-tilt rocking-curve integration. It reaches ``mean R_obs = 0.0655``,
+    well below the static ``0.174`` -- the measured fit/eval-consistency payoff.
+
+    Runs all 99 rotations by default (~3-4 min). For a quick sanity check or a cloud run where
+    compute is expensive, set ``DIFFBLOCH_ANCHOR_ROTATIONS=N`` to run only the first ``N``
+    rotations; the subset mean is not representative of the full-99 headline, so that mode only
+    asserts the coupled pipeline completes and sits comfortably below the static baseline.
+    """
+    cfg, _lock = load_experiment(FIXTURE_ROOT)
+    structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    setup = from_experiment(structure, observations, cfg)
+    refinement = setup.refinement
+
+    plan = setup.plans.combined
+    subset_env = os.environ.get("DIFFBLOCH_ANCHOR_ROTATIONS")
+    n_rotations = int(subset_env) if subset_env else len(plan.orientations)
+    if not 1 <= n_rotations <= len(plan.orientations):
+        raise ValueError(f"DIFFBLOCH_ANCHOR_ROTATIONS must be in 1..{len(plan.orientations)}")
+    plan = replace(plan, orientations=plan.orientations[:n_rotations])
+
+    preprocess = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+            fit_orientation(
+                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+            ),
+            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        ]
+    )
+    result = run_inference(
+        plan, refinement, preprocess=preprocess, method=cfg.solver.inference
+    )
+
+    assert result.n_evaluated == n_rotations
+    if n_rotations == observations.n_rotations:
+        assert result.mean_r_obs == pytest.approx(
+            EXPECTED_INTEGRATED_MEAN_R_OBS, abs=INTEGRATED_MEAN_R_OBS_TOL
+        )
+    else:  # subset sanity: proves the coupled pipeline runs and beats the static baseline
+        assert result.mean_r_obs < STATIC_BASELINE_R_OBS

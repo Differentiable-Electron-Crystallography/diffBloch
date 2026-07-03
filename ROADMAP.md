@@ -262,8 +262,13 @@ private `evaluate_over_rotations`). Building it is part of this work.
 > **tilt-batching perf pass** — *done* (`81c9273`: one batched Bloch `eigh`/`matrix_exp` over the 42
 > tilts via `stack_beam_plans` / `build_bloch_systems` + rank-polymorphic `propagate`; numerically
 > identical, ~3× measured on the 99-rotation integrated eval — modest because the selected beam set
-> is small, see `KNOWN_ISSUES.md`) — which unblocks **(1c)** encoding the integrated recipe as an
-> anchor pin (~0.05), *next once the coupled-fit cost is re-measured on the batched solve*. **(2)**
+> is small, see `KNOWN_ISSUES.md`). The real fit bottleneck was a redundant structure-factor gather
+> rebuild (3403x/rotation, 94%), fixed by precomputing it once per beam set (`8b32ef0`, ports
+> private 6bb3031) — ~18x on the coupled fit — which is what actually unblocked **(1c)** the
+> integrated anchor pin, *done* (`test_quartz_integrated_anchor`: from-scratch integrated recipe
+> over all 99 rotations reaches mean `R_obs` 0.0655 vs the static 0.174; the `max_iterations` cap was
+> recalibrated 600 -> 2000 for the bumpier integrated landscape, which needs up to 1288 passes;
+> opt-in subset via `DIFFBLOCH_ANCHOR_ROTATIONS`). **(2)**
 > mosaicity — *done* (`ea2caa8`: a `PlainSum | MosaicSmoothed(window)` tilt-reduction set by a
 > composable `mosaicity()` step, config-exposed tunable window; off-by-default byte-identical). Then
 > **(3)** `converge_sampling` on the real rocking curve, **(4)** the
