@@ -64,6 +64,22 @@ class RunManifest(BaseModel):
     environment: dict[str, str]
 
 
+class PlanLock(BaseModel):
+    """``plan.lock``: binds a preprocess ``plan.npz`` checkpoint to the inputs + config behind it.
+
+    Identity only (hashes), never payload -- the same discipline as ``experiment.lock``. The ``run``
+    program reuses a cached checkpoint only when both digests match the current experiment (input
+    bytes via ``experiment_lock_sha256``, resolved config via ``config_sha256``) *and* the
+    ``plan.npz`` bytes verify against ``plan``; any mismatch triggers a fresh preprocess. Kept out
+    of ``experiment.lock`` (inputs) and ``run_manifest.json`` (final run outputs): a preprocess
+    cache is a distinct, regenerable intermediate.
+    """
+
+    experiment_lock_sha256: str
+    config_sha256: str
+    plan: ArtifactHash
+
+
 def sha256_file(path: str | Path) -> str:
     """Return the SHA256 hex digest for ``path``."""
     digest = hashlib.sha256()
@@ -110,6 +126,27 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
 def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
     """Write ``run_manifest.json`` in a stable, human-readable form."""
     Path(path).write_text(manifest.model_dump_json(indent=2) + "\n")
+
+
+def config_digest(config: ExperimentConfig) -> str:
+    """Return the SHA256 of the resolved config's canonical JSON.
+
+    Keyed on the *resolved* :class:`ExperimentConfig`, not the ``experiment.yaml`` bytes, so it is
+    semantically stable: reordering fields or editing comments/whitespace does not invalidate the
+    preprocess cache, but any change to a validated value does. Paired with the experiment lock
+    digest (input bytes) it is the full cache key for ``plan.lock``.
+    """
+    return hashlib.sha256(config.model_dump_json().encode("utf-8")).hexdigest()
+
+
+def write_plan_lock(path: str | Path, lock: PlanLock) -> None:
+    """Write ``plan.lock`` in a stable, human-readable form."""
+    Path(path).write_text(lock.model_dump_json(indent=2) + "\n")
+
+
+def read_plan_lock(path: str | Path) -> PlanLock:
+    """Read a ``plan.lock`` written by :func:`write_plan_lock`."""
+    return PlanLock.model_validate_json(Path(path).read_text())
 
 
 def pack_run(
