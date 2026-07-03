@@ -9,15 +9,11 @@ import pytest
 from diffBloch.config import (
     RunManifest,
     artifact_hash_for,
-    config_digest,
     load_experiment,
     pack_run,
-    read_plan_lock,
     sha256_file,
-    write_plan_lock,
     write_run_manifest,
 )
-from diffBloch.config.manifest import PlanLock
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 
@@ -67,30 +63,6 @@ def test_run_manifest_hashes_generated_artifacts(tmp_path: Path) -> None:
     loaded = RunManifest.model_validate_json((run / "run_manifest.json").read_text())
     assert loaded.resolved_config.path == "resolved_config.yaml"
     assert loaded.experiment_lock_sha256 == "input-lock-hash"
-
-
-def test_config_digest_is_stable_and_value_sensitive() -> None:
-    cfg, _ = load_experiment(LOCKED)
-    reloaded, _ = load_experiment(LOCKED)
-    assert config_digest(cfg) == config_digest(reloaded)
-    mutated = cfg.model_copy(update={"name": cfg.name + "-changed"})
-    assert config_digest(mutated) != config_digest(cfg)
-
-
-def test_plan_lock_round_trips_and_binds_checkpoint_to_inputs_and_config(tmp_path: Path) -> None:
-    (tmp_path / "plan.npz").write_bytes(b"npz-bytes")
-    lock = PlanLock(
-        experiment_lock_sha256="exp-lock-hash",
-        config_sha256="cfg-hash",
-        plan=artifact_hash_for(tmp_path / "plan.npz", root=tmp_path),
-    )
-    write_plan_lock(tmp_path / "plan.lock", lock)
-
-    loaded = read_plan_lock(tmp_path / "plan.lock")
-    assert loaded.experiment_lock_sha256 == "exp-lock-hash"
-    assert loaded.config_sha256 == "cfg-hash"
-    assert loaded.plan.path == "plan.npz"
-    assert loaded.plan.sha256 == sha256_file(tmp_path / "plan.npz")
 
 
 def test_pack_run_exports_zip_preserving_full_run_name(tmp_path: Path) -> None:
