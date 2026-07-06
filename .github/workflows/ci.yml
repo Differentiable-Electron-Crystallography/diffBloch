@@ -44,6 +44,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     permissions:
+      contents: read  # job-level permissions REPLACE defaults; checkout still needs repo read
       pages: write
       id-token: write
     environment:
