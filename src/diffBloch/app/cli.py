@@ -7,13 +7,18 @@ or a SLURM job runs it. Kept deliberately thin — it delegates to the library a
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
+from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger
+from diffBloch.app.program import run_experiment
 from diffBloch.config import load_config, pack_run
+from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +36,14 @@ def main(argv: list[str] | None = None) -> int:
 
     p_run = sub.add_parser("run", help="Run artifact commands")
     run_sub = p_run.add_subparsers(dest="run_command")
+    p_infer = run_sub.add_parser("infer", help="Score every rotation of an experiment")
+    p_infer.add_argument("experiment_directory", help="Path to the experiment directory")
+    p_infer.add_argument(
+        "--console", action="store_true", help="stream per-rotation observations to stderr"
+    )
+    p_infer.add_argument(
+        "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
+    )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -55,6 +68,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK: experiment '{cfg.name}' validated.")
         return 0
 
+    if args.command == "run" and args.run_command == "infer":
+        if args.console:
+            logging.basicConfig(level=logging.INFO, format="%(message)s")
+        try:
+            result = run_experiment(
+                args.experiment_directory, logger=_build_logger(console=args.console, csv=args.csv)
+            )
+        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
+        return 0
+
     if args.command == "run" and args.run_command == "pack":
         try:
             output = pack_run(args.run_directory, package_format=args.format)
@@ -68,6 +96,20 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 0
+
+
+def _build_logger(*, console: bool, csv: str | None) -> Logger:
+    """Combine the requested observation sinks (none => the null logger that discards events)."""
+    sinks: list[Logger] = []
+    if console:
+        sinks.append(ConsoleLogger())
+    if csv is not None:
+        sinks.append(CSVLogger(Path(csv)))
+    if not sinks:
+        return NULL_LOGGER
+    if len(sinks) == 1:
+        return sinks[0]
+    return MultiLogger(tuple(sinks))
 
 
 if __name__ == "__main__":

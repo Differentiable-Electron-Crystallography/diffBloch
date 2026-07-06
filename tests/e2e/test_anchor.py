@@ -31,11 +31,13 @@ This is an opt-in ``e2e`` test (excluded from ``just check``); the full run take
 
 import json
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from diffBloch.app.cli import main as cli_main
 from diffBloch.config import load_experiment, sha256_file
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
@@ -134,7 +136,7 @@ def test_quartz_reference_anchor(material: str) -> None:
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
 
 
-def test_quartz_integrated_anchor() -> None:
+def test_quartz_integrated_anchor(capsys: pytest.CaptureFixture[str]) -> None:
     """Pin the integrated fit/eval-coupled recipe (C3) end-to-end over all 99 rotations.
 
     This is the coupled counterpart to :func:`test_quartz_reference_anchor`: the same public-API
@@ -142,11 +144,27 @@ def test_quartz_integrated_anchor() -> None:
     *and* scored under the 42-tilt rocking-curve integration. It reaches ``mean R_obs = 0.0655``,
     well below the static ``0.174`` -- the measured fit/eval-consistency payoff.
 
-    Runs all 99 rotations by default (~3-4 min). For a quick sanity check or a cloud run where
-    compute is expensive, set ``DIFFBLOCH_ANCHOR_ROTATIONS=N`` to run only the first ``N``
-    rotations; the subset mean is not representative of the full-99 headline, so that mode only
-    asserts the coupled pipeline completes and sits comfortably below the static baseline.
+    Runs all 99 rotations by default (~3-4 min), driven through the CLI (``diffbloch run infer``),
+    which executes this same integrated recipe via ``app.program.run_experiment`` -- so the
+    headline pin also covers the user-facing entry point. For a quick sanity check or a cloud run
+    where compute is expensive, set ``DIFFBLOCH_ANCHOR_ROTATIONS=N`` to run only the first ``N``
+    rotations via the Python API (the CLI has no subset lever); the subset mean is not
+    representative of the full-99 headline, so that mode only asserts the coupled pipeline
+    completes and sits comfortably below the static baseline.
     """
+    subset_env = os.environ.get("DIFFBLOCH_ANCHOR_ROTATIONS")
+    if subset_env is None:
+        rc = cli_main(["run", "infer", str(FIXTURE_ROOT)])
+        out = capsys.readouterr().out
+        assert rc == 0, out
+        match = re.fullmatch(r"evaluated (\d+) rotations; mean R_obs = (\d+\.\d+)\n", out)
+        assert match is not None, out
+        assert int(match.group(1)) == 99  # every rotation yields a finite R_obs
+        assert float(match.group(2)) == pytest.approx(
+            EXPECTED_INTEGRATED_MEAN_R_OBS, abs=INTEGRATED_MEAN_R_OBS_TOL
+        )
+        return
+
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
     observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
@@ -154,8 +172,7 @@ def test_quartz_integrated_anchor() -> None:
     refinement = setup.refinement
 
     plan = setup.plans.combined
-    subset_env = os.environ.get("DIFFBLOCH_ANCHOR_ROTATIONS")
-    n_rotations = int(subset_env) if subset_env else len(plan.orientations)
+    n_rotations = int(subset_env)
     if not 1 <= n_rotations <= len(plan.orientations):
         raise ValueError(f"DIFFBLOCH_ANCHOR_ROTATIONS must be in 1..{len(plan.orientations)}")
     plan = replace(plan, orientations=plan.orientations[:n_rotations])
@@ -170,9 +187,7 @@ def test_quartz_integrated_anchor() -> None:
             fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
         ]
     )
-    result = run_inference(
-        plan, refinement, preprocess=preprocess, method=cfg.solver.inference
-    )
+    result = run_inference(plan, refinement, preprocess=preprocess, method=cfg.solver.inference)
 
     assert result.n_evaluated == n_rotations
     if n_rotations == observations.n_rotations:

@@ -6,6 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from diffBloch.app.cli import main
+from diffBloch.observability import MultiLogger, NullLogger
+from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
 
@@ -66,6 +68,58 @@ def test_run_pack_missing_manifest_reports_concise_error(
     run = tmp_path / "run_001"
     run.mkdir()
     rc = main(["run", "pack", str(run)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def test_run_infer_delegates_to_run_experiment_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_experiment(experiment_dir: str, *, logger: object) -> InferenceResult:
+        captured["dir"] = experiment_dir
+        captured["logger"] = logger
+        rotation = RotationInference(r_obs=0.05, n_observed=9, n_beams=20)
+        return InferenceResult(per_rotation=(rotation,))
+
+    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
+    rc = main(["run", "infer", "/some/experiment"])
+
+    assert rc == 0
+    assert captured["dir"] == "/some/experiment"
+    assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
+    out = capsys.readouterr().out
+    assert "evaluated 1 rotations" in out
+    assert "mean R_obs = 0.0500" in out
+
+
+def test_run_infer_builds_console_and_csv_sinks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_experiment(experiment_dir: str, *, logger: object) -> InferenceResult:
+        seen["logger"] = logger
+        return InferenceResult(per_rotation=())
+
+    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
+    csv_path = tmp_path / "observations.csv"
+    rc = main(["run", "infer", "x", "--console", "--csv", str(csv_path)])
+
+    assert rc == 0
+    logger = seen["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert len(logger.loggers) == 2  # console + csv fanned out
+    assert csv_path.is_file()  # CSVLogger writes its header at construction
+
+
+def test_run_infer_missing_experiment_reports_concise_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(["run", "infer", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")
