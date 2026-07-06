@@ -36,5 +36,21 @@ jobs:
 
       - name: Build package (wheel + sdist)
         run: uv build
-  # NOTE: e2e tests (`-m e2e`) are intentionally not in CI yet — they need data fixtures + the
-  # ported kernels (migration stage 0+). Add a separate e2e job once the anchor is real.
+
+  # The physics anchors: opt-in locally (`just anchor`), a separate job here so the fast checks
+  # report first. Full 99-rotation static + integrated (CLI-driven) quartz pins, ~5-6 min on CPU.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      - name: Physics anchors (e2e)
+        run: uv run pytest -m e2e -q
