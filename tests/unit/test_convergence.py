@@ -257,8 +257,13 @@ def _pool_active_count(seed: Plan, g_max_refine: float, semiangle: float) -> int
     beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
     reseeded = tuple(
         OrientationPlan.build(
-            seed.grid, beam_hkl, op.pattern, energy=op.energy,
-            thickness=op.thickness, u0=op.u0, orientation=op.orientation,
+            seed.grid,
+            beam_hkl,
+            op.pattern,
+            energy=op.energy,
+            thickness=op.thickness,
+            u0=op.u0,
+            orientation=op.orientation,
         )
         for op in seed.orientations
     )
@@ -328,8 +333,14 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     tilt_count = len(converged.orientations[0].beam_plans)
     assert tilt_count == 9  # deterministic: first consecutive-sim R below 0.01 is at 9 tilts
     # started from a single static solve (sampling == 1); convergence genuinely refined the grid
-    assert len(integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=1))(seed)
-               .orientations[0].beam_plans) == 1
+    assert (
+        len(
+            integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=1))(seed)
+            .orientations[0]
+            .beam_plans
+        )
+        == 1
+    )
 
 
 def test_converge_sampling_rejects_non_positive_step() -> None:

@@ -100,8 +100,13 @@ def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
         beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
         reseeded = tuple(
             OrientationPlan.build(
-                seed.grid, beam_hkl, op.pattern, energy=op.energy,
-                thickness=op.thickness, u0=op.u0, orientation=op.orientation,
+                seed.grid,
+                beam_hkl,
+                op.pattern,
+                energy=op.energy,
+                thickness=op.thickness,
+                u0=op.u0,
+                orientation=op.orientation,
             )
             for op in seed.orientations
         )

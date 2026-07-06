@@ -324,9 +324,7 @@ def test_build_beam_plan_reuses_a_precomputed_gather_byte_identically() -> None:
     assert reused.gather is gather  # the exact object is threaded through, not rebuilt
     assert torch.equal(reused.diagonal, fresh.diagonal)
     assert torch.equal(reused.mii, fresh.mii)
-    assert torch.equal(
-        reused.gather.destination_indices, fresh.gather.destination_indices
-    )
+    assert torch.equal(reused.gather.destination_indices, fresh.gather.destination_indices)
 
 
 def test_build_beam_plan_rejects_a_mismatched_precomputed_gather() -> None:

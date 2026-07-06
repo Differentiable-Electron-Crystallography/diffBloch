@@ -164,9 +164,7 @@ def test_integrate_batched_rejects_non_3d_amplitudes() -> None:
     beam_hkl = torch.tensor([[0, 0, 0], [1, 0, 0]])
     thick = torch.tensor([10.0])
     with pytest.raises(ValueError, match=r"shape \(N_tilts, T, N\)"):
-        BlochSolution.integrate_batched(
-            torch.ones((2, 2), dtype=torch.complex128), beam_hkl, thick
-        )
+        BlochSolution.integrate_batched(torch.ones((2, 2), dtype=torch.complex128), beam_hkl, thick)
 
 
 def test_pattern_batch_from_observation_record_full() -> None:

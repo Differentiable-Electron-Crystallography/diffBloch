@@ -103,7 +103,12 @@ def _self_consistent(
         sigmas=torch.ones(3, dtype=torch.float64),
     )
     seed = OrientationPlan.build(
-        grid, _BEAM_HKL, dummy, energy=_ENERGY, thickness=(300.0,), orientation=orientation,
+        grid,
+        _BEAM_HKL,
+        dummy,
+        energy=_ENERGY,
+        thickness=(300.0,),
+        orientation=orientation,
         tilts=tilts,
     )
     engine = RefinementEngine(
@@ -121,7 +126,12 @@ def _self_consistent(
         sigmas=torch.full((3,), 0.01, dtype=torch.float64),
     )
     return OrientationPlan.build(
-        grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(300.0,), orientation=orientation,
+        grid,
+        _BEAM_HKL,
+        observed,
+        energy=_ENERGY,
+        thickness=(300.0,),
+        orientation=orientation,
         tilts=tilts,
     )
 

@@ -162,13 +162,9 @@ def test_convergence_bounds_are_validated() -> None:
             {**base, "preprocess": {"convergence": {"start_g_max_refine": 0.0}}}
         )
     with pytest.raises(ValidationError, match="must be positive"):
-        ExperimentConfig.model_validate(
-            {**base, "preprocess": {"convergence": {"tilt_step": 0.0}}}
-        )
+        ExperimentConfig.model_validate({**base, "preprocess": {"convergence": {"tilt_step": 0.0}}})
     with pytest.raises(ValidationError, match="num_passes must be >= 1"):
-        ExperimentConfig.model_validate(
-            {**base, "preprocess": {"convergence": {"num_passes": 0}}}
-        )
+        ExperimentConfig.model_validate({**base, "preprocess": {"convergence": {"num_passes": 0}}})
     with pytest.raises(ValidationError, match="r_factor_threshold must be positive"):
         ExperimentConfig.model_validate(
             {**base, "preprocess": {"convergence": {"r_factor_threshold": 0.0}}}

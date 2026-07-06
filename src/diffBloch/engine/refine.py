@@ -118,9 +118,7 @@ def run_refinement(
         logger.report(RefinementStep(iteration=step, loss=loss_value))
         if loss_value < best_loss:
             best_loss, best_step, best_params = loss_value, step, snapshot
-    logger.report(
-        RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss)
-    )
+    logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
     return RefinementResult(
         params=_detach_params(leaf_params),
         losses=torch.tensor(losses, dtype=torch.float64),
