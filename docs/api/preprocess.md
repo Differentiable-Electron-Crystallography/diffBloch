@@ -1,0 +1,40 @@
+# Preprocess
+
+The composable `Plan → Plan` preprocess pipeline: build the initial plan from an experiment, sharpen
+it with swappable steps (beam selection, orientation/thickness fits, rocking-curve integration,
+mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal (`run_inference` or
+`engine.refine`).
+
+## Spine
+
+::: diffBloch.preprocess.plan
+
+::: diffBloch.preprocess.experiment
+
+::: diffBloch.preprocess.pipeline
+
+::: diffBloch.preprocess.orientation
+
+::: diffBloch.preprocess.scoring
+
+## Steps
+
+::: diffBloch.preprocess.steps.beams
+
+::: diffBloch.preprocess.steps.fit_orientation
+
+::: diffBloch.preprocess.steps.fit_thickness
+
+::: diffBloch.preprocess.steps.rocking_curve
+
+::: diffBloch.preprocess.steps.mosaicity
+
+::: diffBloch.preprocess.steps.convergence
+
+::: diffBloch.preprocess.steps.coverage
+
+## Orchestration and terminals
+
+::: diffBloch.preprocess.driver
+
+::: diffBloch.preprocess.inference

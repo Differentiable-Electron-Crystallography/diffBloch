@@ -13,7 +13,7 @@ diffraction intensities agree.
 just install      # uv sync --dev + pre-commit install
 just check        # lint + typecheck + unit tests
 just docs-serve   # live API docs
-just anchor       # the single-rotation quartz physics anchor (once ported)
+just anchor       # the quartz physics anchors (opt-in e2e; full integrated run ~4 min)
 ```
 
 ## Layout

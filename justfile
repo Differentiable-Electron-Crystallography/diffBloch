@@ -14,12 +14,9 @@ test:
 test-e2e:
     uv run pytest -m e2e
 
-# Exposed selector examples:
-#   DIFFBLOCH_ANCHOR_ROTATIONS=all just anchor
-#   DIFFBLOCH_ANCHOR_ROTATIONS=first:5 just anchor
-#   DIFFBLOCH_ANCHOR_ROTATIONS=26,33,56 just anchor
-# Quartz anchor (north star). Defaults to DIFFBLOCH_ANCHOR_ROTATIONS=first:1.
-# Until physics assertions land, first:1 selects future work but still checks aggregate metadata.
+# Quartz anchors (north star): static + integrated pins over all 99 rotations (~5 min total).
+# For a quick sanity subset of the integrated anchor (unrepresentative mean, sanity-only):
+#   DIFFBLOCH_ANCHOR_ROTATIONS=5 just anchor
 anchor:
     uv run pytest -m e2e -k anchor
 

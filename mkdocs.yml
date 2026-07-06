@@ -13,16 +13,29 @@ plugins:
       handlers:
         python:
           paths: [src]
+          # Sphinx-style inventories: external types in signatures/docstrings (torch.Tensor,
+          # np.ndarray, Path, pydantic models, ...) become links into their own docs.
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.pytorch.org/docs/stable/objects.inv
+            - https://docs.pydantic.dev/latest/objects.inv
           options:
             docstring_style: google
             show_source: true
             show_signature_annotations: true
             separate_signature: true
+            signature_crossrefs: true
 
 nav:
   - Home: index.md
   - API:
       - Config: api/config.md
-      - Core: api/core.md
       - IO: api/io.md
+      - Core: api/core.md
       - Params: api/params.md
+      - Specs: api/specs.md
+      - Engine: api/engine.md
+      - Preprocess: api/preprocess.md
+      - Observability: api/observability.md
+      - App: api/app.md
