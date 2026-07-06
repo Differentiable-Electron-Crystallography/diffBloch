@@ -5,8 +5,7 @@ structural parameters to a scalar R-loss, minimised by gradient descent so that 
 diffraction intensities agree.
 
 > **2.0 rewrite in progress.** This package is being built from scratch, porting from the research
-> codebase stepwise — one discrete, tested commit per stage. Architecture:
-> `notebooks/iain/principled_refactor_synthesis.ipynb`. Staged plan: [ROADMAP.md](ROADMAP.md).
+> codebase stepwise — one discrete, tested commit per stage.
 
 ## Quickstart
 

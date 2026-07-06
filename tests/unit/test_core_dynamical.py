@@ -368,7 +368,8 @@ _ORACLE_NPZ = (
 
 def test_structure_matrix_matches_private_oracle() -> None:
     # Independent oracle: A from diffBloch_private's verbatim calculate_structure_matrix on a small
-    # alpha-quartz case (see notebooks/iain/stage8_structure_matrix_oracle.ipynb + provenance.json).
+    # alpha-quartz case (regenerate via the fixture's co-located generate_oracle.py; provenance in
+    # its provenance.json).
     data = np.load(_ORACLE_NPZ)
     # Geometry sanity first, so a failure localizes to the convention vs the assembly.
     assert np.allclose(g_vectors(data["beam_hkl"], data["reciprocal_basis"]), data["g"])

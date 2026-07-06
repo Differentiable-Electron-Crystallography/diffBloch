@@ -80,7 +80,7 @@ def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) ->
 
     The pool stays inside the existing ``Fgb`` difference support while
     ``2 * g_max_refine <= grid.g_max``; a candidate past that raises rather than silently truncating
-    (dependent grid resizing is unimplemented; see ``KNOWN_ISSUES.md``).
+    (dependent grid resizing is unimplemented).
     """
     if 2.0 * g_max_refine > seed.grid.g_max:
         raise ValueError(

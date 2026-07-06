@@ -11,7 +11,7 @@ the orientation refinement (``fit_orientation``, slice 5b) minimises.
 orientation-invariant ``F_gb`` once and scores every orientation of a ``Plan``. The forward
 simulation inside is deterministic and depends only on its inputs (same inputs always give the same
 result), so it does not change any shared state -- it is ordinary computation reading captured
-read-only context, not a side effect; see ``design/decisions/stage11-fit-orientation.md``.
+read-only context, not a side effect.
 """
 
 from __future__ import annotations

@@ -57,7 +57,7 @@ class PlanSplit:
     cross-validation guard for over-determined physics refinement anyway -- the principled analog
     holds out *reflections* (R_free), not orientations. The split is kept because it becomes
     genuinely informative for the future learned modes (a learned ``theta -> thickness`` can overfit
-    per rotation). See ``design/decisions/train-validation-split.md`` and ``KNOWN_ISSUES.md``.
+    per rotation).
     """
 
     train: Plan
@@ -121,7 +121,7 @@ class RefinementSetup:
            The ``refinable_position_mask`` is all-free for now: special-position degree-of-freedom
            constraints (the diffpy-backed expansion behind :mod:`diffBloch.io.symmetry_setup`) are a
            later constraints stage. Until then a special-position atom is over-parameterized and may
-           drift off its site under refinement. Recorded in ``KNOWN_ISSUES.md``.
+           drift off its site under refinement.
         """
         positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
         uij_raw, u_iso_raw = _initial_adp_params(structure.adp)

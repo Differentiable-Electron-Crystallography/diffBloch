@@ -3,8 +3,8 @@
 This package holds the **steps**: each is a pure `Plan → Plan` transform (a scikit-learn-style
 transformer over the shared [`Plan`](../plan.py) value). The parent package holds the **spine** (the
 value + combinators + setup) and the **orchestrators** (pipeline composition + the convergence
-driver). Steps are the swappable units you compose *in or out* to run an experiment
-(`design/decisions/composable-methods.md`); the parent decides *how* they are composed.
+driver). Steps are the swappable units you compose *in or out* to run an experiment; the parent
+decides *how* they are composed.
 
 ## The pipeline
 
@@ -41,6 +41,6 @@ orchestrators (pipeline composition, driver)
 
 A step imports **down** into the spine (the `PlanStep` type, `RefinementSetup`, `build_engine`,
 `seed_beam_hkl`) and sideways to sibling steps; nothing in the spine imports a step. The parent
-`driver.py` / pipeline composition import **up** from steps. See
-`design/decisions/plan-composition-shapes.md` for the three composition shapes and why the
-cross-lever driver lives at the parent level, not here.
+`driver.py` / pipeline composition import **up** from steps. The cross-lever convergence driver
+lives at the parent level, not here, because it threads scalar state *across* steps — a step owns
+no state beyond its `Plan → Plan` contract.

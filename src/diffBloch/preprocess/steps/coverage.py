@@ -21,8 +21,9 @@ no new match -- the minimal beam set that still covers the data.
 
 Faithful to ``diffBloch_private`` ``convergence_testing._run_initial_minimum_param_sweep`` (branch
 ``pattern-vis-convergence-testing``): sequential per-knob sweeps accepting a candidate only when
-``_count_unique_matches`` increases, ``for ... else`` raising at ``MAX_SWEEP_ITERATIONS``. See
-``design/decisions/stage11-convergence.md`` ("two operations are two kinds of objective").
+``_count_unique_matches`` increases, ``for ... else`` raising at ``MAX_SWEEP_ITERATIONS``. Two
+operations are two kinds of objective: coverage maximises *observed matches*, self-stability
+(``convergence.py``) settles *simulations*.
 """
 
 from __future__ import annotations
@@ -104,8 +105,7 @@ def cover_beams(selection: BeamSelection, *, step: float, max_iterations: int = 
     :func:`~diffBloch.preprocess.steps.beams.select_beams` from the incoming seed at a wider window,
     and
     :func:`maximize_scalar` keeps widening while :func:`plan_coverage` strictly increases, stopping
-    at the first window that admits no new matched reflection. ``step`` must be positive. See
-    ``design/decisions/stage11-convergence.md``.
+    at the first window that admits no new matched reflection. ``step`` must be positive.
     """
     if step <= 0.0:
         raise ValueError("step must be positive")
@@ -140,8 +140,8 @@ def cover_pool(
     window (``selection``); :func:`maximize_scalar` keeps widening while :func:`plan_coverage`
     strictly increases. Guards the ``Fgb`` difference support exactly like
     :func:`~diffBloch.preprocess.steps.convergence.converge_pool`: a candidate with
-    ``2 * g_max_refine > grid.g_max`` raises (dependent grid resizing is unimplemented; see
-    ``KNOWN_ISSUES.md``). ``step`` must be positive.
+    ``2 * g_max_refine > grid.g_max`` raises (dependent grid resizing is unimplemented). ``step``
+    must be positive.
     """
     if step <= 0.0:
         raise ValueError("step must be positive")

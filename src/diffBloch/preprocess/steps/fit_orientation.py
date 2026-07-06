@@ -9,12 +9,12 @@ the radius when none does, until the radius falls below ``min_search_angle``.
 
 The trial orientation is ``orientation @ hexagonal_tilt(azimuth, radius)`` -- a right-multiplied
 true rotation, so the non-orthonormal ``U`` measured-cell correction is preserved (no
-re-orthonormalisation; see ``KNOWN_ISSUES.md``). The captured ``refinement`` is read-only context
-the step never mutates (``design/decisions/stage11-fit-orientation.md``); the simulation inside is
+re-orthonormalisation). The captured ``refinement`` is read-only context
+the step never mutates; the simulation inside is
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
 The active beam set is held fixed at each orientation's seed selection across the search -- it is
-*not* re-filtered per trial as ``diffBloch_private`` does (see ``DIVERGENCE.md``). The rocking-curve
+*not* re-filtered per trial as ``diffBloch_private`` does (a recorded divergence). The rocking-curve
 tilt set carried by the ``Plan`` is likewise threaded through every trial unchanged, so each
 candidate is scored under the *same* integration as the seed -- the fit/eval consistency invariant
 (the private fits under integration too, passing ``tilts`` into every simplex trial). Ordering
@@ -65,11 +65,11 @@ def fit_orientation(
     raised if it is reached -- silent non-convergence is never returned.
 
     The cap is a 2.0 addition: ``diffBloch_private``'s search has none (it relies on monotone wR2
-    descent + the radius floor; see DIVERGENCE.md). The search does terminate by construction for a
+    descent + the radius floor). The search does terminate by construction for a
     non-degenerate objective -- the cap only guards pathological ridge-walking on (near-)degenerate
-    landscapes. Its default of ``600`` is **calibrated on the quartz anchor** (slowest legitimate
-    search: 526 passes across 99 rotations, so 600 has headroom); raise it via config if a dataset
-    with shallower minima trips it (see KNOWN_ISSUES.md).
+    landscapes. Its default of ``2000`` is **calibrated on the quartz anchor under the integrated
+    recipe** (slowest legitimate search: 1288 passes across 99 rotations, so 2000 has headroom);
+    raise it via config if a dataset with shallower minima trips it.
     """
 
     def run(plan: Plan) -> Plan:
@@ -96,7 +96,7 @@ def _refine_one(
     current_score = float(engine.score_orientation(current, fgb))
     beam_hkl = np.asarray(
         op.beam_hkl, dtype=np.int64
-    )  # fixed across the search (see DIVERGENCE.md)
+    )  # fixed across the search (no per-trial re-filter, unlike the private)
     # The rocking-curve tilt set is threaded through every trial unchanged, so each candidate is
     # scored under the same integration as the seed (fit/eval consistency). Identity (N=1) when
     # rocking is off -> I @ orientation == orientation, byte-identical to the untilted build.

@@ -14,8 +14,7 @@ way the config does and gets the same construction-time error.
 Failures raise ``ValueError`` today (fail-fast; the only callers are config-load and direct
 construction). When the ``app`` layer needs to surface validation errors *as values* (to a TUI /
 batch runner), a thin boundary ``parse(...) -> Result[Spec, ValidationError]`` adapter will wrap
-these raising constructors -- Result stays at that boundary and never enters a step. See
-``design/decisions/stage11-convergence.md``.
+these raising constructors -- Result stays at that boundary and never enters a step.
 """
 
 from __future__ import annotations
@@ -79,7 +78,7 @@ class ConvergenceTolerance:
     Defaults are the faithful ``diffBloch_private`` values
     (``configs/convergence_test/base.yaml`` + ``convergence_testing.MAX_SWEEP_ITERATIONS``). The
     stopping rule is the private's exactly -- the first below-threshold step stops the sweep, with
-    no patience and no null-step handling (see ``design/decisions/stage11-convergence.md``).
+    no patience and no null-step handling.
     """
 
     r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
@@ -145,8 +144,8 @@ class HexagonalSearch:
     the radius floor, but the bumpier rocking-curve-integrated landscape needs many more passes than
     the static fit -- the slowest legitimate search took 1288 passes (526 without integration), so
     2000 leaves cross-platform headroom while still catching a genuine runaway. A dataset with
-    shallower minima may need a larger cap -- raise it via ``preprocess.orientation.max_iterations``
-    (see ``KNOWN_ISSUES.md``).
+    shallower minima may need a larger cap -- raise it via
+    ``preprocess.orientation.max_iterations``.
     """
 
     max_search_angle: float = 0.4  # largest tilt radius the search starts from
@@ -177,11 +176,10 @@ class RockingCurve:
     one value. ``sampling`` is the number of tilts; ``sampling = 1`` is the identity (a single
     static solve), which is how the integration composes off by default. ``geometry`` selects the
     sweep: ``continuous_rotation`` (goniometer x-axis tilts, implemented) or ``precession`` (a cone;
-    a deferred discriminated mode -- see the decision doc).
+    a deferred discriminated mode).
 
     Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``rocking_curve_sampling`` /
-    ``data_collection_geometry``; ``rotation_dataset.generate_integration_rotation_matrices``); see
-    ``design/decisions/stage11-rocking-curve.md``.
+    ``data_collection_geometry``; ``rotation_dataset.generate_integration_rotation_matrices``).
     """
 
     semiangle: float = 1.0  # degrees: tilt half-width (shares BeamSelection.integration_semiangle)
@@ -209,11 +207,11 @@ class Mosaicity:
     of the rocking-curve integration (:class:`RockingCurve`) -- it only has meaning once the tilt
     set exists, so the ``mosaicity`` step is ordered after ``integrate_rocking_curve``.
 
-    **Divergence from ``diffBloch_private`` (recorded):** the private hardcodes the moving-average
+    **Divergence from ``diffBloch_private``:** the private hardcodes the moving-average
     ``window_size = 5`` and uses its ``mosaicity_num_frames`` config only as an on/off flag (the
     frame count never reaches the window). 2.0 keeps the faithful **default of 5** but exposes
     ``window`` as a real, tunable config parameter -- a principled fix of the private quirk (the
-    config field name implied a tunable window the code ignored). See ``DIVERGENCE.md``.
+    config field name implied a tunable window the code ignored).
     """
 
     window: int = 5  # tilts averaged per sliding window; faithful private default (hardcoded there)

@@ -10,9 +10,7 @@ map inspectable, reproducible, and safe to evolve, and lives *around* the core, 
 ## Status
 
 The 2.0 package is being built from scratch, ported from the research codebase **stepwise** (one
-discrete, tested commit per stage). The architecture is documented in the synthesis notebook
-(`notebooks/iain/principled_refactor_synthesis.ipynb`); the staged plan is in
-[`ROADMAP.md`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/main/ROADMAP.md).
+discrete, tested commit per stage).
 
 ## API
 

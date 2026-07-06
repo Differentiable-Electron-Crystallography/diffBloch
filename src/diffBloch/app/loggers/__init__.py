@@ -71,8 +71,7 @@ class CSVLogger:
     file per run); each :meth:`report` appends and flushes, so the file is crash-safe and tailable.
 
     This is an *observation log*, not persistence: run state is checkpointed by serialising the
-    whole ``Plan`` (see ``design/decisions/effects-and-observability.md``), never reconstructed from
-    these rows.
+    whole ``Plan``, never reconstructed from these rows.
     """
 
     path: Path

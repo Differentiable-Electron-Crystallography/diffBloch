@@ -1,7 +1,7 @@
 """Domain-observation events and the pluggable logger sink (effects-as-data observability).
 
-This is the *domain observations* channel of ``design/decisions/effects-and-observability.md`` --
-distinct from stdlib ``logging``, which carries solver *diagnostics*. The pure core **emits** typed
+This is the *domain observations* channel -- distinct from stdlib ``logging``, which carries
+solver *diagnostics*. The pure core **emits** typed
 events as plain values; a :class:`Logger` attached at the ``app/`` boundary interprets them. The
 core installs no sink and runs correctly with the :data:`NULL_LOGGER` default, so it stays pure,
 testable, and vendor-free: Weights & Biases / Comet ML / CSV live only in logger *backends* at the

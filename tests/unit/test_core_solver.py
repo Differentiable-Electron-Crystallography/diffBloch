@@ -99,7 +99,7 @@ def test_stack_beam_plans_rejects_unrelated_beam_sets() -> None:
 def test_propagate_returns_on_the_operator_device(method: str) -> None:
     # Contract: the geometry fields (k_n/psi0/mii) are co-located onto a.device at the use site, so
     # the exit wavefunction lands on the operator device even when the plan was built CPU-side. A
-    # CPU no-op here; meaningful on CUDA/MPS (see KNOWN_ISSUES.md / build_bloch_system).
+    # CPU no-op here; meaningful on CUDA/MPS (see build_bloch_system).
     system = _system()
     psi = propagate(system, [1.0, 8.0], method=method)
     assert psi.device == system.a.device

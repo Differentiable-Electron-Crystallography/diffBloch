@@ -4,7 +4,7 @@ Reconstructs per-rotation crystal orientation matrices from the experiment's gon
 the UB matrix and per-rotation tilt angles recorded in the PETS data -- with no side-car
 orientation file. The orientations are first-class inputs to the ``Plan``; ``fit_orientation``
 refines them in-Plan -- it must not re-orthonormalise them: they fold a ~1% measured-vs-ideal cell
-correction, so a polar/SVD projection would silently drop it (see KNOWN_ISSUES.md).
+correction, so a polar/SVD projection would silently drop it.
 
 Convention, pinned against ``diffBloch_private/diffBloch/rotation_dataset.py``::
 
@@ -92,7 +92,7 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     A tilt of magnitude ``polar`` about the in-plane axis at ``azimuth`` -- the delta rotation
     ``fit_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a true
     rotation (``det = 1``) it preserves the non-orthonormal ``U`` measured-cell correction exactly,
-    so the re-orthonormalisation trap (KNOWN_ISSUES.md) is dodged by construction.
+    so the re-orthonormalisation trap is dodged by construction.
 
     Faithful to ``diffBloch_private``'s ``generate_new_tilt``. Reference: L. Palatinus et al.,
     *Acta Cryst.* **A69**, 171-188 (2013), the hexagonal modified-simplex search.
@@ -127,8 +127,7 @@ def rocking_curve_tilts(
     :class:`~diffBloch.specs.RockingCurve` into these raw arguments (the value-type owns the
     invariants), matching :func:`hexagonal_tilt`'s raw-float style.
 
-    Faithful to ``diffBloch_private``'s ``generate_integration_rotation_matrices``; see
-    ``design/decisions/stage11-rocking-curve.md``.
+    Faithful to ``diffBloch_private``'s ``generate_integration_rotation_matrices``.
     """
     if geometry != "continuous_rotation":
         raise NotImplementedError(f"rocking-curve geometry {geometry!r} is not implemented")

@@ -69,7 +69,7 @@ def rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor) -> Tensor:
     excluded reflection is ``NaN``, and ``NaN * 0`` would poison the sum. Masked-in reflections have
     ``I_obs > 3*sigma > 0`` (and calculated ``|psi|^2 >= 0``), so their square roots are always
     finite; the clamps guard only against numerical noise. This diverges from the private
-    ``metrics.rbragg_abs`` (multiply-mask, ``NaN``-unsafe on negatives) -- see ``DIVERGENCE.md``.
+    ``metrics.rbragg_abs`` (multiply-mask, ``NaN``-unsafe on negatives).
     """
     _check_pair(calculated, observed)
     _check_sigmas(sigmas, observed)

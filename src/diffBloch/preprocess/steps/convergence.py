@@ -31,8 +31,7 @@ Faithful to ``diffBloch_private`` ``convergence_testing`` (branch
 ``optimize_sgmax`` / ``optimize_tilt_steps`` sweeps, each stopping the first time the
 per-orientation
 ``rbragg_abs`` (``_compute_step_rfactor``) drops below ``r_factor_threshold``. 2.0 keeps that exact
-stopping rule (no patience, no skip-null) and consolidates the private's knobs. See
-``design/decisions/stage11-convergence.md``.
+stopping rule (no patience, no skip-null) and consolidates the private's knobs.
 """
 
 from __future__ import annotations
@@ -146,7 +145,7 @@ def converge_scalar[T](
     each iteration, it returns the first candidate whose R-factor against the previous build is
     below ``tolerance.r_factor_threshold``. This is the private's exact stopping rule -- the first
     dip stops the sweep, and an unchanged build (R = 0) counts as converged -- with no patience and
-    no null-step handling (a faithful port; see ``design/decisions/stage11-convergence.md``). Raises
+    no null-step handling (a faithful port). Raises
     ``RuntimeError`` if ``tolerance.max_iterations`` steps pass without a dip below threshold
     (silent non-convergence is never returned, matching
     :func:`~diffBloch.preprocess.pipeline.iterate_until`).
@@ -182,7 +181,7 @@ def converge_beams(
     sweep starts at ``selection.integration_semiangle`` and clicks up by ``step`` (degrees) until
     :func:`converge_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
     are
-    held fixed. ``step`` must be positive. See ``design/decisions/stage11-convergence.md``.
+    held fixed. ``step`` must be positive.
     """
     if step <= 0.0:
         raise ValueError("step must be positive")
@@ -227,16 +226,14 @@ def converge_pool(
     ``step`` must be positive. The pool stays inside the existing ``Fgb`` difference support while
     ``2 * g_max_refine <= grid.g_max``; growing past that needs a dependent grid-resize that is not
     implemented (the anchor never reaches it -- ``g_max_refine`` 1.6 vs ``g_max`` 4.5), so a
-    candidate that would exceed the grid raises rather than silently truncating (see
-    ``KNOWN_ISSUES.md``).
+    candidate that would exceed the grid raises rather than silently truncating.
 
     This is the *standalone* pool lever. The joint window+pool fixpoint is **not** a naive
     ``iterate_until(pipeline([converge_beams, converge_pool]))``: :func:`converge_beams` re-selects
     from an *unpruned* seed while this step *emits a window-pruned* Plan, and the two levers share
     scalar state (the window ``integration_semiangle`` and the pool ``g_max_refine``) the ``Plan``
     does not carry. Threading that shared state across levers is the preprocess driver's job (block
-    coordinate descent: converge one lever, feed its settled scalar to the other, repeat) -- see
-    ``design/decisions/stage11-cross-lever-fixpoint.md``.
+    coordinate descent: converge one lever, feed its settled scalar to the other, repeat).
     """
     if step <= 0.0:
         raise ValueError("step must be positive")
@@ -274,7 +271,7 @@ def converge_sampling(
 
     ``step`` must be positive. Unlike the beam levers this needs no grid guard (the tilt count does
     not touch the ``Fgb`` support) and does not couple to them, so it composes as an ordinary extra
-    lever. See ``design/decisions/stage11-convergence.md`` and ``stage11-rocking-curve.md``.
+    lever.
     """
     if step <= 0.0:
         raise ValueError("step must be positive")

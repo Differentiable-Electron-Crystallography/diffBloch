@@ -4,12 +4,12 @@
 ``engine.refine``, which optimizes structure): it runs one forward Bloch pass per orientation under
 ``no_grad`` and reports a per-rotation :class:`RotationInference` (the Bragg R-factor ``R_obs`` and
 two diagnostics). It is the 2.0 analog of the private ``evaluate_over_rotations`` and the terminal
-the executable quartz anchor calls (``ROADMAP.md``, plan C, slice C1).
+the executable quartz anchor calls.
 
 Built entirely from the public forward spine -- ``engine.simulate`` + :func:`core.products.align` +
 :func:`core.losses.rbragg`/:func:`core.losses.optimal_scale` -- so callers (and the anchor test)
 never reach into engine internals. Preprocess is composed in optionally via the ``preprocess``
-``PlanStep`` (``design/decisions/composable-methods.md``); the solver is swappable via ``method``.
+``PlanStep``; the solver is swappable via ``method``.
 """
 
 from __future__ import annotations

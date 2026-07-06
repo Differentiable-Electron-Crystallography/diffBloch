@@ -3,8 +3,8 @@
 Mirrors ``test_scoring``'s setup (no heavy fixture simulation): a self-consistent orientation whose
 observed pattern *is* what the engine simulates scores ``R_obs ~ 0``; a mismatched one scores
 higher; the optional ``preprocess`` step is applied; and rotations with no ``I > 3*sigma``
-reflection drop out of the aggregate (``nan`` ``r_obs``). The quartz aggregate ``R_obs`` pin is
-deferred to C2 (fit orientations), where the number is meaningful -- see ``ROADMAP.md`` plan C.
+reflection drop out of the aggregate (``nan`` ``r_obs``). The quartz aggregate ``R_obs`` pin lives
+in the e2e anchor (fit orientations), where the number is meaningful.
 """
 
 from __future__ import annotations

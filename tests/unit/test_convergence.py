@@ -289,7 +289,7 @@ def test_converge_pool_raises_past_the_grid_difference_support() -> None:
     refinement, seed = _seed_system()
     # The synthetic grid is g_max=2.2, so the pool is difference-safe only to g_max_refine=1.1;
     # a tolerance that never settles drives the sweep past that bound, which must raise (not
-    # silently truncate) -- dependent grid resizing is unimplemented (KNOWN_ISSUES.md).
+    # silently truncate) -- dependent grid resizing is unimplemented.
     step = converge_pool(
         BeamSelection(integration_semiangle=1.0),
         refinement,

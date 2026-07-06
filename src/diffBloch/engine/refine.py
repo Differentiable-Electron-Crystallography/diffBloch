@@ -7,8 +7,8 @@ caller's parameters, clones the *target* fields into fresh ``requires_grad`` lea
 detached constants), steps a chosen backend, and returns a new detached :class:`RefinementResult`.
 The caller's parameters are never touched. ``core/`` stays free of ``torch.optim`` entirely.
 
-Rationale and the deferred surface (per-group learning rates, ``least_squares``, component
-``activate``, ``OptimizerState``/history): ``design/decisions/stage10-refinement-loop.md``.
+Deliberately deferred surface: per-group learning rates, ``least_squares``, component ``activate``,
+and ``OptimizerState``/history threading.
 """
 
 from __future__ import annotations

@@ -84,7 +84,7 @@ class RefinementEngine:
         scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple
         thicknesses the best-fitting thickness's score is returned -- thickness is a nuisance when
         scoring orientation (the private preprocess scored the first thickness). This is the
-        objective ``fit_orientation`` minimises (``design/decisions/stage11-fit-orientation.md``).
+        objective ``fit_orientation`` minimises.
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
 
@@ -146,8 +146,8 @@ class RefinementEngine:
 
         Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
         ``objective``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
-        (per-group rates deferred); ``least_squares`` and component ``activate`` are deferred --
-        see ``design/decisions/stage10-refinement-loop.md``. ``logger`` streams per-step and
+        (per-group rates deferred); ``least_squares`` and component ``activate`` are likewise
+        deferred. ``logger`` streams per-step and
         completion events (default :data:`NULL_LOGGER` = no-op, result unchanged).
         """
         return run_refinement(
@@ -177,7 +177,7 @@ class RefinementEngine:
 
         ``params.thickness_raw is None`` means "not refining thickness", so the per-orientation
         value is used. Letting thickness vary per orientation while being refined (a learned
-        ``theta -> thickness`` model) is future work; see ROADMAP / KNOWN_ISSUES.md.
+        ``theta -> thickness`` model) is deliberately deferred future work.
         """
         if params.thickness_raw is None:
             return orientation.thickness

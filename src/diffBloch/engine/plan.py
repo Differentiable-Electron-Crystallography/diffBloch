@@ -80,8 +80,7 @@ class OrientationPlan:
     ``u0``, ``thickness`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` /
     ``fit_thickness`` consume to recompile) and the **compiled geometry** (``beam_plan``,
     ``alignment`` -- what ``engine.simulate`` consumes). Source and compiled are only ever set
-    together by :meth:`build`, so they cannot desync (see
-    ``design/decisions/plan-shape-and-step-ordering.md``). ``orientation`` is the source of truth;
+    together by :meth:`build`, so they cannot desync. ``orientation`` is the source of truth;
     the lab-frame basis is derived from it, never stored. ``tilts`` ``(N, 3, 3)`` is the
     rocking-curve integration tilt set (source): N goniometer sub-orientations, each compiled into
     the matching entry of ``beam_plans`` (``N = len(beam_plans)``). The default is a single identity
@@ -157,7 +156,7 @@ class OrientationPlan:
         tilts here share one, and a caller rebuilding this plan over a fixed beam set (rocking
         integration, orientation-search trials) passes the seed plan's gather
         (``op.beam_plans[0].gather``) to skip re-deriving it on every rebuild -- the dominant
-        preprocess cost (see ``KNOWN_ISSUES.md`` / private 6bb3031). When ``None`` it is built once
+        preprocess cost (the fix the private applied in its 6bb3031). When ``None`` it is built once
         here and shared across the tilts.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)

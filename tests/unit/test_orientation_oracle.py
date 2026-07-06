@@ -2,8 +2,8 @@
 
 Pins the native geometry path (``reciprocal_cell(cell @ orientation.T)`` -> ``g`` -> ``Sg``) against
 a golden extracted from the ``diffBloch_private`` implementation on real quartz orientation matrices
-(``tests/fixtures/quartz_anchor/orientation_oracle.npz``; see ``orientation_oracle_provenance.json``
-and ``../notebooks/iain/gen_orientation_oracle.py``).
+(``tests/fixtures/quartz_anchor/orientation_oracle.npz``; regenerate via the co-located
+``generate_orientation_oracle.py``, provenance in ``orientation_oracle_provenance.json``).
 
 The orientation matrices are non-orthonormal (they fold a ~1% anisotropic measured-vs-ideal cell
 correction), so ``orientation^-1 != orientation^T`` and the convention is observable on real data:

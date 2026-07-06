@@ -27,7 +27,7 @@ def test_klar_mask_keeps_near_ewald_in_plane_drops_on_axis() -> None:
     # Continuous rotation rocks about the goniometer x axis, so sg_max is the distance from x =
     # |(g_y, g_z)|. A near-Ewald reflection offset perpendicular to the rock axis (along y) sweeps
     # and is kept; one offset purely along the rock axis (x) never sweeps (sg_max == 0) and is
-    # dropped. This matches the private filter_hkls norm(k[:, 1:]); see DIVERGENCE.md.
+    # dropped. This matches the private filter_hkls norm(k[:, 1:]).
     g = np.array([[0.0, 0.5, 0.0], [0.5, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float64)
     mask = klar_beam_mask(g, energy=200e3, rsg=0.9, dsg=0.0015, semiangle=1.0)
     assert mask.tolist() == [True, False, False]

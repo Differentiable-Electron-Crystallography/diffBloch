@@ -2,8 +2,7 @@
 
 Config is validated at the boundary: no Hydra, and no ``DictConfig`` reaches the core. Every field
 carries a sensible default ("defaults as code"), so an ``experiment.yaml`` only needs to specify
-input references and overrides. See the synthesis notebook
-(``notebooks/iain/principled_refactor_synthesis.ipynb``) §5.
+input references and overrides.
 """
 
 from __future__ import annotations
@@ -91,7 +90,7 @@ class NumericsConfig(BaseModel):
         ``mosaicity_window`` is the moving-average window over the rocking-curve tilt axis. Unlike
         the private (which hardcodes 5 and treats its ``mosaicity_num_frames`` config as a mere
         on/off flag), 2.0 exposes the window as a real, tunable parameter defaulting to the faithful
-        5; see :class:`~diffBloch.specs.Mosaicity` and ``DIVERGENCE.md``. Whether mosaicity is
+        5; see :class:`~diffBloch.specs.Mosaicity`. Whether mosaicity is
         *applied* is a pipeline-composition choice (append the ``mosaicity`` step or not), exactly
         as for ``integrate_rocking_curve``.
         """

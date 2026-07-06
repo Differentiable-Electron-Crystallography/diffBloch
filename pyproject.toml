@@ -12,7 +12,7 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "torch>=2.12.1",
-    # Scientific deps are added as their modules land (see ROADMAP.md):
+    # Scientific deps are added as their modules land:
     #   diffpy.structure -> io/symmetry_setup (special-position / ADP constraints)
     #   abtem            -> core/scattering (electron form factors), wrapped behind a seam
 ]

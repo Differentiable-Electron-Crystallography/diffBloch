@@ -1,8 +1,9 @@
 """Native orientation derivation pinned against the private as-collected golden.
 
-The golden (``orientation_derivation_golden.npz``) is produced out-of-repo by the *private*
-diffBloch ``process_file`` (``generate_u_matrix`` + ``generate_crystal_orientations``) on the quartz
-PETS anchor (see ``notebooks/iain/gen_orientation_derivation_golden.py``). Oracle independence lives
+The golden (``orientation_derivation_golden.npz``) is produced by the *private* diffBloch
+``process_file`` (``generate_u_matrix`` + ``generate_crystal_orientations``) on the quartz PETS
+anchor -- regenerate via the fixture's co-located ``generate_orientation_derivation_golden.py``
+(runs under the private venv). Oracle independence lives
 in the golden; the native path under test re-derives the same orientations from the UB/cell/angles.
 """
 

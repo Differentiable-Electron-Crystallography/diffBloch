@@ -57,8 +57,17 @@ new method, dataset, dependency, or studied design adds its credit here.
   from the private `diffBloch/metrics.py`. The same paper's SI also defines the **rsg/dsg active-beam
   selection** (`preprocess.select_beams`): keep a reflection when `|Sg|/sg_max < rsg` *and*
   `sg_max - |Sg| > dsg`, with `sg_max = |g_perp|·deg2rad(semiangle)` the excitation-error spread over
-  the integration cone. We take `g_perp = (g_x, g_y)` (perpendicular to the `-z` beam); see
-  `DIVERGENCE.md` for the private `filter_hkls` transverse-axis divergence we correct.
+  the integration cone. We take `g_perp` from the geometry-appropriate axis (goniometer-rock-axis
+  distance for continuous rotation), a recorded correction of the private `filter_hkls`
+  transverse-axis convention.
+
+- **Orientation refinement (hexagonal modified-simplex search).**
+  Palatinus, L., Jacob, D., Cuvillier, P., Klementová, M., Sinkler, W. & Marks, L. D. (2013).
+  *Structure refinement from precession electron diffraction data.* **Acta Crystallographica A69,
+  171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X). Source of
+  the hexagonal orientation search `preprocess.fit_orientation` ports (via the private
+  `generate_new_tilt` / simplex loop): `n_steps` azimuths at a shrinking tilt radius, greedily
+  accepting the first wR2-lowering tilt and halving the radius when none improves.
 
 - **Crystal orientation from the UB matrix (Busing-Levy formalism).**
   Busing, W. R. & Levy, H. A. (1967). *Angle calculations for 3- and 4-circle X-ray and neutron
@@ -84,8 +93,7 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
   P. J. (1994). *A Method for Uniform Reporting of Grid Refinement Studies.* **J. Fluids Eng.
   116(3), 405-413.** DOI: [10.1115/1.2910291](https://doi.org/10.1115/1.2910291)). We adopt the
   *ideas* (skip-null + patience + cap, coordinate descent) and do **not** take a runtime dependency
-  on Optuna / Ray Tune / Ax / scikit-optimize / Weights & Biases. See
-  `design/decisions/stage11-convergence.md`.
+  on Optuna / Ray Tune / Ax / scikit-optimize / Weights & Biases.
 
 - **Cross-validation for crystallographic refinement (concept, no dependency).** The decision that a
   whole-*rotation* train/validation split is a weak cross-validation guard for over-determined
@@ -93,8 +101,7 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
   rests on the **free R-factor** (R_free): Brünger, A. T. (1992). *Free R value: a novel statistical
   quantity for assessing the accuracy of crystal structures.* **Nature 355, 472-475.** DOI:
   [10.1038/355472a0](https://doi.org/10.1038/355472a0). We adopt the *idea* (unbiased held-out
-  reflection cross-validation) as the reference point; nothing is taken as a dependency. See
-  `design/decisions/train-validation-split.md`.
+  reflection cross-validation) as the reference point; nothing is taken as a dependency.
 
 ## Vendored reference data
 
@@ -143,8 +150,7 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
 
 ## Codebases examined for approaches (not used directly)
 
-Studied while designing the 2.0 architecture (see `notebooks/iain/principled_refactor_synthesis.ipynb`)
-and while choosing methods. We adopted ideas, not code.
+Studied while designing the 2.0 architecture and while choosing methods. We adopted ideas, not code.
 
 - **mythos** — sibling differentiable-science codebase (JAX/JAX-MD). Source of the
   `Simulator → Observable → Objective → Optimizer` lifecycle, explicit `OptimizerState` threading,
@@ -164,12 +170,12 @@ and while choosing methods. We adopted ideas, not code.
   `RefinableParams`. <https://github.com/patrick-kidger/equinox>
 - **toolz / funcy** — Ramda-style functional utility belts for Python (`pipe`, `compose`, `curry`).
   Reference point for our own `pipeline` / `iterate_until` combinators; not imported (we keep our
-  combinators typed to `Plan -> Plan`, per `composable-methods.md`).
+  combinators typed to `Plan -> Plan`).
   <https://github.com/pytoolz/toolz>
 - **returns** (dry-python) — typed FP primitives for Python, including a real `State` / `StateT`,
   `Result`, and `Maybe`. The named construct our preprocess driver hand-rolls (a `StateT`-shaped
-  coordinate-descent loop; see `design/decisions/plan-composition-shapes.md`). Not imported for now;
-  a possible future task (see ROADMAP cross-cutting). <https://github.com/dry-python/returns>
+  coordinate-descent loop). Not imported for now; a possible future adoption.
+  <https://github.com/dry-python/returns>
 - **Alternative scattering parametrizations examined** (we chose Lobato):
   **Kirkland** (Dirac–Fock Gaussian/Lorentzian fit, *Advanced Computing in Electron Microscopy*; code
   at <https://sourceforge.net/projects/computem/>), **Peng et al.** (Peng, L.-M. et al. (1996),
@@ -185,7 +191,7 @@ and while choosing methods. We adopted ideas, not code.
   Wadler, *Monads for functional programming* (Advanced Functional Programming, 1995); Haskell
   `Control.Monad.State` (mtl) and the `iterateUntilM` fixpoint loop of `Control.Monad.Loops`
   (`monad-loops` on Hackage); the Elm Architecture `Model`/`update` guide
-  (<https://guide.elm-lang.org/architecture/>). See `design/decisions/plan-composition-shapes.md`.
+  (<https://guide.elm-lang.org/architecture/>).
 - **Coordinate descent** — the alternate-one-lever-at-a-time-to-a-joint-fixpoint scheme the driver
   runs. Wright, S. J. (2015), *Coordinate descent algorithms*, Mathematical Programming 151, 3,
   DOI: [10.1007/s10107-015-0892-3](https://doi.org/10.1007/s10107-015-0892-3).

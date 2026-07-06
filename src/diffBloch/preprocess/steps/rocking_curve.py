@@ -7,7 +7,7 @@ the tilts (an incoherent rotation-frame integration; see
 enabling structure of the rotation-electron-diffraction forward model, so it is a composable,
 toggleable step rather than baked into ``from_experiment``: composing it in with
 ``rocking.sampling == 1`` (a single angle-0 tilt) is the identity, so appending it off leaves the
-``Plan`` byte-identical (see ``design/decisions/stage11-rocking-curve.md``).
+``Plan`` byte-identical.
 
 It is pure geometry -- no engine, no structure factors, no refinement: the tilts depend only on the
 fixed ``RockingCurve`` and each settled nominal orientation, so they are precompiled into the
