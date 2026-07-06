@@ -1,5 +1,6 @@
 site_name: diffBloch
 site_description: Differentiable Bloch-wave electron-diffraction structure refinement
+site_url: https://differentiable-electron-crystallography.github.io/diffbloch/
 
 theme:
   name: material
