@@ -3,7 +3,7 @@
     "structure_matrix_oracle.npz": "zone-axis (l=0 beams) -> g_z=0 -> Mii==1; A Hermitian",
     "structure_matrix_oracle_oblique.npz": "oblique (l!=0 beams) -> g_z!=0 -> Mii!=1; A Hermitian"
   },
-  "generated_by": "../notebooks/iain/stage8_structure_matrix_oracle.ipynb (parent workspace, intentionally outside the diffBloch repo)",
+  "generated_by": "generate_oracle.py (co-located; self-contained verbatim private bodies)",
   "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
   "oracle_functions": {
     "calculate_structure_matrix": "dynamical.py:975-1025 (no-absorption; timing/cuda elided)",
@@ -56,5 +56,5 @@
       "seed": 9
     }
   },
-  "date": "2026-06-26"
+  "date": "2026-07-06"
 }
