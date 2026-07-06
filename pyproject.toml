@@ -53,6 +53,9 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "-m 'not e2e' --strict-markers"
 testpaths = ["tests"]
+# Cross-test-module imports (tests.unit.test_convergence helpers) need the repo root on sys.path.
+# `python -m pytest` adds it implicitly; the plain `pytest` entrypoint (CI) does not.
+pythonpath = ["."]
 markers = [
     "e2e: end-to-end characterization tests (require data fixtures; opt-in via `just test-e2e`)",
     "slow: long-running tests",
