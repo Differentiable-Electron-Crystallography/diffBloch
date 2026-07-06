@@ -22,11 +22,12 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import torch
+from tests.unit.synthetic import CELL, ENERGY, THICKNESS, beam_count, seed_system, silicon_params
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, ScatteringGrid
-from diffBloch.params import ConstraintSpec, RefinableParams
+from diffBloch.params import ConstraintSpec
 from diffBloch.preprocess import (
     RefinementSetup,
     converge_beams,
@@ -41,15 +42,12 @@ from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
-_ENERGY = 200e3
-_CELL = np.eye(3, dtype=np.float64) * 5.0
 _FULL_BEAMS = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _PRUNED_BEAMS = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # one fewer coupled beam
-_THICKNESS = 300.0
 
 
 def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+    grid = ScatteringGrid.from_cell(CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = ConstraintSpec(
         fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
@@ -61,18 +59,11 @@ def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
     return grid, asu_plan, spec, numbers
 
 
-def _params() -> RefinableParams:
-    return RefinableParams(
-        asu_positions=torch.zeros((1, 3), dtype=torch.float64),
-        uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.1,
-    )
-
-
 def _refinement(asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor) -> RefinementSetup:
     return RefinementSetup(
         asu_plan=asu_plan,  # type: ignore[arg-type]
         spec=spec,
-        params=_params(),
+        params=silicon_params(),
         numbers=numbers,
     )
 
@@ -83,7 +74,7 @@ def _orientation(grid: ScatteringGrid, beam_hkl: np.ndarray) -> OrientationPlan:
         intensities=torch.zeros(len(beam_hkl), dtype=torch.float64),
         sigmas=torch.ones(len(beam_hkl), dtype=torch.float64),
     )
-    return OrientationPlan.build(grid, beam_hkl, pattern, energy=_ENERGY, thickness=(_THICKNESS,))
+    return OrientationPlan.build(grid, beam_hkl, pattern, energy=ENERGY, thickness=(THICKNESS,))
 
 
 def test_identical_plans_read_as_converged() -> None:
@@ -164,50 +155,12 @@ def test_converge_scalar_raises_when_it_never_settles() -> None:
 
 
 # --- converge_beams: the beam-window adapter, exercised end-to-end on a richer synthetic seed ---
-
-# A seed rich enough that widening the Klar window admits beams progressively then saturates: an
-# hkl cube whose outer beams are only kept at wider integration angles.
-_SEED_BEAMS = np.array(
-    [
-        [hkl_h, hkl_k, hkl_l]
-        for hkl_h in range(-3, 4)
-        for hkl_k in range(-3, 4)
-        for hkl_l in range(-3, 4)
-    ],
-    dtype=np.int64,
-)
-
-
-def _seed_system() -> tuple[RefinementSetup, Plan]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=2.2)
-    asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
-        occupancies=torch.ones(1, dtype=torch.float64),
-        reciprocal_basis=grid.reciprocal_basis,
-    )
-    refinement = RefinementSetup(
-        asu_plan=asu_plan,  # type: ignore[arg-type]
-        spec=spec,
-        params=_params(),
-        numbers=torch.tensor([14], dtype=torch.int64),
-    )
-    pattern = PatternBatch(
-        hkl=torch.tensor(_SEED_BEAMS, dtype=torch.int64),
-        intensities=torch.zeros(len(_SEED_BEAMS), dtype=torch.float64),
-        sigmas=torch.ones(len(_SEED_BEAMS), dtype=torch.float64),
-    )
-    op = OrientationPlan.build(grid, _SEED_BEAMS, pattern, energy=_ENERGY, thickness=(_THICKNESS,))
-    return refinement, Plan(grid=grid, orientations=(op,))
-
-
-def _beam_count(plan: Plan) -> int:
-    return len(plan.orientations[0].beam_hkl)
+# The shared seed system lives in tests.unit.synthetic: a seed Plan rich enough (full hkl cube)
+# that widening a beam knob admits beams progressively then saturates.
 
 
 def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # Step wide enough to cross the intermediate count plateaus (the seed admits beams in bands as
     # the window widens: 15 -> 39 -> 43); the sweep then saturates and the trailing nulls settle it
     # on the fully-selected beam set.
@@ -222,11 +175,11 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     # It widened past the starting selection, all the way to the fully-reachable (saturated) set.
     started = select_beams(BeamSelection(integration_semiangle=0.68))(seed)
     saturated = select_beams(BeamSelection(integration_semiangle=5.0))(seed)
-    assert _beam_count(started) < _beam_count(converged) == _beam_count(saturated)
+    assert beam_count(started) < beam_count(converged) == beam_count(saturated)
 
 
 def test_converge_beams_fine_step_stops_early_at_an_intermediate_plateau() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # Faithful first-dip stop is step-sensitive: too fine a step lets the consecutive-sim R-factor
     # dip below threshold on an intermediate count plateau, stopping short of the saturated set.
     # This is the documented discrete-plateau sensitivity (managed by step choice, not patience).
@@ -240,11 +193,11 @@ def test_converge_beams_fine_step_stops_early_at_an_intermediate_plateau() -> No
 
     started = select_beams(BeamSelection(integration_semiangle=0.68))(seed)
     saturated = select_beams(BeamSelection(integration_semiangle=5.0))(seed)
-    assert _beam_count(started) < _beam_count(converged) < _beam_count(saturated)
+    assert beam_count(started) < beam_count(converged) < beam_count(saturated)
 
 
 def test_converge_beams_rejects_non_positive_step() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     with pytest.raises(ValueError, match="step must be positive"):
         converge_beams(BeamSelection(), refinement, ConvergenceTolerance(), step=0.0)
 
@@ -274,7 +227,7 @@ def _pool_active_count(seed: Plan, g_max_refine: float, semiangle: float) -> int
 
 
 def test_converge_pool_widens_the_seed_until_the_pattern_settles() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # Widen the g_max_refine candidate pool (window held at 1.0). The active set grows as the pool
     # admits more near-Ewald beams, then the consecutive-simulation change settles below threshold.
     step = converge_pool(
@@ -291,7 +244,7 @@ def test_converge_pool_widens_the_seed_until_the_pattern_settles() -> None:
 
 
 def test_converge_pool_raises_past_the_grid_difference_support() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # The synthetic grid is g_max=2.2, so the pool is difference-safe only to g_max_refine=1.1;
     # a tolerance that never settles drives the sweep past that bound, which must raise (not
     # silently truncate) -- dependent grid resizing is unimplemented.
@@ -307,7 +260,7 @@ def test_converge_pool_raises_past_the_grid_difference_support() -> None:
 
 
 def test_converge_pool_rejects_non_positive_step() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     with pytest.raises(ValueError, match="step must be positive"):
         converge_pool(
             BeamSelection(), refinement, ConvergenceTolerance(), start_g_max_refine=0.5, step=0.0
@@ -318,7 +271,7 @@ def test_converge_pool_rejects_non_positive_step() -> None:
 
 
 def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # Refine the tilt count: the summed |psi|^2 approaches the continuous rotation-frame integral,
     # so the consecutive-simulation change shrinks monotonically and settles below threshold. Each
     # orientation carries one beam plan per tilt, so len(beam_plans) is the converged tilt count.
@@ -344,6 +297,6 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
 
 
 def test_converge_sampling_rejects_non_positive_step() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     with pytest.raises(ValueError, match="step must be positive"):
         converge_sampling(RockingCurve(), refinement, ConvergenceTolerance(), step=0.0)

@@ -4,8 +4,8 @@
 geometry); ``run_stability_phase`` grows all three knobs (pool / window / tilt) to consecutive-
 simulation self-stability over a fixed ``num_passes`` coordinate sweep with the private's per-pass
 order-swap. Both are ``(Plan, ConvergenceState) -> (Plan, ConvergenceState)`` computations,
-exercised
-on the fast synthetic cube from ``test_convergence``: for coverage a narrow start window drives the
+exercised on the fast synthetic cube from ``tests.unit.synthetic``: for coverage a narrow start
+window drives the
 *window* sweep (the pool is starved), a wider start window drives the *pool* sweep; for stability
 the settled scalars and their monotone growth across passes are pinned from an empirical probe.
 """
@@ -13,7 +13,7 @@ the settled scalars and their monotone growth across passes are pinned from an e
 from __future__ import annotations
 
 import pytest
-from tests.unit.test_convergence import _beam_count, _seed_system
+from tests.unit.synthetic import beam_count, seed_system
 
 from diffBloch.preprocess.driver import (
     ConvergenceState,
@@ -33,7 +33,7 @@ def _coverage(plan, g_max_refine: float, integration_semiangle: float) -> int:
 
 
 def test_coverage_phase_window_sweep_grows_the_window_when_the_pool_is_narrow() -> None:
-    _, seed = _seed_system()
+    _, seed = seed_system()
     # Narrow start window: growing the pool adds nothing (the window clips it), so only the window
     # sweep moves -- 0.68 -> 0.88 -- and the pool is left at its start.
     start = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, tilt_sampling=1)
@@ -48,7 +48,7 @@ def test_coverage_phase_window_sweep_grows_the_window_when_the_pool_is_narrow() 
 
 
 def test_coverage_phase_pool_sweep_grows_the_pool_when_the_window_is_wide() -> None:
-    _, seed = _seed_system()
+    _, seed = seed_system()
     # Wider start window: the pool is no longer starved, so the pool sweep moves 0.5 -> 0.9.
     start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, tilt_sampling=1)
     plan, settled = run_coverage_phase(
@@ -61,7 +61,7 @@ def test_coverage_phase_pool_sweep_grows_the_pool_when_the_window_is_wide() -> N
 
 
 def test_coverage_phase_returns_the_plan_at_the_settled_scalars() -> None:
-    _, seed = _seed_system()
+    _, seed = seed_system()
     start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, tilt_sampling=1)
     plan, settled = run_coverage_phase(
         seed, start, _SELECTION, pool_step=0.1, window_step=0.2, max_iterations=30
@@ -73,7 +73,7 @@ def test_coverage_phase_returns_the_plan_at_the_settled_scalars() -> None:
 
 
 def test_coverage_phase_rejects_non_positive_steps() -> None:
-    _, seed = _seed_system()
+    _, seed = seed_system()
     start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.0, tilt_sampling=1)
     with pytest.raises(ValueError, match="pool_step must be positive"):
         run_coverage_phase(seed, start, _SELECTION, pool_step=0.0, window_step=0.2)
@@ -104,19 +104,19 @@ def _stability(refinement, seed, **kwargs):
 
 
 def test_stability_phase_one_pass_settles_all_three_knobs() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # One pass (pool -> tilt -> window): each knob grows to its first below-threshold
     # consecutive-sim step. Values pinned from an empirical probe of the synthetic cube.
     plan, settled = _stability(refinement, seed, num_passes=1)
     assert settled.g_max_refine == pytest.approx(0.6)
     assert settled.integration_semiangle == pytest.approx(1.08)
     assert settled.tilt_sampling == 7  # tilt IS tuned here (unlike coverage), 1 -> 7
-    assert _beam_count(plan) == 17
+    assert beam_count(plan) == 17
     assert len(plan.orientations[0].tilts) == 7  # returned Plan is built at the settled state
 
 
 def test_stability_phase_second_pass_revisits_and_grows_the_knobs() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # A second pass (tilt -> pool -> window) revisits each knob after the others moved: every scalar
     # is >= its one-pass value and at least one strictly grows (the order-swap does work).
     _, one = _stability(refinement, seed, num_passes=1)
@@ -130,7 +130,7 @@ def test_stability_phase_second_pass_revisits_and_grows_the_knobs() -> None:
 
 
 def test_stability_phase_rejects_bad_steps_and_passes() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     with pytest.raises(ValueError, match="pool_step must be positive"):
         _stability(refinement, seed, pool_step=0.0)
     with pytest.raises(ValueError, match="window_step must be positive"):
@@ -159,28 +159,28 @@ def _numerics(refinement, seed, operation: str):
 
 
 def test_converge_numerics_coverage_runs_only_the_coverage_phase() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # coverage grows pool+window (13 beams) but leaves the tilt count untouched -- no rocking
     # integration -- so the returned Plan keeps its single nominal tilt (unlike the two below).
     plan = _numerics(refinement, seed, "coverage")
-    assert _beam_count(plan) == 13
+    assert beam_count(plan) == 13
     assert len(plan.orientations[0].tilts) == 1
 
 
 def test_converge_numerics_self_stability_runs_only_the_stability_phase() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # self_stability grows all three knobs to consecutive-sim stability: 27 beams, 9 rocking tilts.
     plan = _numerics(refinement, seed, "self_stability")
-    assert _beam_count(plan) == 27
+    assert beam_count(plan) == 27
     assert len(plan.orientations[0].tilts) == 9
 
 
 def test_converge_numerics_both_chains_coverage_into_stability() -> None:
-    refinement, seed = _seed_system()
+    refinement, seed = seed_system()
     # both = coverage then stability seeded from coverage's settled scalars; it runs the stability
     # phase (so it grows past coverage's 13 beams / 1 tilt), landing at 27 beams / 9 tilts here.
     plan = _numerics(refinement, seed, "both")
-    assert _beam_count(plan) == 27
+    assert beam_count(plan) == 27
     assert len(plan.orientations[0].tilts) == 9
     # the seed is untouched (converge_numerics is a pure Plan -> Plan step)
-    assert _beam_count(seed) == 343
+    assert beam_count(seed) == 343
