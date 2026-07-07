@@ -41,10 +41,12 @@ from diffBloch.app.cli import main as cli_main
 from diffBloch.config import load_experiment, sha256_file
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
+    Pipelines,
     fit_orientation,
     fit_thickness,
     from_experiment,
     integrate_rocking_curve,
+    mosaicity,
     pipeline,
     run_inference,
     select_beams,
@@ -64,14 +66,18 @@ FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 EXPECTED_MEAN_R_OBS = 0.174
 MEAN_R_OBS_TOL = 1e-2
 
-# The integrated recipe: the same fit pipeline with rocking-curve integration inserted before the
-# fits, so each candidate is fit AND evaluated under the 42-tilt integration (the C3 fit/eval
-# coupling). Over all 99 rotations this reaches 0.0655 -- far below the static 0.174 -- the headline
-# coupled result. The tolerance mirrors the static pin (loose enough for cross-platform eigensolver
-# degeneracy, tight enough to catch a physics regression); tighten once CI confirms stability. A
-# subset run (see DIFFBLOCH_ANCHOR_ROTATIONS below) is unrepresentative of this mean, so it only
-# asserts the coupled pipeline runs and beats the static baseline.
-EXPECTED_INTEGRATED_MEAN_R_OBS = 0.0655
+# The integrated recipe: the plan-shaping preprocess phase (select_beams -> integrate_rocking_curve
+# -> mosaicity) then the refine phase (fit_orientation -> fit_thickness), so each candidate is fit
+# AND evaluated under the 42-tilt integration WITH the private's window-5 mosaicity smoothing (C3
+# fit/eval coupling). Declaring mosaicity is the faithful choice (the private runs mosaicity: true);
+# it moves the mean from 0.0655 (mosaicity omitted -- a half-faithful cancellation with our coupling
+# divergence) to 0.0686. The residual is now the single named cause: our tilt-independent coupling
+# vs the private's 12-segment tilt-union (closing that reaches the reference 0.0438). The tolerance
+# mirrors the static pin (loose enough for cross-platform eigensolver degeneracy, tight enough to
+# catch a physics regression); tighten once CI confirms stability. A subset run (see
+# DIFFBLOCH_ANCHOR_ROTATIONS below) is unrepresentative of this mean, so it only asserts the coupled
+# pipeline runs and beats the static baseline.
+EXPECTED_INTEGRATED_MEAN_R_OBS = 0.0686
 INTEGRATED_MEAN_R_OBS_TOL = 1e-2
 STATIC_BASELINE_R_OBS = 0.174  # subset sanity: coupled must sit comfortably below this
 
@@ -115,17 +121,21 @@ def test_quartz_reference_anchor(material: str) -> None:
     # Run the whole experiment through the public API over all 99 rotations.
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
-    preprocess = pipeline(
-        [
-            select_beams(cfg.numerics.to_beam_selection()),
-            fit_orientation(
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
-            ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
-        ]
+    pipelines = Pipelines(
+        preprocess=pipeline([select_beams(cfg.numerics.to_beam_selection())]),
+        refine=pipeline(
+            [
+                fit_orientation(
+                    refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                ),
+                fit_thickness(
+                    refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine
+                ),
+            ]
+        ),
     )
     result = run_inference(
-        setup.plans.combined, refinement, preprocess=preprocess, method=cfg.solver.inference
+        setup.plans.combined, refinement, pipelines=pipelines, method=cfg.solver.inference
     )
 
     assert result.n_evaluated == observations.n_rotations
@@ -140,8 +150,9 @@ def test_quartz_integrated_anchor(capsys: pytest.CaptureFixture[str]) -> None:
     """Pin the integrated fit/eval-coupled recipe (C3) end-to-end over all 99 rotations.
 
     This is the coupled counterpart to :func:`test_quartz_reference_anchor`: the same public-API
-    pipeline with ``integrate_rocking_curve`` inserted before the fits, so every candidate is fit
-    *and* scored under the 42-tilt rocking-curve integration. It reaches ``mean R_obs = 0.0655``,
+    pipeline with ``integrate_rocking_curve`` + ``mosaicity`` in the preprocess phase, so every
+    candidate is fit *and* scored under the 42-tilt rocking-curve integration with the private's
+    window-5 mosaicity smoothing. It reaches ``mean R_obs = 0.0686``,
     well below the static ``0.174`` -- the measured fit/eval-consistency payoff.
 
     Runs all 99 rotations by default (~3-4 min), driven through the CLI (``diffbloch run infer``),
@@ -177,17 +188,26 @@ def test_quartz_integrated_anchor(capsys: pytest.CaptureFixture[str]) -> None:
         raise ValueError(f"DIFFBLOCH_ANCHOR_ROTATIONS must be in 1..{len(plan.orientations)}")
     plan = replace(plan, orientations=plan.orientations[:n_rotations])
 
-    preprocess = pipeline(
-        [
-            select_beams(cfg.numerics.to_beam_selection()),
-            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-            fit_orientation(
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
-            ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
-        ]
+    pipelines = Pipelines(
+        preprocess=pipeline(
+            [
+                select_beams(cfg.numerics.to_beam_selection()),
+                integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+                mosaicity(cfg.numerics.to_mosaicity()),
+            ]
+        ),
+        refine=pipeline(
+            [
+                fit_orientation(
+                    refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                ),
+                fit_thickness(
+                    refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine
+                ),
+            ]
+        ),
     )
-    result = run_inference(plan, refinement, preprocess=preprocess, method=cfg.solver.inference)
+    result = run_inference(plan, refinement, pipelines=pipelines, method=cfg.solver.inference)
 
     assert result.n_evaluated == n_rotations
     if n_rotations == observations.n_rotations:

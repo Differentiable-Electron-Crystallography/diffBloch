@@ -33,7 +33,9 @@ from diffBloch.preprocess.orientation import (
     u_matrix,
 )
 from diffBloch.preprocess.pipeline import (
+    NO_PIPELINES,
     ConvergenceCheck,
+    Pipelines,
     PlanStep,
     identity,
     iterate_until,
@@ -79,6 +81,8 @@ __all__ = [
     "HexagonalSearch",
     "InferenceResult",
     "Mosaicity",
+    "NO_PIPELINES",
+    "Pipelines",
     "Plan",
     "PlanSplit",
     "PlanStep",

@@ -30,7 +30,7 @@ from diffBloch.observability import (
     RotationScored,
 )
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.pipeline import PlanStep, identity
+from diffBloch.preprocess.pipeline import NO_PIPELINES, Pipelines
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 
@@ -84,15 +84,18 @@ def run_inference(
     plan: Plan,
     refinement: RefinementSetup,
     *,
-    preprocess: PlanStep = identity,
+    pipelines: Pipelines = NO_PIPELINES,
     method: Method = "bloch_eigen",
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
 
-    Optionally sharpens ``plan`` with the ``preprocess`` step first (e.g. ``select_beams``; identity
-    by default), builds a :class:`RefinementEngine`, simulates every orientation under ``no_grad``
-    with the swappable ``method`` solver, and returns per-rotation :class:`RotationInference`.
+    First applies ``pipelines`` to ``plan`` -- its ``preprocess`` phase shapes the geometry (e.g.
+    ``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) and its ``refine`` phase fits
+    parameters (orientation, thickness) under that shaped plan; both default to identity. Then
+    builds
+    a :class:`RefinementEngine`, simulates every orientation under ``no_grad`` with the swappable
+    ``method`` solver, and returns per-rotation :class:`RotationInference`.
 
     Emits a :class:`~diffBloch.observability.RotationScored` per rotation and one
     :class:`~diffBloch.observability.InferenceCompleted` aggregate to ``logger`` (the
@@ -100,7 +103,7 @@ def run_inference(
     unchanged whether or not a sink is attached). Attach a console/wandb logger at the boundary to
     watch per-rotation ``R_obs`` live -- e.g. while chasing a residual.
     """
-    plan = preprocess(plan)
+    plan = pipelines.apply(plan)
     engine = build_engine(plan, refinement, method=method)
     with torch.no_grad():
         solutions = engine.simulate(refinement.params)

@@ -11,11 +11,14 @@ steps is itself a step. ``refine`` is deliberately *not* expressible here: it is
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 from diffBloch.preprocess.plan import Plan
 
 __all__ = [
+    "NO_PIPELINES",
     "ConvergenceCheck",
+    "Pipelines",
     "PlanStep",
     "identity",
     "iterate_until",
@@ -30,6 +33,31 @@ type ConvergenceCheck = Callable[[Plan, Plan], bool]
 def identity(plan: Plan) -> Plan:
     """The no-op step: return ``plan`` unchanged (the pipeline identity element)."""
     return plan
+
+
+@dataclass(frozen=True)
+class Pipelines:
+    """The two declared phases of a run: plan-shaping, then parameter refinement.
+
+    ``preprocess`` shapes the :class:`~diffBloch.preprocess.plan.Plan` -- beam coupling,
+    rocking-curve
+    integration, mosaicity -- and ``refine`` fits parameters (orientation, thickness) under the
+    already-shaped plan. Both are ordinary ``Plan -> Plan`` steps (compose each with
+    :func:`pipeline`), and a run applies ``refine(preprocess(plan))``. Splitting the two phases is
+    what keeps a faithful default legible: the run reads as the exact list of physical choices, each
+    independently removable, rather than one opaque step list mixing plan-shaping with fitting.
+    """
+
+    preprocess: PlanStep = identity
+    refine: PlanStep = identity
+
+    def apply(self, plan: Plan) -> Plan:
+        """Shape the plan then refine its parameters: ``refine(preprocess(plan))``."""
+        return self.refine(self.preprocess(plan))
+
+
+# Shared identity default (both phases no-op), so signatures avoid a call-in-default.
+NO_PIPELINES: Pipelines = Pipelines()
 
 
 def pipeline(steps: Sequence[PlanStep]) -> PlanStep:
