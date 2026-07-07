@@ -30,6 +30,7 @@ __all__ = [
     "Mosaicity",
     "RockingCurve",
     "ThicknessGrid",
+    "TiltSegmentUnion",
 ]
 
 
@@ -219,6 +220,48 @@ class Mosaicity:
     def __post_init__(self) -> None:
         if self.window < 1:
             raise ValueError("window must be >= 1")
+
+
+@dataclass(frozen=True)
+class TiltSegmentUnion:
+    """Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.
+
+    The ``diffBloch_private`` coupling policy for rocking-curve integration. It partitions the
+    ``B`` tilts into ``n_splits`` contiguous, disjoint chunks and gives each chunk its own coupled
+    beam set: the **union** of the excited-beam masks at the chunk's two boundary tilts. A beam is
+    excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max - cap_margin`` (a hard
+    excitation-error + coupling-radius cutoff, distinct from the Klar relative filter of
+    :class:`BeamSelection`). Because a sharp reflection drifts through the Ewald sphere as the
+    crystal rocks, the excited set genuinely differs across the curve; one tilt-independent set
+    either over-couples (slow) or drops beams a later tilt needs. The per-chunk union is the
+    private's compromise. Each reflection's full rocking curve is later reassembled across chunks
+    before the mosaicity reduction (the window spans more tilts than one chunk holds).
+
+    ``g_max`` is the coupling radius (the private's ``g_max_sf / 2 = 4.5 / 2``) and ``cap_margin``
+    the safety margin subtracted from it (the private's hardcoded ``0.2``), so the effective cap is
+    ``g_max - cap_margin = 2.05``. ``sg_max`` is the excitation-error cutoff. The mean-inner-
+    potential ``u0`` and beam energy are experiment quantities threaded in at build time, not policy
+    knobs. The ``union_adaptive`` recursive-bisection variant is deferred (only the fixed even-split
+    ``union_adaptive = False`` path is ported).
+
+    Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
+    ``self.g_max = 4.5 / 2``, cap margin ``0.2``, ``self.sg_max = 0.01``).
+    """
+
+    n_splits: int = 12  # contiguous tilt chunks; each gets its own boundary-union beam set
+    g_max: float = (
+        2.25  # coupling radius (private g_max_sf / 2); effective cap = g_max - cap_margin
+    )
+    cap_margin: float = 0.2  # subtracted from g_max for the coupling cap (private hardcoded 0.2)
+    sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
+
+    def __post_init__(self) -> None:
+        if self.n_splits < 1:
+            raise ValueError("n_splits must be >= 1")
+        if self.g_max <= 0.0 or self.sg_max <= 0.0:
+            raise ValueError("g_max and sg_max must be positive")
+        if self.g_max - self.cap_margin <= 0.0:
+            raise ValueError("coupling cap g_max - cap_margin must be positive")
 
 
 @dataclass(frozen=True)
