@@ -210,6 +210,32 @@ class OrientationPlan:
             tilt_reduction=tilt_reduction,
         )
 
+    def with_orientation(
+        self, grid: ScatteringGrid, orientation: Tensor | NDArray[np.float64]
+    ) -> OrientationPlan:
+        """Rebuild this plan at a new ``orientation``, reusing everything else (F-gather included).
+
+        The pure rebuild verb an orientation search needs: same beam set, tilts, thickness,
+        reduction, ``pattern`` / ``alignment`` -- only ``orientation`` changes, so only the
+        orientation-dependent beam bases are recomputed while the orientation-free
+        :class:`~diffBloch.core.dynamical.StructureFactorGather` (shared across the tilts) is reused
+        via ``gather=``. ``grid`` is required because the plan does not own the shared support the
+        bases derive from; the caller threads its ``Plan.grid``. This makes a hexagonal-search trial
+        one call and keeps the plan (not the fit) the source of truth for the beam set.
+        """
+        return OrientationPlan.build(
+            grid,
+            np.asarray(self.beam_hkl),
+            self.pattern,
+            energy=self.energy,
+            thickness=self.thickness,
+            u0=self.u0,
+            orientation=orientation,
+            tilts=np.asarray(self.tilts),
+            tilt_reduction=self.tilt_reduction,
+            gather=self.beam_plans[0].gather,
+        )
+
 
 @dataclass(frozen=True)
 class SegmentPlan:
@@ -276,6 +302,7 @@ class SegmentedOrientationPlan:
         tilts: NDArray[np.float64],
         tilt_reduction: TiltReduction = PLAIN_SUM,
         scored_hkl: NDArray[np.int64] | None = None,
+        gathers: Sequence[StructureFactorGather] | None = None,
     ) -> SegmentedOrientationPlan:
         """Assemble a segmented plan from ``(beam_hkl, cover)`` chunks against the shared grid.
 
@@ -294,7 +321,19 @@ class SegmentedOrientationPlan:
         intersected with the union -- the ``select_beams`` selection ``couple_beams`` hands in, so
         expanding the solve does not drag scoring onto the union's weak beams. ``None`` scores the
         whole ``pattern ∩ union`` (the tilt-independent behaviour).
+
+        ``gathers`` optionally supplies one precomputed
+        :class:`~diffBloch.core.dynamical.StructureFactorGather` per segment (same order as
+        ``segments``), threaded into each chunk's :meth:`OrientationPlan.build` to skip re-deriving
+        the orientation-free F-gather -- the dominant cost. A rebuild at a new orientation over the
+        same segments (:meth:`with_orientation`) passes the seed plan's per-segment gathers;
+        ``None`` builds each fresh here.
         """
+        if gathers is not None and len(gathers) != len(segments):
+            raise ValueError(
+                f"gathers has {len(gathers)} entries but there are {len(segments)} segments; "
+                "supply exactly one precomputed gather per segment, in segment order"
+            )
         rotation = np.asarray(orientation, dtype=np.float64)
         tilt_mats = np.asarray(tilts, dtype=np.float64)
         if tilt_mats.ndim != 3 or tilt_mats.shape[1:] != (3, 3):
@@ -307,7 +346,9 @@ class SegmentedOrientationPlan:
         union_pos = {tuple(int(c) for c in row): i for i, row in enumerate(union_hkl)}
 
         segment_plans = []
-        for beam_hkl, cover in zip(beam_sets, [cover for _, cover in segments], strict=True):
+        for seg_i, (beam_hkl, cover) in enumerate(
+            zip(beam_sets, [cover for _, cover in segments], strict=True)
+        ):
             cover_idx = np.asarray(cover, dtype=np.int64)
             sub = OrientationPlan.build(
                 grid,
@@ -318,6 +359,7 @@ class SegmentedOrientationPlan:
                 u0=u0,
                 orientation=rotation,
                 tilts=tilt_mats[cover_idx],
+                gather=None if gathers is None else gathers[seg_i],
             )
             union_index = torch.tensor(
                 [union_pos[tuple(int(c) for c in row)] for row in beam_hkl], dtype=torch.int64
@@ -349,6 +391,36 @@ class SegmentedOrientationPlan:
                 restrict_to=None if scored_hkl is None else torch.as_tensor(scored_hkl),
             ),
             tilt_reduction=tilt_reduction,
+        )
+
+    def with_orientation(
+        self, grid: ScatteringGrid, orientation: Tensor | NDArray[np.float64]
+    ) -> SegmentedOrientationPlan:
+        """Rebuild at a new ``orientation``, reusing the segments' beams, covers, and F-gathers.
+
+        The segmented counterpart of :meth:`OrientationPlan.with_orientation`: the segment
+        partition (each chunk's beam set + covered tilts), the union, the pinned scored set
+        (``alignment.hkl``, idempotent under the intersection since it is already a subset of the
+        union), and every chunk's :class:`~diffBloch.core.dynamical.StructureFactorGather` are
+        carried over; only the orientation-dependent bases recompute. This lets a fit tilt an
+        already-coupled plan trial-by-trial at ~eigensolve cost (no re-gather, no re-coupling): the
+        *frozen-union* fit. ``grid`` is threaded from the caller's ``Plan.grid``.
+        """
+        return SegmentedOrientationPlan.build(
+            grid,
+            [
+                (np.asarray(seg.plan.beam_hkl), tuple(int(c) for c in seg.cover))
+                for seg in self.segments
+            ],
+            self.pattern,
+            energy=self.energy,
+            thickness=self.thickness,
+            u0=self.u0,
+            orientation=orientation,
+            tilts=np.asarray(self.tilts),
+            tilt_reduction=self.tilt_reduction,
+            scored_hkl=np.asarray(self.alignment.hkl),
+            gathers=[seg.plan.beam_plans[0].gather for seg in self.segments],
         )
 
 

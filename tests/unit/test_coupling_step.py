@@ -44,6 +44,96 @@ def _pattern(intensities: torch.Tensor) -> PatternBatch:
     )
 
 
+def _rot_z(deg: float) -> np.ndarray:
+    t = np.deg2rad(deg)
+    c, s = np.cos(t), np.sin(t)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+
+
+def test_with_orientation_reuses_the_gather_and_matches_a_fresh_build() -> None:
+    """``OrientationPlan.with_orientation`` rebuilds at a new orientation, reusing the F-gather."""
+    grid, asu_plan, spec, numbers = _silicon()
+    refinement = _refinement(asu_plan, spec, numbers)
+    pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
+    seed = OrientationPlan.build(
+        grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
+    )
+    target = _rot_z(3.0)
+
+    rebuilt = seed.with_orientation(grid, target)
+    fresh = OrientationPlan.build(
+        grid,
+        _BEAM_HKL,
+        pattern,
+        energy=_ENERGY,
+        thickness=(300.0,),
+        orientation=target,
+        tilts=_TILTS,
+    )
+
+    assert all(bp.gather is seed.beam_plans[0].gather for bp in rebuilt.beam_plans)  # reused
+    assert np.array_equal(rebuilt.orientation.numpy(), target)
+    eng_rebuilt = build_engine(Plan(grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD)
+    eng_fresh = build_engine(Plan(grid=grid, orientations=(fresh,)), refinement, method=_METHOD)
+    torch.testing.assert_close(
+        eng_rebuilt.simulate(refinement.params)[0].intensities,
+        eng_fresh.simulate(refinement.params)[0].intensities,
+    )
+
+
+def test_with_orientation_identity_reproduces_the_plan() -> None:
+    grid, asu_plan, spec, numbers = _silicon()
+    refinement = _refinement(asu_plan, spec, numbers)
+    pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
+    seed = OrientationPlan.build(
+        grid,
+        _BEAM_HKL,
+        pattern,
+        energy=_ENERGY,
+        thickness=(300.0,),
+        tilts=_TILTS,
+        orientation=_rot_z(2.0),
+    )
+    same = seed.with_orientation(grid, seed.orientation)
+
+    eng_seed = build_engine(Plan(grid=grid, orientations=(seed,)), refinement, method=_METHOD)
+    eng_same = build_engine(Plan(grid=grid, orientations=(same,)), refinement, method=_METHOD)
+    torch.testing.assert_close(
+        eng_seed.simulate(refinement.params)[0].intensities,
+        eng_same.simulate(refinement.params)[0].intensities,
+    )
+
+
+def test_segmented_with_orientation_reuses_gathers_and_preserves_scored_set() -> None:
+    """The segmented rebuild verb: new orientation, same segments/gathers, pinned scored set."""
+    grid, asu_plan, spec, numbers = _silicon()
+    refinement = _refinement(asu_plan, spec, numbers)
+    pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
+    chunk_a = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
+    chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
+    scored = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # 100 in union, -100 excluded
+    build_kwargs = dict(energy=_ENERGY, thickness=(300.0,), u0=0.0, tilts=_TILTS, scored_hkl=scored)
+    seed = SegmentedOrientationPlan.build(
+        grid, [(chunk_a, (0, 1)), (chunk_b, (2, 3))], pattern, orientation=np.eye(3), **build_kwargs
+    )
+    target = _rot_z(3.0)
+
+    rebuilt = seed.with_orientation(grid, target)
+    fresh = SegmentedOrientationPlan.build(
+        grid, [(chunk_a, (0, 1)), (chunk_b, (2, 3))], pattern, orientation=target, **build_kwargs
+    )
+
+    for reb_seg, seed_seg in zip(rebuilt.segments, seed.segments, strict=True):
+        assert reb_seg.plan.beam_plans[0].gather is seed_seg.plan.beam_plans[0].gather  # reused
+    assert rebuilt.alignment.hkl.tolist() == seed.alignment.hkl.tolist()  # scored set idempotent
+    eng_reb = build_engine(Plan(grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD)
+    eng_fresh = build_engine(Plan(grid=grid, orientations=(fresh,)), refinement, method=_METHOD)
+    torch.testing.assert_close(
+        eng_reb.simulate(refinement.params)[0].intensities,
+        eng_fresh.simulate(refinement.params)[0].intensities,
+    )
+
+
 def test_couple_beams_tilt_independent_is_the_identity() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
