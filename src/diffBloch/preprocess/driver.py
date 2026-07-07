@@ -70,7 +70,7 @@ def converge_numerics(
     """Return a ``Plan -> Plan`` step running the selected convergence operation (the driver entry).
 
     The driver's outer ``evalState`` boundary: it seeds the initial :class:`ConvergenceState` (pool
-    from ``test.start_g_max_refine``, window from ``selection.integration_semiangle``, tilt from
+    from ``test.start_g_max_refine``, window from ``selection.integration.semiangle``, tilt from
     ``rocking.sampling``), runs the ``test.operation`` phase(s), and returns just the converged
     ``Plan`` -- the settled scalars are dropped, so downstream steps never see driver state and this
     nests as one *optional* ordinary step in the preprocess pipeline (convergence stays entirely
@@ -83,7 +83,7 @@ def converge_numerics(
     def run(plan: Plan) -> Plan:
         start = ConvergenceState(
             g_max_refine=test.start_g_max_refine,
-            integration_semiangle=selection.integration_semiangle,
+            integration_semiangle=selection.integration.semiangle,
             tilt_sampling=rocking.sampling,
         )
         if test.operation == "coverage":
@@ -159,7 +159,7 @@ def run_coverage_phase(
 
     Each candidate is built from the **un-pruned pool** re-derived at the current ``g_max_refine``
     (obstruction 1), so widening the window can recover beams a narrower pool clipped. ``selection``
-    supplies the fixed ``rsg`` / ``dsg`` / ``geometry``; its ``integration_semiangle`` is ignored --
+    supplies the fixed ``rsg`` / ``dsg`` / ``geometry``; its ``integration.semiangle`` is ignored --
     the live window comes from ``state``. Returns the coverage-maximising ``Plan`` and the settled
     :class:`ConvergenceState` (for the ``both`` handoff to self-stability). ``pool_step`` /
     ``window_step`` must be positive.
@@ -225,7 +225,7 @@ def run_stability_phase(
     integration), so the sweeps are a pure function of the knobs, never an incrementally-mutated
     Plan. ``selection`` supplies the
     fixed ``rsg`` / ``dsg`` / ``geometry`` and ``rocking`` the fixed tilt span + geometry; their
-    ``integration_semiangle`` / ``sampling`` are ignored -- the live values come from ``state``.
+    ``integration.semiangle`` / ``sampling`` are ignored -- the live values come from ``state``.
     Returns the self-stable ``Plan`` and settled :class:`ConvergenceState`. ``pool_step`` /
     ``window_step`` / ``tilt_step`` must be positive and ``num_passes`` at least 1.
     """
@@ -322,7 +322,9 @@ def _windowed_pool(
     The driver's build step, over :func:`~diffBloch.preprocess.steps.beams.reseed_pool` (the shared
     reseed-and-window builder, which also carries the ``Fgb`` difference-support guard). Unlike the
     standalone pool levers, the driver *varies the window too*, so it overrides
-    ``selection.integration_semiangle`` with the swept value before delegating.
+    ``selection.integration.semiangle`` with the swept value before delegating.
     """
-    windowed = replace(selection, integration_semiangle=integration_semiangle)
+    windowed = replace(
+        selection, integration=replace(selection.integration, semiangle=integration_semiangle)
+    )
     return reseed_pool(plan, windowed, g_max_refine=g_max_refine)

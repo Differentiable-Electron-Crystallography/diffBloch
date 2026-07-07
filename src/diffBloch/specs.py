@@ -19,7 +19,7 @@ these raising constructors -- Result stays at that boundary and never enters a s
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "ConvergenceTest",
     "ConvergenceTolerance",
     "HexagonalSearch",
+    "IntegrationGeometry",
     "Mosaicity",
     "RockingCurve",
     "ThicknessGrid",
@@ -35,35 +36,57 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class IntegrationGeometry:
+    """The angular integration range a rotation frame sweeps -- one shared physical value.
+
+    As the crystal rocks, each reflection is integrated over an angular range. That range sets BOTH
+    the Klar beam-selection window (the excitation-error span ``sg_max``) and the rocking-curve tilt
+    span, because it is the *same physical angle*. Modelling it once here -- shared by
+    :class:`BeamSelection` and :class:`RockingCurve` rather than each declaring its own -- makes it
+    impossible to give the two consumers different values (the drift a duplicated field invites).
+
+    ``semiangle`` (degrees) is the tilt half-width / integration cone half-angle; it must be
+    positive (zero rejects every reflection). ``geometry`` is the data-collection sweep -- distance
+    from the goniometer rock axis for ``continuous_rotation``, distance from the beam for
+    ``precession`` -- which fixes the ``sg_max`` lever arm and the tilt axis, so both consumers must
+    agree on it too.
+
+    Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``data_collection_geometry``).
+    """
+
+    semiangle: float = 1.0  # degrees: tilt half-width / integration cone half-angle; scales sg_max
+    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
+
+    def __post_init__(self) -> None:
+        if self.semiangle <= 0.0:
+            raise ValueError("semiangle must be positive")
+        if self.geometry not in ("continuous_rotation", "precession"):
+            raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
+
+
+@dataclass(frozen=True)
 class BeamSelection:
     """Validated cutoffs for the ``select_beams`` Klar et al. (2023) active-set filter.
 
     The knobs *jointly* define each orientation's active beam set. ``rsg`` (relative excitation
-    error cutoff -- a reflection is kept when ``|Sg| / sg_max < rsg``) and ``integration_semiangle``
-    (degrees, which scales ``sg_max``) must both be positive, since either at zero rejects every
-    reflection. ``dsg`` (the absolute excitation-error margin in the ``sg_max - |Sg| > dsg`` test)
-    carries no positivity invariant -- a negative margin legitimately loosens the cone -- so it is
-    left unconstrained rather than fabricate a bound. ``geometry`` is the data-collection geometry:
-    it fixes which reflection component sets ``sg_max`` (the excitation-error span swept during
-    integration) -- distance from the goniometer rock axis for ``continuous_rotation``, distance
-    from the beam for ``precession`` -- so it must match the integrator's tilt geometry
-    (:class:`RockingCurve`). It shares the ``data_collection_geometry`` of ``RockingCurve``.
+    error cutoff -- a reflection is kept when ``|Sg| / sg_max < rsg``) must be positive, since at
+    zero it rejects every reflection. ``dsg`` (the absolute excitation-error margin in the
+    ``sg_max - |Sg| > dsg`` test) carries no positivity invariant -- a negative margin legitimately
+    loosens the cone -- so it is left unconstrained rather than fabricate a bound. ``integration``
+    (an :class:`IntegrationGeometry`) supplies the ``semiangle`` that scales ``sg_max`` and the
+    ``geometry`` that fixes its lever arm; it is *shared* with the :class:`RockingCurve` integrator
+    (one physical angle, so the two cannot disagree).
 
     Defaults are the faithful ``diffBloch_private`` values (``NumericsConfig``).
     """
 
     rsg: float = 0.9  # relative excitation-error cutoff: keep when |Sg| / sg_max < rsg
     dsg: float = 0.0015  # absolute excitation-error margin: keep when sg_max - |Sg| > dsg
-    integration_semiangle: float = 1.0  # degrees: integration cone half-angle; scales sg_max
-    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
+    integration: IntegrationGeometry = field(default_factory=IntegrationGeometry)
 
     def __post_init__(self) -> None:
         if self.rsg <= 0.0:
             raise ValueError("rsg must be positive")
-        if self.integration_semiangle <= 0.0:
-            raise ValueError("integration_semiangle must be positive")
-        if self.geometry not in ("continuous_rotation", "precession"):
-            raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
 
 
 @dataclass(frozen=True)
@@ -102,7 +125,7 @@ class ConvergenceTest:
     simulations stop changing; ``both`` runs coverage first and seeds self-stability from its
     settled scalars (the private's ``initial_*`` handoff). ``start_g_max_refine`` is the pool
     sweep's start
-    radius -- the window and tilt starts come from :class:`BeamSelection.integration_semiangle` and
+    radius -- the window and tilt starts come from :class:`IntegrationGeometry.semiangle` and
     :class:`RockingCurve.sampling`, so they are not duplicated here. ``pool_step`` / ``window_step``
     / ``tilt_step`` are the per-knob increments; ``num_passes`` is the fixed self-stability
     coordinate-sweep count (each pass revisits every knob after the others moved). The R-factor
@@ -171,29 +194,24 @@ class RockingCurve:
 
     A rotation-electron-diffraction frame integrates each reflection's intensity as the crystal
     sweeps through the Ewald sphere, so the forward model samples ``sampling`` slightly-tilted
-    sub-orientations spanning +/- ``semiangle`` and sums their intensities. ``semiangle`` (degrees)
-    is the tilt half-width -- the same physical angular integration range as the Klar beam-selection
-    window (``BeamSelection.integration_semiangle``), here setting the tilt span, so the two share
-    one value. ``sampling`` is the number of tilts; ``sampling = 1`` is the identity (a single
-    static solve), which is how the integration composes off by default. ``geometry`` selects the
-    sweep: ``continuous_rotation`` (goniometer x-axis tilts, implemented) or ``precession`` (a cone;
-    a deferred discriminated mode).
+    sub-orientations spanning +/- the integration ``semiangle`` and sums their intensities.
+    ``sampling`` is the number of tilts; ``sampling = 1`` is the identity (a single static solve),
+    which is how the integration composes off by default. ``integration`` (an
+    :class:`IntegrationGeometry`) supplies the tilt half-width ``semiangle`` -- the *same* physical
+    angular range as the Klar beam-selection window, shared with :class:`BeamSelection` so the two
+    cannot disagree -- and the ``geometry`` that selects the sweep (``continuous_rotation``,
+    goniometer x-axis tilts, implemented; or ``precession``, a deferred cone mode).
 
     Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``rocking_curve_sampling`` /
     ``data_collection_geometry``; ``rotation_dataset.generate_integration_rotation_matrices``).
     """
 
-    semiangle: float = 1.0  # degrees: tilt half-width (shares BeamSelection.integration_semiangle)
     sampling: int = 42  # number of tilts across +/- semiangle; 1 = single static solve (identity)
-    geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
+    integration: IntegrationGeometry = field(default_factory=IntegrationGeometry)
 
     def __post_init__(self) -> None:
-        if self.semiangle <= 0.0:
-            raise ValueError("semiangle must be positive")
         if self.sampling < 1:
             raise ValueError("sampling must be >= 1")
-        if self.geometry not in ("continuous_rotation", "precession"):
-            raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
 
 
 @dataclass(frozen=True)

@@ -16,7 +16,7 @@ import torch
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, PlainSum
 from diffBloch.engine import OrientationPlan, ScatteringGrid
 from diffBloch.preprocess import Plan, integrate_rocking_curve, mosaicity
-from diffBloch.specs import Mosaicity, RockingCurve
+from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve
 
 _CELL = np.eye(3, dtype=np.float64) * 5.0
 _ENERGY = 200e3
@@ -36,7 +36,9 @@ def _plan() -> Plan:
 
 
 def _integrated(sampling: int) -> Plan:
-    return integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=sampling))(_plan())
+    return integrate_rocking_curve(
+        RockingCurve(sampling=sampling, integration=IntegrationGeometry(semiangle=0.5))
+    )(_plan())
 
 
 def test_mosaicity_sets_the_reduction_without_touching_geometry() -> None:

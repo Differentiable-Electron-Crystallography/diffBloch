@@ -26,11 +26,13 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import Plan
-from diffBloch.specs import BeamSelection
+from diffBloch.specs import BeamSelection, IntegrationGeometry
 
 
 def _coverage(plan: Plan, semiangle: float) -> int:
-    return plan_coverage(select_beams(BeamSelection(integration_semiangle=semiangle))(plan))
+    return plan_coverage(
+        select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=semiangle)))(plan)
+    )
 
 
 # --- plan_coverage: the pure match-count objective ---
@@ -80,7 +82,9 @@ def test_maximize_scalar_rejects_bad_max_iterations() -> None:
 
 def test_cover_beams_widens_to_the_minimum_that_maximises_coverage() -> None:
     _, seed = seed_system()
-    step = cover_beams(BeamSelection(integration_semiangle=0.68), step=0.2, max_iterations=30)
+    step = cover_beams(
+        BeamSelection(integration=IntegrationGeometry(semiangle=0.68)), step=0.2, max_iterations=30
+    )
     converged = step(seed)
 
     started = _coverage(seed, 0.68)
@@ -113,7 +117,7 @@ def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
         return _coverage(replace(seed, orientations=reseeded), 1.0)
 
     step = cover_pool(
-        BeamSelection(integration_semiangle=1.0),
+        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
         start_g_max_refine=0.5,
         step=0.1,
         max_iterations=30,
@@ -127,7 +131,7 @@ def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
 def test_cover_pool_raises_past_the_grid_difference_support() -> None:
     _, seed = seed_system()
     step = cover_pool(
-        BeamSelection(integration_semiangle=1.0),
+        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
         start_g_max_refine=1.0,
         step=0.2,
         max_iterations=50,

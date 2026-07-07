@@ -112,12 +112,13 @@ def cover_beams(selection: BeamSelection, *, step: float, max_iterations: int = 
 
     def run(seed: Plan) -> Plan:
         def build(semiangle: float) -> Plan:
-            return select_beams(replace(selection, integration_semiangle=semiangle))(seed)
+            geometry = replace(selection.integration, semiangle=semiangle)
+            return select_beams(replace(selection, integration=geometry))(seed)
 
         return maximize_scalar(
             build,
             plan_coverage,
-            start=selection.integration_semiangle,
+            start=selection.integration.semiangle,
             step=step,
             max_iterations=max_iterations,
         )

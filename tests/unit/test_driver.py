@@ -23,9 +23,17 @@ from diffBloch.preprocess.driver import (
     run_stability_phase,
 )
 from diffBloch.preprocess.steps.coverage import plan_coverage
-from diffBloch.specs import BeamSelection, ConvergenceTest, ConvergenceTolerance, RockingCurve
+from diffBloch.specs import (
+    BeamSelection,
+    ConvergenceTest,
+    ConvergenceTolerance,
+    IntegrationGeometry,
+    RockingCurve,
+)
 
-_SELECTION = BeamSelection(integration_semiangle=1.0)  # rsg/dsg/geometry fixed; angle from state
+_SELECTION = BeamSelection(
+    integration=IntegrationGeometry(semiangle=1.0)
+)  # rsg/dsg/geometry fixed; angle from state
 
 
 def _coverage(plan, g_max_refine: float, integration_semiangle: float) -> int:
@@ -83,7 +91,9 @@ def test_coverage_phase_rejects_non_positive_steps() -> None:
 
 # --- run_stability_phase: the fixed num_passes coordinate sweep to consecutive-sim stability ---
 
-_ROCKING = RockingCurve(semiangle=0.5, sampling=1)  # tilt span/geometry fixed; count from state
+_ROCKING = RockingCurve(
+    sampling=1, integration=IntegrationGeometry(semiangle=0.5)
+)  # tilt span/geometry fixed; count from state
 _TOLERANCE = ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20)
 _START = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, tilt_sampling=1)
 
@@ -143,7 +153,9 @@ def test_stability_phase_rejects_bad_steps_and_passes() -> None:
 
 # --- converge_numerics: the operation dispatch + evalState boundary (the public driver entry) ---
 
-_SEL_NARROW = BeamSelection(integration_semiangle=0.68)  # narrow window start, as in the probes
+_SEL_NARROW = BeamSelection(
+    integration=IntegrationGeometry(semiangle=0.68)
+)  # narrow window start, as in the probes
 
 
 def _numerics(refinement, seed, operation: str):

@@ -16,9 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from diffBloch.core.solver import Method
 from diffBloch.specs import (
     BeamSelection,
-    ConvergenceTest,
-    ConvergenceTolerance,
     HexagonalSearch,
+    IntegrationGeometry,
     Mosaicity,
     RockingCurve,
     ThicknessGrid,
@@ -31,8 +30,6 @@ from diffBloch.specs import (
 # in ``HexagonalSearch``).
 _HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
-_CONVERGENCE_TEST_DEFAULTS = ConvergenceTest()
-_CONVERGENCE_TOLERANCE_DEFAULTS = ConvergenceTolerance()
 
 
 class _StrictConfig(BaseModel):
@@ -63,57 +60,42 @@ class SolverConfig(_StrictConfig):
 
 
 class NumericsConfig(_StrictConfig):
-    """Stage-3 numerical-accuracy controls, frozen into the simulation spec."""
+    """Stage-3 numerical-accuracy controls, frozen into the simulation spec.
+
+    ``g_max`` (structure-factor grid radius) and ``g_max_refine`` (seed beam-pool radius) are grid
+    primitives consumed directly. ``rsg`` / ``dsg`` are the Klar beam-selection cutoffs and
+    ``rocking_curve_sampling`` the tilt count -- the parts of :class:`BeamSelection` /
+    :class:`RockingCurve` those value-types do *not* share. ``integration`` is the shared
+    :class:`IntegrationGeometry` (one physical angle + geometry feeding both), carried once as its
+    own value-type so it cannot be given two values; ``mosaicity`` is the :class:`Mosaicity`
+    reduction. The last two are the value-types themselves (identity, not a projected copy), so
+    pydantic validates them and forbids unknown keys inside them too.
+    """
 
     g_max: float = 4.5
     g_max_refine: float = 1.6
-    rocking_curve_sampling: int = 42
-    dsg: float = 0.0015
     rsg: float = 0.9
-    integration_semiangle: float = 1.0
-    mosaicity_window: int = 5  # moving-average tilt window; faithful private default (Mosaicity)
+    dsg: float = 0.0015
+    rocking_curve_sampling: int = 42
+    integration: IntegrationGeometry = Field(default_factory=IntegrationGeometry)
+    mosaicity: Mosaicity = Field(default_factory=Mosaicity)
 
     def to_beam_selection(self) -> BeamSelection:
-        """Parse the beam-selection subset into the value-type ``select_beams`` consumes.
-
-        ``geometry`` fixes the ``sg_max`` lever arm and must match ``to_rocking_curve``'s tilt
-        geometry; both default to continuous rotation until ``data_collection_geometry`` is surfaced
-        from the PETS reader (a deferred discriminated mode).
-        """
-        return BeamSelection(
-            rsg=self.rsg, dsg=self.dsg, integration_semiangle=self.integration_semiangle
-        )
+        """Assemble the ``select_beams`` value-type: the Klar cutoffs + the shared integration."""
+        return BeamSelection(rsg=self.rsg, dsg=self.dsg, integration=self.integration)
 
     def to_rocking_curve(self) -> RockingCurve:
-        """Parse the rocking-curve subset into the value-type ``integrate_rocking_curve`` consumes.
+        """Assemble the ``integrate_rocking_curve`` value-type: tilt count + the shared integration.
 
-        ``integration_semiangle`` doubles as the tilt half-width (one physical angular integration
-        range shared with the Klar beam window; see the decision doc), and
-        ``rocking_curve_sampling`` is the tilt count. Geometry defaults to continuous rotation until
-        ``data_collection_geometry`` is surfaced from the PETS reader (a deferred discriminated
-        mode).
+        The tilt span and geometry come from the *same* :class:`IntegrationGeometry` as
+        ``to_beam_selection``, so the beam window and the tilt sweep cannot disagree.
         """
-        return RockingCurve(
-            semiangle=self.integration_semiangle, sampling=self.rocking_curve_sampling
-        )
-
-    def to_mosaicity(self) -> Mosaicity:
-        """Parse the mosaicity subset into the value-type the ``mosaicity`` step consumes.
-
-        ``mosaicity_window`` is the moving-average window over the rocking-curve tilt axis. Unlike
-        the private (which hardcodes 5 and treats its ``mosaicity_num_frames`` config as a mere
-        on/off flag), 2.0 exposes the window as a real, tunable parameter defaulting to the faithful
-        5; see :class:`~diffBloch.specs.Mosaicity`. Whether mosaicity is
-        *applied* is a pipeline-composition choice (append the ``mosaicity`` step or not), exactly
-        as for ``integrate_rocking_curve``.
-        """
-        return Mosaicity(window=self.mosaicity_window)
+        return RockingCurve(sampling=self.rocking_curve_sampling, integration=self.integration)
 
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> NumericsConfig:
         self.to_beam_selection()  # the rules live in BeamSelection; fail fast at config load
         self.to_rocking_curve()  # the rules live in RockingCurve; fail fast at config load
-        self.to_mosaicity()  # the rules live in Mosaicity; fail fast at config load
         return self
 
 
@@ -249,65 +231,19 @@ class ThicknessFitConfig(_StrictConfig):
         return self
 
 
-class ConvergenceConfig(_StrictConfig):
-    """Bounds for the optional ``converge_numerics`` driver (preprocess).
-
-    The YAML edge for convergence testing. It parses into **two** value-types (single
-    responsibility, mirroring how :class:`~diffBloch.specs.ConvergenceTest` and
-    :class:`~diffBloch.specs.ConvergenceTolerance` split *what to sweep* from *when to stop*):
-    :meth:`to_test` and :meth:`to_tolerance`. Defaults derive from those value-types, so the
-    boundary values cannot drift from them, and all validation is delegated there (one rule home).
-
-    Configuring this block does **not** run convergence: like ``integrate_rocking_curve`` /
-    ``mosaicity``, whether the driver runs is a pipeline-composition choice (append
-    :func:`~diffBloch.preprocess.driver.converge_numerics` or not), so convergence stays opt-in.
-    """
-
-    operation: Literal["coverage", "self_stability", "both"] = _CONVERGENCE_TEST_DEFAULTS.operation
-    start_g_max_refine: float = _CONVERGENCE_TEST_DEFAULTS.start_g_max_refine  # pool sweep start
-    pool_step: float = _CONVERGENCE_TEST_DEFAULTS.pool_step  # g_max_refine increment
-    window_step: float = _CONVERGENCE_TEST_DEFAULTS.window_step  # integration_semiangle increment
-    tilt_step: float = _CONVERGENCE_TEST_DEFAULTS.tilt_step  # rocking_curve_sampling increment
-    num_passes: int = _CONVERGENCE_TEST_DEFAULTS.num_passes  # self-stability sweep passes
-    r_factor_threshold: float = _CONVERGENCE_TOLERANCE_DEFAULTS.r_factor_threshold  # stability cut
-    max_iterations: int = _CONVERGENCE_TOLERANCE_DEFAULTS.max_iterations  # per-sweep runaway cap
-
-    def to_test(self) -> ConvergenceTest:
-        """Parse the *what to sweep* fields into the validated :class:`ConvergenceTest`."""
-        return ConvergenceTest(
-            operation=self.operation,
-            start_g_max_refine=self.start_g_max_refine,
-            pool_step=self.pool_step,
-            window_step=self.window_step,
-            tilt_step=self.tilt_step,
-            num_passes=self.num_passes,
-        )
-
-    def to_tolerance(self) -> ConvergenceTolerance:
-        """Parse the *when to stop* fields into the validated :class:`ConvergenceTolerance`."""
-        return ConvergenceTolerance(
-            r_factor_threshold=self.r_factor_threshold,
-            max_iterations=self.max_iterations,
-        )
-
-    @model_validator(mode="after")
-    def _parse_fails_fast(self) -> ConvergenceConfig:
-        self.to_test()  # rules live in ConvergenceTest; fail fast at config load
-        self.to_tolerance()  # rules live in ConvergenceTolerance; fail fast at config load
-        return self
-
-
 class PreprocessConfig(_StrictConfig):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
-    Grouping, not composition: each block configures one preprocess step. ``fit_orientation``,
-    ``fit_thickness`` and the optional ``converge_numerics`` driver are wired; whether the
-    convergence driver runs is a pipeline-composition choice (see :class:`ConvergenceConfig`).
+    Grouping, not composition: each block configures one preprocess step. Only steps the default run
+    composes get a config block here: ``fit_orientation`` and ``fit_thickness``. The optional
+    ``converge_numerics`` driver is *not* in the default recipe, so it has no config block -- a
+    caller that composes it constructs :class:`~diffBloch.specs.ConvergenceTest` /
+    :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (their defaults are the
+    faithful values). Opt-in step config lives with the step, not in an always-present block.
     """
 
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
     thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
-    convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
 
 
 class Inputs(_StrictConfig):

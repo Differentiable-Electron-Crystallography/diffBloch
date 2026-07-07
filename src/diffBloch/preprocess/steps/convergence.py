@@ -178,7 +178,7 @@ def converge_beams(
     Plan at a wider ``integration_semiangle`` -- selecting from the fixed seed each time, not from
     the
     previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
-    sweep starts at ``selection.integration_semiangle`` and clicks up by ``step`` (degrees) until
+    sweep starts at ``selection.integration.semiangle`` and clicks up by ``step`` (degrees) until
     :func:`converge_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
     are
     held fixed. ``step`` must be positive.
@@ -189,10 +189,11 @@ def converge_beams(
 
     def run(seed: Plan) -> Plan:
         def build(semiangle: float) -> Plan:
-            return select_beams(replace(selection, integration_semiangle=semiangle))(seed)
+            geometry = replace(selection.integration, semiangle=semiangle)
+            return select_beams(replace(selection, integration=geometry))(seed)
 
         return converge_scalar(
-            build, measure, tolerance, start=selection.integration_semiangle, step=step
+            build, measure, tolerance, start=selection.integration.semiangle, step=step
         )
 
     return run
@@ -265,7 +266,8 @@ def converge_sampling(
     ``rocking.sampling`` and clicks up by ``step`` (rounded to a whole tilt count) until
     :func:`converge_scalar` settles the pattern (first sub-threshold step wins): it settles when a
     finer tilt grid stops moving the integrated intensities. Only ``sampling`` is swept -- the tilt
-    span (``rocking.semiangle``) and ``rocking.geometry`` are held fixed. Re-integrating from the
+    span (``rocking.integration.semiangle``) and ``rocking.integration.geometry`` are held fixed.
+    Re-integrating from the
     incoming seed each step (``integrate_rocking_curve`` rebuilds tilts from each nominal
     orientation, discarding any prior tilts) makes the sweep independent of the seed's tilt state.
 

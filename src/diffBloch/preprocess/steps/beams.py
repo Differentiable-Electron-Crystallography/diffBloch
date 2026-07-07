@@ -118,8 +118,8 @@ def _reselect(
         u0=op.u0,
         rsg=selection.rsg,
         dsg=selection.dsg,
-        semiangle=selection.integration_semiangle,
-        geometry=selection.geometry,
+        semiangle=selection.integration.semiangle,
+        geometry=selection.integration.geometry,
     )
     keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     return OrientationPlan.build(

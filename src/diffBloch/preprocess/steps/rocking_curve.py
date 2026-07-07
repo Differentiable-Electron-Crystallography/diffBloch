@@ -41,12 +41,15 @@ def integrate_rocking_curve(rocking: RockingCurve) -> PlanStep:
 
     ``rocking`` is a pre-validated :class:`~diffBloch.specs.RockingCurve` (invalid bounds are
     unrepresentable, so this never re-validates): ``rocking.sampling`` tilts about the goniometer
-    axis spanning ``+/- rocking.semiangle`` degrees (``rocking.geometry`` selects the sweep). The
+    axis spanning ``+/- rocking.integration.semiangle`` degrees (``rocking.integration.geometry``
+    selects the sweep). The
     tilt matrices are orientation-independent, so they are generated once and left-multiplied onto
     every rotation's nominal orientation (``R_tilt @ orientation``); each rotation is rebuilt with
     its ``N`` sub-orientations sharing its one existing beam set.
     """
-    tilts = rocking_curve_tilts(rocking.semiangle, rocking.sampling, geometry=rocking.geometry)
+    tilts = rocking_curve_tilts(
+        rocking.integration.semiangle, rocking.sampling, geometry=rocking.integration.geometry
+    )
 
     def run(plan: Plan) -> Plan:
         orientations = tuple(_integrate_one(plan, op, tilts) for op in plan.orientations)

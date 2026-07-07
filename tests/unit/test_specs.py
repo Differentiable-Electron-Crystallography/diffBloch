@@ -14,6 +14,7 @@ from diffBloch.specs import (
     ConvergenceTest,
     ConvergenceTolerance,
     HexagonalSearch,
+    IntegrationGeometry,
     Mosaicity,
     RockingCurve,
     ThicknessGrid,
@@ -52,18 +53,29 @@ def test_convergence_test_rejects_invalid_operation_and_bounds() -> None:
         ConvergenceTest(num_passes=0)
 
 
+def test_integration_geometry_defaults_and_validation() -> None:
+    geometry = IntegrationGeometry()
+    assert geometry.semiangle == 1.0  # the shared tilt half-width / Klar window
+    assert geometry.geometry == "continuous_rotation"
+    with pytest.raises(ValueError, match="semiangle must be positive"):
+        IntegrationGeometry(semiangle=0.0)
+    with pytest.raises(ValueError, match="geometry must be"):
+        IntegrationGeometry(geometry="spiral")  # type: ignore[arg-type]
+
+
 def test_beam_selection_defaults_match_the_private() -> None:
     selection = BeamSelection()
     assert selection.rsg == 0.9
     assert selection.dsg == 0.0015
-    assert selection.integration_semiangle == 1.0
+    assert selection.integration == IntegrationGeometry()  # the shared integration geometry
 
 
 def test_beam_selection_rejects_nonpositive_cutoffs() -> None:
     with pytest.raises(ValueError, match="rsg must be positive"):
         BeamSelection(rsg=0.0)
-    with pytest.raises(ValueError, match="integration_semiangle must be positive"):
-        BeamSelection(integration_semiangle=0.0)
+    # The semiangle now lives on IntegrationGeometry, which validates it.
+    with pytest.raises(ValueError, match="semiangle must be positive"):
+        BeamSelection(integration=IntegrationGeometry(semiangle=0.0))
 
 
 def test_beam_selection_allows_a_loosening_negative_margin() -> None:
@@ -114,18 +126,18 @@ def test_value_types_are_frozen() -> None:
 
 def test_rocking_curve_defaults_and_double_role() -> None:
     rocking = RockingCurve()
-    assert rocking.semiangle == 1.0  # shares BeamSelection.integration_semiangle
+    assert rocking.integration.semiangle == 1.0  # the shared integration half-width
     assert rocking.sampling == 42  # the quartz reference tilt count
-    assert rocking.geometry == "continuous_rotation"
+    assert rocking.integration.geometry == "continuous_rotation"
 
 
 def test_rocking_curve_rejects_invalid_geometry_and_bounds() -> None:
     with pytest.raises(ValueError, match="semiangle must be positive"):
-        RockingCurve(semiangle=0.0)
+        RockingCurve(integration=IntegrationGeometry(semiangle=0.0))
     with pytest.raises(ValueError, match="sampling must be >= 1"):
         RockingCurve(sampling=0)
     with pytest.raises(ValueError, match="geometry must be"):
-        RockingCurve(geometry="spiral")  # type: ignore[arg-type]
+        RockingCurve(integration=IntegrationGeometry(geometry="spiral"))  # type: ignore[arg-type]
 
 
 def test_mosaicity_defaults_to_the_faithful_window() -> None:

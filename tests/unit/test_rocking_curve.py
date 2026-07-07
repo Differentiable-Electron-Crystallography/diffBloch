@@ -14,7 +14,7 @@ import torch
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine import OrientationPlan, ScatteringGrid
 from diffBloch.preprocess import Plan, integrate_rocking_curve
-from diffBloch.specs import RockingCurve
+from diffBloch.specs import IntegrationGeometry, RockingCurve
 
 _CELL = np.eye(3, dtype=np.float64) * 5.0
 _ENERGY = 200e3
@@ -35,7 +35,9 @@ def _plan() -> Plan:
 
 def test_integrate_bakes_the_tilt_set_into_every_orientation() -> None:
     plan = _plan()
-    integrated = integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=3))(plan)
+    integrated = integrate_rocking_curve(
+        RockingCurve(sampling=3, integration=IntegrationGeometry(semiangle=0.5))
+    )(plan)
     (op,) = integrated.orientations
     assert op.tilts.shape == (3, 3, 3)
     assert len(op.beam_plans) == 3

@@ -58,7 +58,7 @@ def run_experiment(experiment_dir: str | Path, *, logger: Logger = NULL_LOGGER) 
             [
                 select_beams(cfg.numerics.to_beam_selection()),
                 integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-                mosaicity(cfg.numerics.to_mosaicity()),
+                mosaicity(cfg.numerics.mosaicity),
             ]
         ),
         refine=pipeline(

@@ -40,7 +40,7 @@ from diffBloch.preprocess import (
 )
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.plan import Plan
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
+from diffBloch.specs import BeamSelection, ConvergenceTolerance, IntegrationGeometry, RockingCurve
 
 _FULL_BEAMS = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _PRUNED_BEAMS = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # one fewer coupled beam
@@ -165,7 +165,7 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     # the window widens: 15 -> 39 -> 43); the sweep then saturates and the trailing nulls settle it
     # on the fully-selected beam set.
     step = converge_beams(
-        BeamSelection(integration_semiangle=0.68),
+        BeamSelection(integration=IntegrationGeometry(semiangle=0.68)),
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
         step=0.6,
@@ -173,8 +173,8 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     converged = step(seed)
 
     # It widened past the starting selection, all the way to the fully-reachable (saturated) set.
-    started = select_beams(BeamSelection(integration_semiangle=0.68))(seed)
-    saturated = select_beams(BeamSelection(integration_semiangle=5.0))(seed)
+    started = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=0.68)))(seed)
+    saturated = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=5.0)))(seed)
     assert beam_count(started) < beam_count(converged) == beam_count(saturated)
 
 
@@ -184,15 +184,15 @@ def test_converge_beams_fine_step_stops_early_at_an_intermediate_plateau() -> No
     # dip below threshold on an intermediate count plateau, stopping short of the saturated set.
     # This is the documented discrete-plateau sensitivity (managed by step choice, not patience).
     step = converge_beams(
-        BeamSelection(integration_semiangle=0.68),
+        BeamSelection(integration=IntegrationGeometry(semiangle=0.68)),
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=20),
         step=0.06,
     )
     converged = step(seed)
 
-    started = select_beams(BeamSelection(integration_semiangle=0.68))(seed)
-    saturated = select_beams(BeamSelection(integration_semiangle=5.0))(seed)
+    started = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=0.68)))(seed)
+    saturated = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=5.0)))(seed)
     assert beam_count(started) < beam_count(converged) < beam_count(saturated)
 
 
@@ -220,7 +220,7 @@ def _pool_active_count(seed: Plan, g_max_refine: float, semiangle: float) -> int
         )
         for op in seed.orientations
     )
-    pruned = select_beams(BeamSelection(integration_semiangle=semiangle))(
+    pruned = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=semiangle)))(
         replace(seed, orientations=reseeded)
     )
     return len(pruned.orientations[0].beam_hkl)
@@ -231,7 +231,7 @@ def test_converge_pool_widens_the_seed_until_the_pattern_settles() -> None:
     # Widen the g_max_refine candidate pool (window held at 1.0). The active set grows as the pool
     # admits more near-Ewald beams, then the consecutive-simulation change settles below threshold.
     step = converge_pool(
-        BeamSelection(integration_semiangle=1.0),
+        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
         start_g_max_refine=0.5,
@@ -249,7 +249,7 @@ def test_converge_pool_raises_past_the_grid_difference_support() -> None:
     # a tolerance that never settles drives the sweep past that bound, which must raise (not
     # silently truncate) -- dependent grid resizing is unimplemented.
     step = converge_pool(
-        BeamSelection(integration_semiangle=1.0),
+        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
         refinement,
         ConvergenceTolerance(r_factor_threshold=1e-9, max_iterations=50),
         start_g_max_refine=1.0,
@@ -276,7 +276,7 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     # so the consecutive-simulation change shrinks monotonically and settles below threshold. Each
     # orientation carries one beam plan per tilt, so len(beam_plans) is the converged tilt count.
     step = converge_sampling(
-        RockingCurve(semiangle=0.5, sampling=1),
+        RockingCurve(sampling=1, integration=IntegrationGeometry(semiangle=0.5)),
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.01, max_iterations=30),
         step=2.0,
@@ -288,7 +288,9 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     # started from a single static solve (sampling == 1); convergence genuinely refined the grid
     assert (
         len(
-            integrate_rocking_curve(RockingCurve(semiangle=0.5, sampling=1))(seed)
+            integrate_rocking_curve(
+                RockingCurve(sampling=1, integration=IntegrationGeometry(semiangle=0.5))
+            )(seed)
             .orientations[0]
             .beam_plans
         )
