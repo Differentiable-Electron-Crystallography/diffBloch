@@ -30,9 +30,11 @@ __all__ = [
     "IntegrationGeometry",
     "Mosaicity",
     "RockingCurve",
+    "ScoredSelection",
     "ThicknessGrid",
     "TiltIndependent",
     "TiltSegmentUnion",
+    "TrialCoupling",
 ]
 
 
@@ -303,6 +305,53 @@ class TiltIndependent:
 # ``couple_beams`` step matches on, not a boolean toggle -- the faithful policy carries its own
 # parameters, the default carries none.
 CouplingPolicy = TiltIndependent | TiltSegmentUnion
+
+
+@dataclass(frozen=True)
+class ScoredSelection:
+    """The SCORED selector: the Klar window intersected with a scoring-resolution cap.
+
+    When a fit re-derives its reflection sets per trial under a coupling policy, the *scored* set is
+    not the solve union -- it is the union filtered back down to the reflections actually compared
+    against the observed pattern. That is two filters, mirroring ``diffBloch_private``'s
+    ``filter_hkls`` (the Klar relative-excitation window) followed by ``resolution_filter`` (a
+    radial ``|g|`` cap): ``klar`` supplies the former (:class:`BeamSelection` -- ``rsg`` / ``dsg`` +
+    the shared :class:`IntegrationGeometry`), and ``g_max`` the latter. The private's
+    ``g_min_refine`` is ``0.0`` for every dataset (verified), so no lower-shell bound is modelled;
+    add one when a dataset needs it.
+
+    ``g_max`` is the *scoring*-resolution cap (the private's ``g_max_refine`` in its scored-set
+    role), given its own named home here so it is distinct from the seed beam-pool radius -- the two
+    are numerically equal today (both ``1.6`` on quartz) but are separate quantities. It must be
+    positive.
+    """
+
+    klar: BeamSelection = field(default_factory=BeamSelection)
+    g_max: float = 1.6  # scoring-resolution cap on |g| (the private's g_max_refine scored role)
+
+    def __post_init__(self) -> None:
+        if self.g_max <= 0.0:
+            raise ValueError("g_max must be positive")
+
+
+@dataclass(frozen=True)
+class TrialCoupling:
+    """Per-trial re-derivation of both reflection sets during an orientation fit.
+
+    The faithful ``diffBloch_private`` orientation objective re-runs the whole forward at every
+    trial orientation: it re-couples the SOLVE union (the excitation coupling of ``policy``) *and*
+    re-selects the SCORED set (``scored``) from that fresh union, so both sets track the trial
+    orientation rather than staying pinned to the seed. Passed to
+    :func:`~diffBloch.preprocess.steps.fit_orientation.fit_orientation` (``coupling=...``) to opt a
+    fit into that behaviour; its absence (``None``) keeps the tilt-independent fit (one fixed beam
+    set across the search).
+
+    Bundling both selectors makes the invalid state -- coupling active but a selector missing --
+    unrepresentable, so the fit takes one optional parameter with no cross-parameter guard.
+    """
+
+    policy: TiltSegmentUnion  # SOLVE: the per-tilt-segment excitation union
+    scored: ScoredSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
 
 
 @dataclass(frozen=True)

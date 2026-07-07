@@ -36,7 +36,14 @@ from diffBloch.preprocess import (
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import HexagonalSearch, ThicknessGrid, TiltIndependent, TiltSegmentUnion
+from diffBloch.specs import (
+    HexagonalSearch,
+    ScoredSelection,
+    ThicknessGrid,
+    TiltIndependent,
+    TiltSegmentUnion,
+    TrialCoupling,
+)
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
 
@@ -275,20 +282,18 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
     assert thick.thickness.shape == (1,)  # baked the grid-search winner
 
 
-def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> None:
-    """couple_beams re-derives segments at the current orientation and re-pins the same scored set.
+def _quartz_rot13() -> tuple[object, OrientationPlan, object]:
+    """Load the quartz fixture's rotation 13 as a plain OrientationPlan + a RefinementSetup.
 
-    The faithful recipe re-couples the fitted plan; applied to an already-segmented plan it must not
-    raise (the old guard did), must return a segmented plan, and -- at an unchanged orientation --
-    reproduce the union and the pinned scored set (``op.alignment.hkl``) of the first coupling.
-    Uses the quartz fixture because a real coupling union needs a grid that spans its beam
-    differences (the synthetic silicon grid is too small).
+    A real coupling union needs a grid that spans its beam differences, which the synthetic silicon
+    grid is too small for -- so the coupled-fit / re-couple tests use this fixture rotation.
     """
     from pathlib import Path
 
     from diffBloch.config import load_experiment
     from diffBloch.engine import ScatteringGrid
     from diffBloch.io import read_structure
+    from diffBloch.preprocess.experiment import RefinementSetup
 
     root = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
     cfg, _lock = load_experiment(root)
@@ -311,6 +316,17 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
         orientation=d["orientation"],
         tilts=tilts,
     )
+    return grid, op, RefinementSetup.from_structure(structure)
+
+
+def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> None:
+    """couple_beams re-derives segments at the current orientation and re-pins the same scored set.
+
+    The faithful recipe re-couples the fitted plan; applied to an already-segmented plan it must not
+    raise (the old guard did), must return a segmented plan, and -- at an unchanged orientation --
+    reproduce the union and the pinned scored set (``op.alignment.hkl``) of the first coupling.
+    """
+    grid, op, _refinement_unused = _quartz_rot13()
     policy = TiltSegmentUnion()
     once = couple_beams(policy)(Plan(grid=grid, orientations=(op,)))
 
@@ -320,6 +336,35 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     assert isinstance(recoupled, SegmentedOrientationPlan)
     assert recoupled.beam_hkl.tolist() == once.orientations[0].beam_hkl.tolist()  # idempotent union
     assert recoupled.alignment.hkl.tolist() == once.orientations[0].alignment.hkl.tolist()
+
+
+def test_fit_orientation_couples_and_reselects_per_trial() -> None:
+    """coupling=TrialCoupling re-couples + re-selects at every trial (the private's objective).
+
+    Two claims: (1) a coupled trial at a tilted orientation re-selects a *different* scored set than
+    at the seed -- the deliberately non-stationary objective the module docstring records; (2) the
+    seed is rebuilt through the coupled builder, so an opted-in fit returns a segmented plan. A
+    short search keeps the end-to-end run fast.
+    """
+    from diffBloch.preprocess.orientation import hexagonal_tilt
+    from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
+
+    grid, op, refinement = _quartz_rot13()
+    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+
+    seed_o = np.asarray(op.orientation, dtype=np.float64)
+    seed_trial = _coupled_trial(grid, op, seed_o, coupling)
+    tilt_trial = _coupled_trial(grid, op, seed_o @ hexagonal_tilt(0.0, 3.0), coupling)
+    assert isinstance(seed_trial, SegmentedOrientationPlan)
+    # union AND scored set are re-derived per trial (the non-stationary objective)
+    assert seed_trial.beam_hkl.tolist() != tilt_trial.beam_hkl.tolist()
+    assert seed_trial.alignment.hkl.tolist() != tilt_trial.alignment.hkl.tolist()
+
+    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
+    (fitted,) = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(
+        Plan(grid=grid, orientations=(op,))
+    ).orientations
+    assert isinstance(fitted, SegmentedOrientationPlan)  # seed rebuilt through the coupled builder
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
