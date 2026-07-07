@@ -27,11 +27,16 @@ from tests.unit.test_inference import (
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
 from diffBloch.engine import SegmentedOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
-from diffBloch.preprocess import couple_beams, run_inference
+from diffBloch.preprocess import (
+    couple_beams,
+    fit_orientation,
+    fit_thickness,
+    run_inference,
+)
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import TiltIndependent, TiltSegmentUnion
+from diffBloch.specs import HexagonalSearch, ThicknessGrid, TiltIndependent, TiltSegmentUnion
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
 
@@ -237,6 +242,37 @@ def test_run_inference_scores_a_segmented_plan() -> None:
 
     assert len(result.per_rotation) == 1
     assert result.per_rotation[0].r_obs < 1e-6  # self-consistent pattern
+
+
+def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
+    """The fits are plan-agnostic: they refine a coupled plan and preserve its segmented type."""
+    grid, asu_plan, spec, numbers = _silicon()
+    refinement = _refinement(asu_plan, spec, numbers)
+    segments = [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))]  # trivial partition (full beam set/chunk)
+    build_kwargs = dict(energy=_ENERGY, thickness=(300.0,), u0=0.0, tilts=_TILTS)
+    # Observe the plan's own integrated intensities at identity, so the search should keep it there.
+    seed = SegmentedOrientationPlan.build(
+        grid, segments, _pattern(torch.zeros(len(_BEAM_HKL))), orientation=np.eye(3), **build_kwargs
+    )
+    engine = build_engine(Plan(grid=grid, orientations=(seed,)), refinement, method=_METHOD)
+    observed = _pattern(engine.simulate(refinement.params)[0].intensities[0])
+    matched = SegmentedOrientationPlan.build(
+        grid, segments, observed, orientation=np.eye(3), **build_kwargs
+    )
+
+    (refined,) = fit_orientation(refinement, HexagonalSearch(), method=_METHOD)(
+        Plan(grid=grid, orientations=(matched,))
+    ).orientations
+    assert isinstance(refined, SegmentedOrientationPlan)  # segmented type preserved through the fit
+    assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2  # stayed optimal
+
+    (thick,) = fit_thickness(
+        refinement,
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
+        method=_METHOD,
+    )(Plan(grid=grid, orientations=(refined,))).orientations
+    assert isinstance(thick, SegmentedOrientationPlan)
+    assert thick.thickness.shape == (1,)  # baked the grid-search winner
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:

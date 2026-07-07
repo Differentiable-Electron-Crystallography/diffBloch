@@ -20,6 +20,13 @@ candidate is scored under the *same* integration as the seed -- the fit/eval con
 (the private fits under integration too, passing ``tilts`` into every simplex trial). Ordering
 ``integrate_rocking_curve`` before this step therefore couples the fit to the integrated model; with
 rocking off the tilt set is a single identity, byte-identical to a static fit.
+
+The step is plan-agnostic: each trial is ``current.with_orientation(...)``, defined on both the
+tilt-independent :class:`OrientationPlan` and the
+:class:`~diffBloch.engine.plan.SegmentedOrientationPlan`. So placing ``couple_beams`` *before* this
+step fits under the coupling -- the segments coupled at the seed orientation, re-solved at each
+trial orientation (the *frozen-union* fit: the union beam set stays fixed across the search, matched
+by a final ``couple_beams`` that re-couples at the fitted orientation for evaluation).
 """
 
 from __future__ import annotations
@@ -31,11 +38,11 @@ from torch import Tensor
 
 from diffBloch.core.solver import Method
 from diffBloch.engine import RefinementEngine
-from diffBloch.engine.plan import OrientationPlan
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan, require_orientation_plans
+from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import HexagonalSearch
 
@@ -76,8 +83,7 @@ def fit_orientation(
         engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
         orientations = tuple(
-            _refine_one(engine, fgb, plan, op, search=search)
-            for op in require_orientation_plans(plan)
+            _refine_one(engine, fgb, plan, op, search=search) for op in plan.orientations
         )
         return replace(plan, orientations=orientations)
 
@@ -88,10 +94,10 @@ def _refine_one(
     engine: RefinementEngine,
     fgb: Tensor,
     plan: Plan,
-    op: OrientationPlan,
+    op: OrientationPlanLike,
     *,
     search: HexagonalSearch,
-) -> OrientationPlan:
+) -> OrientationPlanLike:
     """Palatinus hexagonal search over one orientation; returns the best-scoring OrientationPlan."""
     current = op
     current_score = float(engine.score_orientation(current, fgb))

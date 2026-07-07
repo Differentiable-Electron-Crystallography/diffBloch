@@ -16,6 +16,11 @@ deterministic and depends only on its inputs, so it is ordinary computation, not
 
 Faithful to ``diffBloch_private``'s ``thickness_optim``: an evenly-spaced (``np.linspace``) grid of
 candidate thicknesses, per-candidate wR2 via the scaling factor, then the per-rotation minimum.
+
+Plan-agnostic: ``replace(op, thickness=...)`` swaps the thickness on either an
+:class:`OrientationPlan` or a :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (whose
+``_solve_segmented`` reads the top-level thickness, ignoring the stale sub-plan copies), so a
+coupled plan is fit unchanged.
 """
 
 from __future__ import annotations
@@ -27,10 +32,10 @@ from torch import Tensor
 
 from diffBloch.core.solver import Method
 from diffBloch.engine import RefinementEngine
-from diffBloch.engine.plan import OrientationPlan
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan, require_orientation_plans
+from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import ThicknessGrid
 
@@ -60,9 +65,7 @@ def fit_thickness(
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
-        orientations = tuple(
-            _fit_one(engine, fgb, op, candidates) for op in require_orientation_plans(plan)
-        )
+        orientations = tuple(_fit_one(engine, fgb, op, candidates) for op in plan.orientations)
         return replace(plan, orientations=orientations)
 
     return run
@@ -71,9 +74,9 @@ def fit_thickness(
 def _fit_one(
     engine: RefinementEngine,
     fgb: Tensor,
-    op: OrientationPlan,
+    op: OrientationPlanLike,
     candidates: Tensor,
-) -> OrientationPlan:
+) -> OrientationPlanLike:
     """Score every candidate thickness for one orientation; bake the lowest-wR2 winner."""
     trial = replace(op, thickness=candidates)  # geometry unchanged; only the (T,) thickness swaps
     scores = engine.score_orientation_per_thickness(trial, fgb)  # one pass over all candidates

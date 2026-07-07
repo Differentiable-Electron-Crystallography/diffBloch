@@ -34,14 +34,17 @@ class Plan:
 def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
     """Narrow a plan's orientations to plain :class:`OrientationPlan`\\ s (reject segmented ones).
 
-    Every ``Plan -> Plan`` step other than ``couple_beams`` (``select_beams``,
-    ``integrate_rocking_curve``, ``mosaicity``, ``fit_orientation``, ``fit_thickness``) transforms
-    the tilt-independent :class:`OrientationPlan`, which carries one shared beam set.
+    The tilt-independent-only plan-shaping steps (``select_beams``, ``integrate_rocking_curve``,
+    ``mosaicity``) transform the :class:`OrientationPlan`, which carries one shared beam set.
     ``couple_beams`` replaces each orientation with a
     :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (a per-tilt-chunk beam set) that those
-    steps cannot consume, so ``couple_beams`` must be the *final* ``Plan -> Plan`` step in a
-    pipeline. This helper enforces that ordering with a clear error and narrows the element type for
-    the caller.
+    steps cannot consume, so they must all precede ``couple_beams`` in a pipeline. This helper
+    enforces that ordering with a clear error and narrows the element type for the caller.
+
+    The fitting steps (``fit_orientation``, ``fit_thickness``) are deliberately *not* narrowed: they
+    are plan-agnostic (they rebuild via :meth:`OrientationPlan.with_orientation` /
+    ``replace(thickness=...)``, both defined on the segmented plan too), so they iterate
+    ``plan.orientations`` directly and run either before or after ``couple_beams``.
     """
     narrowed: list[OrientationPlan] = []
     for op in plan.orientations:

@@ -35,7 +35,6 @@ from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import Method, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import (
-    OrientationPlan,
     OrientationPlanLike,
     ScatteringGrid,
     SegmentedOrientationPlan,
@@ -87,7 +86,7 @@ class RefinementEngine:
         """
         return self._structure_factors(params)
 
-    def score_orientation(self, orientation: OrientationPlan, fgb: Tensor) -> Tensor:
+    def score_orientation(self, orientation: OrientationPlanLike, fgb: Tensor) -> Tensor:
         """Scaling-optimised weighted-R2 (wR2) for one orientation against its observed pattern.
 
         Runs the forward Bloch simulation for ``orientation`` from a precomputed ``fgb``
@@ -99,7 +98,9 @@ class RefinementEngine:
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
 
-    def score_orientation_per_thickness(self, orientation: OrientationPlan, fgb: Tensor) -> Tensor:
+    def score_orientation_per_thickness(
+        self, orientation: OrientationPlanLike, fgb: Tensor
+    ) -> Tensor:
         """Scaling-optimised wR2 for each of the orientation's thicknesses (shape ``(T,)``).
 
         One forward Bloch simulation from a precomputed ``fgb`` (:meth:`fgb`) covers all ``T``
