@@ -10,9 +10,19 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=512]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.7
+  - repo: local
     hooks:
+      # Use the project's uv-managed ruff (single source of truth with `just check` / CI), not a
+      # separately-pinned mirror -- the two drifted (v0.5.7 vs 0.15.x) and disagreed on formatting.
       - id: ruff
-        args: [--fix]
+        name: ruff (uv)
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ruff-format
+        name: ruff-format (uv)
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

@@ -137,6 +137,6 @@ def test_quartz_coupling_parity() -> None:
 
     for rotation in PARITY_ROTATIONS:
         r_obs = _replay_r_obs(rotation, grid, refinement, cfg.solver.inference, tilts)
-        assert r_obs == pytest.approx(
-            reference[rotation], abs=PARITY_TOL
-        ), f"rot {rotation}: replay R_obs {r_obs:.4f} vs reference {reference[rotation]:.4f}"
+        assert r_obs == pytest.approx(reference[rotation], abs=PARITY_TOL), (
+            f"rot {rotation}: replay R_obs {r_obs:.4f} vs reference {reference[rotation]:.4f}"
+        )
