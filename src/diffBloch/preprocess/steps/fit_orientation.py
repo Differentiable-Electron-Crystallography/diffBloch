@@ -95,15 +95,11 @@ def _refine_one(
     """Palatinus hexagonal search over one orientation; returns the best-scoring OrientationPlan."""
     current = op
     current_score = float(engine.score_orientation(current, fgb))
-    beam_hkl = np.asarray(
-        op.beam_hkl, dtype=np.int64
-    )  # fixed across the search (no per-trial re-filter, unlike the private)
-    # The rocking-curve tilt set is threaded through every trial unchanged, so each candidate is
-    # scored under the same integration as the seed (fit/eval consistency). Identity (N=1) when
-    # rocking is off -> I @ orientation == orientation, byte-identical to the untilted build.
-    tilts = np.asarray(op.tilts, dtype=np.float64)
-    reduction = op.tilt_reduction  # mosaicity broadening (if any) is likewise fit under, not after
-    gather = op.beam_plans[0].gather  # beam set is fixed across the search; reuse (avoid rebuild)
+    # Each trial is ``current.with_orientation(...)``: it rebuilds only the orientation-dependent
+    # bases and reuses the F-gather, so the beam set, rocking-curve tilts, and reduction are held
+    # fixed across the search (not re-filtered per trial as the private does -- a recorded
+    # divergence). The tilt set threading through unchanged keeps every candidate scored under the
+    # same integration as the seed (fit/eval consistency; identity N=1 when rocking is off).
     search_angle = search.max_search_angle
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
@@ -114,18 +110,7 @@ def _refine_one(
             orientation = np.asarray(current.orientation, dtype=np.float64) @ hexagonal_tilt(
                 azimuth, search_angle
             )
-            trial = OrientationPlan.build(
-                plan.grid,
-                beam_hkl,
-                current.pattern,
-                energy=current.energy,
-                thickness=current.thickness,
-                u0=current.u0,
-                orientation=orientation,
-                tilts=tilts,
-                tilt_reduction=reduction,
-                gather=gather,
-            )
+            trial = current.with_orientation(plan.grid, orientation)
             trial_score = float(engine.score_orientation(trial, fgb))
             if trial_score < current_score:  # greedy first-improvement; restart at this radius
                 current, current_score = trial, trial_score
