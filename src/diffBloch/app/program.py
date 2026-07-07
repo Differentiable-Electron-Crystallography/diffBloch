@@ -1,13 +1,12 @@
 """The default experiment runner the ``run infer`` CLI exposes.
 
-:func:`run_experiment` encodes the faithful default recipe as two declared phases in a
-:class:`~diffBloch.preprocess.pipeline.Pipelines`: a **preprocess** phase that shapes the plan
-(``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) and a **refine** phase that fits
-parameters under it (``fit_orientation`` -> ``fit_thickness``), then ``run_inference`` -- so a
-caller
+:func:`run_experiment` encodes the faithful default recipe as one ordered ``Plan -> Plan``
+pipeline: plan-shaping (``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) followed
+by parameter fitting (``fit_orientation`` -> ``fit_thickness``), then ``run_inference`` evaluates it
+-- so a caller
 with an experiment directory gets the faithful result in one call. It is a *convenience*, not the
 only path: every step is ordinary public API, so a Python user who wants a different composition
-(convergence, a custom order, dropping mosaicity) builds their own ``Pipelines`` with
+(convergence, a custom order, dropping mosaicity) composes their own ``pipeline([...])`` with
 ``from_experiment`` + ``run_inference`` directly. The CLI stays thin by delegating here and holds no
 science.
 """
@@ -20,7 +19,6 @@ from diffBloch.config import load_experiment
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.preprocess import (
-    Pipelines,
     fit_orientation,
     fit_thickness,
     from_experiment,
@@ -53,29 +51,21 @@ def run_experiment(experiment_dir: str | Path, *, logger: Logger = NULL_LOGGER) 
     observations = read_observations(root / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
-    pipelines = Pipelines(
-        preprocess=pipeline(
-            [
-                select_beams(cfg.numerics.to_beam_selection()),
-                integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-                mosaicity(cfg.numerics.mosaicity),
-            ]
-        ),
-        refine=pipeline(
-            [
-                fit_orientation(
-                    refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
-                ),
-                fit_thickness(
-                    refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine
-                ),
-            ]
-        ),
+    prepare = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+            mosaicity(cfg.numerics.mosaicity),
+            fit_orientation(
+                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+            ),
+            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        ]
     )
     return run_inference(
         setup.plans.combined,
         refinement,
-        pipelines=pipelines,
+        prepare=prepare,
         method=cfg.solver.inference,
         logger=logger,
     )

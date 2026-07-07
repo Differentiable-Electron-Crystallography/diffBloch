@@ -41,7 +41,6 @@ from diffBloch.app.cli import main as cli_main
 from diffBloch.config import load_experiment, sha256_file
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
-    Pipelines,
     fit_orientation,
     fit_thickness,
     from_experiment,
@@ -121,21 +120,17 @@ def test_quartz_reference_anchor(material: str) -> None:
     # Run the whole experiment through the public API over all 99 rotations.
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
-    pipelines = Pipelines(
-        preprocess=pipeline([select_beams(cfg.numerics.to_beam_selection())]),
-        refine=pipeline(
-            [
-                fit_orientation(
-                    refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
-                ),
-                fit_thickness(
-                    refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine
-                ),
-            ]
-        ),
+    prepare = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            fit_orientation(
+                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+            ),
+            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        ]
     )
     result = run_inference(
-        setup.plans.combined, refinement, pipelines=pipelines, method=cfg.solver.inference
+        setup.plans.combined, refinement, prepare=prepare, method=cfg.solver.inference
     )
 
     assert result.n_evaluated == observations.n_rotations
@@ -188,26 +183,18 @@ def test_quartz_integrated_anchor(capsys: pytest.CaptureFixture[str]) -> None:
         raise ValueError(f"DIFFBLOCH_ANCHOR_ROTATIONS must be in 1..{len(plan.orientations)}")
     plan = replace(plan, orientations=plan.orientations[:n_rotations])
 
-    pipelines = Pipelines(
-        preprocess=pipeline(
-            [
-                select_beams(cfg.numerics.to_beam_selection()),
-                integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-                mosaicity(cfg.numerics.mosaicity),
-            ]
-        ),
-        refine=pipeline(
-            [
-                fit_orientation(
-                    refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
-                ),
-                fit_thickness(
-                    refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine
-                ),
-            ]
-        ),
+    prepare = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+            mosaicity(cfg.numerics.mosaicity),
+            fit_orientation(
+                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+            ),
+            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        ]
     )
-    result = run_inference(plan, refinement, pipelines=pipelines, method=cfg.solver.inference)
+    result = run_inference(plan, refinement, prepare=prepare, method=cfg.solver.inference)
 
     assert result.n_evaluated == n_rotations
     if n_rotations == observations.n_rotations:

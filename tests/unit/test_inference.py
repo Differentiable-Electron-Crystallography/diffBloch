@@ -18,7 +18,7 @@ from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
-from diffBloch.preprocess import Pipelines, RefinementSetup, run_inference
+from diffBloch.preprocess import RefinementSetup, run_inference
 from diffBloch.preprocess.plan import Plan
 
 _ENERGY = 200e3
@@ -116,7 +116,7 @@ def test_run_inference_penalises_a_mismatched_pattern() -> None:
     assert result.per_rotation[1].r_obs > result.per_rotation[0].r_obs
 
 
-def test_run_inference_applies_the_preprocess_step() -> None:
+def test_run_inference_applies_the_prepare_step() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     plan = Plan(
@@ -124,12 +124,12 @@ def test_run_inference_applies_the_preprocess_step() -> None:
         orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
     )
 
-    # A preprocess step that keeps only the first orientation must shrink the reported rotations.
+    # A prepare step that keeps only the first orientation must shrink the reported rotations.
     keep_first = lambda p: Plan(grid=p.grid, orientations=p.orientations[:1])  # noqa: E731
     result = run_inference(
         plan,
         _refinement(asu_plan, spec, numbers),
-        pipelines=Pipelines(preprocess=keep_first),
+        prepare=keep_first,
         method=_METHOD,
     )
 

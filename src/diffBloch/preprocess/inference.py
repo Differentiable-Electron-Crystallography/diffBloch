@@ -30,7 +30,7 @@ from diffBloch.observability import (
     RotationScored,
 )
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.pipeline import NO_PIPELINES, Pipelines
+from diffBloch.preprocess.pipeline import PlanStep, identity
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 
@@ -84,16 +84,16 @@ def run_inference(
     plan: Plan,
     refinement: RefinementSetup,
     *,
-    pipelines: Pipelines = NO_PIPELINES,
+    prepare: PlanStep = identity,
     method: Method = "bloch_eigen",
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
 
-    First applies ``pipelines`` to ``plan`` -- its ``preprocess`` phase shapes the geometry (e.g.
-    ``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) and its ``refine`` phase fits
-    parameters (orientation, thickness) under that shaped plan; both default to identity. Then
-    builds
+    First applies ``prepare`` to ``plan`` -- one composed ``Plan -> Plan`` pipeline (compose the
+    run's steps with :func:`~diffBloch.preprocess.pipeline.pipeline`, e.g. ``select_beams`` ->
+    ``integrate_rocking_curve`` -> ``mosaicity`` -> ``fit_orientation`` -> ``fit_thickness``);
+    it defaults to the identity (evaluate the plan as given). Then builds
     a :class:`RefinementEngine`, simulates every orientation under ``no_grad`` with the swappable
     ``method`` solver, and returns per-rotation :class:`RotationInference`.
 
@@ -103,7 +103,7 @@ def run_inference(
     unchanged whether or not a sink is attached). Attach a console/wandb logger at the boundary to
     watch per-rotation ``R_obs`` live -- e.g. while chasing a residual.
     """
-    plan = pipelines.apply(plan)
+    plan = prepare(plan)
     engine = build_engine(plan, refinement, method=method)
     with torch.no_grad():
         solutions = engine.simulate(refinement.params)
