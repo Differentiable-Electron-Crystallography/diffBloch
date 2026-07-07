@@ -31,7 +31,7 @@ from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_orientation_plans
 from diffBloch.specs import BeamSelection
 
 __all__ = ["klar_beam_mask", "reseed_pool", "select_beams"]
@@ -58,7 +58,9 @@ def select_beams(selection: BeamSelection) -> PlanStep:
 
     def run(plan: Plan) -> Plan:
         cell = np.asarray(plan.grid.cell)
-        orientations = tuple(_reselect(plan.grid, cell, op, selection) for op in plan.orientations)
+        orientations = tuple(
+            _reselect(plan.grid, cell, op, selection) for op in require_orientation_plans(plan)
+        )
         return replace(plan, orientations=orientations)
 
     return run

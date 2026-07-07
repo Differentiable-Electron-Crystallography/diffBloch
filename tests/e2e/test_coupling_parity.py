@@ -12,11 +12,13 @@ Two things are reproduced together, because both were proven to be the private's
   byte-identical by ``compare_private_segments.py``; ``Fgb`` by ``compare_fgb.py``).
 - **Tilt reduction (mosaicity)** -- the private smooths each reflection's rocking curve with a
   window-5 moving average before summing (config ``mosaicity: true``;
-  ``diffraction_dataset.get_integrated_intensities`` -> ``moving_average``). This replay therefore
-  gathers each matched reflection's per-tilt intensity into its **full** rocking curve across all
-  segments, *then* applies the window-5 valid-mean smoothing -- the reduction must see the whole
-  curve (the window exceeds a single segment's 3-4 tilts). That reassemble-then-smooth shape is
-  exactly what a future ``SegmentedOrientationPlan`` will do inside the engine; here it is explicit.
+  ``diffraction_dataset.get_integrated_intensities`` -> ``moving_average``). The engine's
+  :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` reassembles each matched reflection's
+  per-tilt intensity into its **full** rocking curve across all segments and *then* applies the
+  window-5 reduction -- the reduction must see the whole curve (the window exceeds a single
+  segment's 3-4 tilts). This replay builds that plan directly from the vendored private segments and
+  scores it through the ordinary engine (``simulate`` -> ``align`` -> ``rbragg``), so it exercises
+  the same reassemble-then-reduce path ``couple_beams`` produces in a real run.
 
 Rot 61 was previously a "corner-beam outlier" under a plain-sum replay. That was a *reduction*
 artifact, not a solve difference: its per-tilt ``|psi(4,0,5)|^2`` is byte-identical to the private,
@@ -35,9 +37,9 @@ import torch
 
 from diffBloch.config import load_experiment
 from diffBloch.core.losses import optimal_scale, rbragg
-from diffBloch.core.products import PatternBatch, align
+from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
 from diffBloch.core.solver import Method
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.io import read_structure
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan
@@ -70,19 +72,6 @@ def _reference_r_obs() -> dict[int, float]:
     return {int(d["rotation_idx"]): float(d["R_obs"]) for d in data["rotations"]}
 
 
-def _smoothed_sum(curve: torch.Tensor) -> torch.Tensor:
-    """Window-MOSAICITY_WINDOW valid-mean sum over the tilt axis: the private mosaicity integration.
-
-    ``curve`` is ``(n_tilts, n_matched)``. The private applies a moving average (valid ``unfold``
-    mean, zero-padded back) then sums; the zero-pad does not affect the sum, so this equals the sum
-    of the ``n_tilts - window + 1`` window means. The edge windows (counts 1..window-1) down-weight
-    a sharp peak sitting near the boundary of a reflection's coupled range -- the rot-61 effect.
-    """
-    if curve.shape[0] < MOSAICITY_WINDOW:
-        return curve.sum(dim=0)
-    return curve.unfold(0, MOSAICITY_WINDOW, 1).mean(dim=-1).sum(dim=0)
-
-
 def _replay_r_obs(
     rotation: int,
     grid: ScatteringGrid,
@@ -90,7 +79,7 @@ def _replay_r_obs(
     method: Method,
     tilts: np.ndarray,
 ) -> float:
-    """Replay one rotation's private coupling + mosaicity through our solver; return Bragg R."""
+    """Replay one rotation's private coupling + mosaicity through the engine; return Bragg R."""
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     observed = torch.tensor(d["exp_ints"], dtype=torch.float64)
     sigmas = torch.tensor(d["sigmas"], dtype=torch.float64)
@@ -99,31 +88,32 @@ def _replay_r_obs(
     )
     thickness = float(np.asarray(d["thickness"]).reshape(-1)[-1])
     u0 = float(d["u0"])
-    # Reassemble each matched reflection's full rocking curve: every tilt belongs to exactly one
-    # segment (disjoint covers), and a reflection contributes at that tilt iff it is in the
-    # segment's coupling union. One single-tilt solve per tilt places its matched intensities on the
-    # full axis; the mosaicity smoothing then runs over the whole curve (never per-segment -- the
-    # window exceeds a segment's tilt count).
-    curve = torch.zeros(len(tilts), len(d["hkl_matched"]), dtype=torch.float64)
-    for k in range(int(d["n_segments"])):
-        seg_hkl = d[f"seg{k}_hkl"]
-        for tilt_index in d[f"seg{k}_cover"]:
-            op = OrientationPlan.build(
-                grid,
-                seg_hkl,
-                pattern,
-                energy=ENERGY_EV,
-                thickness=(thickness,),
-                orientation=d["orientation"],
-                tilts=tilts[int(tilt_index)][None],
-                u0=u0,
-            )
-            engine = build_engine(Plan(grid=grid, orientations=(op,)), refinement, method=method)
-            with torch.no_grad():
-                solution = engine.simulate(refinement.params)[0]
-            aligned = align(solution, pattern, op.alignment)
-            curve[int(tilt_index)].index_add_(0, op.alignment.pattern_index, aligned.calculated[0])
-    _scale, r_obs = optimal_scale(_smoothed_sum(curve), observed, sigmas, metric=rbragg)
+    # Build the segmented plan from the private's exact per-chunk beam sets + covers, with the
+    # window-5 mosaicity reduction. The engine solves each chunk, reassembles every reflection's
+    # full rocking curve onto the union axis, and applies the reduction to the whole curve -- the
+    # reassemble-then-reduce path a real ``couple_beams`` run produces (here the segments are the
+    # vendored private ones, isolating the engine reassembly from the coupling geometry, which
+    # ``test_coupling`` proves separately).
+    segments = [
+        (d[f"seg{k}_hkl"], tuple(int(c) for c in d[f"seg{k}_cover"]))
+        for k in range(int(d["n_segments"]))
+    ]
+    plan = SegmentedOrientationPlan.build(
+        grid,
+        segments,
+        pattern,
+        energy=ENERGY_EV,
+        thickness=(thickness,),
+        u0=u0,
+        orientation=d["orientation"],
+        tilts=tilts,
+        tilt_reduction=MosaicSmoothed(MOSAICITY_WINDOW),
+    )
+    engine = build_engine(Plan(grid=grid, orientations=(plan,)), refinement, method=method)
+    with torch.no_grad():
+        solution = engine.simulate(refinement.params)[0]
+    aligned = align(solution, plan.pattern, plan.alignment)
+    _scale, r_obs = optimal_scale(aligned.calculated[0], aligned.observed[0], sigmas, metric=rbragg)
     return float(r_obs)
 
 

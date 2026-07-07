@@ -50,6 +50,7 @@ from diffBloch.preprocess.steps.convergence import (
     simulation_converged,
     simulation_rfactor,
 )
+from diffBloch.preprocess.steps.coupling import couple_beams
 from diffBloch.preprocess.steps.coverage import (
     cover_beams,
     cover_pool,
@@ -105,6 +106,7 @@ __all__ = [
     "iterate_until",
     "klar_beam_mask",
     "maximize_scalar",
+    "couple_beams",
     "mosaicity",
     "orientation_basis",
     "orientation_matrices",

@@ -22,7 +22,7 @@ import torch
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution, align
 from diffBloch.core.solver import Method
-from diffBloch.engine.plan import OrientationPlan
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
     NULL_LOGGER,
     InferenceCompleted,
@@ -128,7 +128,7 @@ def run_inference(
     return result
 
 
-def _score_rotation(orientation: OrientationPlan, solution: BlochSolution) -> RotationInference:
+def _score_rotation(orientation: OrientationPlanLike, solution: BlochSolution) -> RotationInference:
     """Bragg R-factor + diagnostics for one already-simulated orientation."""
     aligned = align(solution, orientation.pattern, orientation.alignment)
     # One forward pass covers all thicknesses; take the best-fitting thickness's R (a nuisance

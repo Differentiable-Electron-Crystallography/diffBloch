@@ -24,11 +24,22 @@ from torch import Tensor
 from diffBloch.core.constraints import positive
 from diffBloch.core.dynamical import build_bloch_system, build_bloch_systems, stack_beam_plans
 from diffBloch.core.losses import optimal_scale
-from diffBloch.core.products import AlignedIntensities, BlochSolution, align
+from diffBloch.core.products import (
+    AlignedIntensities,
+    BlochSolution,
+    align,
+    intensities,
+    reduce_tilts,
+)
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import Method, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.plan import (
+    OrientationPlan,
+    OrientationPlanLike,
+    ScatteringGrid,
+    SegmentedOrientationPlan,
+)
 from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
@@ -57,7 +68,7 @@ class RefinementEngine:
     asu_plan: AsuExpansionPlan
     numbers: Tensor
     grid: ScatteringGrid
-    orientations: tuple[OrientationPlan, ...]
+    orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: Method = "matrix_exp"
 
@@ -160,7 +171,7 @@ class RefinementEngine:
             logger=logger,
         )
 
-    def _thickness_for(self, orientation: OrientationPlan, params: RefinableParams) -> Tensor:
+    def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
         """The thickness ``(T,)`` the forward model uses for one orientation.
 
         There are two sources of thickness, and this picks between them:
@@ -207,8 +218,10 @@ class RefinementEngine:
         )
 
     def _solve(
-        self, orientation: OrientationPlan, fgb: Tensor, thicknesses: Tensor
+        self, orientation: OrientationPlanLike, fgb: Tensor, thicknesses: Tensor
     ) -> BlochSolution:
+        if isinstance(orientation, SegmentedOrientationPlan):
+            return self._solve_segmented(orientation, fgb, thicknesses)
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device)
         beam_hkl = orientation.beam_hkl.to(device)
@@ -228,4 +241,38 @@ class RefinementEngine:
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
             amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
+        )
+
+    def _solve_segmented(
+        self, plan: SegmentedOrientationPlan, fgb: Tensor, thicknesses: Tensor
+    ) -> BlochSolution:
+        """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
+
+        The tilt-dependent coupling path (Option A): each :class:`SegmentPlan` is solved over its
+        covered tilts with the batched propagator, and its per-tilt intensities are scattered onto
+        the shared ``(N_tilts, T, N_union)`` rocking curve (each tilt belongs to exactly one
+        segment; a beam absent from a chunk stays 0 at that chunk's tilts). Only once the whole
+        curve is reassembled is the tilt reduction applied -- the mosaicity window spans more tilts
+        than any single chunk holds -- and the result is returned as an ordinary
+        :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
+        """
+        device = fgb.device
+        thicknesses = thicknesses.to(device)
+        n_tilts = int(plan.tilts.shape[0])
+        n_union = int(plan.beam_hkl.shape[0])
+        n_thick = int(thicknesses.shape[0])
+        curve = fgb.new_zeros((n_tilts, n_thick, n_union), dtype=thicknesses.dtype)
+        for segment in plan.segments:
+            batch = stack_beam_plans(segment.plan.beam_plans)
+            amplitudes = propagate(
+                build_bloch_systems(batch, fgb), thicknesses, method=self.method
+            )  # (C, T, n_seg)
+            cover = segment.cover.to(device)
+            union_index = segment.union_index.to(device)
+            block = curve[cover]  # (C, T, n_union) gathered copy
+            block[:, :, union_index] = intensities(amplitudes)
+            curve[cover] = block
+        total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
+        return BlochSolution(
+            total.sqrt().to(fgb.dtype), total, plan.beam_hkl.to(device), thicknesses
         )

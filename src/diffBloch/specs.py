@@ -31,6 +31,7 @@ __all__ = [
     "Mosaicity",
     "RockingCurve",
     "ThicknessGrid",
+    "TiltIndependent",
     "TiltSegmentUnion",
 ]
 
@@ -280,6 +281,28 @@ class TiltSegmentUnion:
             raise ValueError("g_max and sg_max must be positive")
         if self.g_max - self.cap_margin <= 0.0:
             raise ValueError("coupling cap g_max - cap_margin must be positive")
+
+
+@dataclass(frozen=True)
+class TiltIndependent:
+    """The default coupling: one beam set shared across every rocking-curve tilt.
+
+    The 2.0 baseline (and the ``diffBloch_private`` ``union_splits <= 1`` degenerate case): the
+    active beam set ``select_beams`` picks for the nominal orientation is reused, unchanged, at
+    every
+    tilt of the rocking curve. Fieldless because it carries no policy of its own -- the shared set
+    is
+    already fixed on the plan; it is the identity member of the coupling discriminated union, chosen
+    by construction when a run does *not* want the tilt-dependent per-chunk re-selection.
+    """
+
+
+# How a rocking curve couples beams across its tilts: one shared set (:class:`TiltIndependent`) or
+# the private's per-tilt-chunk boundary unions (:class:`TiltSegmentUnion`). A discriminated union
+# the
+# ``couple_beams`` step matches on, not a boolean toggle -- the faithful policy carries its own
+# parameters, the default carries none.
+CouplingPolicy = TiltIndependent | TiltSegmentUnion
 
 
 @dataclass(frozen=True)

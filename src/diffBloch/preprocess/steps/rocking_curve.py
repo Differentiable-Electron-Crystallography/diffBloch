@@ -30,7 +30,7 @@ import numpy as np
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_orientation_plans
 from diffBloch.specs import RockingCurve
 
 __all__ = ["integrate_rocking_curve"]
@@ -52,7 +52,9 @@ def integrate_rocking_curve(rocking: RockingCurve) -> PlanStep:
     )
 
     def run(plan: Plan) -> Plan:
-        orientations = tuple(_integrate_one(plan, op, tilts) for op in plan.orientations)
+        orientations = tuple(
+            _integrate_one(plan, op, tilts) for op in require_orientation_plans(plan)
+        )
         return replace(plan, orientations=orientations)
 
     return run

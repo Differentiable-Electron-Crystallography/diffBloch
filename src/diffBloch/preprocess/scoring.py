@@ -21,7 +21,7 @@ from torch import Tensor
 from diffBloch.core.solver import Method
 from diffBloch.engine import LossFn, RefinementEngine, w_rbragg_loss
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_orientation_plans
 
 __all__ = ["build_engine", "score_orientations"]
 
@@ -66,4 +66,7 @@ def score_orientations(
     """
     engine = build_engine(plan, refinement, method=method)
     fgb = engine.fgb(refinement.params)
-    return tuple(engine.score_orientation(orientation, fgb) for orientation in plan.orientations)
+    return tuple(
+        engine.score_orientation(orientation, fgb)
+        for orientation in require_orientation_plans(plan)
+    )

@@ -26,7 +26,7 @@ from dataclasses import replace
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_orientation_plans
 from diffBloch.specs import Mosaicity
 
 __all__ = ["mosaicity"]
@@ -44,7 +44,7 @@ def mosaicity(spec: Mosaicity) -> PlanStep:
     """
 
     def run(plan: Plan) -> Plan:
-        orientations = tuple(_apply_one(op, spec.window) for op in plan.orientations)
+        orientations = tuple(_apply_one(op, spec.window) for op in require_orientation_plans(plan))
         return replace(plan, orientations=orientations)
 
     return run

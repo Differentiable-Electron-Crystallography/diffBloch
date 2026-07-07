@@ -16,16 +16,23 @@ from diffBloch.engine.losses import (
     w_rbragg_loss,
     weighted_mse_loss,
 )
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.plan import (
+    OrientationPlan,
+    OrientationPlanLike,
+    ScatteringGrid,
+    SegmentedOrientationPlan,
+)
 from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
 
 __all__ = [
     "LossFn",
     "OptimizerName",
     "OrientationPlan",
+    "OrientationPlanLike",
     "RefinementEngine",
     "RefinementResult",
     "ScatteringGrid",
+    "SegmentedOrientationPlan",
     "l1_loss",
     "mse_loss",
     "rbragg_loss",

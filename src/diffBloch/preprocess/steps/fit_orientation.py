@@ -35,7 +35,7 @@ from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_orientation_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import HexagonalSearch
 
@@ -76,7 +76,8 @@ def fit_orientation(
         engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
         orientations = tuple(
-            _refine_one(engine, fgb, plan, op, search=search) for op in plan.orientations
+            _refine_one(engine, fgb, plan, op, search=search)
+            for op in require_orientation_plans(plan)
         )
         return replace(plan, orientations=orientations)
 

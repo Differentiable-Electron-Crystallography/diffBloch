@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.plan import OrientationPlan, OrientationPlanLike, ScatteringGrid
 
-__all__ = ["Plan"]
+__all__ = ["Plan", "require_orientation_plans"]
 
 
 @dataclass(frozen=True)
@@ -28,4 +28,28 @@ class Plan:
     """
 
     grid: ScatteringGrid
-    orientations: tuple[OrientationPlan, ...]
+    orientations: tuple[OrientationPlanLike, ...]
+
+
+def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
+    """Narrow a plan's orientations to plain :class:`OrientationPlan`\\ s (reject segmented ones).
+
+    Every ``Plan -> Plan`` step other than ``couple_beams`` (``select_beams``,
+    ``integrate_rocking_curve``, ``mosaicity``, ``fit_orientation``, ``fit_thickness``) transforms
+    the tilt-independent :class:`OrientationPlan`, which carries one shared beam set.
+    ``couple_beams`` replaces each orientation with a
+    :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (a per-tilt-chunk beam set) that those
+    steps cannot consume, so ``couple_beams`` must be the *final* ``Plan -> Plan`` step in a
+    pipeline. This helper enforces that ordering with a clear error and narrows the element type for
+    the caller.
+    """
+    narrowed: list[OrientationPlan] = []
+    for op in plan.orientations:
+        if not isinstance(op, OrientationPlan):
+            raise TypeError(
+                "this step transforms tilt-independent OrientationPlans, but this plan holds a "
+                "SegmentedOrientationPlan; couple_beams produces those and no other Plan -> Plan "
+                "step can consume them, so couple_beams must be the final step in the pipeline"
+            )
+        narrowed.append(op)
+    return tuple(narrowed)

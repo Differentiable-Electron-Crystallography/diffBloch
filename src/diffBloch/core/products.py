@@ -41,6 +41,7 @@ __all__ = [
     "align",
     "build_alignment_plan",
     "intensities",
+    "reduce_tilts",
 ]
 
 
@@ -81,8 +82,17 @@ TiltReduction = PlainSum | MosaicSmoothed
 PLAIN_SUM: TiltReduction = PlainSum()
 
 
-def _reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
-    """Reduce stacked per-tilt intensities ``(N_tilts, T, N_beams)`` over the tilt axis."""
+def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
+    """Reduce stacked per-tilt intensities ``(N_tilts, ...)`` over the leading tilt axis.
+
+    The rocking-curve rotation-frame integration: :class:`PlainSum` sums the tilts;
+    :class:`MosaicSmoothed` applies a width-``window`` moving average first (the private mosaicity
+    broadening). Public because the tilt axis is reduced from two places -- a single shared beam set
+    (:meth:`BlochSolution.integrate` / :meth:`BlochSolution.integrate_batched`) and the segmented
+    coupling path, which reassembles each reflection's curve across per-chunk beam sets onto a
+    shared
+    union axis and reduces that ``(N_tilts, T, N_union)`` stack here.
+    """
     match reduction:
         case PlainSum():
             return stacked.sum(dim=0)
@@ -152,7 +162,7 @@ class BlochSolution:
             if not torch.equal(other.beam_hkl, first.beam_hkl):
                 raise ValueError("integrated solutions must share the same beam set")
         stacked = torch.stack([s.intensities for s in solutions])  # (N_tilts, T, N_beams)
-        total = _reduce_tilts(stacked, reduction)
+        total = reduce_tilts(stacked, reduction)
         amplitudes = total.sqrt().to(first.amplitudes.dtype)
         return cls(amplitudes, total, first.beam_hkl, first.thicknesses)
 
@@ -190,7 +200,7 @@ class BlochSolution:
             )
         if thicknesses.shape != (n_thick,):
             raise ValueError(f"thicknesses must have shape (T,) = ({n_thick},) matching amplitudes")
-        total = _reduce_tilts(intensities(amplitudes), reduction)  # (T, N)
+        total = reduce_tilts(intensities(amplitudes), reduction)  # (T, N)
         return cls(total.sqrt().to(amplitudes.dtype), total, beam_hkl, thicknesses)
 
 

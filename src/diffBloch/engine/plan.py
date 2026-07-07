@@ -36,7 +36,10 @@ from diffBloch.core.reciprocal import make_hkl_grid, reciprocal_space_gpts
 
 __all__ = [
     "OrientationPlan",
+    "OrientationPlanLike",
     "ScatteringGrid",
+    "SegmentPlan",
+    "SegmentedOrientationPlan",
 ]
 
 
@@ -206,3 +209,140 @@ class OrientationPlan:
             alignment=build_alignment_plan(beam_hkl_t, pattern.hkl),
             tilt_reduction=tilt_reduction,
         )
+
+
+@dataclass(frozen=True)
+class SegmentPlan:
+    """One coupled tilt-chunk of a :class:`SegmentedOrientationPlan`: a sub-plan + reassembly map.
+
+    ``plan`` is an ordinary :class:`OrientationPlan` over the segment's own (smaller) beam set,
+    solved at just the tilts this chunk covers (``plan.tilts`` are the covered tilt matrices, so
+    ``len(plan.beam_plans) == len(cover)``). ``cover`` ``(C,)`` are the segment's global
+    rocking-curve tilt indices (contiguous; disjoint across a rotation's segments; tiling every tilt
+    once). ``union_index`` ``(n_seg,)`` maps each of the segment's beams to its column in the parent
+    plan's union beam set, so the segment's per-tilt intensities scatter onto the shared rocking
+    curve before the tilt reduction runs on the whole curve.
+    """
+
+    plan: OrientationPlan
+    cover: Tensor
+    union_index: Tensor
+
+
+@dataclass(frozen=True)
+class SegmentedOrientationPlan:
+    """A rotation whose rocking curve couples a *different* beam set per tilt chunk (the private).
+
+    The tilt-dependent generalization of :class:`OrientationPlan`: instead of one beam set shared
+    across all tilts, the curve is partitioned into :class:`SegmentPlan` chunks, each solving its
+    own boundary-union beam set over its covered tilts (see
+    :func:`diffBloch.preprocess.coupling.tilt_segment_coupling`). The engine solves each segment and
+    reassembles every reflection's per-tilt intensity onto the shared **union** beam axis before
+    reducing over tilts (:meth:`diffBloch.engine.forward.RefinementEngine._solve`), returning an
+    ordinary :class:`~diffBloch.core.products.BlochSolution` over that union -- so ``align`` /
+    scoring stay identical to the tilt-independent path. Reassembling before the reduction is
+    required: the mosaicity window spans more tilts than any single chunk holds.
+
+    ``beam_hkl`` ``(N_union, 3)`` is the union of every segment's beams (deduplicated, sorted, and
+    always including 000); ``pattern`` / ``alignment`` bridge that union to the observed
+    reflections; ``tilts`` ``(N, 3, 3)`` is the full rocking-curve set (``N`` the total tilt count);
+    ``tilt_reduction`` is carried over unchanged from the orientation this was coupled from (so a
+    mosaicity broadening set upstream still applies). ``orientation`` / ``energy`` / ``u0`` /
+    ``thickness`` mirror :class:`OrientationPlan` as the rotation's frozen conditioning.
+    """
+
+    orientation: Tensor
+    tilts: Tensor
+    energy: float
+    u0: float
+    thickness: Tensor
+    beam_hkl: Tensor
+    segments: tuple[SegmentPlan, ...]
+    pattern: PatternBatch
+    alignment: AlignmentPlan
+    tilt_reduction: TiltReduction = PLAIN_SUM
+
+    @classmethod
+    def build(
+        cls,
+        grid: ScatteringGrid,
+        segments: Sequence[tuple[NDArray[np.int64], Sequence[int]]],
+        pattern: PatternBatch,
+        *,
+        energy: float,
+        thickness: Tensor | NDArray[np.float64] | Sequence[float],
+        u0: float,
+        orientation: Tensor | NDArray[np.float64],
+        tilts: NDArray[np.float64],
+        tilt_reduction: TiltReduction = PLAIN_SUM,
+    ) -> SegmentedOrientationPlan:
+        """Assemble a segmented plan from ``(beam_hkl, cover)`` chunks against the shared grid.
+
+        Each ``segments`` entry is one chunk's beam set ``(n_seg, 3)`` and the global tilt indices
+        it
+        covers; ``tilts`` ``(N, 3, 3)`` is the full rocking-curve set the covers index into. The
+        union beam set is the sorted, deduplicated concatenation of every chunk's beams (000 is
+        present because each chunk's coupling always includes it); each chunk is compiled into an
+        :class:`OrientationPlan` over its beam set and covered tilts (sharing the rotation's
+        ``orientation`` / ``energy`` / ``u0`` / ``thickness``), and its ``union_index`` records
+        where
+        its beams sit in the union. ``alignment`` bridges the union to ``pattern``.
+        """
+        rotation = np.asarray(orientation, dtype=np.float64)
+        tilt_mats = np.asarray(tilts, dtype=np.float64)
+        if tilt_mats.ndim != 3 or tilt_mats.shape[1:] != (3, 3):
+            raise ValueError(f"tilts must have shape (N, 3, 3), got {tilt_mats.shape}")
+        if not segments:
+            raise ValueError("a segmented plan needs at least one segment")
+
+        beam_sets = [np.asarray(hkl, dtype=np.int64) for hkl, _ in segments]
+        union_hkl = np.unique(np.concatenate(beam_sets, axis=0), axis=0)  # sorted, deduplicated
+        union_pos = {tuple(int(c) for c in row): i for i, row in enumerate(union_hkl)}
+
+        segment_plans = []
+        for beam_hkl, cover in zip(beam_sets, [cover for _, cover in segments], strict=True):
+            cover_idx = np.asarray(cover, dtype=np.int64)
+            sub = OrientationPlan.build(
+                grid,
+                beam_hkl,
+                pattern,
+                energy=energy,
+                thickness=thickness,
+                u0=u0,
+                orientation=rotation,
+                tilts=tilt_mats[cover_idx],
+            )
+            union_index = torch.tensor(
+                [union_pos[tuple(int(c) for c in row)] for row in beam_hkl], dtype=torch.int64
+            )
+            segment_plans.append(
+                SegmentPlan(
+                    plan=sub,
+                    cover=torch.tensor(cover_idx, dtype=torch.int64),
+                    union_index=union_index,
+                )
+            )
+
+        union_hkl_t = torch.tensor(union_hkl, dtype=torch.int64)
+        thickness_t = torch.as_tensor(
+            np.atleast_1d(np.asarray(thickness, dtype=np.float64)), dtype=torch.float64
+        )
+        return cls(
+            orientation=torch.tensor(rotation, dtype=torch.float64),
+            tilts=torch.tensor(tilt_mats, dtype=torch.float64),
+            energy=float(energy),
+            u0=float(u0),
+            thickness=thickness_t,
+            beam_hkl=union_hkl_t,
+            segments=tuple(segment_plans),
+            pattern=pattern,
+            alignment=build_alignment_plan(union_hkl_t, pattern.hkl),
+            tilt_reduction=tilt_reduction,
+        )
+
+
+# A rotation's plan is either the tilt-independent :class:`OrientationPlan` (one shared beam set) or
+# the tilt-dependent :class:`SegmentedOrientationPlan` (per-chunk beam sets). The engine solves
+# both;
+# only the terminal, post-fit ``couple_beams`` step produces the segmented variant.
+OrientationPlanLike = OrientationPlan | SegmentedOrientationPlan
