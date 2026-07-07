@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from diffBloch.core.solver import Method
 from diffBloch.specs import (
@@ -35,7 +35,22 @@ _CONVERGENCE_TEST_DEFAULTS = ConvergenceTest()
 _CONVERGENCE_TOLERANCE_DEFAULTS = ConvergenceTolerance()
 
 
-class SolverConfig(BaseModel):
+class _StrictConfig(BaseModel):
+    """Base for every config model: reject unknown YAML keys at the boundary (the allowlist guard).
+
+    ``extra="forbid"`` turns an unrecognised key into a load-time ``ValidationError`` instead of
+    pydantic's default silent drop. Without it, a stale or misspelled key (or a field removed from
+    the schema but left in a YAML) is ignored unnoticed -- the exact hole that let the dead
+    ``g_max_sf`` / ``sg_max`` keys linger in the fixtures. It is the Ecto-``cast`` / NimbleOptions
+    allowlist: config carries only what a consumer reads, enforced at parse time. It does not catch
+    a *declared* field with no reader (whole-program analysis would); pairs with keeping each config
+    block close to the value-type its fields feed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SolverConfig(_StrictConfig):
     """Which dynamical solver to use for each phase.
 
     Both fields are typed as the solver's own :data:`~diffBloch.core.solver.Method` literal (the
@@ -47,13 +62,11 @@ class SolverConfig(BaseModel):
     inference: Method = "bloch_eigen"  # pinned to match existing e2e references
 
 
-class NumericsConfig(BaseModel):
+class NumericsConfig(_StrictConfig):
     """Stage-3 numerical-accuracy controls, frozen into the simulation spec."""
 
     g_max: float = 4.5
-    g_max_sf: float = 4.5
     g_max_refine: float = 1.6
-    sg_max: float = 0.01
     rocking_curve_sampling: int = 42
     dsg: float = 0.0015
     rsg: float = 0.9
@@ -104,7 +117,7 @@ class NumericsConfig(BaseModel):
         return self
 
 
-class SampleConfig(BaseModel):
+class SampleConfig(_StrictConfig):
     """Fixed sample properties.
 
     Thickness is captured here because it is a sample/nuisance parameter, not a numerical-accuracy
@@ -123,7 +136,7 @@ class SampleConfig(BaseModel):
         return value
 
 
-class DataSplitConfig(BaseModel):
+class DataSplitConfig(_StrictConfig):
     """Required train/validation split declaration.
 
     The concrete selector language is intentionally small for Stage 1: it records the fixed split
@@ -134,7 +147,7 @@ class DataSplitConfig(BaseModel):
     validation: str = "every_10th_rotation"
 
 
-class ObjectiveConfig(BaseModel):
+class ObjectiveConfig(_StrictConfig):
     """First-class target composition, not one opaque scalar loss."""
 
     data_term: Literal["weighted_r", "poisson_nll", "least_squares"] = "weighted_r"
@@ -144,7 +157,7 @@ class ObjectiveConfig(BaseModel):
     report_gradient_norms: bool = True
 
 
-class OptimizerConfig(BaseModel):
+class OptimizerConfig(_StrictConfig):
     """Explicit optimizer backend for a refinement stage."""
 
     name: Literal["lbfgs", "adam", "adamw", "least_squares"] = "lbfgs"
@@ -152,7 +165,7 @@ class OptimizerConfig(BaseModel):
     max_line_search_steps: int = 20
 
 
-class BeamDamageConfig(BaseModel):
+class BeamDamageConfig(_StrictConfig):
     """Optional inline beam-damage step (off by default; see synthesis §17).
 
     ``activate`` must be true (here or via ``engine.activate("beam_damage")``) before ``b_dose`` can
@@ -164,13 +177,13 @@ class BeamDamageConfig(BaseModel):
     b_dose_init: float = 0.0
 
 
-class ObservationConfig(BaseModel):
+class ObservationConfig(_StrictConfig):
     """Observation-model components applied to simulated intensities before the loss."""
 
     beam_damage: BeamDamageConfig = Field(default_factory=BeamDamageConfig)
 
 
-class RefinementConfig(BaseModel):
+class RefinementConfig(_StrictConfig):
     """Default refinement-stage hyperparameters."""
 
     steps: int = 500
@@ -180,7 +193,7 @@ class RefinementConfig(BaseModel):
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)
 
 
-class OrientationFitConfig(BaseModel):
+class OrientationFitConfig(_StrictConfig):
     """Bounds for the ``fit_orientation`` Palatinus hexagonal search (preprocess).
 
     The YAML edge: parses (via :meth:`to_search`) into the validated
@@ -209,7 +222,7 @@ class OrientationFitConfig(BaseModel):
         return self
 
 
-class ThicknessFitConfig(BaseModel):
+class ThicknessFitConfig(_StrictConfig):
     """Bounds for the ``fit_thickness`` per-rotation grid search (preprocess).
 
     The YAML edge: parses (via :meth:`to_grid`) into the validated
@@ -236,7 +249,7 @@ class ThicknessFitConfig(BaseModel):
         return self
 
 
-class ConvergenceConfig(BaseModel):
+class ConvergenceConfig(_StrictConfig):
     """Bounds for the optional ``converge_numerics`` driver (preprocess).
 
     The YAML edge for convergence testing. It parses into **two** value-types (single
@@ -284,7 +297,7 @@ class ConvergenceConfig(BaseModel):
         return self
 
 
-class PreprocessConfig(BaseModel):
+class PreprocessConfig(_StrictConfig):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
     Grouping, not composition: each block configures one preprocess step. ``fit_orientation``,
@@ -297,7 +310,7 @@ class PreprocessConfig(BaseModel):
     convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
 
 
-class Inputs(BaseModel):
+class Inputs(_StrictConfig):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
     structure: str
@@ -317,7 +330,7 @@ class Inputs(BaseModel):
         return value
 
 
-class ExperimentConfig(BaseModel):
+class ExperimentConfig(_StrictConfig):
     """A whole experiment, validated at load. No Hydra, no ``DictConfig``."""
 
     name: str

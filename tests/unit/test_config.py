@@ -22,7 +22,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.solver.refine == "matrix_exp"
     assert cfg.solver.inference == "bloch_eigen"
     assert cfg.sample.thicknesses == (820.0,)
-    assert cfg.numerics.sg_max == 0.01
+    assert cfg.numerics.g_max == 4.5
     assert cfg.observation.beam_damage.activate is False
     assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.refinement.objective.data_term == "weighted_r"
@@ -40,6 +40,17 @@ def test_solver_method_must_be_a_known_method() -> None:
 def test_missing_required_input_fails_fast() -> None:
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate({"name": "quartz"})  # no inputs
+
+
+def test_unknown_key_is_rejected_not_ignored() -> None:
+    # The allowlist guard (extra="forbid"): a stale/misspelled key is a load-time error, not a
+    # silent drop -- so config can only carry fields a consumer reads. Guards against a regression
+    # to pydantic's default "ignore", which is what let the dead g_max_sf / sg_max keys linger.
+    base = {"name": "q", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "numerics": {"sg_max": 0.01}})  # removed field
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "nonsense": True})  # unknown top-level key
 
 
 def test_beam_damage_off_by_default() -> None:

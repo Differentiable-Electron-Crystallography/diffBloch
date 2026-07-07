@@ -7,5 +7,4 @@ inputs:
   structure: enantiomer_1.cif
   observations: exp_data.cif_pets
 numerics:
-  sg_max: 0.01
   g_max_refine: 1.6

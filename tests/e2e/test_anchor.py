@@ -89,7 +89,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     cfg, lock = load_experiment(FIXTURE_ROOT)
     assert cfg.name == "quartz-anchor"
     assert cfg.solver.inference == "bloch_eigen"
-    assert cfg.numerics.sg_max == 0.01
+    assert cfg.numerics.g_max == 4.5
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
     assert cfg.inputs.observations == lock.observations.ref
