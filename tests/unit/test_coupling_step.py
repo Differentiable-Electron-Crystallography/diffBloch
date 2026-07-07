@@ -147,3 +147,35 @@ def test_run_inference_scores_a_segmented_plan() -> None:
 
     assert len(result.per_rotation) == 1
     assert result.per_rotation[0].r_obs < 1e-6  # self-consistent pattern
+
+
+def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
+    """The regression guard for the 0.4825 drift: expanding the solve set must not widen scoring.
+
+    A segmented plan whose union beam set is a strict superset of the scored set must score only
+    ``scored_hkl ∩ union`` -- not every observed reflection that happens to land in the enlarged
+    union.
+    """
+    grid, asu_plan, spec, numbers = _silicon()
+    refinement = _refinement(asu_plan, spec, numbers)
+    pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
+    # Solve union covers the full beam set (3 reflections incl. 000); pin scoring to just 000.
+    scored = np.array([[0, 0, 0]], dtype=np.int64)
+    segmented = SegmentedOrientationPlan.build(
+        grid,
+        [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
+        pattern,
+        energy=_ENERGY,
+        thickness=(300.0,),
+        u0=0.0,
+        orientation=np.eye(3),
+        tilts=_TILTS,
+        scored_hkl=scored,
+    )
+
+    # union is the full 3-beam set, but the scored axis is only the pinned reflection.
+    assert segmented.beam_hkl.shape[0] == len(_BEAM_HKL)
+    assert segmented.alignment.hkl.tolist() == [[0, 0, 0]]
+    engine = build_engine(Plan(grid=grid, orientations=(segmented,)), refinement, method=_METHOD)
+    aligned = align(engine.simulate(refinement.params)[0], segmented.pattern, segmented.alignment)
+    assert aligned.calculated.shape[-1] == 1  # scored on 1 reflection, not the 3-beam union

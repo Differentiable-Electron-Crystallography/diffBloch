@@ -12,14 +12,20 @@ discriminated union rather than a boolean toggle:
   :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` the engine reassembles + reduces.
 
 It is the tilt-dependent generalization of ``select_beams``, but unlike it, ``couple_beams`` is
-ordered **last** -- after ``fit_orientation`` / ``fit_thickness``. The fits rebuild each orientation
-as a plain ``OrientationPlan`` (fixed shared beam set, no per-trial re-coupling -- a recorded
-divergence from the private), so any segmentation placed before them would be overwritten; the
-segmented geometry is a final, post-fit plan shaping applied only for evaluation. The candidate pool
-is the shared grid (``plan.grid.grid_hkl``, which spans the coupling cap), and the tilt set is the
-one ``integrate_rocking_curve`` already baked, so this raises if a rotation has fewer than two
-tilts.
+ordered **last** -- after ``fit_orientation`` / ``fit_thickness``, and it is only meaningful once
+``select_beams`` has established the Klar-selected scored set (before it, an orientation's
+``alignment`` is the seed-pool intersection, too wide). The fits rebuild each orientation as a plain
+``OrientationPlan`` (fixed shared beam set, no per-trial re-coupling -- a recorded divergence from
+the private), so any segmentation placed before them would be overwritten; the segmented geometry is
+a final, post-fit plan shaping applied only for evaluation. The candidate pool is the shared grid
+(``plan.grid.grid_hkl``, which spans the coupling cap), and the tilt set is the one
+``integrate_rocking_curve`` already baked, so this raises if a rotation has fewer than two tilts.
 The upstream ``tilt_reduction`` (e.g. a ``mosaicity`` broadening) is carried through unchanged.
+
+Crucially it decouples the two reflection sets the plan otherwise conflates: the *solve* set
+expands to the excitation coupling union (``|g| < 2.05``), while the *scored* set stays pinned to
+the pre-couple ``select_beams`` selection (``op.alignment.hkl``), intersected with the union. See
+``design/decisions/solve-set-vs-scored-set.md``.
 """
 
 from __future__ import annotations
@@ -89,4 +95,6 @@ def _couple_one(
         orientation=op.orientation,
         tilts=tilts,
         tilt_reduction=op.tilt_reduction,
+        # Pin scoring to the pre-couple select_beams selection (Klar set), not the enlarged union.
+        scored_hkl=np.asarray(op.alignment.hkl, dtype=np.int64),
     )

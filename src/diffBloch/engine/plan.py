@@ -275,6 +275,7 @@ class SegmentedOrientationPlan:
         orientation: Tensor | NDArray[np.float64],
         tilts: NDArray[np.float64],
         tilt_reduction: TiltReduction = PLAIN_SUM,
+        scored_hkl: NDArray[np.int64] | None = None,
     ) -> SegmentedOrientationPlan:
         """Assemble a segmented plan from ``(beam_hkl, cover)`` chunks against the shared grid.
 
@@ -286,7 +287,13 @@ class SegmentedOrientationPlan:
         :class:`OrientationPlan` over its beam set and covered tilts (sharing the rotation's
         ``orientation`` / ``energy`` / ``u0`` / ``thickness``), and its ``union_index`` records
         where
-        its beams sit in the union. ``alignment`` bridges the union to ``pattern``.
+        its beams sit in the union.
+
+        ``scored_hkl`` ``(S, 3)`` pins the **scored** reflection set (via ``build_alignment_plan``'s
+        ``restrict_to``): the union is the enlarged *solve* set, but scoring stays on this set
+        intersected with the union -- the ``select_beams`` selection ``couple_beams`` hands in, so
+        expanding the solve does not drag scoring onto the union's weak beams. ``None`` scores the
+        whole ``pattern ∩ union`` (the tilt-independent behaviour).
         """
         rotation = np.asarray(orientation, dtype=np.float64)
         tilt_mats = np.asarray(tilts, dtype=np.float64)
@@ -336,7 +343,11 @@ class SegmentedOrientationPlan:
             beam_hkl=union_hkl_t,
             segments=tuple(segment_plans),
             pattern=pattern,
-            alignment=build_alignment_plan(union_hkl_t, pattern.hkl),
+            alignment=build_alignment_plan(
+                union_hkl_t,
+                pattern.hkl,
+                restrict_to=None if scored_hkl is None else torch.as_tensor(scored_hkl),
+            ),
             tilt_reduction=tilt_reduction,
         )
 

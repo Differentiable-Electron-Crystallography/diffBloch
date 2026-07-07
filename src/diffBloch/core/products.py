@@ -250,8 +250,23 @@ class AlignmentPlan:
     pattern_index: Tensor
 
 
-def build_alignment_plan(solution_hkl: Tensor, pattern_hkl: Tensor) -> AlignmentPlan:
-    """Match observed reflections to calculated beams by exact hkl (observed-order intersection)."""
+def build_alignment_plan(
+    solution_hkl: Tensor, pattern_hkl: Tensor, *, restrict_to: Tensor | None = None
+) -> AlignmentPlan:
+    """Match observed reflections to calculated beams by exact hkl (observed-order intersection).
+
+    ``restrict_to`` ``(S, 3)`` optionally pins the **scored** reflection set: only pattern rows
+    whose hkl is in ``restrict_to`` are eligible, so the result is
+    ``pattern ∩ solution ∩ restrict_to``. This
+    is how ``couple_beams`` keeps scoring on the ``select_beams`` selection while the *solve* set
+    expands to the coupling union -- ``solution_hkl`` (the union) grows, but the scored axis stays
+    the pre-couple set. It is an intersection, so a ``restrict_to`` reflection absent from
+    ``solution_hkl`` is dropped (faithful: you can only score a reflection you solved, the same
+    ``scored ⊆ coupled`` invariant the private's ``filter_hkls`` has by running on the coupled set).
+    ``None`` (the default) scores the whole ``pattern ∩ solution``, keeping the tilt-independent
+    path unchanged. ``pattern_index`` indexes the full ``pattern_hkl`` regardless, so ``align`` is
+    untouched.
+    """
     solution = np.asarray(torch.as_tensor(solution_hkl, dtype=torch.int64))
     pattern = np.asarray(torch.as_tensor(pattern_hkl, dtype=torch.int64))
     if solution.ndim != 2 or solution.shape[1] != 3:
@@ -259,10 +274,20 @@ def build_alignment_plan(solution_hkl: Tensor, pattern_hkl: Tensor) -> Alignment
     if pattern.ndim != 2 or pattern.shape[1] != 3:
         raise ValueError(f"pattern_hkl must have shape (M, 3), got {pattern.shape}")
 
+    allowed: set[tuple[int, ...]] | None = None
+    if restrict_to is not None:
+        scored = np.asarray(torch.as_tensor(restrict_to, dtype=torch.int64))
+        if scored.ndim != 2 or scored.shape[1] != 3:
+            raise ValueError(f"restrict_to must have shape (S, 3), got {scored.shape}")
+        allowed = {tuple(int(c) for c in row) for row in scored}
+
     by_hkl = {tuple(int(c) for c in row): i for i, row in enumerate(solution)}
     sol_idx, pat_idx = [], []
     for pattern_pos, row in enumerate(pattern):
-        solution_pos = by_hkl.get(tuple(int(c) for c in row))
+        key = tuple(int(c) for c in row)
+        if allowed is not None and key not in allowed:
+            continue
+        solution_pos = by_hkl.get(key)
         if solution_pos is not None:
             sol_idx.append(solution_pos)
             pat_idx.append(pattern_pos)
