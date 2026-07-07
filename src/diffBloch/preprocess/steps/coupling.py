@@ -11,16 +11,20 @@ discriminated union rather than a boolean toggle:
   :class:`~diffBloch.engine.plan.OrientationPlan` with a
   :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` the engine reassembles + reduces.
 
-It is the tilt-dependent generalization of ``select_beams``, but unlike it, ``couple_beams`` is
-ordered **last** -- after ``fit_orientation`` / ``fit_thickness``, and it is only meaningful once
-``select_beams`` has established the Klar-selected scored set (before it, an orientation's
-``alignment`` is the seed-pool intersection, too wide). The fits rebuild each orientation as a plain
-``OrientationPlan`` (fixed shared beam set, no per-trial re-coupling -- a recorded divergence from
-the private), so any segmentation placed before them would be overwritten; the segmented geometry is
-a final, post-fit plan shaping applied only for evaluation. The candidate pool is the shared grid
-(``plan.grid.grid_hkl``, which spans the coupling cap), and the tilt set is the one
-``integrate_rocking_curve`` already baked, so this raises if a rotation has fewer than two tilts.
-The upstream ``tilt_reduction`` (e.g. a ``mosaicity`` broadening) is carried through unchanged.
+It is the tilt-dependent generalization of ``select_beams``, and it appears **twice** in the
+faithful recipe: once after ``mosaicity`` -- so ``fit_orientation`` / ``fit_thickness`` fit *under*
+the coupling (the frozen-union fit: the seed-orientation segments re-solved at each trial) -- and
+once after the fits, re-coupling at the fitted orientation for evaluation. It is only meaningful
+once ``select_beams`` has established the Klar-selected scored set (before it, an orientation's
+``alignment`` is the seed-pool intersection, too wide). It accepts either a plain
+:class:`~diffBloch.engine.plan.OrientationPlan` (the first application) or an already-coupled
+:class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (the re-couple), re-deriving each
+rotation's segments from its current source fields (``orientation`` / ``tilts`` / ``energy`` /
+``u0``). The
+candidate pool is the shared grid (``plan.grid.grid_hkl``, which spans the coupling cap), and the
+tilt set is the one ``integrate_rocking_curve`` already baked, so this raises if a rotation has
+fewer than two tilts. The upstream ``tilt_reduction`` (e.g. a ``mosaicity`` broadening) is carried
+through unchanged.
 
 Crucially it decouples the two reflection sets the plan otherwise conflates: the *solve* set
 expands to the excitation coupling union (``|g| < 2.05``), while the *scored* set stays pinned to
@@ -34,7 +38,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid, SegmentedOrientationPlan
+from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.pipeline import PlanStep, identity
 from diffBloch.preprocess.plan import Plan
@@ -65,11 +69,16 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
 
 def _couple_one(
-    grid: ScatteringGrid, op: OrientationPlan | SegmentedOrientationPlan, policy: TiltSegmentUnion
+    grid: ScatteringGrid, op: OrientationPlanLike, policy: TiltSegmentUnion
 ) -> SegmentedOrientationPlan:
-    """Partition one rotation's rocking curve into boundary-union segments (grid candidates)."""
-    if not isinstance(op, OrientationPlan):
-        raise TypeError("couple_beams runs on tilt-independent OrientationPlans; already segmented")
+    """Partition one rotation's rocking curve into boundary-union segments at its orientation.
+
+    Accepts either plan type: the segments are re-derived at the plan's *current* ``orientation``
+    from its source fields, so this serves both as the initial coupling (a plain
+    :class:`OrientationPlan`) and as a re-couple at the fitted orientation (an already-coupled
+    :class:`SegmentedOrientationPlan`). Scoring stays pinned to ``op.alignment.hkl`` -- the
+    ``select_beams`` set, which both plan types carry and which the fits preserve.
+    """
     tilts = np.asarray(op.tilts, dtype=np.float64)
     if tilts.shape[0] < 2:
         raise ValueError(

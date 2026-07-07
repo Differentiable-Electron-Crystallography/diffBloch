@@ -275,6 +275,53 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
     assert thick.thickness.shape == (1,)  # baked the grid-search winner
 
 
+def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> None:
+    """couple_beams re-derives segments at the current orientation and re-pins the same scored set.
+
+    The faithful recipe re-couples the fitted plan; applied to an already-segmented plan it must not
+    raise (the old guard did), must return a segmented plan, and -- at an unchanged orientation --
+    reproduce the union and the pinned scored set (``op.alignment.hkl``) of the first coupling.
+    Uses the quartz fixture because a real coupling union needs a grid that spans its beam
+    differences (the synthetic silicon grid is too small).
+    """
+    from pathlib import Path
+
+    from diffBloch.config import load_experiment
+    from diffBloch.engine import ScatteringGrid
+    from diffBloch.io import read_structure
+
+    root = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
+    cfg, _lock = load_experiment(root)
+    structure = read_structure(root / cfg.inputs.structure)
+    grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=cfg.numerics.g_max)
+    tilts = np.load(root / "parity_replay" / "tilts.npz")["tilts"]
+    d = np.load(root / "parity_replay" / "rot_13.npz")
+    pattern = PatternBatch(
+        hkl=torch.tensor(d["hkl_matched"], dtype=torch.int64),
+        intensities=torch.tensor(d["exp_ints"], dtype=torch.float64),
+        sigmas=torch.tensor(d["sigmas"], dtype=torch.float64),
+    )
+    op = OrientationPlan.build(
+        grid,
+        d["hkl_active"],
+        pattern,
+        energy=200_000.0,
+        thickness=(float(np.asarray(d["thickness"]).reshape(-1)[-1]),),
+        u0=float(d["u0"]),
+        orientation=d["orientation"],
+        tilts=tilts,
+    )
+    policy = TiltSegmentUnion()
+    once = couple_beams(policy)(Plan(grid=grid, orientations=(op,)))
+
+    twice = couple_beams(policy)(once)  # re-couple a segmented plan (previously a TypeError)
+
+    recoupled = twice.orientations[0]
+    assert isinstance(recoupled, SegmentedOrientationPlan)
+    assert recoupled.beam_hkl.tolist() == once.orientations[0].beam_hkl.tolist()  # idempotent union
+    assert recoupled.alignment.hkl.tolist() == once.orientations[0].alignment.hkl.tolist()
+
+
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
     """The regression guard for the 0.4825 drift: expanding the solve set must not widen scoring.
 
