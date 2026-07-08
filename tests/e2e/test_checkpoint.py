@@ -4,11 +4,16 @@ Proves the full path: a first ``run_experiment`` computes the settled ``Plan`` a
 ``plan.npz`` + ``plan.lock`` into the (copied) experiment dir; a second identical run is a full
 **reuse** -- it loads the checkpoint and skips the expensive preprocess entirely, yielding a
 byte-identical aggregate. Reuse is asserted from the emitted diagnostic log (deterministic), not
-timing. Opt-in ``e2e`` (the first run does the full fit); the driver's reuse/resume/stale logic is
-pinned fast in ``tests/unit/test_program_checkpoint.py``.
+timing.
+
+Gated behind ``DIFFBLOCH_ANCHOR_FULL=1``: the first run does the full coupled fit (~6-16 min), so
+the default CI e2e job skips it -- the driver's reuse/resume/stale logic is pinned fast in
+``tests/unit/test_program_checkpoint.py``, and CI's checkpoint reuse is covered by
+``test_anchor.py::test_quartz_coupled_anchor`` (which scores the committed checkpoint).
 """
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -17,6 +22,11 @@ import pytest
 from diffBloch.app.program import run_experiment
 
 pytestmark = pytest.mark.e2e
+
+_requires_full = pytest.mark.skipif(
+    os.environ.get("DIFFBLOCH_ANCHOR_FULL") != "1",
+    reason="full from-scratch fit; set DIFFBLOCH_ANCHOR_FULL=1 to run",
+)
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 _INPUTS = (
@@ -27,7 +37,10 @@ _INPUTS = (
 )
 
 
-def test_run_experiment_checkpoints_then_reuses(tmp_path: Path, caplog) -> None:
+@_requires_full
+def test_run_experiment_checkpoints_then_reuses(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     exp = tmp_path / "quartz"
     exp.mkdir()
     for name in _INPUTS:

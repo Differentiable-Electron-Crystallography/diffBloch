@@ -10,12 +10,18 @@ What is pinned (deterministic; CPU / float64; no RNG), each an aggregate ``mean_
 99 rotations (each yielding a finite ``R_obs`` -- guarding the ``rbragg`` NaN-safety regression):
 
   * **coupled (0.0506)** -- the faithful default (:func:`test_quartz_coupled_anchor`), scored
-    CI-fast against a committed frozen checkpoint; the full from-scratch fit is opt-in
-    (:func:`test_quartz_coupled_anchor_full`, ``DIFFBLOCH_ANCHOR_FULL=1``, ~6-16 min);
-  * **tilt-independent (0.0686)** -- the non-coupled integrated recipe, kept as a power-user
-    composition (:func:`test_quartz_tilt_independent_anchor`);
+    CI-fast against a committed frozen checkpoint (no fit); this is the ONLY fit-derived pin that
+    runs in the default e2e job.
+  * **coupled full (0.0506)** -- the same, recomputed from scratch
+    (:func:`test_quartz_coupled_anchor_full`);
+  * **tilt-independent (0.0686)** -- the non-coupled integrated recipe, a power-user composition
+    (:func:`test_quartz_tilt_independent_anchor`);
   * **static baseline (0.174)** -- ``select_beams -> fit_orientation -> fit_thickness`` **without**
     rocking-curve integration (:func:`test_quartz_reference_anchor`).
+
+The last three are full from-scratch fits (~1-16 min), gated behind ``DIFFBLOCH_ANCHOR_FULL=1`` so
+the default CI e2e job stays fast: it scores the frozen checkpoint and never pays a fit. The fit
+itself is covered by the unit suite + the forward-solver ``test_coupling_parity``.
 
 The coupled 0.0506 is the closest from-scratch approach to the private reference ``R_obs``
 (0.043766); the remaining gap is basin chaos in the greedy hexagonal descent, not a physics
@@ -29,9 +35,8 @@ The reference metadata is checked first as an independent provenance guard.
 Still pending: the finer-grained per-rotation intermediate-tensor goldens (``Fgb``, the structure
 matrix ``A``, the exit wave ``psi``, ``I_sim``) -- a separate, heavier deliverable.
 
-This is an opt-in ``e2e`` test (excluded from ``just check``). Default e2e cost: the coupled
-headline is seconds (checkpoint reuse), the tilt-independent + static pins are full fits (~3-4 min
-each); the coupled full fit is opt-in only.
+These are opt-in ``e2e`` tests (excluded from ``just check``). Default e2e cost: seconds -- only the
+coupled checkpoint-reuse pin runs; every full fit is gated behind ``DIFFBLOCH_ANCHOR_FULL=1``.
 """
 
 import json
@@ -60,6 +65,14 @@ from diffBloch.preprocess import (
 pytestmark = pytest.mark.e2e
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
+
+# Full from-scratch fits (~1-16 min) are opt-in: CI's default e2e job scores the committed frozen
+# checkpoint (fast) and never pays a fit. Set DIFFBLOCH_ANCHOR_FULL=1 to run the fit-based pins
+# locally. The fit is otherwise covered by the unit suite + the coupling-parity forward anchor.
+_requires_full = pytest.mark.skipif(
+    os.environ.get("DIFFBLOCH_ANCHOR_FULL") != "1",
+    reason="full from-scratch fit; set DIFFBLOCH_ANCHOR_FULL=1 to run",
+)
 
 # From-scratch static baseline: the fit pipeline (select_beams -> fit_orientation -> fit_thickness)
 # evaluated over all 99 rotations without rocking-curve integration, under the corrected
@@ -91,6 +104,7 @@ TILT_INDEPENDENT_MEAN_R_OBS_TOL = 1e-2
 STATIC_BASELINE_R_OBS = 0.174  # subset sanity: the integrated fit must sit comfortably below this
 
 
+@_requires_full
 @pytest.mark.parametrize("material", ["quartz"])
 def test_quartz_reference_anchor(material: str) -> None:
     assert material == "quartz"
@@ -171,16 +185,15 @@ def test_quartz_coupled_anchor(caplog: pytest.LogCaptureFixture) -> None:
     )
 
 
+@_requires_full
 def test_quartz_coupled_anchor_full(tmp_path: Path) -> None:
     """Full coupled preprocess + refine from scratch (~6-16 min); opt-in, local-only.
 
-    Set ``DIFFBLOCH_ANCHOR_FULL=1`` to run. Copies the CSV-less inputs into a scratch dir (no
-    checkpoint present), so ``run_experiment`` recomputes the whole faithful coupled recipe and must
-    reach the same ``0.0506`` the committed checkpoint scores -- proving the shipped checkpoint is
-    reproducible from the inputs, not a stale artifact.
+    Copies the CSV-less inputs into a scratch dir (no checkpoint present), so ``run_experiment``
+    recomputes the whole faithful coupled recipe and must reach the same ``0.0506`` the committed
+    checkpoint scores -- proving the shipped checkpoint is reproducible from the inputs, not a stale
+    artifact.
     """
-    if os.environ.get("DIFFBLOCH_ANCHOR_FULL") != "1":
-        pytest.skip("set DIFFBLOCH_ANCHOR_FULL=1 to run the full coupled fit (~6-16 min)")
     exp = tmp_path / "quartz"
     exp.mkdir()
     for name in ("experiment.yaml", "experiment.lock", "enantiomer_1.cif", "exp_data.cif_pets"):
@@ -192,6 +205,7 @@ def test_quartz_coupled_anchor_full(tmp_path: Path) -> None:
     )
 
 
+@_requires_full
 def test_quartz_tilt_independent_anchor() -> None:
     """The tilt-independent recipe (no per-trial coupling) -> 0.0686. Power-user composition.
 
