@@ -38,3 +38,11 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 ::: diffBloch.preprocess.driver
 
 ::: diffBloch.preprocess.inference
+
+## Checkpoint / resume
+
+Serialize a settled `Plan` to a portable `.npz` and read it back (source persisted, compiled
+geometry rebuilt on load). The `run infer` CLI checkpoints/resumes against this plus the
+`plan.lock` provenance in `diffBloch.config.manifest`.
+
+::: diffBloch.preprocess.serialize

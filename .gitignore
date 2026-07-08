@@ -17,6 +17,10 @@ dist/
 build/
 site/
 
+# Preprocess checkpoints (generated per-experiment; regenerated on demand, never committed)
+plan.npz
+plan.lock
+
 # OS / editors
 .DS_Store
 .idea/

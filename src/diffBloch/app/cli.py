@@ -44,6 +44,16 @@ def main(argv: list[str] | None = None) -> int:
     p_infer.add_argument(
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
     )
+    p_infer.add_argument(
+        "--refresh",
+        action="store_true",
+        help="ignore any existing preprocess checkpoint and recompute (regenerates plan.npz/.lock)",
+    )
+    p_infer.add_argument(
+        "--no-checkpoint",
+        action="store_true",
+        help="neither read nor write the preprocess checkpoint (leave the experiment dir alone)",
+    )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -73,7 +83,10 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(level=logging.INFO, format="%(message)s")
         try:
             result = run_experiment(
-                args.experiment_directory, logger=_build_logger(console=args.console, csv=args.csv)
+                args.experiment_directory,
+                logger=_build_logger(console=args.console, csv=args.csv),
+                checkpoint=not args.no_checkpoint,
+                refresh=args.refresh,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

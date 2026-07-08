@@ -79,9 +79,13 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run_experiment(experiment_dir: str, *, logger: object) -> InferenceResult:
+    def fake_run_experiment(
+        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+    ) -> InferenceResult:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
+        captured["checkpoint"] = checkpoint
+        captured["refresh"] = refresh
         rotation = RotationInference(r_obs=0.05, n_observed=9, n_beams=20)
         return InferenceResult(per_rotation=(rotation,))
 
@@ -91,9 +95,26 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
     assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
+    assert captured["checkpoint"] is True  # checkpoint on by default
+    assert captured["refresh"] is False
     out = capsys.readouterr().out
     assert "evaluated 1 rotations" in out
     assert "mean R_obs = 0.0500" in out
+
+
+def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_experiment(
+        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+    ) -> InferenceResult:
+        seen["checkpoint"] = checkpoint
+        seen["refresh"] = refresh
+        return InferenceResult(per_rotation=())
+
+    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
+    assert main(["run", "infer", "x", "--no-checkpoint", "--refresh"]) == 0
+    assert seen == {"checkpoint": False, "refresh": True}
 
 
 def test_run_infer_builds_console_and_csv_sinks(
@@ -101,7 +122,9 @@ def test_run_infer_builds_console_and_csv_sinks(
 ) -> None:
     seen: dict[str, object] = {}
 
-    def fake_run_experiment(experiment_dir: str, *, logger: object) -> InferenceResult:
+    def fake_run_experiment(
+        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+    ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())
 
