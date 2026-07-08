@@ -3,10 +3,14 @@ site_description: Differentiable Bloch-wave electron-diffraction structure refin
 site_url: https://differentiable-electron-crystallography.github.io/diffBloch/
 
 theme:
-  name: material
-  features:
-    - navigation.sections
-    - content.code.copy
+  name: shadcn
+
+# shadcn renders Pygments-tokenized code (it ships the stylesheets) and adds copy buttons natively,
+# but the highlighting extensions must be enabled explicitly (Material bundled them).
+markdown_extensions:
+  fenced_code:
+  codehilite:
+  admonition:
 
 plugins:
   - search

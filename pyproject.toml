@@ -44,9 +44,8 @@ dev = [
     "mypy>=1.10",
     "types-pyyaml>=6.0",
     "pre-commit>=3.7",
-    # <10: material's own build banner warns the 2.x rewrite breaks all themes with no migration
-    # path; stay on 9.x until a deliberate migration.
-    "mkdocs-material>=9.5,<10",
+    # mkdocs-shadcn: shadcn/ui-styled docs theme (theme name `shadcn`).
+    "mkdocs-shadcn>=0.11",
     "mkdocstrings[python]>=0.25",
 ]
 
