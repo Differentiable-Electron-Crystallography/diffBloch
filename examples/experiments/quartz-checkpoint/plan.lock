@@ -1,0 +1,90 @@
+{
+  "experiment_lock_sha256": "2deafd82f138abfe3ce944b1afd92fd7f443a89f56241b4e7997df5a0d58a146",
+  "config_digest": "0d91301d1195f65e2fa69ffe257a39f32b584540e22847fc84628258c77ed257",
+  "code_version": "0.2.0+gaf7410b.dirty",
+  "recipe": [
+    {
+      "name": "select_beams",
+      "params": {
+        "__type__": "BeamSelection",
+        "rsg": 0.9,
+        "dsg": 0.0015,
+        "integration": {
+          "__type__": "IntegrationGeometry",
+          "semiangle": 1.0,
+          "geometry": "continuous_rotation"
+        }
+      }
+    },
+    {
+      "name": "integrate_rocking_curve",
+      "params": {
+        "__type__": "RockingCurve",
+        "sampling": 42,
+        "integration": {
+          "__type__": "IntegrationGeometry",
+          "semiangle": 1.0,
+          "geometry": "continuous_rotation"
+        }
+      }
+    },
+    {
+      "name": "mosaicity",
+      "params": {
+        "__type__": "Mosaicity",
+        "window": 5
+      }
+    },
+    {
+      "name": "fit_orientation",
+      "params": {
+        "search": {
+          "__type__": "HexagonalSearch",
+          "max_search_angle": 0.4,
+          "min_search_angle": 0.001,
+          "n_steps": 6,
+          "max_iterations": 2000
+        },
+        "coupling": {
+          "__type__": "TrialCoupling",
+          "policy": {
+            "__type__": "TiltSegmentUnion",
+            "n_splits": 12,
+            "g_max": 2.25,
+            "cap_margin": 0.2,
+            "sg_max": 0.01
+          },
+          "scored": {
+            "__type__": "ScoredSelection",
+            "klar": {
+              "__type__": "BeamSelection",
+              "rsg": 0.9,
+              "dsg": 0.0015,
+              "integration": {
+                "__type__": "IntegrationGeometry",
+                "semiangle": 1.0,
+                "geometry": "continuous_rotation"
+              }
+            },
+            "g_max": 1.6
+          }
+        }
+      }
+    },
+    {
+      "name": "fit_thickness",
+      "params": {
+        "__type__": "ThicknessGrid",
+        "min_thickness": 5.0,
+        "max_thickness": 2000.0,
+        "n_steps": 100
+      }
+    }
+  ],
+  "plan": {
+    "path": "plan.npz",
+    "sha256": "5a5ffd7bd2b9171f424cb9802c145566d6701b6104b047fc11332cf573ecaa89",
+    "bytes": 993589,
+    "media_type": "application/octet-stream"
+  }
+}

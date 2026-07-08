@@ -1,0 +1,35 @@
+# Example experiment: quartz (SiO2) electron-diffraction inference.
+#
+# A complete, runnable experiment directory. `diffbloch run infer examples/experiments/quartz` reads
+# this file, verifies the input bytes against `experiment.lock`, preprocesses the 99 rotations (beam
+# selection, rocking-curve integration, mosaicity, then the per-rotation orientation + thickness
+# fits, with the orientation fit under the faithful per-trial beam coupling) and scores the full
+# dynamical Bloch-wave forward model against the observed intensities (mean R_obs = 0.0506).
+#
+# The inputs are the published quartz precession-electron-diffraction dataset:
+#   quartz.cif                the SiO2 structure (space group P3_1 21)
+#   quartz_exp_data.cif_pets  the observed reflection intensities (PETS .cif_pets)
+name: quartz-example
+
+inputs:
+  structure: quartz.cif
+  observations: quartz_exp_data.cif_pets
+
+sample:
+  thicknesses: [820.0] # crystal thickness (Angstrom); fit_thickness refines around this seed
+
+numerics:
+  g_max: 4.5 # structure-factor grid radius (1/Angstrom)
+  g_max_refine: 1.6 # seed beam-pool radius / scoring-resolution cap (1/Angstrom)
+  rocking_curve_sampling: 42 # tilt samples per rocking curve
+  dsg: 0.0015 # Klar beam-selection excitation-error cutoff
+  rsg: 0.9 # Klar beam-selection relative-intensity cutoff
+
+solver:
+  inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
+  refine: matrix_exp # gradient-safe solver used inside the preprocess fits
+
+refinement:
+  split:
+    train: all_except_validation
+    validation: every_10th_rotation

@@ -13,13 +13,20 @@ diffraction intensities agree.
 just install      # uv sync --dev + pre-commit install
 just check        # lint + typecheck + unit tests
 just docs-serve   # live API docs
-just anchor       # the quartz physics anchors (opt-in e2e; full integrated run ~4 min)
+just anchor       # the quartz physics anchors (opt-in e2e)
+
+# Score the worked quartz example (faithful coupled recipe, mean R_obs = 0.0506):
+diffbloch run infer examples/experiments/quartz-checkpoint   # instant — ships a frozen checkpoint
+diffbloch run infer examples/experiments/quartz              # ~6–16 min — fits from scratch
 ```
+
+See `examples/experiments/quartz/README.md` for the worked example and its expected residual.
 
 ## Layout
 
 ```
 src/diffBloch/    the library (config/, io/, core/, engine, app/ — added stage by stage)
+examples/         runnable experiment directories (`examples/experiments/quartz{,-checkpoint}`)
 tests/unit/       fast per-kernel tests
 tests/e2e/        characterization anchors (opt-in: `just test-e2e`)
 docs/             API docs (mkdocstrings); `just docs`
