@@ -57,6 +57,7 @@ from diffBloch.preprocess import (
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.specs import ScoredSelection, TiltSegmentUnion, TrialCoupling
 
 __all__ = ["run_experiment"]
 
@@ -76,10 +77,15 @@ def run_experiment(
     """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
 
     Loads ``experiment.yaml`` (verifying the input lock), reads the structure + observations, builds
-    the geometry via ``from_experiment``, runs the standard integrated recipe, and evaluates the
+    the geometry via ``from_experiment``, runs the faithful integrated recipe, and evaluates the
     forward model over all rotations with ``run_inference`` -- emitting per-rotation observations to
     ``logger`` (the null default discards them). Returns the
     :class:`~diffBloch.preprocess.inference.InferenceResult` (per-rotation ``R_obs`` + aggregate).
+
+    The recipe is the private's faithful pipeline, **per-trial beam coupling included** (the fit
+    re-derives the SOLVE union + SCORED set at every trial orientation -- the private's exact
+    objective). This is the opinionated default; a caller wanting a different composition (e.g. the
+    cheaper tilt-independent fit) composes their own ``pipeline([...])`` with the public steps.
 
     ``checkpoint`` (default ``True``) reuses/resumes a valid ``plan.npz`` in the experiment dir and
     writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)
@@ -106,7 +112,11 @@ def run_experiment(
 def _recipe_steps(
     cfg: ExperimentConfig, refinement: RefinementSetup, logger: Logger
 ) -> list[PlanStep]:
-    """The faithful default recipe as an inspectable step list (its provenance keys the lock)."""
+    """The faithful default recipe as an inspectable step list (its provenance keys the lock).
+
+    The orientation fit runs under the private's per-trial coupling (:func:`_trial_coupling`) -- the
+    faithful objective. The tilt-independent fit is not offered here; compose it directly if needed.
+    """
     return [
         select_beams(cfg.numerics.to_beam_selection()),
         integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
@@ -115,10 +125,27 @@ def _recipe_steps(
             refinement,
             cfg.preprocess.orientation.to_search(),
             method=cfg.solver.refine,
+            coupling=_trial_coupling(cfg),
             logger=logger,  # per-rotation fit progress (the run's long phase)
         ),
         fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
     ]
+
+
+def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
+    """Assemble the per-trial coupling from config, with the faithful private policy defaults.
+
+    Coupling is the faithful objective; its policy carries no config block (mirroring
+    ``converge_numerics``), so the SOLVE policy uses :class:`~diffBloch.specs.TiltSegmentUnion`'s
+    faithful defaults. The SCORED set reuses the *same* Klar window as ``select_beams`` (so the two
+    filters cannot disagree) and the config's ``g_max_refine`` as the scoring-resolution cap.
+    """
+    return TrialCoupling(
+        policy=TiltSegmentUnion(),
+        scored=ScoredSelection(
+            klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine
+        ),
+    )
 
 
 def _prepare(

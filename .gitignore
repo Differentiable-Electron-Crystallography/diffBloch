@@ -20,6 +20,12 @@ site/
 # Preprocess checkpoints (generated per-experiment; regenerated on demand, never committed)
 plan.npz
 plan.lock
+# ...except the committed frozen checkpoints: the CI anchor fixture + the worked example. These are
+# deliberately versioned (reused release-gated) and regenerated on a __version__ bump.
+!tests/fixtures/quartz_anchor/plan.npz
+!tests/fixtures/quartz_anchor/plan.lock
+!examples/experiments/quartz-checkpoint/plan.npz
+!examples/experiments/quartz-checkpoint/plan.lock
 
 # OS / editors
 .DS_Store
