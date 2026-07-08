@@ -1,4 +1,13 @@
-"""Raw refinable parameters and the constraint seam to physical tensors."""
+"""The adjustable model parameters, and the transform that turns them into physical quantities.
+
+Refinement varies a set of unbounded numbers, but the physical quantities they stand for are
+bounded: atomic displacement parameters (ADPs) must stay positive-definite, site occupancies lie in
+[0, 1], the sample thickness is positive, and atoms sitting on symmetry elements have some
+coordinates fixed. Rather than restrict the optimizer, we store each quantity as an unbounded "raw"
+number and apply a fixed transform (:func:`constrain`) that maps it onto its physical range.
+:class:`RefinableParams` holds the raw numbers the optimizer varies; :class:`PhysicalState` holds
+the physical quantities the diffraction calculation consumes.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +30,12 @@ type AdpKind = Literal["Uiso", "Uani", "missing"]
 
 @dataclass(frozen=True)
 class RefinableParams:
-    """The refinable surface in unconstrained tensor space."""
+    """The adjustable numbers the optimizer varies, before physical bounds are applied.
+
+    Each field is an unbounded tensor; the physical bounds (positivity, [0, 1], positive-definite
+    ADPs) are applied later by :func:`constrain`. An optional field is ``None`` when that quantity
+    is not being refined.
+    """
 
     asu_positions: Tensor
     uij_raw: Tensor | None = None
@@ -33,17 +47,18 @@ class RefinableParams:
 
 @dataclass(frozen=True)
 class ConstraintSpec:
-    """Static constraint metadata needed to constrain raw parameters.
+    """The fixed information :func:`constrain` needs to turn raw numbers into physical quantities.
 
     ``reciprocal_basis`` (``B`` = ``reciprocal_cell``, rows ``a*, b*, c*``) is required whenever
-    ADPs are constrained: it carries the cell frame used to map raw ADPs into the reciprocal ``U*``
-    frame that :func:`diffBloch.core.scattering.structure_factors` consumes.
+    ADPs are converted: it carries the cell frame used to express the ADPs in the reciprocal ``U*``
+    frame that :func:`diffBloch.core.scattering.structure_factors` expects.
 
-    ``refinable_position_mask`` is a shape-preserving ``(N, 3)`` gate with polarity
-    ``1 = refinable``, ``0 = frozen`` (applied as ``raw * mask + fixed * (1 - mask)`` in
-    :func:`diffBloch.core.constraints.apply_symmetry_mask`). Naming convention in this codebase:
-    *mask* = a shape-preserving 0/1 selector named by its subject and polarity; *filter* /
-    *select* = an operation that shrinks a set.
+    ``refinable_position_mask`` is a ``(N, 3)`` array of 0s and 1s with the same shape as the
+    atomic coordinates, marking which coordinates may move (``1 = free``, ``0 = held fixed``); it is
+    applied as ``raw * mask + fixed * (1 - mask)`` in
+    :func:`diffBloch.core.constraints.apply_symmetry_mask`. In this file a *mask* always means such
+    a same-shape 0/1 array that selects entries in place, named for what it selects and its
+    polarity.
     """
 
     fixed_positions: Tensor
@@ -55,11 +70,12 @@ class ConstraintSpec:
 
 @dataclass(frozen=True)
 class PhysicalState:
-    """Constrained physical tensors consumed by later physics stages.
+    """The physical quantities the diffraction calculation consumes, after bounds are applied.
 
-    ``uij_star`` is the ASU ADP tensor already mapped into the reciprocal ``U*`` frame (Uani via the
-    ``d*`` relation, Uiso via ``Uiso G*``), so :func:`diffBloch.core.scattering.structure_factors`
-    can consume it directly with no further frame hand-off.
+    ``uij_star`` is the ADP tensor for the asymmetric-unit atoms, already expressed in the
+    reciprocal ``U*`` frame (Uani via the ``d*`` relation, Uiso via ``Uiso G*``), so
+    :func:`diffBloch.core.scattering.structure_factors` can use it directly with no further frame
+    conversion.
     """
 
     positions: Tensor
@@ -70,7 +86,7 @@ class PhysicalState:
 
 
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
-    """Map raw refinable tensors to constrained physical tensors."""
+    """Turn the raw unbounded parameters into the bounded physical quantities."""
     _validate_shapes(params, spec)
     occupancies = (
         unit_interval(params.occupancy_raw)
