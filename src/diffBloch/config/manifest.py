@@ -10,16 +10,18 @@ import hashlib
 import json
 import mimetypes
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel
 
+from diffBloch import __version__
 from diffBloch.config.schema import ExperimentConfig, load_config
 
 
@@ -62,6 +64,34 @@ class RunManifest(BaseModel):
     refined_model: ArtifactHash | None = None
     code_version: str
     environment: dict[str, str]
+
+
+class RecipeStep(BaseModel):
+    """One step's identity in a preprocess recipe: its name + serialized params (or ``None``).
+
+    Mirrors :class:`~diffBloch.preprocess.pipeline.StepRecord` as plain, comparable data -- the lock
+    stores the recipe as a readable list of these, decoupled from the preprocess step vocabulary.
+    """
+
+    name: str
+    params: dict[str, Any] | None = None
+
+
+class PreprocessLock(BaseModel):
+    """``plan.lock``: binds a serialized ``Plan`` checkpoint to everything that determined it.
+
+    A checkpoint is safe to reuse only when the current run matches on all four axes -- the input
+    bytes, the resolved config, the software version, and the composed recipe -- AND the ``.npz``
+    verifies against ``plan``. The recipe axis is the piece the earlier cache attempt omitted;
+    ``code_version`` is the software-implementation axis the recipe (step shape + params) cannot
+    capture. Identity only: hashes + a readable recipe, never payload.
+    """
+
+    experiment_lock_sha256: str
+    config_digest: str
+    code_version: str
+    recipe: list[RecipeStep]
+    plan: ArtifactHash
 
 
 def sha256_file(path: str | Path) -> str:
@@ -110,6 +140,107 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
 def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
     """Write ``run_manifest.json`` in a stable, human-readable form."""
     Path(path).write_text(manifest.model_dump_json(indent=2) + "\n")
+
+
+def config_digest(config: ExperimentConfig) -> str:
+    """SHA256 of the resolved config's canonical JSON.
+
+    Keyed on the *resolved* :class:`ExperimentConfig` (not the ``experiment.yaml`` bytes): stable
+    under comment/whitespace/field-order edits, sensitive to any validated-value change.
+    ``sort_keys`` makes it order-independent -- a deterministic config identity for the lock.
+    """
+    canonical = json.dumps(config.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def code_version() -> str:
+    """The software-version identity of the compute (checkpoint validity + run-manifest stamp).
+
+    Returns :data:`diffBloch.__version__`, best-effort suffixed with the git short-SHA and a
+    ``.dirty`` marker when running inside a checkout (so a dev build's checkpoint is only reused
+    within the same commit). Falls back to the bare version in an installed wheel (no git / no
+    repo). A checkpoint captures a Plan produced by a specific *implementation*; the recipe records
+    the step shape + params but not the code behind them, so this is the axis that guards an
+    implementation change. Over-invalidation (an unrelated commit bumps the SHA) is safe and
+    expected; a ``.dirty`` tree does not distinguish *which* edits, so it is not a precise guard.
+    """
+    root = str(Path(__file__).parent)
+    try:
+        sha = subprocess.run(
+            ["git", "-C", root, "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if sha.returncode != 0:
+            return __version__
+        status = subprocess.run(
+            ["git", "-C", root, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        suffix = sha.stdout.strip() + (".dirty" if status.stdout.strip() else "")
+        return f"{__version__}+g{suffix}"
+    except (OSError, subprocess.SubprocessError):
+        return __version__
+
+
+def write_preprocess_lock(path: str | Path, lock: PreprocessLock) -> None:
+    """Write ``plan.lock`` in a stable, human-readable form (beside ``experiment.lock``)."""
+    Path(path).write_text(lock.model_dump_json(indent=2) + "\n")
+
+
+def read_preprocess_lock(path: str | Path) -> PreprocessLock:
+    """Read a ``plan.lock`` written by :func:`write_preprocess_lock`."""
+    return PreprocessLock.model_validate_json(Path(path).read_text())
+
+
+PreprocessLockStatus = Literal["reuse", "resume", "stale"]
+
+
+def preprocess_lock_status(
+    lock: PreprocessLock,
+    *,
+    experiment_lock_sha256: str,
+    config_digest: str,
+    code_version: str,
+    recipe: list[RecipeStep],
+    plan_path: str | Path,
+    root: str | Path,
+) -> PreprocessLockStatus:
+    """How the checkpoint ``lock`` relates to the current run's ``recipe`` -- the resume verdict.
+
+    ``"stale"`` unless the non-recipe axes all match (inputs, config, software version) AND the
+    ``.npz`` verifies against the lock's :class:`ArtifactHash` (a tampered/missing checkpoint is
+    stale). Given those hold:
+
+    - ``"reuse"`` when the recipe is identical -- the snapshot is exactly this run's output.
+    - ``"resume"`` when the lock's recipe is a *proper prefix* of ``recipe`` -- the run appends
+      steps, so resume from the snapshot and run only the suffix (append-only / tail resume).
+    - ``"stale"`` otherwise (a middle step differs, or the lock's recipe is longer).
+
+    The caller must refuse recipes containing an opaque step *before* reaching here (those can never
+    be safely reused); this function assumes a clean, comparable recipe.
+    """
+    if (
+        lock.experiment_lock_sha256 != experiment_lock_sha256
+        or lock.config_digest != config_digest
+        or lock.code_version != code_version
+    ):
+        return "stale"
+    artifact = Path(plan_path)
+    if not artifact.exists():
+        return "stale"
+    current = artifact_hash_for(artifact, root=root)
+    if current.sha256 != lock.plan.sha256 or current.bytes != lock.plan.bytes:
+        return "stale"
+    if lock.recipe == recipe:
+        return "reuse"
+    k = len(lock.recipe)
+    if k < len(recipe) and lock.recipe == recipe[:k]:
+        return "resume"
+    return "stale"
 
 
 def pack_run(

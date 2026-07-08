@@ -7,15 +7,39 @@ from zipfile import ZipFile
 import pytest
 
 from diffBloch.config import (
+    PreprocessLock,
+    RecipeStep,
     RunManifest,
     artifact_hash_for,
+    code_version,
+    config_digest,
+    load_config,
     load_experiment,
     pack_run,
+    preprocess_lock_status,
+    read_preprocess_lock,
     sha256_file,
+    write_preprocess_lock,
     write_run_manifest,
 )
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
+
+
+def _lock_and_recipe(tmp_path: Path):
+    """A written plan.npz + its fresh PreprocessLock + the recipe/config it was built against."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    recipe = [RecipeStep(name="select_beams", params={"__type__": "BeamSelection", "rsg": 0.9})]
+    npz = tmp_path / "plan.npz"
+    npz.write_bytes(b"fake-checkpoint-bytes")
+    lock = PreprocessLock(
+        experiment_lock_sha256=sha256_file(LOCKED / "experiment.lock"),
+        config_digest=config_digest(cfg),
+        code_version=code_version(),
+        recipe=recipe,
+        plan=artifact_hash_for(npz, root=tmp_path),
+    )
+    return cfg, recipe, npz, lock
 
 
 def test_load_experiment_verifies_locked_input_bytes() -> None:
@@ -106,3 +130,97 @@ def test_pack_run_export_formats(tmp_path: Path, package_format: str, expected_n
 def test_pack_run_requires_manifest(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         pack_run(tmp_path / "missing_manifest")
+
+
+# --- preprocess checkpoint lock: the four-axis freshness check ---
+
+
+def test_config_digest_is_stable_and_value_sensitive() -> None:
+    cfg = load_config(LOCKED / "experiment.yaml")
+    assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
+    bumped = cfg.model_copy(update={"name": "different"})
+    assert config_digest(bumped) != config_digest(cfg)
+
+
+def test_code_version_carries_the_package_version() -> None:
+    from diffBloch import __version__
+
+    assert code_version().startswith(__version__)  # bare, or "<version>+g<sha>[.dirty]"
+
+
+def test_preprocess_lock_round_trips(tmp_path: Path) -> None:
+    _cfg, _recipe, _npz, lock = _lock_and_recipe(tmp_path)
+    path = tmp_path / "plan.lock"
+    write_preprocess_lock(path, lock)
+    assert read_preprocess_lock(path) == lock
+
+
+def _args(cfg, recipe, npz, tmp_path):
+    return dict(
+        experiment_lock_sha256=sha256_file(LOCKED / "experiment.lock"),
+        config_digest=config_digest(cfg),
+        code_version=code_version(),
+        recipe=recipe,
+        plan_path=npz,
+        root=tmp_path,
+    )
+
+
+def test_identical_recipe_reuses(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    assert preprocess_lock_status(lock, **_args(cfg, recipe, npz, tmp_path)) == "reuse"
+
+
+def test_appended_step_resumes(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["recipe"] = [*recipe, RecipeStep(name="fit_thickness", params=None)]  # tail extension
+    assert preprocess_lock_status(lock, **args) == "resume"
+
+
+def test_changed_middle_step_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    changed = {"__type__": "BeamSelection", "rsg": 0.5}
+    args["recipe"] = [RecipeStep(name="select_beams", params=changed)]
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_shorter_recipe_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["recipe"] = []  # lock's recipe is longer than intended -> not a prefix of it
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_config_change_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["config_digest"] = config_digest(cfg.model_copy(update={"name": "different"}))
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_code_version_change_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["code_version"] = "9.9.9+deadbeef"  # a different implementation
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_input_drift_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["experiment_lock_sha256"] = "0" * 64
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_tampered_checkpoint_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    npz.write_bytes(b"tampered-different-bytes")  # same path, changed bytes
+    assert preprocess_lock_status(lock, **_args(cfg, recipe, npz, tmp_path)) == "stale"
+
+
+def test_missing_checkpoint_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    npz.unlink()
+    assert preprocess_lock_status(lock, **_args(cfg, recipe, npz, tmp_path)) == "stale"
