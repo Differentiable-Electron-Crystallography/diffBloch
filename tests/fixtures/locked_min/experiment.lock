@@ -6,4 +6,3 @@ observations:
   ref: exp_data.cif_pets
   sha256: b2fcfe5a3f38791441db40adca91380ac615d89c9bc2387a5e1ab6d08d84e231
   bytes: 82
-orientations: null

@@ -92,7 +92,6 @@ def test_quartz_reference_anchor(material: str) -> None:
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
     assert cfg.inputs.observations == lock.observations.ref
-    assert cfg.inputs.orientations == lock.orientations.ref
 
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
     observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)

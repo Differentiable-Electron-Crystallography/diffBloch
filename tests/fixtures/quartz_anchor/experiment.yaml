@@ -1,11 +1,10 @@
-# Real quartz anchor fixture copied from diffBloch_private/tests/e2e/inference/quartz.
-# This directory is the public experiment-directory seed. Subsequent stages should evolve this
-# layout in place (rather than creating a parallel anchor fixture) as IO/core/run artifacts land.
+# Real quartz characterization-anchor fixture (the published quartz PED dataset).
+# This directory is the public experiment-directory seed; subsequent stages evolve this layout in
+# place (rather than a parallel anchor fixture) as IO/core/run artifacts land.
 name: quartz-anchor
 inputs:
   structure: enantiomer_1.cif
   observations: exp_data.cif_pets
-  orientations: optim_orientation.csv
 sample:
   thicknesses: [820.0]
 numerics:

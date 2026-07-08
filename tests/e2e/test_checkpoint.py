@@ -24,7 +24,6 @@ _INPUTS = (
     "experiment.lock",
     "enantiomer_1.cif",
     "exp_data.cif_pets",
-    "optim_orientation.csv",
 )
 
 

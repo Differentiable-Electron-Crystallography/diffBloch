@@ -38,7 +38,6 @@ class ExperimentLock(BaseModel):
 
     structure: InputLock
     observations: InputLock
-    orientations: InputLock | None = None
 
 
 class ArtifactHash(BaseModel):
@@ -130,10 +129,6 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
     _verify_input(root, cfg.inputs.observations, lock.observations)
-    if cfg.inputs.orientations is not None or lock.orientations is not None:
-        if cfg.inputs.orientations is None or lock.orientations is None:
-            raise ValueError("orientations must appear in both experiment.yaml and experiment.lock")
-        _verify_input(root, cfg.inputs.orientations, lock.orientations)
     return cfg, lock
 
 

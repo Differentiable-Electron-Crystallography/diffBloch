@@ -233,13 +233,10 @@ class Inputs(_StrictConfig):
 
     structure: str
     observations: str
-    orientations: str | None = None
 
-    @field_validator("structure", "observations", "orientations")
+    @field_validator("structure", "observations")
     @classmethod
-    def _relative_path_only(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def _relative_path_only(cls, value: str) -> str:
         path = Path(value)
         if path.is_absolute() or ".." in path.parts:
             raise ValueError(

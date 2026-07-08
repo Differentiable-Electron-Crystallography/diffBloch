@@ -6,7 +6,3 @@ observations:
   ref: exp_data.cif_pets
   sha256: 96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4
   bytes: 303151
-orientations:
-  ref: optim_orientation.csv
-  sha256: 70c7290f4ab36edeede9f670e0c58e4ab857d13326087c97770abedc62f54dcd
-  bytes: 28227
