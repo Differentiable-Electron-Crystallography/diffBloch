@@ -203,8 +203,25 @@ def test_config_change_is_stale(tmp_path: Path) -> None:
 def test_code_version_change_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     args = _args(cfg, recipe, npz, tmp_path)
-    args["code_version"] = "9.9.9+deadbeef"  # a different implementation
+    args["code_version"] = "9.9.9+deadbeef"  # a different *release* -> stale
     assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_same_release_different_sha_reuses(tmp_path: Path) -> None:
+    """The reuse gate keys on the release version, so a differing git SHA still reuses.
+
+    This is what makes a *committed* checkpoint usable: the lock records the SHA of whatever commit
+    generated it, but any later commit of the same release must still reuse it (else a shipped
+    checkpoint would go stale on the very next commit).
+    """
+    from diffBloch import __version__
+
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    # Lock stamped by one commit; current run is a different commit (and dirty) of the SAME release.
+    stamped = lock.model_copy(update={"code_version": f"{__version__}+gdeadbeef"})
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["code_version"] = f"{__version__}+gfeedface.dirty"
+    assert preprocess_lock_status(stamped, **args) == "reuse"
 
 
 def test_input_drift_is_stale(tmp_path: Path) -> None:

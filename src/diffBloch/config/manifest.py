@@ -83,7 +83,10 @@ class PreprocessLock(BaseModel):
     bytes, the resolved config, the software version, and the composed recipe -- AND the ``.npz``
     verifies against ``plan``. The recipe axis is the piece the earlier cache attempt omitted;
     ``code_version`` is the software-implementation axis the recipe (step shape + params) cannot
-    capture. Identity only: hashes + a readable recipe, never payload.
+    capture. The full ``code_version`` string (``__version__+g<sha>[.dirty]``) is recorded here as a
+    build stamp, but the reuse gate compares only its release ``__version__`` (see
+    :func:`preprocess_lock_status`), so the checkpoint survives commits within a release. Identity
+    only: hashes + a readable recipe, never payload.
     """
 
     experiment_lock_sha256: str
@@ -152,12 +155,13 @@ def code_version() -> str:
     """The software-version identity of the compute (checkpoint validity + run-manifest stamp).
 
     Returns :data:`diffBloch.__version__`, best-effort suffixed with the git short-SHA and a
-    ``.dirty`` marker when running inside a checkout (so a dev build's checkpoint is only reused
-    within the same commit). Falls back to the bare version in an installed wheel (no git / no
-    repo). A checkpoint captures a Plan produced by a specific *implementation*; the recipe records
-    the step shape + params but not the code behind them, so this is the axis that guards an
-    implementation change. Over-invalidation (an unrelated commit bumps the SHA) is safe and
-    expected; a ``.dirty`` tree does not distinguish *which* edits, so it is not a precise guard.
+    ``.dirty`` marker when running inside a checkout. Falls back to the bare version in an installed
+    wheel (no git / no repo). This full string is the *stamp* recorded in the run manifest and the
+    checkpoint lock (it says exactly which build produced an artifact). The checkpoint *reuse gate*,
+    however, keys only on the release ``__version__`` (see :func:`_release`), so a committed
+    checkpoint stays reusable across commits within a release -- the SHA/``.dirty`` detail is
+    recorded but does not invalidate. The trade-off is a weaker guard: a physics change without a
+    version bump reuses; release discipline plus ``--refresh`` (regenerate) is the escape hatch.
     """
     root = str(Path(__file__).parent)
     try:
@@ -194,6 +198,16 @@ def read_preprocess_lock(path: str | Path) -> PreprocessLock:
 PreprocessLockStatus = Literal["reuse", "resume", "stale"]
 
 
+def _release(code_version: str) -> str:
+    """The release-version prefix of a :func:`code_version` string (drops the ``+g<sha>`` suffix).
+
+    ``code_version()`` is ``__version__`` optionally suffixed with ``+g<sha>[.dirty]``; the reuse
+    gate keys on the release ``__version__`` alone (``split("+g")[0]``), so a checkpoint stays
+    reusable across commits within a release rather than being invalidated by every SHA change.
+    """
+    return code_version.split("+g", 1)[0]
+
+
 def preprocess_lock_status(
     lock: PreprocessLock,
     *,
@@ -206,9 +220,10 @@ def preprocess_lock_status(
 ) -> PreprocessLockStatus:
     """How the checkpoint ``lock`` relates to the current run's ``recipe`` -- the resume verdict.
 
-    ``"stale"`` unless the non-recipe axes all match (inputs, config, software version) AND the
-    ``.npz`` verifies against the lock's :class:`ArtifactHash` (a tampered/missing checkpoint is
-    stale). Given those hold:
+    ``"stale"`` unless the non-recipe axes all match (inputs, config, and the *release* portion of
+    the software version -- :func:`_release`, so a differing git SHA within the same release still
+    matches) AND the ``.npz`` verifies against the lock's :class:`ArtifactHash` (a tampered/missing
+    checkpoint is stale). Given those hold:
 
     - ``"reuse"`` when the recipe is identical -- the snapshot is exactly this run's output.
     - ``"resume"`` when the lock's recipe is a *proper prefix* of ``recipe`` -- the run appends
@@ -221,7 +236,7 @@ def preprocess_lock_status(
     if (
         lock.experiment_lock_sha256 != experiment_lock_sha256
         or lock.config_digest != config_digest
-        or lock.code_version != code_version
+        or _release(lock.code_version) != _release(code_version)
     ):
         return "stale"
     artifact = Path(plan_path)
