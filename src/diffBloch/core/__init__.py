@@ -8,7 +8,13 @@ from diffBloch.core.adp import (
     equivalent_isotropic_adp,
     isotropic_adp,
 )
-from diffBloch.core.constraints import apply_symmetry_mask, positive, unit_interval
+from diffBloch.core.constraints import (
+    apply_adp_constraints,
+    apply_symmetry_projection,
+    diagonal_projection,
+    positive,
+    unit_interval,
+)
 from diffBloch.core.crystal import (
     cell_matrix_from_parameters,
     cell_volume,
@@ -79,7 +85,9 @@ __all__ = [
     "PatternBatch",
     "StructureFactorGather",
     "align",
-    "apply_symmetry_mask",
+    "apply_adp_constraints",
+    "apply_symmetry_projection",
+    "diagonal_projection",
     "build_alignment_plan",
     "build_asu_expansion_plan",
     "build_beam_plan",

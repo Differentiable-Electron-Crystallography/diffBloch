@@ -1,12 +1,15 @@
 import pytest
 import torch
+from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core import (
-    apply_symmetry_mask,
+    apply_adp_constraints,
+    apply_symmetry_projection,
     cartesian_adp_to_star,
     cholesky_adp,
     cholesky_raw_from_adp,
     cif_adp_to_star,
+    diagonal_projection,
     equivalent_isotropic_adp,
     isotropic_adp,
     positive,
@@ -52,11 +55,7 @@ def test_constrain_requires_reciprocal_basis_for_adps() -> None:
     params = RefinableParams(
         asu_positions=positions, uij_raw=torch.eye(3, dtype=torch.float64)[None]
     )
-    spec = ConstraintSpec(
-        fixed_positions=positions,
-        refinable_position_mask=torch.ones_like(positions),
-        occupancies=torch.ones(1, dtype=torch.float64),
-    )
+    spec = make_constraint_spec()
     with pytest.raises(ValueError, match="reciprocal_basis is required"):
         constrain(params, spec)
 
@@ -68,12 +67,10 @@ def test_constrain_coerces_reciprocal_basis_to_param_dtype() -> None:
         asu_positions=positions,
         u_iso_raw=torch.full((1,), -4.0, dtype=torch.float32),
     )
-    spec = ConstraintSpec(
-        fixed_positions=positions,
-        refinable_position_mask=torch.ones_like(positions),
-        occupancies=torch.ones(1, dtype=torch.float32),
+    spec = make_constraint_spec(
         adp_kind=("Uiso",),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
+        dtype=torch.float32,
     )
     state = constrain(params, spec)
     assert state.uij_star.dtype == torch.float32
@@ -149,17 +146,61 @@ def test_unit_interval_and_positive_bijectors() -> None:
     assert torch.all(positive(raw) > 0.0)
 
 
-def test_symmetry_mask_freezes_fixed_dofs_and_preserves_free_gradients() -> None:
+def test_symmetry_projection_freezes_fixed_dofs_and_preserves_free_gradients() -> None:
     raw = torch.tensor([[0.2, 0.3, 0.4]], dtype=torch.float64, requires_grad=True)
     fixed = torch.tensor([[0.1, 0.1, 0.1]], dtype=torch.float64)
     mask = torch.tensor([[1.0, 0.0, 1.0]], dtype=torch.float64)
+    projection, offset = diagonal_projection(mask, fixed)
 
-    constrained = apply_symmetry_mask(raw, mask=mask, fixed=fixed)
+    constrained = apply_symmetry_projection(raw, projection=projection, offset=offset)
     constrained.sum().backward()
 
     assert torch.allclose(constrained, torch.tensor([[0.2, 0.1, 0.4]], dtype=torch.float64))
     assert raw.grad is not None
     assert torch.allclose(raw.grad, torch.tensor([[1.0, 0.0, 1.0]], dtype=torch.float64))
+
+
+def test_symmetry_projection_enforces_coupled_degrees_of_freedom() -> None:
+    # A coupled site x = y = z (e.g. pyrite S on (x,x,x)): the projector onto span{(1,1,1)}
+    # keeps the
+    # three coordinates equal for any raw, and a diagonal mask cannot express this.
+    raw = torch.tensor([[0.2, 0.4, 0.9]], dtype=torch.float64, requires_grad=True)
+    projection = torch.full((1, 3, 3), 1.0 / 3.0, dtype=torch.float64)
+    offset = torch.zeros((1, 3), dtype=torch.float64)
+
+    constrained = apply_symmetry_projection(raw, projection=projection, offset=offset)
+    constrained.sum().backward()
+
+    mean = (0.2 + 0.4 + 0.9) / 3.0
+    assert torch.allclose(constrained, torch.full((1, 3), mean, dtype=torch.float64))
+    # The gradient of the mean is spread equally across the coupled coordinates.
+    assert raw.grad is not None
+    assert torch.allclose(raw.grad, torch.full((1, 3), 1.0, dtype=torch.float64))
+
+
+def test_apply_adp_constraints_enforces_equalities_and_kills_dependent_gradients() -> None:
+    # One atom on a site requiring U22 = U11 and U23 = U13/2; the other unconstrained.
+    uij = torch.tensor(
+        [
+            [[0.10, 0.02, 0.03], [0.02, 0.99, 0.04], [0.03, 0.04, 0.12]],
+            [[0.10, 0.02, 0.03], [0.02, 0.11, 0.04], [0.03, 0.04, 0.12]],
+        ],
+        dtype=torch.float64,
+        requires_grad=True,
+    )
+    constraints = (((1, 1, 0, 0, 1.0), (1, 2, 0, 2, 0.5)), ())
+
+    constrained = apply_adp_constraints(uij, constraints)
+    constrained.sum().backward()
+
+    # Constrained components follow their base component (symmetrically); the second atom is intact.
+    assert constrained[0, 1, 1].item() == pytest.approx(constrained[0, 0, 0].item())  # U22 = U11
+    assert constrained[0, 1, 2].item() == pytest.approx(0.5 * constrained[0, 0, 2].item())  # U23
+    assert torch.allclose(constrained[0, 2, 1], constrained[0, 1, 2])  # stays symmetric
+    assert torch.allclose(constrained[1], uij[1].detach())
+    # The overwritten (dependent) raw entry no longer affects the output -> zero gradient.
+    assert uij.grad is not None
+    assert uij.grad[0, 1, 1] == 0.0
 
 
 def test_constrain_composes_raw_params_to_physical_state() -> None:
@@ -175,11 +216,13 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
         occupancy_raw=occupancy_raw,
         thickness_raw=thickness_raw,
     )
+    projection, offset = diagonal_projection(
+        torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64),
+        torch.zeros_like(positions),
+    )
     spec = ConstraintSpec(
-        fixed_positions=torch.zeros_like(positions),
-        refinable_position_mask=torch.tensor(
-            [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float64
-        ),
+        position_projection=projection,
+        position_offset=offset,
         occupancies=torch.ones(2, dtype=torch.float64),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
@@ -213,10 +256,8 @@ def test_constrain_honors_mixed_adp_kinds() -> None:
         uij_raw=uij_raw,
         u_iso_raw=u_iso_raw,
     )
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros_like(positions),
-        refinable_position_mask=torch.ones_like(positions),
-        occupancies=torch.ones(2, dtype=torch.float64),
+    spec = make_constraint_spec(
+        n_atoms=2,
         adp_kind=("Uani", "Uiso"),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
@@ -240,12 +281,7 @@ def test_constrain_honors_mixed_adp_kinds() -> None:
 def test_constrain_rejects_missing_adps_until_policy_exists() -> None:
     positions = torch.zeros((1, 3), dtype=torch.float64)
     params = RefinableParams(asu_positions=positions)
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros_like(positions),
-        refinable_position_mask=torch.ones_like(positions),
-        occupancies=torch.ones(1, dtype=torch.float64),
-        adp_kind=("missing",),
-    )
+    spec = make_constraint_spec(adp_kind=("missing",))
 
     with pytest.raises(ValueError, match="missing ADPs"):
         constrain(params, spec)
@@ -257,9 +293,7 @@ def test_constrain_uses_default_occupancies_when_not_refined() -> None:
         asu_positions=positions,
         uij_raw=torch.eye(3, dtype=torch.float64)[None, :, :],
     )
-    spec = ConstraintSpec(
-        fixed_positions=positions,
-        refinable_position_mask=torch.ones_like(positions),
+    spec = make_constraint_spec(
         occupancies=torch.tensor([0.75], dtype=torch.float64),
         reciprocal_basis=torch.eye(3, dtype=torch.float64),
     )
@@ -274,11 +308,7 @@ def test_constrain_validates_shapes() -> None:
         asu_positions=torch.zeros((1, 3), dtype=torch.float64),
         uij_raw=torch.zeros((2, 3, 3), dtype=torch.float64),
     )
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
-        occupancies=torch.ones(1, dtype=torch.float64),
-    )
+    spec = make_constraint_spec()
 
     with pytest.raises(ValueError, match="uij_raw"):
         constrain(params, spec)

@@ -81,7 +81,7 @@ def test_refinement_setup_seeds_quartz_uani_structure() -> None:
 
     assert setup.numbers.tolist() == structure.numbers.tolist()
     assert setup.asu_plan.n_asu_sites == structure.n_atoms
-    # Positions are seeded at their CIF values (all-free mask, fixed == start).
+    # Positions are seeded at their CIF values (raw asu_positions == the CIF coordinates).
     assert torch.allclose(
         setup.params.asu_positions, torch.tensor(structure.frac_positions, dtype=torch.float64)
     )
@@ -94,7 +94,8 @@ def test_refinement_setup_params_constrain_back_to_the_cif_adps() -> None:
 
     state = constrain(setup.params, setup.spec)
 
-    # Positions recovered exactly (mask all-free, so constrain returns the raw asu_positions).
+    # Positions recovered exactly: raw is seeded at the CIF values (which lie on their sites), so
+    # the site-symmetry projector returns them unchanged (x = x0 + P @ (raw - x0) = x0 at raw = x0).
     assert torch.allclose(
         state.positions, torch.tensor(structure.frac_positions, dtype=torch.float64)
     )

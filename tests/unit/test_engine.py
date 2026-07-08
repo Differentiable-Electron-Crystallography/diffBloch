@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core.losses import mse
 from diffBloch.core.products import BlochSolution, PatternBatch
@@ -17,7 +18,7 @@ from diffBloch.engine import (
     mse_loss,
 )
 from diffBloch.observability import RecordingLogger, RefinementCompleted, RefinementStep
-from diffBloch.params import ConstraintSpec, RefinableParams
+from diffBloch.params import RefinableParams
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5) I
@@ -44,12 +45,7 @@ def _engine(
     orientation = OrientationPlan.build(
         grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,), tilts=tilts
     )  # 300 A: dynamical regime (I_diff ~0.1)
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
-        occupancies=torch.ones(1, dtype=torch.float64),
-        reciprocal_basis=grid.reciprocal_basis,
-    )
+    spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     return RefinementEngine(
         spec=spec,
         asu_plan=asu_plan,

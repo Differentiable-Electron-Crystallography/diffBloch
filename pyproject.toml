@@ -7,14 +7,14 @@ requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+    "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
     "gemmi>=0.7.5",
     "numpy>=2.5",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "torch>=2.12.1",
     # Scientific deps are added as their modules land:
-    #   diffpy.structure -> io/symmetry_setup (special-position / ADP constraints)
-    #   abtem            -> core/scattering (electron form factors), wrapped behind a seam
+    #   abtem -> core/scattering (electron form factors), wrapped behind a seam
 ]
 
 [project.optional-dependencies]
@@ -58,6 +58,10 @@ pythonpath = ["."]
 markers = [
     "e2e: end-to-end characterization tests (require data fixtures; opt-in via `just test-e2e`)",
     "slow: long-running tests",
+]
+filterwarnings = [
+    # diffpy.structure 3.4 calls its own deprecated helpers inside SymmetryConstraints; not ours.
+    "ignore:'diffpy.structure.*' is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]

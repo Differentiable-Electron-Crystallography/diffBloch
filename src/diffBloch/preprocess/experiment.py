@@ -30,6 +30,7 @@ from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
+from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess.orientation import orientation_matrices
 from diffBloch.preprocess.plan import Plan
@@ -117,19 +118,20 @@ class RefinementSetup:
         ``from_experiment``, fitted by ``fit_thickness``) -- because it varies per rotation, not per
         structure.
 
-        .. note::
-           The ``refinable_position_mask`` is all-free for now: special-position degree-of-freedom
-           constraints (the diffpy-backed expansion behind :mod:`diffBloch.io.symmetry_setup`) are a
-           later constraints stage. Until then a special-position atom is over-parameterized and may
-           drift off its site under refinement.
+        Special-position degrees of freedom are constrained by the site-symmetry projector built
+        natively from the structure's symmetry operators (:func:`symmetry_constraints`): an atom
+        special position is held on its site under refinement, so it is neither over-parameterized
+        nor free to drift off. A general-position atom gets the identity projector (unconstrained).
         """
         positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
         uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
+        constraints = symmetry_constraints(structure)
         spec = ConstraintSpec(
-            fixed_positions=positions,
-            refinable_position_mask=torch.ones_like(positions),
+            position_projection=torch.tensor(constraints.position_projection, dtype=torch.float64),
+            position_offset=torch.tensor(constraints.position_offset, dtype=torch.float64),
             occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
             adp_kind=structure.adp.kind,
+            adp_constraints=constraints.adp_constraints,
             reciprocal_basis=torch.tensor(
                 reciprocal_cell(structure.unit_cell), dtype=torch.float64
             ),

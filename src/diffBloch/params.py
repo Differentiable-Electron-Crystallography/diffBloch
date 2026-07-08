@@ -23,7 +23,13 @@ from diffBloch.core.adp import (
     cif_adp_to_star,
     isotropic_adp,
 )
-from diffBloch.core.constraints import apply_symmetry_mask, positive, unit_interval
+from diffBloch.core.constraints import (
+    AdpConstraints,
+    apply_adp_constraints,
+    apply_symmetry_projection,
+    positive,
+    unit_interval,
+)
 
 type AdpKind = Literal["Uiso", "Uani", "missing"]
 
@@ -53,18 +59,26 @@ class ConstraintSpec:
     ADPs are converted: it carries the cell frame used to express the ADPs in the reciprocal ``U*``
     frame that :func:`diffBloch.core.scattering.structure_factors` expects.
 
-    ``refinable_position_mask`` is a ``(N, 3)`` array of 0s and 1s with the same shape as the
-    atomic coordinates, marking which coordinates may move (``1 = free``, ``0 = held fixed``); it is
-    applied as ``raw * mask + fixed * (1 - mask)`` in
-    :func:`diffBloch.core.constraints.apply_symmetry_mask`. In this file a *mask* always means such
-    a same-shape 0/1 array that selects entries in place, named for what it selects and its
-    polarity.
+    ``position_projection`` is a ``(N, 3, 3)`` per-atom site-symmetry projector ``P`` and
+    ``position_offset`` the ``(N, 3)`` on-site offset ``(I - P) @ x0``; together they constrain the
+    atomic coordinates via ``P @ raw + offset`` in
+    :func:`diffBloch.core.constraints.apply_symmetry_projection`, holding each atom on its
+    special-position manifold. A general-position atom has ``P = I`` (unconstrained); an
+    axis-aligned special position reduces to a diagonal ``P`` (the freeze mask); a coupled site
+    (``x = y``) needs
+    the off-diagonal projector. Built by :func:`diffBloch.io.symmetry_setup.symmetry_constraints`.
+
+    ``adp_constraints`` holds, per atom, the site-symmetry ``Uij`` equalities
+    ``Uij[i,j] = coeff * Uij[src_i, src_j]`` (empty per atom when the ADP is unconstrained;
+    ``None`` when no ADP constraints apply at all), enforced by
+    :func:`diffBloch.core.constraints.apply_adp_constraints` in the CIF ``Uij`` frame.
     """
 
-    fixed_positions: Tensor
-    refinable_position_mask: Tensor
+    position_projection: Tensor
+    position_offset: Tensor
     occupancies: Tensor
     adp_kind: tuple[AdpKind, ...] | None = None
+    adp_constraints: AdpConstraints | None = None
     reciprocal_basis: Tensor | None = None
 
 
@@ -96,10 +110,10 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
         )
     )
     return PhysicalState(
-        positions=apply_symmetry_mask(
+        positions=apply_symmetry_projection(
             params.asu_positions,
-            mask=spec.refinable_position_mask,
-            fixed=spec.fixed_positions,
+            projection=spec.position_projection,
+            offset=spec.position_offset,
         ),
         uij_star=_constrain_adps(params, spec),
         occupancies=occupancies,
@@ -112,16 +126,18 @@ def _validate_shapes(params: RefinableParams, spec: ConstraintSpec) -> None:
     n_atoms = int(params.asu_positions.shape[0])
     if params.asu_positions.shape != (n_atoms, 3):
         raise ValueError("asu_positions must have shape (N, 3)")
-    if spec.fixed_positions.shape != params.asu_positions.shape:
-        raise ValueError("fixed_positions must match asu_positions")
-    if spec.refinable_position_mask.shape != params.asu_positions.shape:
-        raise ValueError("refinable_position_mask must match asu_positions")
+    if spec.position_projection.shape != (n_atoms, 3, 3):
+        raise ValueError("position_projection must have shape (N, 3, 3)")
+    if spec.position_offset.shape != params.asu_positions.shape:
+        raise ValueError("position_offset must match asu_positions")
     if spec.occupancies.shape != (n_atoms,):
         raise ValueError("occupancies must have shape (N,)")
     if params.occupancy_raw is not None and params.occupancy_raw.shape != (n_atoms,):
         raise ValueError("occupancy_raw must have shape (N,)")
     if spec.adp_kind is not None and len(spec.adp_kind) != n_atoms:
         raise ValueError("adp_kind must have one entry per atom")
+    if spec.adp_constraints is not None and len(spec.adp_constraints) != n_atoms:
+        raise ValueError("adp_constraints must have one entry per atom")
     if spec.adp_kind is not None and "missing" in spec.adp_kind:
         raise ValueError("missing ADPs require an explicit initialization policy")
     if (_requires_uani(spec) or spec.adp_kind is None) and (
@@ -147,7 +163,7 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
     if spec.adp_kind is None:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required when adp_kind is not provided")
-        return cif_adp_to_star(cholesky_adp(params.uij_raw), reciprocal_lengths)
+        return cif_adp_to_star(_constrained_cif_uij(params.uij_raw, spec), reciprocal_lengths)
 
     uij = torch.zeros((n_atoms, 3, 3), dtype=dtype, device=device)
 
@@ -155,7 +171,7 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required for Uani ADPs")
         mask = _kind_mask(spec.adp_kind, "Uani", device=device)
-        star = cif_adp_to_star(cholesky_adp(params.uij_raw), reciprocal_lengths)
+        star = cif_adp_to_star(_constrained_cif_uij(params.uij_raw, spec), reciprocal_lengths)
         uij = torch.where(mask[:, None, None], star, uij)
 
     if _requires_uiso(spec):
@@ -165,6 +181,19 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
         star = cartesian_adp_to_star(isotropic_adp(positive(params.u_iso_raw)), reciprocal_basis)
         uij = torch.where(mask[:, None, None], star, uij)
 
+    return uij
+
+
+def _constrained_cif_uij(uij_raw: Tensor, spec: ConstraintSpec) -> Tensor:
+    """Expand the raw Cholesky ADP parameters to the CIF ``Uij`` tensor, applying site-symmetry.
+
+    The site-symmetry ``Uij`` equalities act in the CIF frame (before the ``U*`` transform), so
+    special-position atoms are not over-parameterized: any constrained component follows its base
+    component and stops carrying an independent gradient.
+    """
+    uij = cholesky_adp(uij_raw)
+    if spec.adp_constraints is not None:
+        uij = apply_adp_constraints(uij, spec.adp_constraints)
     return uij
 
 

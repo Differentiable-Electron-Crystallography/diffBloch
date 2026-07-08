@@ -22,7 +22,15 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import torch
-from tests.unit.synthetic import CELL, ENERGY, THICKNESS, beam_count, seed_system, silicon_params
+from tests.unit.synthetic import (
+    CELL,
+    ENERGY,
+    THICKNESS,
+    beam_count,
+    make_constraint_spec,
+    seed_system,
+    silicon_params,
+)
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
@@ -49,12 +57,7 @@ _PRUNED_BEAMS = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # one fewer co
 def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
     grid = ScatteringGrid.from_cell(CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
-        occupancies=torch.ones(1, dtype=torch.float64),
-        reciprocal_basis=grid.reciprocal_basis,
-    )
+    spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
     return grid, asu_plan, spec, numbers
 

@@ -2,11 +2,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core import build_asu_expansion_plan
 from diffBloch.core.crystal import reciprocal_cell
 from diffBloch.io import read_structure
-from diffBloch.params import ConstraintSpec, RefinableParams, constrain
+from diffBloch.params import RefinableParams, constrain
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 
@@ -38,9 +39,7 @@ def test_constrain_accepts_paracetamol_uiso_adps() -> None:
         asu_positions=positions,
         u_iso_raw=u_iso_raw,
     )
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros_like(positions),
-        refinable_position_mask=torch.ones_like(positions),
+    spec = make_constraint_spec(
         occupancies=torch.tensor(record.occupancies, dtype=torch.float64),
         adp_kind=record.adp.kind,
         reciprocal_basis=torch.tensor(reciprocal_cell(record.unit_cell), dtype=torch.float64),

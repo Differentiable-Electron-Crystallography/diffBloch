@@ -13,6 +13,7 @@ import math
 
 import numpy as np
 import torch
+from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
@@ -30,12 +31,7 @@ _METHOD = "matrix_exp"  # observed patterns below use this; keep run_inference m
 def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
-    spec = ConstraintSpec(
-        fixed_positions=torch.zeros((1, 3), dtype=torch.float64),
-        refinable_position_mask=torch.ones((1, 3), dtype=torch.float64),
-        occupancies=torch.ones(1, dtype=torch.float64),
-        reciprocal_basis=grid.reciprocal_basis,
-    )
+    spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
     return grid, asu_plan, spec, numbers
 
