@@ -31,6 +31,24 @@ new method, dataset, dependency, or studied design adds its credit here.
   (`energy → wavelength`, interaction parameter `σ`) are standard and follow the abTEM
   implementation noted below.
 
+- **Dynamical refinement of 3D electron diffraction data (rocking-curve integration framework).**
+  Palatinus, L., Petříček, V. & Corrêa, C. A. (2015). *Structure refinement using precession electron
+  diffraction tomography and dynamical diffraction: theory and implementation.* **Acta
+  Crystallographica A71, 235–244.** DOI:
+  [10.1107/S2053273315001266](https://doi.org/10.1107/S2053273315001266); with the companion tests
+  paper Palatinus, L. et al. (2015). *…: tests on experimental data.* **Acta Crystallographica B71,
+  740–751.** DOI: [10.1107/S2052520615017023](https://doi.org/10.1107/S2052520615017023). The
+  canonical source of the refinement model diffBloch's engine implements: each reflection's intensity
+  is integrated over its rocking curve (a series of small tilt steps), with a per-orientation
+  Bloch-wave solve whose beam list is selected by excitation-error and resolution thresholds
+  (`Sg_max`/`RSg` and `g_max`), then least-squares refined against the integrated intensities
+  (`integrate_rocking_curve` + the `select_beams` excitation criterion). Klar et al. 2023 (below)
+  refines the beam-selection thresholds on this framework, as implemented in Jana2006/Jana2020 +
+  PETS. **Note:** the `couple_beams(TiltSegmentUnion)` policy — partitioning a rocking curve into
+  contiguous tilt chunks and coupling the union of each chunk's boundary-tilt excited beams — is an
+  engineering approximation of this per-orientation beam list, **not** in the papers; it is ported
+  from the private `BlochNet.forward` and has no separate published source.
+
 - **Atomic displacement parameter (ADP) frame conventions.**
   Trueblood, K. N. et al. (1996). *Atomic displacement parameter nomenclature: report of a
   subcommittee on atomic displacement parameter nomenclature.* **Acta Crystallographica A52,

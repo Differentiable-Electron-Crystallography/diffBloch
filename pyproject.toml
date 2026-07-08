@@ -1,5 +1,5 @@
 [project]
-name = "diffbloch"
+name = "diffBloch"
 dynamic = ["version"]  # single-sourced from src/diffBloch/__init__.py (see [tool.hatch.version])
 description = "Differentiable Bloch-wave electron-diffraction structure refinement"
 readme = "README.md"
