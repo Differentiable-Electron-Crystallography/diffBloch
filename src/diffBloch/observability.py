@@ -32,6 +32,7 @@ __all__ = [
     "Logger",
     "MultiLogger",
     "NullLogger",
+    "OrientationFitted",
     "RecordingLogger",
     "RefinementCompleted",
     "RefinementStep",
@@ -91,6 +92,31 @@ class RotationScored:
             "n_observed": float(self.n_observed),
             "n_beams": float(self.n_beams),
         }
+
+
+@dataclass(frozen=True)
+class OrientationFitted:
+    """One rotation's finished orientation search, emitted per rotation by ``fit_orientation``.
+
+    The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
+    is the progress stream that makes it observable: ``index`` is the rotation's position in the
+    plan, ``wr2`` the final scaling-optimised objective at the fitted orientation, ``n_trials`` the
+    number of trial orientations the search scored. With ``workers > 1`` events arrive in
+    *completion* order (the plan itself stays ordered).
+    """
+
+    channel: ClassVar[str] = "fit"
+    index: int
+    wr2: float
+    n_trials: int
+
+    @property
+    def step(self) -> int | None:
+        return self.index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"wr2": self.wr2, "n_trials": float(self.n_trials)}
 
 
 @dataclass(frozen=True)

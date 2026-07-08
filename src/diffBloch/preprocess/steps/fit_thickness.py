@@ -34,7 +34,7 @@ from diffBloch.core.solver import Method
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.pipeline import PlanStep
+from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import ThicknessGrid
@@ -68,7 +68,8 @@ def fit_thickness(
         orientations = tuple(_fit_one(engine, fgb, op, candidates) for op in plan.orientations)
         return replace(plan, orientations=orientations)
 
-    return run
+    # method rides in the config digest (cfg.solver.refine); the grid is the step's own param.
+    return as_step("fit_thickness", grid, run)
 
 
 def _fit_one(

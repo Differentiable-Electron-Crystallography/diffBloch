@@ -10,9 +10,13 @@ reverse -- the engine stays unaware of ``Plan`` and remains a pure consumer of g
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from diffBloch.engine.plan import OrientationPlan, OrientationPlanLike, ScatteringGrid
+
+if TYPE_CHECKING:
+    from diffBloch.preprocess.pipeline import StepRecord
 
 __all__ = ["Plan", "require_orientation_plans"]
 
@@ -25,10 +29,17 @@ class Plan:
     :class:`~diffBloch.engine.plan.OrientationPlan` per rotation (each already coupled to ``grid``
     at build time). Immutable: preprocess steps return :func:`dataclasses.replace` copies rather
     than mutating in place.
+
+    ``provenance`` is the ordered tuple of :class:`~diffBloch.preprocess.pipeline.StepRecord`\\ s
+    that produced this plan -- :func:`~diffBloch.preprocess.pipeline.pipeline` appends one per step
+    as it runs. A freshly built plan (from ``from_experiment``) has empty provenance; the recipe
+    identity a checkpoint locks against is this tuple. Steps do not touch it (their ``replace``
+    preserves it); the combinator owns it.
     """
 
     grid: ScatteringGrid
     orientations: tuple[OrientationPlanLike, ...]
+    provenance: tuple[StepRecord, ...] = field(default_factory=tuple)
 
 
 def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:

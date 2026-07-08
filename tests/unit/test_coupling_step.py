@@ -367,6 +367,75 @@ def test_fit_orientation_couples_and_reselects_per_trial() -> None:
     assert isinstance(fitted, SegmentedOrientationPlan)  # seed rebuilt through the coupled builder
 
 
+def test_coupled_trial_gather_cache_reuses_identical_beam_sets() -> None:
+    """The per-search gather cache: identical segment beam sets reuse the SAME gather objects.
+
+    Gathers are orientation-free (keyed by beam set alone), so two coupled trials sharing a cache
+    reuse each segment's gather by identity where the re-derived beam sets coincide -- and the
+    cached build is set-identical to a cache-free one (same union, same pinned scored set).
+    """
+    from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
+
+    grid, op, _refinement_unused = _quartz_rot13()
+    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    seed_o = np.asarray(op.orientation, dtype=np.float64)
+
+    cache: dict = {}
+    first = _coupled_trial(grid, op, seed_o, coupling, cache)
+    again = _coupled_trial(grid, op, seed_o, coupling, cache)
+    assert cache  # the search-scoped memo was populated
+    for a, b in zip(first.segments, again.segments, strict=True):
+        assert a.plan.beam_plans[0].gather is b.plan.beam_plans[0].gather  # identity reuse
+
+    uncached = _coupled_trial(grid, op, seed_o, coupling)
+    assert uncached.beam_hkl.tolist() == first.beam_hkl.tolist()
+    assert uncached.alignment.hkl.tolist() == first.alignment.hkl.tolist()
+
+
+def test_fit_orientation_workers_match_sequential() -> None:
+    """workers>1 fans rotations over threads with byte-identical results in plan order.
+
+    Two copies of the same rotation fit under workers=2 must reproduce the sequential fit exactly
+    (shared engine/fgb are read-only; the gather cache is per-rotation and thread-local).
+    """
+    grid, op, refinement = _quartz_rot13()
+    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
+    plan = Plan(grid=grid, orientations=(op, op))
+
+    sequential = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(plan)
+    threaded = fit_orientation(refinement, search, method=_METHOD, coupling=coupling, workers=2)(
+        plan
+    )
+
+    for seq_op, par_op in zip(sequential.orientations, threaded.orientations, strict=True):
+        assert np.array_equal(np.asarray(seq_op.orientation), np.asarray(par_op.orientation))
+        assert seq_op.alignment.hkl.tolist() == par_op.alignment.hkl.tolist()
+
+
+def test_fit_orientation_emits_progress_events() -> None:
+    """fit_orientation streams one OrientationFitted per rotation (the run's long phase).
+
+    Uses the coupled path: the fixture's plain op carries the private's *output* beam list (no
+    000, so a plain solve is all-zero and its wR2 is nan -- which the event faithfully surfaces);
+    a coupled trial re-derives its union with 000, giving a finite objective to assert on.
+    """
+    from diffBloch.observability import OrientationFitted, RecordingLogger
+
+    grid, op, refinement = _quartz_rot13()
+    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    recorder = RecordingLogger()
+    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
+
+    fit_orientation(refinement, search, method=_METHOD, coupling=coupling, logger=recorder)(
+        Plan(grid=grid, orientations=(op, op))
+    )
+
+    fits = [e for e in recorder.events if isinstance(e, OrientationFitted)]
+    assert sorted(e.index for e in fits) == [0, 1]
+    assert all(e.n_trials >= 1 and e.wr2 >= 0.0 for e in fits)
+
+
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
     """The regression guard for the 0.4825 drift: expanding the solve set must not widen scoring.
 

@@ -30,7 +30,7 @@ from diffBloch.core.dynamical import excitation_errors
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
 from diffBloch.preprocess.experiment import seed_beam_hkl
-from diffBloch.preprocess.pipeline import PlanStep
+from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_orientation_plans
 from diffBloch.specs import BeamSelection
 
@@ -63,7 +63,7 @@ def select_beams(selection: BeamSelection) -> PlanStep:
         )
         return replace(plan, orientations=orientations)
 
-    return run
+    return as_step("select_beams", selection, run)
 
 
 def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) -> Plan:

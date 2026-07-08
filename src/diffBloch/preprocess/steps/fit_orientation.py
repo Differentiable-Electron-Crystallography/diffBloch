@@ -42,6 +42,7 @@ its frozen union.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 
 import numpy as np
@@ -49,14 +50,16 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from diffBloch.core.crystal import orientation_basis
+from diffBloch.core.dynamical import StructureFactorGather, build_structure_factor_gather
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
 from diffBloch.core.solver import Method
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
+from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
 from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
-from diffBloch.preprocess.pipeline import PlanStep
+from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
@@ -71,6 +74,8 @@ def fit_orientation(
     *,
     method: Method = "matrix_exp",
     coupling: TrialCoupling | None = None,
+    workers: int = 1,
+    logger: Logger = NULL_LOGGER,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
 
@@ -88,6 +93,16 @@ def fit_orientation(
     at every trial orientation (see the module docstring for the non-stationary-objective nuance).
     ``None`` keeps the tilt-independent fit (one fixed beam set across the search).
 
+    ``workers`` (default 1, sequential) fans the per-rotation searches over a thread pool, the
+    private's ``ThreadPoolExecutor(num_workers=8)`` pattern. Rotations are independent, the engine
+    and ``F_gb`` are read-only shared context, results keep plan order, and each
+    rotation's gather cache is thread-local -- so the results are identical to a sequential run.
+    Threads (not processes) suffice because torch's CPU linalg releases the GIL.
+
+    ``logger`` receives an :class:`~diffBloch.observability.OrientationFitted` per rotation as its
+    search completes (the fit is the run's long phase, so this is the progress stream); the default
+    :data:`NULL_LOGGER` discards them. With ``workers > 1`` events arrive in completion order.
+
     The greedy search restarts at the same radius on every accepting (improving) pass, so the
     radius schedule alone does not bound the pass count. Mirroring :func:`iterate_until`,
     ``search.max_iterations`` caps the total passes *per orientation* and a ``RuntimeError`` is
@@ -101,16 +116,38 @@ def fit_orientation(
     raise it via config if a dataset with shallower minima trips it.
     """
 
+    if workers < 1:
+        raise ValueError("workers must be >= 1")
+
     def run(plan: Plan) -> Plan:
         engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
-        orientations = tuple(
-            _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
-            for op in plan.orientations
-        )
-        return replace(plan, orientations=orientations)
 
-    return run
+        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int]:
+            return _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
+
+        fitted_by_index: dict[int, OrientationPlanLike] = {}
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(refine, op): index for index, op in enumerate(plan.orientations)
+                }
+                for future in as_completed(futures):  # emit progress as searches finish
+                    index = futures[future]
+                    fitted, wr2, n_trials = future.result()
+                    fitted_by_index[index] = fitted
+                    logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
+        else:
+            for index, op in enumerate(plan.orientations):
+                fitted, wr2, n_trials = refine(op)
+                fitted_by_index[index] = fitted
+                logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
+        ordered = tuple(fitted_by_index[i] for i in range(len(plan.orientations)))
+        return replace(plan, orientations=ordered)
+
+    # search rides in the config digest too, but coupling is a composition-site kwarg (not config),
+    # so it MUST be in the recipe identity; workers/logger are execution-only (no effect on output).
+    return as_step("fit_orientation", {"search": search, "coupling": coupling}, run)
 
 
 def _refine_one(
@@ -121,8 +158,11 @@ def _refine_one(
     *,
     search: HexagonalSearch,
     coupling: TrialCoupling | None,
-) -> OrientationPlanLike:
-    """Palatinus hexagonal search over one orientation; returns the best-scoring plan.
+) -> tuple[OrientationPlanLike, float, int]:
+    """Palatinus hexagonal search over one orientation.
+
+    Returns ``(fitted, wr2, n_trials)``: the best-scoring plan, its final scaling-optimised wR2,
+    and the number of trial orientations scored (the :class:`OrientationFitted` measurements).
 
     With ``coupling=None`` each trial is ``current.with_orientation(grid, o)`` -- it rebuilds only
     the orientation-dependent bases and reuses the F-gather, so the beam set, rocking-curve tilts,
@@ -132,15 +172,23 @@ def _refine_one(
     orientation -- the deliberately non-stationary faithful objective (see the module docstring).
     """
     grid = plan.grid
+    n_trials = 0
+    # One rotation's search revisits the same excitation unions across many nearby trials, so the
+    # orientation-free per-segment F-gathers are memoized by beam set for the search's duration
+    # (the private caches its per-union A-matrices the same way). Scoped per rotation: bounded, and
+    # trivially thread-safe if rotations ever fit in parallel.
+    gather_cache: dict[bytes, StructureFactorGather] = {}
     if coupling is None:
         current = op
     else:
-        current = _coupled_trial(grid, op, np.asarray(op.orientation, dtype=np.float64), coupling)
+        current = _coupled_trial(
+            grid, op, np.asarray(op.orientation, dtype=np.float64), coupling, gather_cache
+        )
     current_score = float(engine.score_orientation(current, fgb))
     search_angle = search.max_search_angle
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
-            return current
+            return current, current_score, n_trials
         improved = False
         for n in range(search.n_steps):
             azimuth = n * 360.0 / search.n_steps  # hexagonal: 0, 60, ..., 300 deg at n_steps = 6
@@ -150,7 +198,8 @@ def _refine_one(
             if coupling is None:
                 trial = current.with_orientation(grid, orientation)
             else:
-                trial = _coupled_trial(grid, op, orientation, coupling)
+                trial = _coupled_trial(grid, op, orientation, coupling, gather_cache)
+            n_trials += 1
             trial_score = float(engine.score_orientation(trial, fgb))
             if trial_score < current_score:  # greedy first-improvement; restart at this radius
                 current, current_score = trial, trial_score
@@ -168,6 +217,7 @@ def _coupled_trial(
     op: OrientationPlanLike,
     orientation: NDArray[np.float64],
     coupling: TrialCoupling,
+    gather_cache: dict[bytes, StructureFactorGather] | None = None,
 ) -> SegmentedOrientationPlan:
     """Re-couple the solve union and re-select the scored set at ``orientation`` (faithful trial).
 
@@ -177,8 +227,10 @@ def _coupled_trial(
     (:func:`~diffBloch.core.reciprocal.gmax_mask`, an ideal-cell ``|g|`` metric mirroring the
     private's ``resolution_filter``) selects the SCORED set from that union, with ``000`` retained
     (it anchors ``psi0`` and is dropped later on pattern intersection). The observed ``pattern``,
-    ``thickness``, and ``tilt_reduction`` are carried from ``op`` unchanged. Fresh per-segment
-    gathers are the measured-cheap path -- the atomic ``F_gb`` is untouched.
+    ``thickness``, and ``tilt_reduction`` are carried from ``op`` unchanged. The atomic ``F_gb`` is
+    untouched either way; ``gather_cache`` (keyed by a segment's beam-set bytes) reuses the
+    orientation-free per-segment F-gathers across a search's trials -- identical beam set, identical
+    gather -- collapsing the per-trial rebuild cost the way the private's per-union cache does.
     """
     cell = np.asarray(grid.cell, dtype=np.float64)
     tilts = np.asarray(op.tilts, dtype=np.float64)
@@ -205,6 +257,17 @@ def _coupled_trial(
     )
     keep |= (union == 0).all(axis=1)  # 000 anchors psi0; dropped later on pattern intersection
     keep &= gmax_mask(union, np.asarray(grid.reciprocal_basis), scored.g_max)  # resolution cap
+    gathers = None
+    if gather_cache is not None:
+        grid_hkl = np.asarray(grid.grid_hkl)
+        gathers = []
+        for segment in segments:
+            key = np.ascontiguousarray(segment.beam_hkl).tobytes()
+            gather = gather_cache.get(key)
+            if gather is None:
+                gather = build_structure_factor_gather(grid_hkl, segment.beam_hkl, grid.gpts)
+                gather_cache[key] = gather
+            gathers.append(gather)
     return SegmentedOrientationPlan.build(
         grid,
         [(segment.beam_hkl, segment.cover) for segment in segments],
@@ -216,4 +279,5 @@ def _coupled_trial(
         tilts=tilts,
         tilt_reduction=op.tilt_reduction,
         scored_hkl=union[keep],
+        gathers=gathers,
     )
