@@ -16,4 +16,3 @@ def test_load_config_reads_yaml_and_applies_defaults() -> None:
     assert cfg.numerics.g_max_refine == 1.6
     # defaults-as-code applied for everything the file omits
     assert cfg.solver.refine == "matrix_exp"
-    assert cfg.observation.beam_damage.activate is False

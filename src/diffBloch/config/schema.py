@@ -147,24 +147,6 @@ class OptimizerConfig(_StrictConfig):
     max_line_search_steps: int = 20
 
 
-class BeamDamageConfig(_StrictConfig):
-    """Optional inline beam-damage step (off by default; see synthesis §17).
-
-    ``activate`` must be true (here or via ``engine.activate("beam_damage")``) before ``b_dose`` can
-    be a refinement target — target selection alone never activates an optional component.
-    """
-
-    activate: bool = False
-    model: str = "analytic"  # "analytic" | "nn"
-    b_dose_init: float = 0.0
-
-
-class ObservationConfig(_StrictConfig):
-    """Observation-model components applied to simulated intensities before the loss."""
-
-    beam_damage: BeamDamageConfig = Field(default_factory=BeamDamageConfig)
-
-
 class RefinementConfig(_StrictConfig):
     """Default refinement-stage hyperparameters."""
 
@@ -274,7 +256,6 @@ class ExperimentConfig(_StrictConfig):
     sample: SampleConfig = Field(default_factory=SampleConfig)
     numerics: NumericsConfig = Field(default_factory=NumericsConfig)
     solver: SolverConfig = Field(default_factory=SolverConfig)
-    observation: ObservationConfig = Field(default_factory=ObservationConfig)
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 

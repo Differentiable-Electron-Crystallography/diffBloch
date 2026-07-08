@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from diffBloch.config.schema import BeamDamageConfig, ExperimentConfig
+from diffBloch.config.schema import ExperimentConfig
 from diffBloch.specs import (
     HexagonalSearch,
     RockingCurve,
@@ -21,7 +21,6 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.solver.inference == "bloch_eigen"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.numerics.g_max == 4.5
-    assert cfg.observation.beam_damage.activate is False
     assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.refinement.objective.data_term == "weighted_r"
     assert cfg.refinement.split.validation == "every_10th_rotation"
@@ -49,10 +48,6 @@ def test_unknown_key_is_rejected_not_ignored() -> None:
         ExperimentConfig.model_validate({**base, "numerics": {"sg_max": 0.01}})  # removed field
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "nonsense": True})  # unknown top-level key
-
-
-def test_beam_damage_off_by_default() -> None:
-    assert BeamDamageConfig().activate is False
 
 
 def test_sample_thicknesses_are_positive_and_nonempty() -> None:

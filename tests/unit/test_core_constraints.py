@@ -169,13 +169,11 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
     uij_raw = torch.eye(3, dtype=torch.float64).repeat(2, 1, 1).requires_grad_()
     occupancy_raw = torch.tensor([0.0, 2.0], dtype=torch.float64, requires_grad=True)
     thickness_raw = torch.tensor([1.0], dtype=torch.float64, requires_grad=True)
-    b_dose_raw = torch.tensor([0.5], dtype=torch.float64, requires_grad=True)
     params = RefinableParams(
         asu_positions=positions,
         uij_raw=uij_raw,
         occupancy_raw=occupancy_raw,
         thickness_raw=thickness_raw,
-        b_dose_raw=b_dose_raw,
     )
     spec = ConstraintSpec(
         fixed_positions=torch.zeros_like(positions),
@@ -197,7 +195,6 @@ def test_constrain_composes_raw_params_to_physical_state() -> None:
     assert torch.all(torch.linalg.eigvalsh(state.uij_star) >= 0.0)
     assert torch.all((state.occupancies > 0.0) & (state.occupancies < 1.0))
     assert state.thicknesses is not None and torch.all(state.thicknesses > 0.0)
-    assert state.b_dose is not None and torch.all(state.b_dose > 0.0)
     assert positions.grad is not None
     assert torch.allclose(
         positions.grad,

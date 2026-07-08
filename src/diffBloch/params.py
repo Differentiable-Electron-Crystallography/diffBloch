@@ -29,7 +29,6 @@ class RefinableParams:
     occupancy_raw: Tensor | None = None
     Fgb: Tensor | None = None
     thickness_raw: Tensor | None = None
-    b_dose_raw: Tensor | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +67,6 @@ class PhysicalState:
     occupancies: Tensor
     Fgb: Tensor | None = None
     thicknesses: Tensor | None = None
-    b_dose: Tensor | None = None
 
 
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
@@ -91,7 +89,6 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
         occupancies=occupancies,
         Fgb=params.Fgb,
         thicknesses=positive(params.thickness_raw) if params.thickness_raw is not None else None,
-        b_dose=positive(params.b_dose_raw) if params.b_dose_raw is not None else None,
     )
 
 

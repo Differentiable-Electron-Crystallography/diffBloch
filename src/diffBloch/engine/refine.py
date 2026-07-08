@@ -40,8 +40,7 @@ __all__ = [
 type OptimizerName = Literal["adam", "adamw", "lbfgs"]
 
 # Refinement-target name -> the RefinableParams field(s) it unlocks for optimization. "adp" maps to
-# both raw ADP fields; only those actually present become leaves. b_dose is gated behind activate()
-# (deferred), so it is intentionally not a target here.
+# both raw ADP fields; only those actually present become leaves.
 _TARGET_FIELDS: dict[str, tuple[str, ...]] = {
     "positions": ("asu_positions",),
     "adp": ("uij_raw", "u_iso_raw"),
