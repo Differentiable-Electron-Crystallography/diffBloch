@@ -17,6 +17,8 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 
 ::: diffBloch.preprocess.scoring
 
+::: diffBloch.preprocess.coupling
+
 ## Steps
 
 ::: diffBloch.preprocess.steps.beams
@@ -32,6 +34,8 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 ::: diffBloch.preprocess.steps.convergence
 
 ::: diffBloch.preprocess.steps.coverage
+
+::: diffBloch.preprocess.steps.coupling
 
 ## Orchestration and terminals
 
