@@ -170,10 +170,6 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
 
 Studied while designing the 2.0 architecture and while choosing methods. We adopted ideas, not code.
 
-- **mythos** — sibling differentiable-science codebase (JAX/JAX-MD). Source of the
-  `Simulator → Observable → Objective → Optimizer` lifecycle, explicit `OptimizerState` threading,
-  readiness/`needs_update` invalidation, typed product objects, the `Logger`/`NullLogger` protocol,
-  and engine-agnostic `SchedulerHints`. <https://github.com/mythos-bio/mythos>
 - **DIALS** — `Target / Parameterisation / Engine` refinement decomposition, reflection-table flags,
   and "normalize all input at the boundary". <https://github.com/dials/dials>
 - **cctbx** — `miller.array` (symmetry-bound reflection data), special-position/ADP symmetry, and the
