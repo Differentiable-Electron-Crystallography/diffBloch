@@ -31,7 +31,7 @@ from diffBloch.observability import (
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, identity
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 
 __all__ = [
@@ -109,7 +109,7 @@ def run_inference(
         solutions = engine.simulate(refinement.params)
     rows = tuple(
         _score_rotation(orientation, solution)
-        for orientation, solution in zip(plan.orientations, solutions, strict=True)
+        for orientation, solution in zip(require_built_plans(plan), solutions, strict=True)
     )
     for index, row in enumerate(rows):
         logger.report(

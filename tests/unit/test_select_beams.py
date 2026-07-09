@@ -8,7 +8,13 @@ import numpy as np
 
 from diffBloch.config import load_config
 from diffBloch.io import read_observations, read_structure
-from diffBloch.preprocess import from_experiment, klar_beam_mask, select_beams
+from diffBloch.preprocess import (
+    build_orientation_plans,
+    from_experiment,
+    klar_beam_mask,
+    select_beams,
+)
+from diffBloch.preprocess.plan import CandidatePlan
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -89,14 +95,16 @@ def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
     assert pruned_total < seed_total  # the filter actually removes beams overall
 
 
-def test_select_beams_keeps_orientation_energy_and_grid_coupling() -> None:
+def test_select_beams_preserves_source_and_defers_the_build() -> None:
     plan, config = _quartz_train_plan()
     pruned = select_beams(config.numerics.to_beam_selection())(plan)
     before = plan.orientations[0]
     after = pruned.orientations[0]
-    # Source/rebuild inputs are preserved; only the compiled beam set changes.
-    assert np.allclose(after.orientation.numpy(), before.orientation.numpy())
+    # Source is preserved; select_beams stays on the candidate phase -- no gather is built here.
+    assert isinstance(after, CandidatePlan)
+    assert np.allclose(after.orientation, before.orientation)
     assert after.energy == before.energy
     assert after.u0 == before.u0
-    # Rebuilt against the shared grid: the alignment bridges the pruned beams to the same pattern.
-    assert after.alignment.hkl.shape[1] == 3
+    # build_orientation_plans then bridges the pruned beams to the pattern via the alignment.
+    built = build_orientation_plans()(pruned).orientations[0]
+    assert built.alignment.hkl.shape[1] == 3

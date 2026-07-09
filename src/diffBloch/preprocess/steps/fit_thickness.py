@@ -35,7 +35,7 @@ from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import ThicknessGrid
 
@@ -65,7 +65,9 @@ def fit_thickness(
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
-        orientations = tuple(_fit_one(engine, fgb, op, candidates) for op in plan.orientations)
+        orientations = tuple(
+            _fit_one(engine, fgb, op, candidates) for op in require_built_plans(plan)
+        )
         return replace(plan, orientations=orientations)
 
     # method rides in the config digest (cfg.solver.refine); the grid is the step's own param.

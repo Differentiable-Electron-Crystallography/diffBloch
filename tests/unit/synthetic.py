@@ -17,10 +17,10 @@ import torch
 from diffBloch.core.constraints import AdpConstraints
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import ScatteringGrid
 from diffBloch.params import AdpKind, ConstraintSpec, RefinableParams
-from diffBloch.preprocess import RefinementSetup
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess import RefinementSetup, build_orientation_plans
+from diffBloch.preprocess.plan import CandidatePlan, Plan
 
 
 def make_constraint_spec(
@@ -99,8 +99,18 @@ def seed_system() -> tuple[RefinementSetup, Plan]:
         intensities=torch.zeros(len(SEED_BEAMS), dtype=torch.float64),
         sigmas=torch.ones(len(SEED_BEAMS), dtype=torch.float64),
     )
-    op = OrientationPlan.build(grid, SEED_BEAMS, pattern, energy=ENERGY, thickness=(THICKNESS,))
-    return refinement, Plan(grid=grid, orientations=(op,))
+    candidate = CandidatePlan.seed(SEED_BEAMS, pattern, energy=ENERGY, thickness=(THICKNESS,))
+    return refinement, Plan(grid=grid, orientations=(candidate,))
+
+
+def built_seed_system() -> tuple[RefinementSetup, Plan]:
+    """Like :func:`seed_system` but with the candidate built into a solvable ``OrientationPlan``.
+
+    For tests that need a scorable / serializable plan (e.g. checkpoint round-trips) rather than the
+    pre-build candidate pool the convergence/coverage levers consume.
+    """
+    refinement, seed = seed_system()
+    return refinement, build_orientation_plans()(seed)
 
 
 def beam_count(plan: Plan) -> int:

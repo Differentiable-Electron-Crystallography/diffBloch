@@ -50,7 +50,11 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.preprocess.steps.beams import reseed_pool, select_beams
+from diffBloch.preprocess.steps.beams import (
+    build_orientation_plans,
+    reseed_pool,
+    select_beams,
+)
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
@@ -190,7 +194,8 @@ def converge_beams(
     def run(seed: Plan) -> Plan:
         def build(semiangle: float) -> Plan:
             geometry = replace(selection.integration, semiangle=semiangle)
-            return select_beams(replace(selection, integration=geometry))(seed)
+            selected = select_beams(replace(selection, integration=geometry))(seed)
+            return build_orientation_plans()(selected)
 
         return converge_scalar(
             build, measure, tolerance, start=selection.integration.semiangle, step=step

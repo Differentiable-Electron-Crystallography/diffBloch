@@ -30,8 +30,10 @@ from diffBloch.config import load_experiment
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
     ConvergenceTolerance,
+    build_orientation_plans,
     converge_sampling,
     from_experiment,
+    require_orientation_plans,
     select_beams,
 )
 
@@ -62,16 +64,16 @@ def test_quartz_sampling_convergence() -> None:
         raise ValueError(f"DIFFBLOCH_ANCHOR_ROTATIONS must be in 1..{len(plan.orientations)}")
     plan = replace(plan, orientations=plan.orientations[:n_rotations])
 
-    # Select the beam set once, then sweep the tilt count from a single static solve (sampling=1)
-    # upward until consecutive integrated simulations agree to the tolerance.
-    seed = select_beams(cfg.numerics.to_beam_selection())(plan)
+    # Select the beam set once, build it, then sweep the tilt count from a single static solve
+    # (sampling=1) upward until consecutive integrated simulations agree to the tolerance.
+    seed = build_orientation_plans()(select_beams(cfg.numerics.to_beam_selection())(plan))
     rocking = replace(cfg.numerics.to_rocking_curve(), sampling=1)
     converge = converge_sampling(
         rocking, setup.refinement, ConvergenceTolerance(), step=SWEEP_STEP, method=cfg.solver.refine
     )
     converged = converge(seed)
-    # One beam plan is compiled per tilt, so the beam-plan count is the converged tilt count.
-    converged_sampling = len(converged.orientations[0].beam_plans)
+    # One beam plan is built per tilt, so the beam-plan count is the converged tilt count.
+    converged_sampling = len(require_orientation_plans(converged)[0].beam_plans)
 
     # Durable scientific claim (platform-independent): the pattern converges below the reference's
     # 42 tilts (so 42 is not under-sampled) but well above the noisy low-tilt regime (a genuine

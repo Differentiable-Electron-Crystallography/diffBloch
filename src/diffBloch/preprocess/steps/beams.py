@@ -28,42 +28,69 @@ from numpy.typing import NDArray
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
 from diffBloch.core.reciprocal import g_vectors
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan, require_orientation_plans
+from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import BeamSelection
 
-__all__ = ["klar_beam_mask", "reseed_pool", "select_beams"]
+__all__ = ["build_orientation_plans", "klar_beam_mask", "reseed_pool", "select_beams"]
 
 
 def select_beams(selection: BeamSelection) -> PlanStep:
-    """Return a ``Plan -> Plan`` step that prunes each orientation to its Klar active beam set.
+    """Return a ``Plan -> Plan`` step that prunes each candidate to its Klar active beam set.
 
-    For every orientation the beams are re-selected by :func:`klar_beam_mask` against that
-    orientation's lab-frame ``g`` (derived from its stored ``orientation`` and the grid cell), and
-    the plan is rebuilt via the self-describing ``OrientationPlan.build`` path. ``selection`` is a
-    pre-validated :class:`~diffBloch.specs.BeamSelection` (``rsg`` relative excitation-error cutoff,
-    ``dsg`` minimum margin, ``integration_semiangle`` in degrees); invalid cutoffs are
-    unrepresentable, so this step never re-validates. The observed ``pattern`` is untouched; the
-    rebuilt ``AlignmentPlan`` re-bridges it to the pruned beam set.
+    A *source-level* prune on the :class:`~diffBloch.preprocess.plan.CandidatePlan` phase: for every
+    orientation the candidate ``beam_hkl`` is re-selected by :func:`klar_beam_mask` against that
+    orientation's lab-frame ``g`` (derived from its stored ``orientation`` and the grid cell),
+    keeping only the active set. No geometry is built here -- the structure-factor gather is built
+    later, over the pruned set, by :func:`build_orientation_plans`. ``selection`` is a pre-validated
+    :class:`~diffBloch.specs.BeamSelection` (``rsg`` relative excitation-error cutoff, ``dsg``
+    minimum margin, ``integration_semiangle`` in degrees); invalid cutoffs are unrepresentable, so
+    this step never re-validates. The observed ``pattern`` is untouched.
 
-    The 000 transmitted beam is retained whenever it is present (the ``from_experiment`` seed always
+    The 000 transmitted beam is retained whenever present (the ``from_experiment`` seed always
     includes it): ``BeamPlan`` anchors ``psi0`` on ``hkl == 000``, and 000 has ``g = 0`` so its
-    ``sg_max = 0`` would otherwise reject it. ``select_beams`` retains 000 rather than synthesising
-    it -- a 000-less input set would still fail ``build_beam_plan``'s ``psi0`` anchor. The grid is
-    sized from ``g_max`` and beams stay within ``g_max_refine < g_max``, so the ``Fgb`` difference
-    support remains valid after reselection.
+    ``sg_max = 0`` would otherwise reject it. Beams stay within ``g_max_refine < g_max``, so the
+    ``Fgb`` difference support remains valid once ``build_orientation_plans`` runs.
     """
 
     def run(plan: Plan) -> Plan:
         cell = np.asarray(plan.grid.cell)
-        orientations = tuple(
-            _reselect(plan.grid, cell, op, selection) for op in require_orientation_plans(plan)
-        )
-        return replace(plan, orientations=orientations)
+        candidates = tuple(_reselect(cell, cp, selection) for cp in require_candidate_plans(plan))
+        return replace(plan, orientations=candidates)
 
     return as_step("select_beams", selection, run)
+
+
+def build_orientation_plans() -> PlanStep:
+    """Return a ``Plan -> Plan`` step that builds each candidate into a solvable orientation plan.
+
+    The single *build* boundary of the preprocess pipeline: it materialises each orientation's
+    structure-factor gather (the dominant cost) over its beam set via ``OrientationPlan.build``, and
+    the rebuilt ``AlignmentPlan`` re-bridges the observed ``pattern`` to that set. Composed *after*
+    :func:`select_beams`, so the gather is built once over the small Klar-active set -- never the
+    full candidate pool ``from_experiment`` lays down (which is intractable for a large cell). The
+    engine consumes only these built plans; a :class:`~diffBloch.preprocess.plan.CandidatePlan` has
+    no ``beam_plans`` and is unsolvable by construction.
+    """
+
+    def run(plan: Plan) -> Plan:
+        built = tuple(
+            OrientationPlan.build(
+                plan.grid,
+                np.asarray(cp.beam_hkl),
+                cp.pattern,
+                energy=cp.energy,
+                thickness=cp.thickness,
+                u0=cp.u0,
+                orientation=cp.orientation,
+            )
+            for cp in require_candidate_plans(plan)
+        )
+        return replace(plan, orientations=built)
+
+    return as_step("build_orientation_plans", None, run)
 
 
 def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) -> Plan:
@@ -73,10 +100,9 @@ def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) ->
     (:func:`~diffBloch.preprocess.steps.convergence.converge_pool`,
     :func:`~diffBloch.preprocess.steps.coverage.cover_pool`) and the convergence driver: each
     orientation's *candidate* reflections are re-seeded from the shared grid at ``g_max_refine``
-    (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), every
-    :class:`~diffBloch.engine.plan.OrientationPlan` is rebuilt on that seed, then
-    :func:`select_beams`
-    applies the fixed Klar window -- so the active set is
+    (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), then :func:`select_beams` applies the
+    fixed Klar window and :func:`build_orientation_plans` builds the (small) active set -- so the
+    returned plan is solvable, with active set
     ``seed(g_max_refine) intersect Klar-window(selection)``. Re-seeding from the shared grid (not a
     previous pruned ``Plan``) lets a widening pool recover beams a narrower one clipped.
 
@@ -90,9 +116,8 @@ def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) ->
             f"(g_max={seed.grid.g_max:.4g}); dependent grid resizing is not implemented"
         )
     beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
-    reseeded = tuple(
-        OrientationPlan.build(
-            seed.grid,
+    candidates = tuple(
+        CandidatePlan.seed(
             beam_hkl,
             op.pattern,
             energy=op.energy,
@@ -102,37 +127,29 @@ def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) ->
         )
         for op in seed.orientations
     )
-    return select_beams(selection)(replace(seed, orientations=reseeded))
+    reseeded = replace(seed, orientations=candidates)
+    return build_orientation_plans()(select_beams(selection)(reseeded))
 
 
 def _reselect(
-    grid: ScatteringGrid,
     cell: NDArray[np.float64],
-    op: OrientationPlan,
+    cp: CandidatePlan,
     selection: BeamSelection,
-) -> OrientationPlan:
-    beam_hkl = np.asarray(op.beam_hkl, dtype=np.int64)
-    basis = orientation_basis(cell, np.asarray(op.orientation))
+) -> CandidatePlan:
+    beam_hkl = np.asarray(cp.beam_hkl, dtype=np.int64)
+    basis = orientation_basis(cell, np.asarray(cp.orientation))
     g = g_vectors(beam_hkl, basis)
     keep = klar_beam_mask(
         g,
-        energy=op.energy,
-        u0=op.u0,
+        energy=cp.energy,
+        u0=cp.u0,
         rsg=selection.rsg,
         dsg=selection.dsg,
         semiangle=selection.integration.semiangle,
         geometry=selection.integration.geometry,
     )
     keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
-    return OrientationPlan.build(
-        grid,
-        beam_hkl[keep],
-        op.pattern,
-        energy=op.energy,
-        thickness=op.thickness,
-        u0=op.u0,
-        orientation=op.orientation,
-    )
+    return replace(cp, beam_hkl=beam_hkl[keep])
 
 
 def klar_beam_mask(

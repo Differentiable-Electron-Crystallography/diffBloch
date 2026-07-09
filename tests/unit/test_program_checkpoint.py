@@ -10,7 +10,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from tests.unit.synthetic import seed_system
+from tests.unit.synthetic import built_seed_system
 
 from diffBloch.app.program import _prepare
 from diffBloch.config import load_experiment
@@ -44,7 +44,7 @@ def _run(exp, base, calls, names_params, *, checkpoint=True, refresh=False) -> P
 
 def test_first_run_computes_and_writes_the_checkpoint(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)])
     assert calls == {"a": 1, "b": 1}  # both steps ran
@@ -53,7 +53,7 @@ def test_first_run_computes_and_writes_the_checkpoint(tmp_path: Path) -> None:
 
 def test_identical_recipe_reuses_without_running_steps(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     _run(exp, base, {}, [("a", None), ("b", None)])  # seed the checkpoint
     calls: dict[str, int] = {}
     out = _run(exp, base, calls, [("a", None), ("b", None)])
@@ -63,7 +63,7 @@ def test_identical_recipe_reuses_without_running_steps(tmp_path: Path) -> None:
 
 def test_appended_step_resumes_running_only_the_suffix(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     _run(exp, base, {}, [("a", None), ("b", None)])
     calls: dict[str, int] = {}
     out = _run(exp, base, calls, [("a", None), ("b", None), ("c", None)])
@@ -77,7 +77,7 @@ def test_appended_step_resumes_running_only_the_suffix(tmp_path: Path) -> None:
 
 def test_changed_middle_step_recomputes(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     _run(exp, base, {}, [("a", {"x": 1}), ("b", None)])
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", {"x": 2}), ("b", None)])  # a's params changed
@@ -86,7 +86,7 @@ def test_changed_middle_step_recomputes(tmp_path: Path) -> None:
 
 def test_refresh_recomputes_even_when_fresh(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     _run(exp, base, {}, [("a", None), ("b", None)])
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)], refresh=True)
@@ -96,7 +96,7 @@ def test_refresh_recomputes_even_when_fresh(tmp_path: Path) -> None:
 
 def test_no_checkpoint_neither_reads_nor_writes(tmp_path: Path) -> None:
     exp = _experiment(tmp_path)
-    _, base = seed_system()
+    _, base = built_seed_system()
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)], checkpoint=False)
     assert calls == {"a": 1, "b": 1}

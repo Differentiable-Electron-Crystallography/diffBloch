@@ -48,10 +48,21 @@ from pathlib import Path
 
 import pytest
 
-from diffBloch.app.program import run_experiment
-from diffBloch.config import load_experiment, sha256_file
+from diffBloch.app.loggers import ConsoleLogger
+from diffBloch.app.program import _recipe_steps, run_experiment
+from diffBloch.config import (
+    RecipeStep,
+    code_version,
+    config_digest,
+    load_experiment,
+    preprocess_lock_status,
+    read_preprocess_lock,
+    sha256_file,
+)
 from diffBloch.io import read_observations, read_structure
+from diffBloch.observability import NULL_LOGGER
 from diffBloch.preprocess import (
+    build_orientation_plans,
     fit_orientation,
     fit_thickness,
     from_experiment,
@@ -60,11 +71,17 @@ from diffBloch.preprocess import (
     pipeline,
     run_inference,
     select_beams,
+    step_records,
 )
 
 pytestmark = pytest.mark.e2e
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
+
+# The stash: `just verify-quartz-full` recomputes the coupled checkpoint from scratch HERE
+# (gitignored), never over the committed reference; `just promote-quartz` is the one explicit path
+# that replaces the committed plan.npz/plan.lock with the stashed run (reviewable in git).
+STASH = FIXTURE_ROOT / ".candidate"
 
 # Full from-scratch fits (~1-16 min) are opt-in: CI's default e2e job scores the committed frozen
 # checkpoint (fast) and never pays a fit. Set DIFFBLOCH_ANCHOR_FULL=1 to run the fit-based pins
@@ -146,6 +163,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     prepare = pipeline(
         [
             select_beams(cfg.numerics.to_beam_selection()),
+            build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
             fit_orientation(
                 refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
             ),
@@ -164,7 +182,7 @@ def test_quartz_reference_anchor(material: str) -> None:
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
 
 
-def test_quartz_coupled_anchor(caplog: pytest.LogCaptureFixture) -> None:
+def test_quartz_coupled_anchor(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """Headline north-star (CI-fast): score the committed frozen coupled checkpoint, no fit.
 
     The fixture ships ``plan.npz`` + ``plan.lock`` -- the settled coupled ``Plan`` (fitted
@@ -174,10 +192,42 @@ def test_quartz_coupled_anchor(caplog: pytest.LogCaptureFixture) -> None:
     seconds -- the CI cost of the coupled north-star without paying the ~6-16 min fit. The full fit
     is exercised on demand by :func:`test_quartz_coupled_anchor_full`; asserting the ``full reuse``
     diagnostic proves this path did *not* re-fit.
+
+    Read-only w.r.t. the fixture: runs against a ``tmp_path`` copy, so a reuse miss can never
+    overwrite the committed reference (``run_experiment`` writes a fresh checkpoint into the
+    experiment dir on a miss). And it fails **fast** on a miss: the lock status is checked up front
+    (the exact ``preprocess_lock_status`` gate ``run_experiment`` uses), so a stale committed
+    checkpoint fails in seconds with the regeneration workflow, not after a silent ~8-min re-fit.
     """
     assert (FIXTURE_ROOT / "plan.npz").exists() and (FIXTURE_ROOT / "plan.lock").exists()
+    exp = tmp_path / "quartz"
+    shutil.copytree(FIXTURE_ROOT, exp, ignore=shutil.ignore_patterns(".candidate", "__pycache__"))
+
+    # Fail-fast staleness gate: compare the committed lock against the recipe run_experiment will
+    # run (_recipe_steps is that recipe -- the one private import here, so the precheck can never
+    # drift from the default it guards).
+    cfg, _lock = load_experiment(exp)
+    structure = read_structure(exp / cfg.inputs.structure)
+    observations = read_observations(exp / cfg.inputs.observations)
+    setup = from_experiment(structure, observations, cfg)
+    records = step_records(_recipe_steps(cfg, setup.refinement, NULL_LOGGER))
+    status = preprocess_lock_status(
+        read_preprocess_lock(exp / "plan.lock"),
+        experiment_lock_sha256=sha256_file(exp / "experiment.lock"),
+        config_digest=config_digest(cfg),
+        code_version=code_version(),
+        recipe=[RecipeStep(name=r.name, params=r.params) for r in records],
+        plan_path=exp / "plan.npz",
+        root=exp,
+    )
+    assert status == "reuse", (
+        f"committed quartz checkpoint is {status!r} for the current recipe/config/code -- "
+        "regenerate it: `just verify-quartz-full` (from-scratch run into the stash), then "
+        "`just promote-quartz` (replace the committed plan.npz/plan.lock with the stash)"
+    )
+
     with caplog.at_level(logging.INFO, logger="diffBloch.app.program"):
-        result = run_experiment(FIXTURE_ROOT)
+        result = run_experiment(exp)
     assert "full reuse" in caplog.text  # reused the checkpoint; no fit ran (the CI-fast guarantee)
     assert result.n_evaluated == 99  # every rotation yields a finite R_obs
     assert result.mean_r_obs == pytest.approx(
@@ -186,19 +236,25 @@ def test_quartz_coupled_anchor(caplog: pytest.LogCaptureFixture) -> None:
 
 
 @_requires_full
-def test_quartz_coupled_anchor_full(tmp_path: Path) -> None:
+def test_quartz_coupled_anchor_full() -> None:
     """Full coupled preprocess + refine from scratch (~6-16 min); opt-in, local-only.
 
-    Copies the CSV-less inputs into a scratch dir (no checkpoint present), so ``run_experiment``
-    recomputes the whole faithful coupled recipe and must reach the same ``0.0506`` the committed
-    checkpoint scores -- proving the shipped checkpoint is reproducible from the inputs, not a stale
-    artifact.
+    Copies the inputs into the gitignored **stash** (:data:`STASH`, wiped per run; no checkpoint
+    present), so ``run_experiment`` recomputes the whole faithful coupled recipe and must reach the
+    same ``0.0506`` the committed checkpoint scores -- proving the committed checkpoint is
+    reproducible from the inputs, not a stale artifact. The freshly-written ``plan.npz`` +
+    ``plan.lock`` land in the stash, never over the committed reference; ``just promote-quartz`` is
+    the explicit follow-up that replaces the reference with this run. Per-rotation fit progress
+    streams through :class:`ConsoleLogger` (the fit is the long phase) -- run via
+    ``just verify-quartz-full`` to see it live.
     """
-    exp = tmp_path / "quartz"
-    exp.mkdir()
+    if STASH.exists():
+        shutil.rmtree(STASH)
+    STASH.mkdir()
     for name in ("experiment.yaml", "experiment.lock", "enantiomer_1.cif", "exp_data.cif_pets"):
-        shutil.copy(FIXTURE_ROOT / name, exp / name)
-    result = run_experiment(exp)  # no checkpoint in the scratch dir -> full coupled fit
+        shutil.copy(FIXTURE_ROOT / name, STASH / name)
+    result = run_experiment(STASH, logger=ConsoleLogger())  # no checkpoint -> full coupled fit
+    assert (STASH / "plan.npz").exists() and (STASH / "plan.lock").exists()  # the promotable stash
     assert result.n_evaluated == 99
     assert result.mean_r_obs == pytest.approx(
         EXPECTED_COUPLED_MEAN_R_OBS, abs=COUPLED_MEAN_R_OBS_TOL
@@ -231,6 +287,7 @@ def test_quartz_tilt_independent_anchor() -> None:
     prepare = pipeline(
         [
             select_beams(cfg.numerics.to_beam_selection()),
+            build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
             integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
             mosaicity(cfg.numerics.mosaicity),
             fit_orientation(  # coupling=None (default): the tilt-independent fit

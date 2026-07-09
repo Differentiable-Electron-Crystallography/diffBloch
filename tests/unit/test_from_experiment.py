@@ -45,14 +45,15 @@ def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
         observations.omegas,
     )
 
-    # First train rotation is rotation index 0 (index 9 is the first validation pick).
+    # First train rotation is rotation index 0 (index 9 is the first validation pick). The candidate
+    # phase carries plain-numpy source (orientation / beam_hkl), built into tensors later.
     first = setup.plans.train.orientations[0]
-    assert torch.allclose(first.orientation, torch.tensor(expected[0], dtype=torch.float64))
+    assert np.allclose(first.orientation, expected[0])
     # Seed beams include the 000 transmitted beam and stay within g_max_refine (difference-safe).
     beam_hkl = first.beam_hkl
-    assert (beam_hkl == 0).all(dim=1).any()
-    g = beam_hkl.to(torch.float64) @ setup.plans.train.grid.reciprocal_basis
-    assert torch.all(torch.linalg.norm(g, dim=1) <= config.numerics.g_max_refine + 1e-9)
+    assert (beam_hkl == 0).all(axis=1).any()
+    g = beam_hkl.astype(np.float64) @ np.asarray(setup.plans.train.grid.reciprocal_basis)
+    assert np.all(np.linalg.norm(g, axis=1) <= config.numerics.g_max_refine + 1e-9)
 
 
 def test_from_experiment_patterns_are_per_zone_axis() -> None:

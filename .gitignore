@@ -26,6 +26,9 @@ plan.lock
 !tests/fixtures/quartz_anchor/plan.lock
 !examples/experiments/quartz-checkpoint/plan.npz
 !examples/experiments/quartz-checkpoint/plan.lock
+# The verify-quartz-full stash: a from-scratch candidate checkpoint awaiting `just promote-quartz`
+# (the explicit step that replaces the committed reference). Never committed itself.
+.candidate/
 
 # OS / editors
 .DS_Store

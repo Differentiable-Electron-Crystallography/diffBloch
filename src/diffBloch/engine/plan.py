@@ -81,11 +81,11 @@ class OrientationPlan:
 
     Self-describing: it carries both its **source / rebuild inputs** (``orientation``, ``energy``,
     ``u0``, ``thickness`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` /
-    ``fit_thickness`` consume to recompile) and the **compiled geometry** (``beam_plan``,
-    ``alignment`` -- what ``engine.simulate`` consumes). Source and compiled are only ever set
+    ``fit_thickness`` consume to rebuild) and the **built geometry** (``beam_plan``,
+    ``alignment`` -- what ``engine.simulate`` consumes). Source and built geometry are only ever set
     together by :meth:`build`, so they cannot desync. ``orientation`` is the source of truth;
     the lab-frame basis is derived from it, never stored. ``tilts`` ``(N, 3, 3)`` is the
-    rocking-curve integration tilt set (source): N goniometer sub-orientations, each compiled into
+    rocking-curve integration tilt set (source): N goniometer sub-orientations, each built into
     the matching entry of ``beam_plans`` (``N = len(beam_plans)``). The default is a single identity
     tilt ``(1, 3, 3)`` -- one static solve, byte-identical to the pre-integration plan; a longer set
     is baked by ``integrate_rocking_curve`` and summed as ``|psi|^2`` over the tilts by the engine.
@@ -144,7 +144,7 @@ class OrientationPlan:
 
         ``tilts`` ``(N, 3, 3)`` is the optional rocking-curve integration set: N goniometer
         rotations, each left-multiplying ``orientation`` (``R_tilt @ orientation``) into its own
-        compiled ``beam_plan``, sharing this orientation's one beam set. ``None`` (the default) is a
+        built ``beam_plan``, sharing this orientation's one beam set. ``None`` (the default) is a
         single identity tilt, so ``beam_plans`` has length 1 and the untilted path is byte-identical
         to before; ``integrate_rocking_curve`` passes the tilt matrices from
         :func:`~diffBloch.preprocess.orientation.rocking_curve_tilts`.
@@ -310,7 +310,7 @@ class SegmentedOrientationPlan:
         it
         covers; ``tilts`` ``(N, 3, 3)`` is the full rocking-curve set the covers index into. The
         union beam set is the sorted, deduplicated concatenation of every chunk's beams (000 is
-        present because each chunk's coupling always includes it); each chunk is compiled into an
+        present because each chunk's coupling always includes it); each chunk is built into an
         :class:`OrientationPlan` over its beam set and covered tilts (sharing the rotation's
         ``orientation`` / ``energy`` / ``u0`` / ``thickness``), and its ``union_index`` records
         where

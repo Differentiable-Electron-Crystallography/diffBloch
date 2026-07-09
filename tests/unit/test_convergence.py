@@ -38,6 +38,7 @@ from diffBloch.engine import OrientationPlan, ScatteringGrid
 from diffBloch.params import ConstraintSpec
 from diffBloch.preprocess import (
     RefinementSetup,
+    build_orientation_plans,
     converge_beams,
     converge_pool,
     converge_sampling,
@@ -47,7 +48,7 @@ from diffBloch.preprocess import (
     simulation_converged,
 )
 from diffBloch.preprocess.experiment import seed_beam_hkl
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, IntegrationGeometry, RockingCurve
 
 _FULL_BEAMS = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
@@ -212,8 +213,7 @@ def _pool_active_count(seed: Plan, g_max_refine: float, semiangle: float) -> int
     """Active beam count after re-seeding at ``g_max_refine`` and applying the Klar window."""
     beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
     reseeded = tuple(
-        OrientationPlan.build(
-            seed.grid,
+        CandidatePlan.seed(
             beam_hkl,
             op.pattern,
             energy=op.energy,
@@ -275,6 +275,7 @@ def test_converge_pool_rejects_non_positive_step() -> None:
 
 def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     refinement, seed = seed_system()
+    seed = build_orientation_plans()(seed)  # rocking-curve sampling refines a built plan
     # Refine the tilt count: the summed |psi|^2 approaches the continuous rotation-frame integral,
     # so the consecutive-simulation change shrinks monotonically and settles below threshold. Each
     # orientation carries one beam plan per tilt, so len(beam_plans) is the converged tilt count.

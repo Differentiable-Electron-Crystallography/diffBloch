@@ -43,6 +43,7 @@ from diffBloch.preprocess import (
     OPAQUE,
     Plan,
     PlanStep,
+    build_orientation_plans,
     fit_orientation,
     fit_thickness,
     from_experiment,
@@ -119,6 +120,7 @@ def _recipe_steps(
     """
     return [
         select_beams(cfg.numerics.to_beam_selection()),
+        build_orientation_plans(),
         integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
         mosaicity(cfg.numerics.mosaicity),
         fit_orientation(

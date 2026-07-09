@@ -41,7 +41,7 @@ import numpy as np
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.pipeline import PlanStep, as_step, identity
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.specs import CouplingPolicy, TiltIndependent, TiltSegmentUnion
 
 __all__ = ["couple_beams"]
@@ -64,7 +64,9 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
         case TiltSegmentUnion():
 
             def run(plan: Plan) -> Plan:
-                orientations = tuple(_couple_one(plan.grid, op, policy) for op in plan.orientations)
+                orientations = tuple(
+                    _couple_one(plan.grid, op, policy) for op in require_built_plans(plan)
+                )
                 return replace(plan, orientations=orientations)
 
             return as_step("couple_beams", policy, run)

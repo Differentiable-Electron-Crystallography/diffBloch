@@ -95,16 +95,15 @@ def test_cover_beams_widens_to_the_minimum_that_maximises_coverage() -> None:
 
 
 def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
-    from diffBloch.engine.plan import OrientationPlan
     from diffBloch.preprocess.experiment import seed_beam_hkl
+    from diffBloch.preprocess.plan import CandidatePlan
 
     _, seed = seed_system()
 
     def reseed_coverage(g_max_refine: float) -> int:
         beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
         reseeded = tuple(
-            OrientationPlan.build(
-                seed.grid,
+            CandidatePlan.seed(
                 beam_hkl,
                 op.pattern,
                 energy=op.energy,

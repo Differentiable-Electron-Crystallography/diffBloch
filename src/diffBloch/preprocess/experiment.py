@@ -28,12 +28,12 @@ from diffBloch.core.dynamical import wavelength2energy
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
-from diffBloch.engine.plan import OrientationPlan, ScatteringGrid
+from diffBloch.engine.plan import ScatteringGrid
 from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
 from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess.orientation import orientation_matrices
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import CandidatePlan, Plan
 
 __all__ = [
     "ExperimentSetup",
@@ -114,7 +114,7 @@ class RefinementSetup:
         Positions and symmetry use the *ideal* CIF cell (the measured-lattice correction enters only
         through the per-orientation matrices in the geometry plan). ADPs are mapped to the
         reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
-        Per-rotation thickness lives elsewhere -- on each ``OrientationPlan`` (seeded by
+        Per-rotation thickness lives elsewhere -- on each per-rotation plan (seeded by
         ``from_experiment``, fitted by ``fit_thickness``) -- because it varies per rotation, not per
         structure.
 
@@ -157,7 +157,7 @@ def from_experiment(
 
     The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
     ``Plan`` yet). The shared grid is sized from the ideal CIF cell and ``numerics.g_max``; the beam
-    energy is derived from the PETS wavelength; one :class:`OrientationPlan` per rotation carries
+    energy is derived from the PETS wavelength; one :class:`CandidatePlan` per rotation carries
     its crystal orientation matrix (native PETS derivation, no side-car file) and the observed
     pattern for that zone axis. Rotations split into ``train`` / ``validation`` plans sharing it.
 
@@ -170,7 +170,7 @@ def from_experiment(
     single documented public boundary of the preprocess pipeline (records + config -> setup), and it
     returns a *composite* of two products rather than constructing one domain object. The per-object
     constructors it delegates to follow the classmethod idiom (``ScatteringGrid.from_cell``,
-    ``OrientationPlan.build``, ``RefinementSetup.from_structure``).
+    ``CandidatePlan.seed``, ``RefinementSetup.from_structure``).
     """
     grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=config.numerics.g_max)
     energy = wavelength2energy(observations.wavelength)
@@ -183,8 +183,7 @@ def from_experiment(
         observations.omegas,
     )
     plans = tuple(
-        OrientationPlan.build(
-            grid,
+        CandidatePlan.seed(
             beam_hkl,
             PatternBatch.from_observation_record(observations, zone_axis_id=int(zone_id)),
             energy=energy,

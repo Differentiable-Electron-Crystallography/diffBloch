@@ -35,7 +35,11 @@ import numpy as np
 
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
-from diffBloch.preprocess.steps.beams import reseed_pool, select_beams
+from diffBloch.preprocess.steps.beams import (
+    build_orientation_plans,
+    reseed_pool,
+    select_beams,
+)
 from diffBloch.specs import BeamSelection
 
 __all__ = [
@@ -113,7 +117,8 @@ def cover_beams(selection: BeamSelection, *, step: float, max_iterations: int = 
     def run(seed: Plan) -> Plan:
         def build(semiangle: float) -> Plan:
             geometry = replace(selection.integration, semiangle=semiangle)
-            return select_beams(replace(selection, integration=geometry))(seed)
+            selected = select_beams(replace(selection, integration=geometry))(seed)
+            return build_orientation_plans()(selected)
 
         return maximize_scalar(
             build,

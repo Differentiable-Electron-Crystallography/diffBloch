@@ -1,7 +1,7 @@
 {
   "experiment_lock_sha256": "798ba1b49d7511e116a5c682ccfa501232f64ba7ab108c2407dc5f10771c55cf",
   "config_digest": "e9c3ebb90cabe6ed2a0c619bbd605e058c7dea9c2b09eae8f07a55166c3944e0",
-  "code_version": "0.2.0+gaf7410b.dirty",
+  "code_version": "0.2.0+g6e09aba.dirty",
   "recipe": [
     {
       "name": "select_beams",
@@ -15,6 +15,10 @@
           "geometry": "continuous_rotation"
         }
       }
+    },
+    {
+      "name": "build_orientation_plans",
+      "params": null
     },
     {
       "name": "integrate_rocking_curve",
@@ -83,8 +87,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "5a5ffd7bd2b9171f424cb9802c145566d6701b6104b047fc11332cf573ecaa89",
-    "bytes": 993589,
+    "sha256": "f913fb0be6c6f81843b1e95e39d23300d790efeae501b1ff5370341602112367",
+    "bytes": 993616,
     "media_type": "application/octet-stream"
   }
 }

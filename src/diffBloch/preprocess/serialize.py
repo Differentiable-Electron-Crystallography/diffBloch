@@ -6,9 +6,9 @@ exploits the plan types' own design -- both :class:`~diffBloch.engine.plan.Orien
 :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` separate their **source / rebuild inputs**
 (orientation / tilts / thickness / beam set(s) / observed ``pattern`` / ``energy`` / ``u0`` /
 ``tilt_reduction``, plus the segmented plan's per-chunk ``(beam_hkl, cover)`` and pinned scored set)
-from their **compiled geometry** (``beam_plans`` incl. the heavy ``StructureFactorGather``,
+from their **built geometry** (``beam_plans`` incl. the heavy ``StructureFactorGather``,
 ``alignment``, the union + ``union_index``), and ``ScatteringGrid.from_cell`` + ``.build`` rebuild
-the compiled parts from the source. So we persist only the source and rebuild the derived geometry
+the built parts from the source. So we persist only the source and rebuild the derived geometry
 on read -- a stored gather is a pure function of the beam set + grid and could only desync.
 
 Format: one ``.npz`` (numpy is already a core dependency; portable, non-pickle hence auditable, and
@@ -42,7 +42,7 @@ from diffBloch.engine.plan import (
     SegmentedOrientationPlan,
 )
 from diffBloch.preprocess.pipeline import StepRecord
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_built_plans
 
 __all__ = ["read_plan", "write_plan"]
 
@@ -53,7 +53,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
     """Write ``plan`` to ``path`` as a portable ``.npz`` checkpoint (source arrays + JSON meta)."""
     arrays: dict[str, np.ndarray] = {"cell": _numpy(plan.grid.cell)}
     per_rotation: list[dict[str, Any]] = []
-    for i, op in enumerate(plan.orientations):
+    for i, op in enumerate(require_built_plans(plan)):
         arrays[f"orient_{i}"] = _numpy(op.orientation)
         arrays[f"tilts_{i}"] = _numpy(op.tilts)
         arrays[f"thickness_{i}"] = _numpy(op.thickness)
@@ -91,7 +91,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
 
 
 def read_plan(path: str | Path) -> Plan:
-    """Read a ``.npz`` checkpoint from :func:`write_plan`, rebuilding the compiled geometry."""
+    """Read a ``.npz`` checkpoint from :func:`write_plan`, rebuilding the built geometry."""
     with np.load(Path(path), allow_pickle=False) as data:
         meta = json.loads(str(data["__meta__"].item()))
         if meta["format_version"] != _FORMAT_VERSION:

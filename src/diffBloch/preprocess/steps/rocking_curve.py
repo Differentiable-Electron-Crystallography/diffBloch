@@ -10,7 +10,7 @@ toggleable step rather than baked into ``from_experiment``: composing it in with
 ``Plan`` byte-identical.
 
 It is pure geometry -- no engine, no structure factors, no refinement: the tilts depend only on the
-fixed ``RockingCurve`` and each settled nominal orientation, so they are precompiled into the
+fixed ``RockingCurve`` and each settled nominal orientation, so they are prebuilt into the
 ``Plan`` exactly like the per-orientation beam plans. Ordered *last* in the pipeline (after
 ``select_beams`` / ``fit_orientation`` / ``fit_thickness``, which score on the fast single-solve):
 the fits settle the nominal orientation and the one shared beam set, then this bakes the integration

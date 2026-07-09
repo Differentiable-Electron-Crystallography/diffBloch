@@ -60,7 +60,7 @@ from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import HexagonalSearch, TrialCoupling
@@ -126,23 +126,22 @@ def fit_orientation(
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int]:
             return _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
 
+        built = require_built_plans(plan)
         fitted_by_index: dict[int, OrientationPlanLike] = {}
         if workers > 1:
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {
-                    pool.submit(refine, op): index for index, op in enumerate(plan.orientations)
-                }
+                futures = {pool.submit(refine, op): index for index, op in enumerate(built)}
                 for future in as_completed(futures):  # emit progress as searches finish
                     index = futures[future]
                     fitted, wr2, n_trials = future.result()
                     fitted_by_index[index] = fitted
                     logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
         else:
-            for index, op in enumerate(plan.orientations):
+            for index, op in enumerate(built):
                 fitted, wr2, n_trials = refine(op)
                 fitted_by_index[index] = fitted
                 logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
-        ordered = tuple(fitted_by_index[i] for i in range(len(plan.orientations)))
+        ordered = tuple(fitted_by_index[i] for i in range(len(built)))
         return replace(plan, orientations=ordered)
 
     # search rides in the config digest too, but coupling is a composition-site kwarg (not config),

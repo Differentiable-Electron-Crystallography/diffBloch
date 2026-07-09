@@ -44,10 +44,20 @@ from diffBloch.preprocess.pipeline import (
     pipeline,
     step_records,
 )
-from diffBloch.preprocess.plan import Plan
+from diffBloch.preprocess.plan import (
+    CandidatePlan,
+    Plan,
+    require_built_plans,
+    require_candidate_plans,
+    require_orientation_plans,
+)
 from diffBloch.preprocess.scoring import build_engine, score_orientations
 from diffBloch.preprocess.serialize import read_plan, write_plan
-from diffBloch.preprocess.steps.beams import klar_beam_mask, select_beams
+from diffBloch.preprocess.steps.beams import (
+    build_orientation_plans,
+    klar_beam_mask,
+    select_beams,
+)
 from diffBloch.preprocess.steps.convergence import (
     converge_beams,
     converge_pool,
@@ -79,6 +89,7 @@ from diffBloch.specs import (
 
 __all__ = [
     "BeamSelection",
+    "CandidatePlan",
     "ConvergenceCheck",
     "ConvergenceTest",
     "ConvergenceTolerance",
@@ -98,6 +109,7 @@ __all__ = [
     "ThicknessGrid",
     "as_step",
     "build_engine",
+    "build_orientation_plans",
     "busing_levy_matrix",
     "converge_beams",
     "converge_numerics",
@@ -123,6 +135,9 @@ __all__ = [
     "pipeline",
     "plan_coverage",
     "read_plan",
+    "require_built_plans",
+    "require_candidate_plans",
+    "require_orientation_plans",
     "run_inference",
     "score_orientations",
     "select_beams",
