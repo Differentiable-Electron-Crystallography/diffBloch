@@ -6,10 +6,28 @@ from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core import build_asu_expansion_plan
 from diffBloch.core.crystal import reciprocal_cell
-from diffBloch.io import read_structure
+from diffBloch.io import read_observations, read_structure
 from diffBloch.params import RefinableParams, constrain
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
+
+
+def test_read_lta_structure_has_coupled_special_positions() -> None:
+    record = read_structure(FIXTURE_ROOT / "lta_anchor" / "lta.cif")
+    assert record.n_atoms == 4
+    assert record.labels == ("O1", "O2", "O3", "T1")
+    assert record.spacegroup_hm == "P  m-3 m"  # verbatim from the PETS file (its own spacing)
+    assert record.spacegroup_number == 221
+    assert record.n_symops == 48  # Pm-3m: the coupled O2 (x,x,z) / O3 (0,y,y) sites
+
+
+def test_read_lta_observations_parses_the_full_pets_reflection_loop() -> None:
+    # Fixture integrity + the loop_rows O(N)->fix on a real large loop: LTA's PETS export is 50
+    # rotations / 29,023 reflections (the quadratic parse this used to trip is why loop_rows binds
+    # loop.values once).
+    obs = read_observations(FIXTURE_ROOT / "lta_anchor" / "exp_data.cif_pets")
+    assert obs.n_rotations == 50
+    assert obs.n_reflections == 29023
 
 
 def test_read_paracetamol_uiso_fixture() -> None:

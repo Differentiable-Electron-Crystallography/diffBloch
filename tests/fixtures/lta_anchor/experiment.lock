@@ -1,0 +1,8 @@
+structure:
+  ref: lta.cif
+  sha256: f4bd67323bb2603661039e78eaa89fd49e8a1d50c9ed05b78c6b8cf75820484d
+  bytes: 2260
+observations:
+  ref: exp_data.cif_pets
+  sha256: 0844d1b05673f0d58fddaaccb4ffe27629400866065d01f139eb1573a461e209
+  bytes: 1283006

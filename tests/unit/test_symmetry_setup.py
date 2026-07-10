@@ -23,6 +23,9 @@ from diffBloch.preprocess.experiment import RefinementSetup
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURES / "quartz_anchor" / "enantiomer_1.cif"  # Si axis-aligned special, O general
 PYRITE = FIXTURES / "pyrite" / "pyrite.cif"  # S on coupled (x,x,x), Fe fixed at (0,0,0)
+# LTA (zeolite A, Pm-3m): a real coupled material -- O2 on (x,x,z) [x=y coupled], O3 on (0,y,y)
+# [y=z coupled]. The coupled special-position proof on real experimental data, not a synthetic.
+LTA = FIXTURES / "lta_anchor" / "lta.cif"
 
 
 def _projectors(cif: Path) -> tuple[np.ndarray, np.ndarray, list[str]]:
@@ -31,7 +34,7 @@ def _projectors(cif: Path) -> tuple[np.ndarray, np.ndarray, list[str]]:
     return constraints.position_projection, constraints.position_offset, list(record.labels)
 
 
-@pytest.mark.parametrize("cif", [QUARTZ, PYRITE])
+@pytest.mark.parametrize("cif", [QUARTZ, PYRITE, LTA])
 def test_projectors_are_idempotent_and_round_trip_cif_positions(cif: Path) -> None:
     record = read_structure(cif)
     projection, offset, _ = _projectors(cif)
@@ -87,6 +90,38 @@ def test_refinement_cannot_walk_a_coupled_atom_off_its_site() -> None:
     sulfur = state.positions[1]
     assert torch.allclose(sulfur, sulfur.mean().expand(3), atol=1e-9)  # still coupled
     assert torch.allclose(state.positions[0], torch.zeros(3, dtype=torch.float64))  # Fe still fixed
+
+
+def test_lta_coupled_oxygen_sites_hold_under_refinement() -> None:
+    # The real-data coupled-special-position proof (Tier 1): LTA O2 on (x,x,z) [x=y coupled, z free]
+    # and O3 on (0,y,y) [x fixed at 0, y=z coupled]. An optimizer actively prising the coupled
+    # coordinates apart cannot walk either atom off its site -- the projector's image *is* the
+    # allowed subspace, so every gradient step stays on the manifold (as for pyrite's (x,x,x), now
+    # on a real material with two *distinct* couplings in one structure).
+    record = read_structure(LTA)
+    setup = RefinementSetup.from_structure(record)
+    labels = list(record.labels)
+    o2, o3 = labels.index("O2"), labels.index("O3")
+
+    raw = setup.params.asu_positions.clone().requires_grad_(True)
+    optimizer = torch.optim.Adam([raw], lr=0.05)
+    for _ in range(30):
+        optimizer.zero_grad()
+        state = constrain(replace(setup.params, asu_positions=raw), setup.spec)
+        loss = (
+            -state.positions[o2, 0]  # pull O2 x...
+            + (state.positions[o2, 1] - 0.4) ** 2  # ...while prising O2 y away from it
+            + (state.positions[o3, 0] - 0.2) ** 2  # push O3 x off its fixed 0
+            - state.positions[o3, 2]  # pull O3 z away from y
+        )
+        loss.backward()
+        optimizer.step()
+
+    state = constrain(replace(setup.params, asu_positions=raw), setup.spec)
+    o2p, o3p = state.positions[o2], state.positions[o3]
+    assert torch.allclose(o2p[0], o2p[1], atol=1e-9)  # O2 stays on (x,x,z): x == y
+    assert torch.allclose(o3p[0], torch.zeros((), dtype=torch.float64), atol=1e-9)  # O3: x fixed 0
+    assert torch.allclose(o3p[1], o3p[2], atol=1e-9)  # O3 stays on (0,y,y): y == z
 
 
 def test_adp_equalities_are_enforced_when_the_raw_violates_them() -> None:
@@ -153,7 +188,7 @@ def _free_tokens(formula: str) -> set[str]:
     return {t for t in tokens if t and t[0] in "xyz"}
 
 
-@pytest.mark.parametrize("cif", [QUARTZ, PYRITE])
+@pytest.mark.parametrize("cif", [QUARTZ, PYRITE, LTA])
 def test_native_projector_matches_diffpy_oracle(cif: Path) -> None:
     projection, _, _ = _projectors(cif)
     reference = _diffpy_sites(cif)
