@@ -62,6 +62,8 @@ def build_structure_factor_gather(
     grid_hkl: IntArray,
     beam_hkl: IntArray,
     gpts: tuple[int, int, int],
+    *,
+    validate: bool = True,
 ) -> StructureFactorGather:
     """Precompute the structure-factor gather for a beam set against an ``Fgb`` support grid.
 
@@ -70,6 +72,20 @@ def build_structure_factor_gather(
     to ~2x the beam ``g_max``, so ``grid_hkl`` must cover them (the difference-support constraint) —
     validated here rather than silently gathering zeros. Both sets ravel through the same ``gpts``
     box (:func:`diffBloch.core.reciprocal.ravel_hkl`, which rejects indices outside the box).
+
+    ``validate`` (default ``True``) runs three O(N^2 / N^2 log G) integrity checks: no duplicate
+    ``grid_hkl``, every beam difference in-box, and ``grid_hkl`` covers every difference. They are
+    the dominant cost when rebuilding a gather per trial over a large beam union, and are *pure
+    checks* -- when they pass, the returned indices are identical to skipping them.
+
+    ``validate=False`` skips them for a hot loop whose grid coverage is guaranteed **upstream** (a
+    ``g_max`` guard). It is *not* self-guarding: the two skipped classes fail differently. A
+    genuinely out-of-box difference still raises (``ravel_hkl``, numpy's terser message). But
+    ``grid_hkl`` is the ``|g| <= g_max`` sphere -- a subset of the rectangular box -- so an in-box
+    difference *outside that sphere* is absent from it yet ravels to a valid box index the scatter
+    never wrote: :func:`gather_structure_factors` reads a **silent zero**, with no runtime backstop.
+    So ``validate=False`` is sound *only* under the upstream coverage guarantee; that guard (not the
+    ``ravel_hkl`` check) is what keeps a mis-sized grid from silently gathering zeros.
     """
     grid = _beam_index_array(grid_hkl, name="grid_hkl")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
@@ -78,33 +94,35 @@ def build_structure_factor_gather(
     gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
 
     source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
-    if np.unique(source).size != source.size:
+    if validate and np.unique(source).size != source.size:
         raise ValueError("grid_hkl must not contain duplicate Miller indices")
 
-    # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to
-    # span the difference support (the realistic failure: gpts sized to the beam g_max, not 2x).
-    # Catch it here with a clear message rather than letting ravel_hkl(gmh, ...) raise numpy's
-    # cryptic "invalid entry in coordinates array".
-    gpts_box = np.asarray(gpts, dtype=np.int64)
-    shifted = gmh + gpts_box // 2
-    out_of_box = np.any((shifted < 0) | (shifted >= gpts_box), axis=1)
-    if out_of_box.any():
-        missing = gmh[out_of_box][0]
-        raise ValueError(
-            "gpts is too small to contain the beam differences hkl_j - hkl_i; "
-            f"first out-of-box difference {tuple(int(component) for component in missing)} "
-            "(size gpts to span the difference support, ~2x the beam g_max)"
-        )
+    if validate:
+        # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to
+        # span the difference support (the realistic failure: gpts sized to the beam g_max, not 2x).
+        # Catch it here with a clear message rather than letting ravel_hkl(gmh, ...) raise numpy's
+        # cryptic "invalid entry in coordinates array".
+        gpts_box = np.asarray(gpts, dtype=np.int64)
+        shifted = gmh + gpts_box // 2
+        out_of_box = np.any((shifted < 0) | (shifted >= gpts_box), axis=1)
+        if out_of_box.any():
+            missing = gmh[out_of_box][0]
+            raise ValueError(
+                "gpts is too small to contain the beam differences hkl_j - hkl_i; "
+                f"first out-of-box difference {tuple(int(component) for component in missing)} "
+                "(size gpts to span the difference support, ~2x the beam g_max)"
+            )
 
-    destination = ravel_hkl(gmh, gpts)
-    uncovered = np.isin(destination, source, invert=True)
-    if uncovered.any():
-        missing = gmh[uncovered][0]
-        raise ValueError(
-            "grid_hkl must cover every beam difference hkl_j - hkl_i; "
-            f"missing {tuple(int(component) for component in missing)} "
-            "(the grid must span the difference support, ~2x the beam g_max)"
-        )
+    destination = ravel_hkl(gmh, gpts)  # validate=False backstop: raises here on an out-of-box gmh
+    if validate:
+        uncovered = np.isin(destination, source, invert=True)
+        if uncovered.any():
+            missing = gmh[uncovered][0]
+            raise ValueError(
+                "grid_hkl must cover every beam difference hkl_j - hkl_i; "
+                f"missing {tuple(int(component) for component in missing)} "
+                "(the grid must span the difference support, ~2x the beam g_max)"
+            )
 
     return StructureFactorGather(
         source_indices=torch.tensor(source, dtype=torch.long),
@@ -197,6 +215,7 @@ def build_beam_plan(
     gpts: tuple[int, int, int],
     u0: float = 0.0,
     gather: StructureFactorGather | None = None,
+    validate: bool = True,
 ) -> BeamPlan:
     """Precompute the geometry/numerics for a beam set.
 
@@ -215,9 +234,13 @@ def build_beam_plan(
     skipping the per-call index-map construction and its validation (the dominant cost; ports the
     private's precomputed HKL->index map, ``diffBloch_private`` 6bb3031). When ``None`` it is built
     here. A cheap shape guard rejects a gather that does not match this beam set / box.
+
+    ``validate`` is forwarded to :func:`build_structure_factor_gather` when building the gather here
+    (default ``True``); pass ``False`` on a hot rebuild loop whose grid coverage is guaranteed by an
+    upstream ``g_max`` guard. Ignored when a precomputed ``gather`` is supplied.
     """
     if gather is None:
-        gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts)
+        gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts, validate=validate)
     elif gather.n_beams != len(beam_hkl) or gather.gpts != tuple(int(p) for p in gpts):
         raise ValueError("precomputed gather does not match this beam_hkl / gpts")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")

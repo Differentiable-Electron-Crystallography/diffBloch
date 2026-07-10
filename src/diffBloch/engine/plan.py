@@ -122,6 +122,7 @@ class OrientationPlan:
         tilts: NDArray[np.float64] | None = None,
         tilt_reduction: TiltReduction = PLAIN_SUM,
         gather: StructureFactorGather | None = None,
+        validate: bool = True,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -161,10 +162,17 @@ class OrientationPlan:
         (``op.beam_plans[0].gather``) to skip re-deriving it on every rebuild -- the dominant
         preprocess cost (the fix the private applied in its 6bb3031). When ``None`` it is built once
         here and shared across the tilts.
+
+        ``validate`` (default ``True``) is forwarded to
+        :func:`~diffBloch.core.dynamical.build_structure_factor_gather` when it builds the gather
+        here -- pass ``False`` only on a hot rebuild loop whose grid coverage an upstream ``g_max``
+        guard already guarantees. Ignored when a precomputed ``gather`` is supplied.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         if gather is None:
-            gather = build_structure_factor_gather(np.asarray(grid.grid_hkl), beam_hkl, grid.gpts)
+            gather = build_structure_factor_gather(
+                np.asarray(grid.grid_hkl), beam_hkl, grid.gpts, validate=validate
+            )
         thickness_t = torch.as_tensor(
             np.atleast_1d(np.asarray(thickness, dtype=np.float64)), dtype=torch.float64
         )
@@ -303,6 +311,7 @@ class SegmentedOrientationPlan:
         tilt_reduction: TiltReduction = PLAIN_SUM,
         scored_hkl: NDArray[np.int64] | None = None,
         gathers: Sequence[StructureFactorGather] | None = None,
+        validate: bool = True,
     ) -> SegmentedOrientationPlan:
         """Assemble a segmented plan from ``(beam_hkl, cover)`` chunks against the shared grid.
 
@@ -328,6 +337,10 @@ class SegmentedOrientationPlan:
         the orientation-free F-gather -- the dominant cost. A rebuild at a new orientation over the
         same segments (:meth:`with_orientation`) passes the seed plan's per-segment gathers;
         ``None`` builds each fresh here.
+
+        ``validate`` (default ``True``) is forwarded to each segment's :meth:`OrientationPlan.build`
+        when it builds a gather (i.e. where ``gathers`` is ``None``) -- pass ``False`` only on a hot
+        per-trial re-couple whose grid coverage an upstream ``g_max`` guard already guarantees.
         """
         if gathers is not None and len(gathers) != len(segments):
             raise ValueError(
@@ -360,6 +373,7 @@ class SegmentedOrientationPlan:
                 orientation=rotation,
                 tilts=tilt_mats[cover_idx],
                 gather=None if gathers is None else gathers[seg_i],
+                validate=validate,
             )
             union_index = torch.tensor(
                 [union_pos[tuple(int(c) for c in row)] for row in beam_hkl], dtype=torch.int64

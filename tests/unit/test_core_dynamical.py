@@ -217,6 +217,35 @@ def test_build_gather_rejects_duplicate_grid_indices() -> None:
         build_structure_factor_gather(duplicated, _BEAM_HKL, _GPTS)
 
 
+def test_build_gather_validate_false_produces_byte_identical_indices() -> None:
+    # validate only gates the integrity checks; the produced indices must be identical either way,
+    # so skipping validation on a hot rebuild loop cannot change the gathered structure matrix.
+    checked = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    skipped = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS, validate=False)
+    assert torch.equal(checked.source_indices, skipped.source_indices)
+    assert torch.equal(checked.destination_indices, skipped.destination_indices)
+
+
+def test_build_gather_validate_false_skips_the_on2_integrity_checks() -> None:
+    # A grid that fails the O(N^2) coverage check under validate=True is accepted under
+    # validate=False (the caller guarantees coverage upstream) -- proving those checks are skipped.
+    uncovered_grid = np.array([[0, 0, 0]], dtype=np.int64)
+    with pytest.raises(ValueError, match="must cover every beam difference"):
+        build_structure_factor_gather(uncovered_grid, _BEAM_HKL, _GPTS)
+    gather = build_structure_factor_gather(uncovered_grid, _BEAM_HKL, _GPTS, validate=False)
+    assert gather.n_beams == _BEAM_HKL.shape[0]  # returned without raising
+
+
+def test_build_gather_validate_false_still_fails_loudly_on_out_of_box_difference() -> None:
+    # The backstop: a genuinely out-of-box difference still raises (via ravel_hkl), just with
+    # numpy's terser message -- validate=False skips checks, it does not silently gather garbage.
+    beams = np.array([[0, 0, 0], [5, 0, 0]], dtype=np.int64)  # (5,0,0) diff outside the (3,3,1) box
+    with pytest.raises(ValueError):
+        build_structure_factor_gather(
+            np.array([[0, 0, 0]], dtype=np.int64), beams, _GPTS, validate=False
+        )
+
+
 def test_build_gather_rejects_bad_shapes() -> None:
     with pytest.raises(ValueError, match="grid_hkl must have shape"):
         build_structure_factor_gather(np.zeros(3, dtype=np.int64), _BEAM_HKL, _GPTS)
