@@ -6,6 +6,8 @@ synthetic silicon system (mirroring ``test_engine``'s setup so no heavy fixture 
 
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import torch
 from tests.unit.synthetic import make_constraint_spec
@@ -15,7 +17,12 @@ from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
-from diffBloch.preprocess import RefinementSetup, build_engine, score_orientations
+from diffBloch.preprocess import (
+    RefinementSetup,
+    build_engine,
+    run_inference,
+    score_orientations,
+)
 from diffBloch.preprocess.plan import Plan
 
 _ENERGY = 200e3
@@ -159,3 +166,55 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     scores = score_orientations(plan, refinement)
     assert len(scores) == len(plan.orientations)
     assert all(torch.isfinite(s) and s.shape == () for s in scores)
+
+
+def _silicon_plan() -> tuple[Plan, RefinementSetup]:
+    grid, asu_plan, spec, numbers = _silicon()
+    orientation, _ = _self_consistent_orientation(grid, asu_plan, spec, numbers)
+    plan = Plan(grid=grid, orientations=(orientation,))
+    refinement = RefinementSetup(
+        asu_plan=asu_plan,  # type: ignore[arg-type]
+        spec=spec,
+        params=_params(),
+        numbers=numbers,
+    )
+    return plan, refinement
+
+
+def test_single_precision_scores_end_to_end_through_build_engine() -> None:
+    """The coarse knob works through the full build_engine -> simulate -> wR2 path, not just solver.
+
+    Guards the feature's actual purpose: a ``precision="single"`` engine reaches the O(N^3) solve in
+    complex64 (exit amplitudes complex64 -> intensities float32), and the cheap scoring tail still
+    yields a finite score -- observed intensities/sigmas are float64, so type-promotion upcasts the
+    reduction back to double (confining single to the expensive solve). A stray complex128 constant
+    mid-solve, or a promotion that errored instead, would trip this.
+    """
+    plan, refinement = _silicon_plan()
+    engine = build_engine(plan, refinement, precision="single")
+    assert engine.precision == "single"
+
+    (solution,) = engine.simulate(refinement.params)
+    assert solution.amplitudes.dtype == torch.complex64  # single reached the solve
+    assert solution.intensities.dtype == torch.float32
+
+    score = engine.score_orientation(engine.orientations[0], engine.fgb(refinement.params))
+    assert score.shape == () and torch.isfinite(score)
+
+
+def test_terminal_stays_double_and_exposes_no_precision_knob() -> None:
+    """The safety-critical invariant: the terminal Plan->Result never runs single.
+
+    Two layers. (a) The default engine is double -- the solve produces complex128 / float64, so the
+    pinned result is exact. (b) Structural: ``run_inference`` exposes no ``precision`` parameter, so
+    a coarse search cannot leak into the terminal by construction, not merely by callers omitting.
+    """
+    plan, refinement = _silicon_plan()
+    engine = build_engine(plan, refinement)  # no precision -> double
+    assert engine.precision == "double"
+
+    (solution,) = engine.simulate(refinement.params)
+    assert solution.amplitudes.dtype == torch.complex128
+    assert solution.intensities.dtype == torch.float64
+
+    assert "precision" not in inspect.signature(run_inference).parameters
