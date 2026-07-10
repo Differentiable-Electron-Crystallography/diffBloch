@@ -62,9 +62,12 @@ def loop_rows(block: gemmi.cif.Block, first_tag: str) -> list[dict[str, str]]:
         return []
     tags = [str(tag) for tag in loop.tags]
     width = int(loop.width())
+    # Materialise loop.values once: it is a gemmi property that rebuilds the whole flat vector on
+    # each access, so slicing per row is O(rows^2) -- ~750s on LTA's 29k reflections, ~0.01s here.
+    flat = list(loop.values)
     rows: list[dict[str, str]] = []
-    for start in range(0, len(loop.values), width):
-        values = [str(value) for value in loop.values[start : start + width]]
+    for start in range(0, len(flat), width):
+        values = [str(value) for value in flat[start : start + width]]
         rows.append(dict(zip(tags, values, strict=True)))
     return rows
 

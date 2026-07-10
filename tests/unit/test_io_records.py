@@ -1,8 +1,21 @@
+import gemmi
 import numpy as np
 import pytest
 from pydantic import ValidationError
 
 from diffBloch.io import AdpRecord, ObservationRecord, StructureRecord
+from diffBloch.io._cifio import loop_rows
+
+
+def test_loop_rows_reads_every_row_of_a_multi_row_loop_in_order() -> None:
+    # Guards the loop_rows parse: it binds loop.values once (the O(N^2)->O(N) fix a large PETS
+    # reflection loop exposed) and must still return one correctly-keyed dict per row, in order.
+    block = gemmi.cif.read_string("data_t\nloop_\n_a\n_b\n1 2\n3 4\n5 6\n").sole_block()
+    assert loop_rows(block, "_a") == [
+        {"_a": "1", "_b": "2"},
+        {"_a": "3", "_b": "4"},
+        {"_a": "5", "_b": "6"},
+    ]
 
 
 def test_structure_record_validates_shapes_and_physical_bounds() -> None:
