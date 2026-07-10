@@ -20,10 +20,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from diffBloch.engine.plan import ScatteringGrid
 from diffBloch.preprocess.plan import Plan
+
+if TYPE_CHECKING:
+    # Annotation-only (``from __future__ import annotations``): ScatteringGrid is never touched at
+    # runtime here, so keep it a type-only import -- pipeline stays free of a runtime edge up into
+    # ``engine`` (no cycle today; this keeps it that way).
+    from diffBloch.engine.plan import ScatteringGrid
 
 __all__ = [
     "OPAQUE",
@@ -231,6 +236,12 @@ def fork(
     ``predicate`` receives the shared :class:`~diffBloch.engine.plan.ScatteringGrid` (e.g. a
     cell-volume / grid-size test routing a large cell to a coarse-precision branch); ``when_true`` /
     ``when_false`` are the branch step lists (kept as lists so their records survive resolution).
+
+    ``predicate`` **must be a pure function of the grid** -- no external or mutable state. The grid
+    argument is only half the contract: the *type* stops it reading the mutating ``Plan``, but a
+    predicate that closed over a global flag would desync the pre-run resolution (for the lock) from
+    the runtime branch just as badly. Purity over an input that is itself pipeline-invariant is what
+    makes the branch deterministic per experiment.
     """
     return Fork(predicate=predicate, when_true=tuple(when_true), when_false=tuple(when_false))
 

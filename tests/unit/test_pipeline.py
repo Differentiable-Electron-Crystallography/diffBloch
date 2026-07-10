@@ -10,6 +10,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from tests.unit.synthetic import seed_system
+
+from diffBloch.preprocess import (
+    build_orientation_plans,
+    integrate_rocking_curve,
+    mosaicity,
+    select_beams,
+)
 from diffBloch.preprocess.pipeline import (
     OPAQUE,
     Plan,
@@ -23,7 +31,14 @@ from diffBloch.preprocess.pipeline import (
     spec_to_params,
     step_records,
 )
-from diffBloch.specs import BeamSelection, IntegrationGeometry, TiltIndependent, TiltSegmentUnion
+from diffBloch.specs import (
+    BeamSelection,
+    IntegrationGeometry,
+    Mosaicity,
+    RockingCurve,
+    TiltIndependent,
+    TiltSegmentUnion,
+)
 
 
 def _plan() -> Plan:
@@ -134,3 +149,21 @@ def test_raw_fork_in_pipeline_runs_the_branch_but_records_opaque() -> None:
     out = pipeline([branch])(_plan())
     assert ran == ["t"]
     assert out.provenance == (OPAQUE,)
+
+
+def test_grid_is_invariant_across_the_grid_shaping_steps() -> None:
+    # fork's checkpointability rests on plan.grid being the *same value* at every step, so resolving
+    # a fork against base.grid equals its branch at the fork's runtime position (see the fork
+    # docstring). Enforce it as a tripwire rather than a convention: the grid-shaping steps must
+    # thread the same grid object through, never rebuild it. (couple_beams likewise only
+    # replace(orientations=...)s -- omitted here because it needs g_max >= 2*coupling-cap.)
+    _, seed = seed_system()
+    shaped = pipeline(
+        [
+            select_beams(BeamSelection()),
+            build_orientation_plans(),
+            integrate_rocking_curve(RockingCurve(sampling=3)),
+            mosaicity(Mosaicity(window=2)),
+        ]
+    )(seed)
+    assert shaped.grid is seed.grid
