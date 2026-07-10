@@ -26,6 +26,15 @@ from torch import Tensor
 from diffBloch.core.dynamical.assembly import BlochSystem, _fill_diagonal
 
 type Method = Literal["matrix_exp", "bloch_eigen"]
+# The solve's numeric *tier*, orthogonal to Method (the algorithm). Named for the precision level,
+# not a dtype, because it bundles a real+complex pair: "double" = float64 + complex128 (the exact,
+# reproducible field); "single" = float32 + complex64. It is deliberately a *coarse-search* knob --
+# the coupled orientation fit's O(N^3) eigensolve scales with the beam count (~cell volume), so on a
+# large cell "single" ~halves that dominant cost, trading a basin-sensitive search (non-determinism
+# across platforms) for speed. The terminal Plan->Result (run_inference scoring, refine) stays
+# "double": the fit is re-scored there, so the pinned result stays exact even when the search was
+# coarse (design/decisions/combinators-and-recipe-identity.md: the precision==checkpoint boundary).
+type Precision = Literal["single", "double"]
 type Thicknesses = float | Sequence[float] | Tensor
 
 
@@ -34,6 +43,7 @@ def propagate(
     thicknesses: Thicknesses,
     *,
     method: Method = "matrix_exp",
+    precision: Precision = "double",
 ) -> Tensor:
     """Propagate ``system.psi0`` to each thickness, returning the exit wavefunction.
 
@@ -45,22 +55,44 @@ def propagate(
     Differentiable in ``A`` (hence in ``Fgb``). ``method`` picks the propagator: ``matrix_exp``
     (refine default, stable autograd) or ``bloch_eigen`` (eval-only). The no-absorption path
     assumes ``A`` is Hermitian.
+
+    ``precision`` selects the numeric field of the eigensolve/matrix-exponential -- orthogonal to
+    ``method``. ``"double"`` (the default) runs the whole propagation in complex128/float64 and is a
+    pure identity on today's path (byte-identical). ``"single"`` downcasts the operator to complex64
+    and builds ``thicknesses`` at float32, roughly halving the O(N^3) solve's time and memory -- a
+    *search-time* knob for the preprocess fits (the O(N^3) cost scales with the beam count, i.e. the
+    cell volume). The terminal estimators (``run_inference`` scoring, ``refine``) never enable it:
+    single precision perturbs the fit's basin, so the reproducible pinned result stays double. Ports
+    ``diffBloch_private`` ``dynamical.py``'s complex64 eigensolve (#127/#133).
     """
-    t = torch.as_tensor(thicknesses, dtype=torch.float64, device=system.a.device)
+    real_dtype = torch.float32 if precision == "single" else torch.float64
+    t = torch.as_tensor(thicknesses, dtype=real_dtype, device=system.a.device)
     if t.ndim == 0:
         t = t.reshape(1)
     if t.ndim != 1:
         raise ValueError("thicknesses must be a scalar or 1-D sequence")
 
     if method == "matrix_exp":
-        return _propagate_matrix_exp(system, t)
+        return _propagate_matrix_exp(system, t, precision)
     if method == "bloch_eigen":
-        return _propagate_bloch_eigen(system, t)
+        return _propagate_bloch_eigen(system, t, precision)
     raise ValueError(f"method must be 'matrix_exp' or 'bloch_eigen', got {method!r}")
 
 
-def _propagate_matrix_exp(system: BlochSystem, thicknesses: Tensor) -> Tensor:
-    a = _complex_operator(system.a)  # (..., N, N)
+def _at_precision(operator: Tensor, precision: Precision) -> Tensor:
+    """Downcast a complex operator to complex64 for ``"single"``; identity for ``"double"``.
+
+    The one place precision enters the solve. Differentiable (``.to`` casts the incoming gradient
+    back on the backward pass), no ``.detach``/in-place -- so ``"double"`` is a pure identity and
+    ``"single"`` preserves the gradient to ``Fgb``.
+    """
+    if precision == "single":
+        return operator.to(torch.complex64)
+    return operator
+
+
+def _propagate_matrix_exp(system: BlochSystem, thicknesses: Tensor, precision: Precision) -> Tensor:
+    a = _at_precision(_complex_operator(system.a), precision)  # (..., N, N)
     # Co-locate the geometry-plan tensors onto the operator device (they may be built CPU-side while
     # A is parameter-derived on an accelerator); thicknesses is already on a.device, k_n is a float.
     psi0 = system.psi0.to(dtype=a.dtype, device=a.device)
@@ -74,8 +106,10 @@ def _propagate_matrix_exp(system: BlochSystem, thicknesses: Tensor) -> Tensor:
     return (transfer @ psi0.unsqueeze(-1)).squeeze(-1)  # (..., T, N)
 
 
-def _propagate_bloch_eigen(system: BlochSystem, thicknesses: Tensor) -> Tensor:
-    a = _complex_operator(system.a)  # (..., N, N)
+def _propagate_bloch_eigen(
+    system: BlochSystem, thicknesses: Tensor, precision: Precision
+) -> Tensor:
+    a = _at_precision(_complex_operator(system.a), precision)  # (..., N, N)
     # Co-locate the geometry-plan tensors onto the operator device (see _propagate_matrix_exp).
     mii = system.mii.to(device=a.device)  # (..., N)
     psi0 = system.psi0.to(device=a.device)  # (N,), shared across the batch

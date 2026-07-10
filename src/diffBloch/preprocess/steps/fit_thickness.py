@@ -30,7 +30,7 @@ from dataclasses import replace
 import torch
 from torch import Tensor
 
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import Method, Precision
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
@@ -47,6 +47,7 @@ def fit_thickness(
     grid: ThicknessGrid,
     *,
     method: Method = "matrix_exp",
+    precision: Precision = "double",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
 
@@ -56,11 +57,13 @@ def fit_thickness(
     rotation is then assigned the lowest-wR2 of ``grid.n_steps`` candidate thicknesses spaced evenly
     from ``grid.min_thickness`` to ``grid.max_thickness`` (inclusive, Angstroms). ``grid`` is a
     pre-validated :class:`~diffBloch.specs.ThicknessGrid` (invalid bounds are unrepresentable, so
-    this function never re-validates); ``method`` configures the engine's solver.
+    this function never re-validates); ``method`` configures the engine's solver. ``precision``
+    (default ``"double"``) selects the solve's numeric field -- ``"single"`` (complex64) is the
+    coarse search-time knob, never for a terminal estimator (see :func:`fit_orientation`).
     """
 
     def run(plan: Plan) -> Plan:
-        engine = build_engine(plan, refinement, method=method)
+        engine = build_engine(plan, refinement, method=method, precision=precision)
         fgb = engine.fgb(refinement.params)
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64

@@ -32,7 +32,7 @@ from diffBloch.core.products import (
     reduce_tilts,
 )
 from diffBloch.core.scattering import structure_factors
-from diffBloch.core.solver import Method, propagate
+from diffBloch.core.solver import Method, Precision, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import (
     OrientationPlanLike,
@@ -70,6 +70,11 @@ class RefinementEngine:
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: Method = "matrix_exp"
+    # Solve numeric field. "double" everywhere by default (byte-identical to complex128). "single"
+    # (complex64) is a search-time knob, set only on the transient scoring engines the preprocess
+    # fits build; the terminal estimators (objective/refine here, run_inference via build_engine)
+    # never enable it, so the reproducible pinned result stays double. See core.solver.propagate.
+    precision: Precision = "double"
 
     def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
         """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
@@ -229,7 +234,10 @@ class RefinementEngine:
         # Untilted (length 1): the static solve, byte-identical to the pre-integration path.
         if len(orientation.beam_plans) == 1:
             amplitudes = propagate(
-                build_bloch_system(orientation.beam_plans[0], fgb), thicknesses, method=self.method
+                build_bloch_system(orientation.beam_plans[0], fgb),
+                thicknesses,
+                method=self.method,
+                precision=self.precision,
             )
             return BlochSolution.from_propagation(amplitudes, beam_hkl, thicknesses)
         # Rocking-curve integration: the tilts share this orientation's beam set, so ONE batched
@@ -238,7 +246,10 @@ class RefinementEngine:
         # integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.
         batch = stack_beam_plans(orientation.beam_plans)
         amplitudes = propagate(
-            build_bloch_systems(batch, fgb), thicknesses, method=self.method
+            build_bloch_systems(batch, fgb),
+            thicknesses,
+            method=self.method,
+            precision=self.precision,
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
             amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
@@ -266,7 +277,10 @@ class RefinementEngine:
         for segment in plan.segments:
             batch = stack_beam_plans(segment.plan.beam_plans)
             amplitudes = propagate(
-                build_bloch_systems(batch, fgb), thicknesses, method=self.method
+                build_bloch_systems(batch, fgb),
+                thicknesses,
+                method=self.method,
+                precision=self.precision,
             )  # (C, T, n_seg)
             cover = segment.cover.to(device)
             union_index = segment.union_index.to(device)

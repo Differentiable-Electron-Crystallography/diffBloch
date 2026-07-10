@@ -52,7 +52,7 @@ from torch import Tensor
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import StructureFactorGather, build_structure_factor_gather
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import Method, Precision
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
@@ -73,6 +73,7 @@ def fit_orientation(
     search: HexagonalSearch,
     *,
     method: Method = "matrix_exp",
+    precision: Precision = "double",
     coupling: TrialCoupling | None = None,
     workers: int = 1,
     logger: Logger = NULL_LOGGER,
@@ -92,6 +93,11 @@ def fit_orientation(
     :class:`~diffBloch.specs.TrialCoupling` re-derives the solve union and re-selects the scored set
     at every trial orientation (see the module docstring for the non-stationary-objective nuance).
     ``None`` keeps the tilt-independent fit (one fixed beam set across the search).
+
+    ``precision`` (default ``"double"``) configures the scoring engine's numeric field. ``"single"``
+    (complex64) roughly halves the per-trial O(N^3) eigensolve for large cells at the cost of a
+    coarser, basin-sensitive search -- acceptable here because the fit is re-scored by the
+    double-precision terminal; it must never be used for a terminal ``run_inference`` / ``refine``.
 
     ``workers`` (default 1, sequential) fans the per-rotation searches over a thread pool, the
     private's ``ThreadPoolExecutor(num_workers=8)`` pattern. Rotations are independent, the engine
@@ -120,7 +126,7 @@ def fit_orientation(
         raise ValueError("workers must be >= 1")
 
     def run(plan: Plan) -> Plan:
-        engine = build_engine(plan, refinement, method=method)
+        engine = build_engine(plan, refinement, method=method, precision=precision)
         fgb = engine.fgb(refinement.params)
 
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
