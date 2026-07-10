@@ -102,6 +102,7 @@ def test_lta_coupled_oxygen_sites_hold_under_refinement() -> None:
     setup = RefinementSetup.from_structure(record)
     labels = list(record.labels)
     o2, o3 = labels.index("O2"), labels.index("O3")
+    seed_o2_z = setup.params.asu_positions[o2, 2].item()  # O2's free axis, before refinement
 
     raw = setup.params.asu_positions.clone().requires_grad_(True)
     optimizer = torch.optim.Adam([raw], lr=0.05)
@@ -111,6 +112,7 @@ def test_lta_coupled_oxygen_sites_hold_under_refinement() -> None:
         loss = (
             -state.positions[o2, 0]  # pull O2 x...
             + (state.positions[o2, 1] - 0.4) ** 2  # ...while prising O2 y away from it
+            - state.positions[o2, 2]  # and drive O2 z, its free axis
             + (state.positions[o3, 0] - 0.2) ** 2  # push O3 x off its fixed 0
             - state.positions[o3, 2]  # pull O3 z away from y
         )
@@ -119,7 +121,8 @@ def test_lta_coupled_oxygen_sites_hold_under_refinement() -> None:
 
     state = constrain(replace(setup.params, asu_positions=raw), setup.spec)
     o2p, o3p = state.positions[o2], state.positions[o3]
-    assert torch.allclose(o2p[0], o2p[1], atol=1e-9)  # O2 stays on (x,x,z): x == y
+    assert torch.allclose(o2p[0], o2p[1], atol=1e-9)  # O2 stays on (x,x,z): x == y (coupling holds)
+    assert not np.isclose(o2p[2].item(), seed_o2_z)  # ...but z is genuinely free -- it moved
     assert torch.allclose(o3p[0], torch.zeros((), dtype=torch.float64), atol=1e-9)  # O3: x fixed 0
     assert torch.allclose(o3p[1], o3p[2], atol=1e-9)  # O3 stays on (0,y,y): y == z
 

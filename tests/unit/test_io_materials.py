@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
+from diffBloch.config import load_experiment
 from diffBloch.core import build_asu_expansion_plan
 from diffBloch.core.crystal import reciprocal_cell
 from diffBloch.io import read_observations, read_structure
@@ -28,6 +29,15 @@ def test_read_lta_observations_parses_the_full_pets_reflection_loop() -> None:
     obs = read_observations(FIXTURE_ROOT / "lta_anchor" / "exp_data.cif_pets")
     assert obs.n_rotations == 50
     assert obs.n_reflections == 29023
+
+
+def test_lta_experiment_lock_verifies_the_committed_inputs() -> None:
+    # Enforce the hash-verification the fixture ships: load_experiment checks lta.cif /
+    # exp_data.cif_pets against experiment.lock, so a fixture that drifts from its lock (e.g. a
+    # whitespace hook silently rewriting the PETS file) fails loudly here, not silently at Tier 2.
+    cfg, _lock = load_experiment(FIXTURE_ROOT / "lta_anchor")
+    assert cfg.name == "lta-anchor"
+    assert cfg.numerics.g_max == 4.5 and cfg.numerics.g_max_refine == 1.4
 
 
 def test_read_paracetamol_uiso_fixture() -> None:
