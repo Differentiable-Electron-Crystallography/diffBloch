@@ -173,6 +173,26 @@ class HexagonalSearch:
     2000 leaves cross-platform headroom while still catching a genuine runaway. A dataset with
     shallower minima may need a larger cap -- raise it via
     ``preprocess.orientation.max_iterations``.
+
+    **Recalibrating for another compound.** The cap is a runaway guard, so set it comfortably above
+    the slowest *legitimate* search on that compound, measured under the production recipe:
+
+    1. Run ``fit_orientation`` under the **integrated recipe** you will use in production (the
+       rocking-curve-integrated landscape is bumpier and needs far more passes than a static fit --
+       calibrating on the static fit under-sizes the cap), on **all** rotations, with a generous cap
+       (e.g. ``10_000``) and a :class:`~diffBloch.observability.RecordingLogger`.
+    2. Read the per-rotation :class:`~diffBloch.observability.OrientationFitted` events. Each
+       carries ``n_passes`` (the sweeps that search took) and ``pass_cap`` (the cap in force).
+    3. **Confirm every rotation converged by the radius floor, not by the cap** -- i.e. no
+       rotation raised, and ``max(n_passes) < pass_cap`` with margin. A rotation that runs to the
+       cap is *signal*: either a genuinely (near-)degenerate landscape to investigate, or a cap
+       that is still too low -- never silently raise the cap to make it disappear.
+    4. Set ``max_iterations = ceil(headroom * max(n_passes))`` with ``headroom`` ~1.5 (quartz:
+       ``1288 -> 2000``). Record the calibrating dataset + recipe alongside the value.
+
+    The ``../notebooks/iain`` calibration notebook automates steps 1-4 (runs the search, plots the
+    per-rotation ``n_passes`` distribution against ``pass_cap``, flags any cap-hitters, and prints
+    the recommended cap).
     """
 
     max_search_angle: float = 0.4  # largest tilt radius the search starts from

@@ -101,14 +101,19 @@ class OrientationFitted:
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``index`` is the rotation's position in the
     plan, ``wr2`` the final scaling-optimised objective at the fitted orientation, ``n_trials`` the
-    number of trial orientations the search scored. With ``workers > 1`` events arrive in
-    *completion* order (the plan itself stays ordered).
+    number of trial orientations the search scored, ``n_passes`` the number of hexagonal-ring sweeps
+    the search took to converge (the quantity ``HexagonalSearch.max_iterations`` caps), and
+    ``pass_cap`` that cap itself -- carried per event so a plot can show each rotation's headroom
+    (``n_passes`` vs ``pass_cap``) and flag any rotation that ran to the cap. With ``workers > 1``
+    events arrive in *completion* order (the plan itself stays ordered).
     """
 
     channel: ClassVar[str] = "fit"
     index: int
     wr2: float
     n_trials: int
+    n_passes: int
+    pass_cap: int
 
     @property
     def step(self) -> int | None:
@@ -116,7 +121,12 @@ class OrientationFitted:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {"wr2": self.wr2, "n_trials": float(self.n_trials)}
+        return {
+            "wr2": self.wr2,
+            "n_trials": float(self.n_trials),
+            "n_passes": float(self.n_passes),
+            "pass_cap": float(self.pass_cap),
+        }
 
 
 @dataclass(frozen=True)

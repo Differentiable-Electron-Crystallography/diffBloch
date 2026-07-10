@@ -123,24 +123,37 @@ def fit_orientation(
         engine = build_engine(plan, refinement, method=method)
         fgb = engine.fgb(refinement.params)
 
-        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int]:
+        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
             return _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
 
         built = require_built_plans(plan)
         fitted_by_index: dict[int, OrientationPlanLike] = {}
+        cap = search.max_iterations
         if workers > 1:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {pool.submit(refine, op): index for index, op in enumerate(built)}
                 for future in as_completed(futures):  # emit progress as searches finish
                     index = futures[future]
-                    fitted, wr2, n_trials = future.result()
+                    fitted, wr2, n_trials, n_passes = future.result()
                     fitted_by_index[index] = fitted
-                    logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
+                    logger.report(
+                        OrientationFitted(
+                            index=index,
+                            wr2=wr2,
+                            n_trials=n_trials,
+                            n_passes=n_passes,
+                            pass_cap=cap,
+                        )
+                    )
         else:
             for index, op in enumerate(built):
-                fitted, wr2, n_trials = refine(op)
+                fitted, wr2, n_trials, n_passes = refine(op)
                 fitted_by_index[index] = fitted
-                logger.report(OrientationFitted(index=index, wr2=wr2, n_trials=n_trials))
+                logger.report(
+                    OrientationFitted(
+                        index=index, wr2=wr2, n_trials=n_trials, n_passes=n_passes, pass_cap=cap
+                    )
+                )
         ordered = tuple(fitted_by_index[i] for i in range(len(built)))
         return replace(plan, orientations=ordered)
 
@@ -157,11 +170,14 @@ def _refine_one(
     *,
     search: HexagonalSearch,
     coupling: TrialCoupling | None,
-) -> tuple[OrientationPlanLike, float, int]:
+) -> tuple[OrientationPlanLike, float, int, int]:
     """Palatinus hexagonal search over one orientation.
 
-    Returns ``(fitted, wr2, n_trials)``: the best-scoring plan, its final scaling-optimised wR2,
-    and the number of trial orientations scored (the :class:`OrientationFitted` measurements).
+    Returns ``(fitted, wr2, n_trials, n_passes)``: the best-scoring plan, its final
+    scaling-optimised wR2, the number of trial orientations scored, and the number of
+    hexagonal-ring sweeps taken (the quantity ``search.max_iterations`` caps -- surfaced so a
+    search's cost and its headroom under the cap are observable, e.g. for recalibrating the cap on
+    a new compound).
 
     With ``coupling=None`` each trial is ``current.with_orientation(grid, o)`` -- it rebuilds only
     the orientation-dependent bases and reuses the F-gather, so the beam set, rocking-curve tilts,
@@ -185,9 +201,11 @@ def _refine_one(
         )
     current_score = float(engine.score_orientation(current, fgb))
     search_angle = search.max_search_angle
+    n_passes = 0
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
-            return current, current_score, n_trials
+            return current, current_score, n_trials, n_passes
+        n_passes += 1  # noqa: SIM113 -- not enumerate: the floor-check iteration above returns before this, so this counts executed sweeps only
         improved = False
         for n in range(search.n_steps):
             azimuth = n * 360.0 / search.n_steps  # hexagonal: 0, 60, ..., 300 deg at n_steps = 6

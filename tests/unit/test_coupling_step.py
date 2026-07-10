@@ -434,6 +434,8 @@ def test_fit_orientation_emits_progress_events() -> None:
     fits = [e for e in recorder.events if isinstance(e, OrientationFitted)]
     assert sorted(e.index for e in fits) == [0, 1]
     assert all(e.n_trials >= 1 and e.wr2 >= 0.0 for e in fits)
+    # n_passes is the capped quantity and must be observable within its cap for calibration.
+    assert all(1 <= e.n_passes <= e.pass_cap == search.max_iterations for e in fits)
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
