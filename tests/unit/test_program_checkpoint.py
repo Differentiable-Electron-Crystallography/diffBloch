@@ -14,7 +14,7 @@ from tests.unit.synthetic import built_seed_system
 
 from diffBloch.app.program import _prepare
 from diffBloch.config import load_experiment
-from diffBloch.preprocess import as_step
+from diffBloch.preprocess import as_step, fork
 from diffBloch.preprocess.plan import Plan
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
@@ -101,3 +101,39 @@ def test_no_checkpoint_neither_reads_nor_writes(tmp_path: Path) -> None:
     _run(exp, base, calls, [("a", None), ("b", None)], checkpoint=False)
     assert calls == {"a": 1, "b": 1}
     assert not (exp / "plan.npz").exists() and not (exp / "plan.lock").exists()
+
+
+def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path) -> None:
+    # _prepare compiles a fork away against base.grid before locking, so a forked recipe checkpoints
+    # through the ordinary flat-recipe lock: same branch -> reuse; a flipped branch -> stale.
+    exp = _experiment(tmp_path)
+    _, base = built_seed_system()
+    calls: dict[str, int] = {}
+    cfg, _lock = load_experiment(exp)
+
+    def recipe(pred):  # a -> fork(coarse | exact); the fork's chosen branch is what gets recorded
+        return [
+            _spy(calls, "a"),
+            fork(pred, when_true=[_spy(calls, "coarse")], when_false=[_spy(calls, "exact")]),
+        ]
+
+    # Seed with the when_true branch; the recorded recipe is the resolved [a, coarse].
+    out = _prepare(base, recipe(lambda g: True), root=exp, cfg=cfg, checkpoint=True, refresh=False)
+    assert calls == {"a": 1, "coarse": 1}
+    assert [r.name for r in out.provenance] == ["a", "coarse"]
+
+    # Same fork resolves to the same branch -> full reuse, nothing re-runs.
+    calls.clear()
+    reused = _prepare(
+        base, recipe(lambda g: True), root=exp, cfg=cfg, checkpoint=True, refresh=False
+    )
+    assert calls == {}
+    assert [r.name for r in reused.provenance] == ["a", "coarse"]
+
+    # A flipped predicate resolves to the other branch -> different recipe -> stale -> recompute.
+    calls.clear()
+    reforked = _prepare(
+        base, recipe(lambda g: False), root=exp, cfg=cfg, checkpoint=True, refresh=False
+    )
+    assert calls == {"a": 1, "exact": 1}
+    assert [r.name for r in reforked.provenance] == ["a", "exact"]

@@ -16,9 +16,12 @@ from diffBloch.preprocess.pipeline import (
     Step,
     StepRecord,
     as_step,
+    fork,
     identity,
     pipeline,
+    resolve_recipe,
     spec_to_params,
+    step_records,
 )
 from diffBloch.specs import BeamSelection, IntegrationGeometry, TiltIndependent, TiltSegmentUnion
 
@@ -83,3 +86,51 @@ def test_identity_records_itself_and_is_a_noop() -> None:
 def test_empty_pipeline_leaves_provenance_untouched() -> None:
     seeded = replace(_plan(), provenance=(StepRecord(name="prior"),))
     assert pipeline([])(seeded).provenance == (StepRecord(name="prior"),)
+
+
+# --- fork (the choice combinator) -----------------------------------------------------------------
+# These predicates ignore the grid (passed None) -- resolution mechanics are what's under test here;
+# grid-driven branch selection + checkpoint reuse/stale is pinned in test_program_checkpoint.py.
+
+
+def test_resolve_recipe_splices_the_chosen_branch() -> None:
+    taken = resolve_recipe(
+        [
+            _tag("a"),
+            fork(lambda g: True, when_true=[_tag("t1"), _tag("t2")], when_false=[_tag("f")]),
+        ],
+        None,  # predicate ignores the grid
+    )
+    assert [r.name for r in step_records(taken)] == ["a", "t1", "t2"]
+    skipped = resolve_recipe(
+        [fork(lambda g: False, when_true=[_tag("t")], when_false=[_tag("f1"), _tag("f2")])], None
+    )
+    assert [r.name for r in step_records(skipped)] == ["f1", "f2"]
+
+
+def test_resolve_recipe_flattens_nested_forks() -> None:
+    inner = fork(lambda g: True, when_true=[_tag("x"), _tag("y")], when_false=[_tag("no")])
+    outer = fork(lambda g: True, when_true=[_tag("a"), inner, _tag("b")], when_false=[_tag("no")])
+    assert [r.name for r in step_records(resolve_recipe([outer], None))] == ["a", "x", "y", "b"]
+
+
+def test_resolved_fork_stamps_the_branch_step_records() -> None:
+    resolved = resolve_recipe(
+        [fork(lambda g: True, when_true=[_tag("t")], when_false=[_tag("f")])], None
+    )
+    assert [r.name for r in pipeline(resolved)(_plan()).provenance] == ["t"]
+
+
+def test_raw_fork_in_pipeline_runs_the_branch_but_records_opaque() -> None:
+    # An un-resolved Fork dropped into a raw pipeline still runs the right branch (Fork.__call__),
+    # but records OPAQUE (a non-Step in the stamping loop) -- a safe miss, never a false reuse.
+    ran: list[str] = []
+
+    def marking(plan: Plan) -> Plan:
+        ran.append("t")
+        return plan
+
+    branch = fork(lambda g: True, when_true=[as_step("t", None, marking)], when_false=[_tag("f")])
+    out = pipeline([branch])(_plan())
+    assert ran == ["t"]
+    assert out.provenance == (OPAQUE,)

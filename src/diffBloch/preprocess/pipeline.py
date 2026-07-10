@@ -22,18 +22,22 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
 from typing import Any
 
+from diffBloch.engine.plan import ScatteringGrid
 from diffBloch.preprocess.plan import Plan
 
 __all__ = [
     "OPAQUE",
     "ConvergenceCheck",
+    "Fork",
     "PlanStep",
     "Step",
     "StepRecord",
     "as_step",
+    "fork",
     "identity",
     "iterate_until",
     "pipeline",
+    "resolve_recipe",
     "spec_to_params",
     "step_records",
 ]
@@ -179,3 +183,70 @@ def iterate_until(step: PlanStep, *, until: ConvergenceCheck, max_iterations: in
         raise RuntimeError(f"iterate_until did not converge within {max_iterations} iterations")
 
     return run
+
+
+@dataclass(frozen=True)
+class Fork:
+    """The *choice* combinator: run one of two step lists, chosen by a predicate on the grid.
+
+    The recipe's fourth composition shape (see ``design/decisions/plan-composition-shapes.md``).
+    The one rule that makes it checkpointable: **the predicate reads only the
+    :class:`~diffBloch.engine.plan.ScatteringGrid`, invariant across every preprocess step**
+    (steps ``replace`` orientations; nothing resizes the grid). So the branch is a deterministic
+    function of the experiment's fixed inputs -- knowable *before* running -- rather than of the
+    mutating ``Plan``. That keeps the fork *Applicative* (its shape is static), so
+    :func:`resolve_recipe` can splice the chosen branch inline into a flat, fork-free recipe before
+    the checkpoint lock ever looks at it. A predicate over the ``Plan`` would be Monadic (its shape
+    would depend on intermediate results) and is deliberately unrepresentable here. See
+    ``design/decisions/combinators-and-recipe-identity.md``.
+
+    Branches are step *lists*, not pre-composed ``pipeline([...])`` closures, so each branch step's
+    :class:`StepRecord` survives into the resolved recipe (a composed closure would collapse to one
+    :data:`OPAQUE`). :meth:`__call__` lets a ``Fork`` also run ad hoc inside a raw ``pipeline`` --
+    it produces the right ``Plan`` but records :data:`OPAQUE` (a non-``Step`` in the stamping loop),
+    a safe miss; checkpointable identity comes *only* from :func:`resolve_recipe`.
+    """
+
+    predicate: Callable[[ScatteringGrid], bool]
+    when_true: tuple[PlanStep, ...]
+    when_false: tuple[PlanStep, ...]
+
+    def resolve(self, grid: ScatteringGrid) -> tuple[PlanStep, ...]:
+        """The branch this fork takes for ``grid`` (the invariant discriminant)."""
+        return self.when_true if self.predicate(grid) else self.when_false
+
+    def __call__(self, plan: Plan) -> Plan:
+        """Run the chosen branch (ad-hoc use inside a raw ``pipeline``; records ``OPAQUE``)."""
+        return pipeline(self.resolve(plan.grid))(plan)
+
+
+def fork(
+    predicate: Callable[[ScatteringGrid], bool],
+    *,
+    when_true: Sequence[PlanStep],
+    when_false: Sequence[PlanStep],
+) -> Fork:
+    """Build a :class:`Fork` choosing between two step lists by a predicate on the grid.
+
+    ``predicate`` receives the shared :class:`~diffBloch.engine.plan.ScatteringGrid` (e.g. a
+    cell-volume / grid-size test routing a large cell to a coarse-precision branch); ``when_true`` /
+    ``when_false`` are the branch step lists (kept as lists so their records survive resolution).
+    """
+    return Fork(predicate=predicate, when_true=tuple(when_true), when_false=tuple(when_false))
+
+
+def resolve_recipe(steps: Sequence[PlanStep], grid: ScatteringGrid) -> tuple[PlanStep, ...]:
+    """Compile every :class:`Fork` away against ``grid`` -> a flat, fork-free step list.
+
+    Splices each fork's chosen branch inline (recursively, so nested forks flatten too). Because the
+    grid is invariant across the pipeline, resolving against the *base* grid here yields exactly the
+    recipe that will run -- which is what lets the checkpoint lock key on a flat ``step_records``
+    list with no knowledge of forks (see ``design/decisions/combinators-and-recipe-identity.md``).
+    """
+    out: list[PlanStep] = []
+    for step in steps:
+        if isinstance(step, Fork):
+            out.extend(resolve_recipe(step.resolve(grid), grid))
+        else:
+            out.append(step)
+    return tuple(out)
