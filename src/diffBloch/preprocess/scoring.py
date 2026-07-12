@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from torch import Tensor
 
-from diffBloch.core.solver import Method, Precision
+from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import LossFn, RefinementEngine, w_rbragg_loss
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
@@ -32,7 +32,7 @@ def build_engine(
     *,
     loss: LossFn = w_rbragg_loss,
     method: Method = "matrix_exp",
-    precision: Precision = "double",
+    precision: FloatFormat = "fp64",
 ) -> RefinementEngine:
     """Wire a geometry ``plan`` and a structure ``refinement`` into a runnable engine (no compute).
 
@@ -45,10 +45,10 @@ def build_engine(
     minimise (irrelevant to :meth:`RefinementEngine.fgb` /
     :meth:`RefinementEngine.score_orientation`, which use a scaling-optimised wR2 internally).
 
-    ``precision`` defaults to ``"double"`` (complex128 -- byte-identical to today). ``"single"``
+    ``precision`` defaults to ``"fp64"`` (complex128 -- byte-identical to today). ``"fp32"``
     (complex64) is a search-time knob only the preprocess fits set on their transient scoring
     engines; the terminal callers here and in ``run_inference`` omit it, so scoring/refinement that
-    produce the pinned result stay double. See :func:`diffBloch.core.solver.propagate`.
+    produce the pinned result stay fp64. See :func:`diffBloch.core.solver.propagate`.
     """
     return RefinementEngine(
         spec=refinement.spec,

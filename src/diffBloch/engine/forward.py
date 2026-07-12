@@ -32,7 +32,7 @@ from diffBloch.core.products import (
     reduce_tilts,
 )
 from diffBloch.core.scattering import structure_factors
-from diffBloch.core.solver import Method, Precision, propagate
+from diffBloch.core.solver import FloatFormat, Method, precision_dtypes, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.plan import (
     OrientationPlanLike,
@@ -70,11 +70,11 @@ class RefinementEngine:
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: Method = "matrix_exp"
-    # Solve numeric field. "double" everywhere by default (byte-identical to complex128). "single"
+    # Solve numeric field. "fp64" everywhere by default (byte-identical to complex128). "fp32"
     # (complex64) is a search-time knob, set only on the transient scoring engines the preprocess
     # fits build; the terminal estimators (objective/refine here, run_inference via build_engine)
-    # never enable it, so the reproducible pinned result stays double. See core.solver.propagate.
-    precision: Precision = "double"
+    # never enable it, so the reproducible pinned result stays fp64. See core.solver.propagate.
+    precision: FloatFormat = "fp64"
 
     def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
         """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
@@ -229,7 +229,8 @@ class RefinementEngine:
         if isinstance(orientation, SegmentedOrientationPlan):
             return self._solve_segmented(orientation, fgb, thicknesses)
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
-        thicknesses = thicknesses.to(device)
+        real_dtype, _ = precision_dtypes(self.precision)
+        thicknesses = thicknesses.to(device=device, dtype=real_dtype)
         beam_hkl = orientation.beam_hkl.to(device)
         # Untilted (length 1): the static solve, byte-identical to the pre-integration path.
         if len(orientation.beam_plans) == 1:
@@ -269,7 +270,8 @@ class RefinementEngine:
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
         """
         device = fgb.device
-        thicknesses = thicknesses.to(device)
+        real_dtype, _ = precision_dtypes(self.precision)
+        thicknesses = thicknesses.to(device=device, dtype=real_dtype)
         n_tilts = int(plan.tilts.shape[0])
         n_union = int(plan.beam_hkl.shape[0])
         n_thick = int(thicknesses.shape[0])
@@ -288,6 +290,10 @@ class RefinementEngine:
             block[:, :, union_index] = intensities(amplitudes)
             curve[cover] = block
         total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
+        # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
+        # store the magnitude sqrt(total) in the solve's complex format (complex128 under fp64 ->
+        # byte-identical to today; complex64 under fp32, matching the static/batched fp32 paths).
+        _, complex_dtype = precision_dtypes(self.precision)
         return BlochSolution(
-            total.sqrt().to(fgb.dtype), total, plan.beam_hkl.to(device), thicknesses
+            total.sqrt().to(complex_dtype), total, plan.beam_hkl.to(device), thicknesses
         )

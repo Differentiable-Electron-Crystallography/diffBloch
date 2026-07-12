@@ -117,32 +117,32 @@ def test_propagate_is_differentiable_in_structure_factors(method: str) -> None:
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_double_is_byte_identical_to_default(method: str) -> None:
-    # "double" must be a pure identity on today's path: same bits as omitting precision entirely.
+def test_precision_fp64_is_byte_identical_to_default(method: str) -> None:
+    # "fp64" must be a pure identity on today's path: same bits as omitting precision entirely.
     system = _system()
     thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
     default = propagate(system, thicknesses, method=method)
-    explicit_double = propagate(system, thicknesses, method=method, precision="double")
+    explicit_fp64 = propagate(system, thicknesses, method=method, precision="fp64")
     assert default.dtype == torch.complex128
-    assert torch.equal(default, explicit_double)
+    assert torch.equal(default, explicit_fp64)
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_single_runs_in_complex64_and_tracks_double(method: str) -> None:
+def test_precision_fp32_runs_in_complex64_and_tracks_fp64(method: str) -> None:
     system = _system()
     thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
-    single = propagate(system, thicknesses, method=method, precision="single")
-    double = propagate(system, thicknesses, method=method, precision="double")
-    assert single.dtype == torch.complex64  # the eigensolve/matrix-exp ran in single
+    fp32 = propagate(system, thicknesses, method=method, precision="fp32")
+    fp64 = propagate(system, thicknesses, method=method, precision="fp64")
+    assert fp32.dtype == torch.complex64  # the eigensolve/matrix-exp ran in single
     # Same physics to single-precision tolerance (the point of the coarse knob).
-    assert torch.allclose(single, double.to(torch.complex64), atol=1e-4, rtol=1e-4)
+    assert torch.allclose(fp32, fp64.to(torch.complex64), atol=1e-4, rtol=1e-4)
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_single_still_flows_gradient_to_structure_factors(method: str) -> None:
+def test_precision_fp32_still_flows_gradient_to_structure_factors(method: str) -> None:
     # The complex64 cast is differentiable: autograd casts the incoming grad back to complex128.
     factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128, requires_grad=True)
-    psi = propagate(_system(factors), [1.0, 8.0], method=method, precision="single")
+    psi = propagate(_system(factors), [1.0, 8.0], method=method, precision="fp32")
     psi[:, 1].abs().square().sum().backward()
     assert factors.grad is not None
     assert factors.grad.dtype == torch.complex128
