@@ -95,10 +95,12 @@ def run_experiment(
     writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)
     while still regenerating the checkpoint. ``checkpoint=False`` neither reads nor writes.
 
-    ``device`` (default ``None`` = CPU) runs the terminal ``run_inference`` forward solve on the
-    given accelerator (e.g. ``"cuda"``); the preprocess recipe stays CPU-side (numpy geometry). Only
-    the terminal scoring is placed on-device here -- the fp32 search fits get their own device
-    wiring when the ``fork`` is enabled.
+    ``device`` (default ``None`` = CPU) runs the forward solve on the given accelerator (e.g.
+    ``"cuda"``) for both the coupled preprocess fits and the terminal ``run_inference``. The
+    preprocess *geometry* (beam selection, coupling unions) stays CPU-side numpy; only the
+    eigensolve -- the O(N^3) cost -- moves to the device (the fits move the seed params, so ``fgb``
+    and every per-trial score co-locate there). Device is execution-only: it does not enter the
+    checkpoint lock, so a committed CPU checkpoint is still reused when a run moves to GPU.
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -106,7 +108,7 @@ def run_experiment(
     observations = read_observations(root / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
-    steps = _recipe_steps(cfg, refinement, logger)
+    steps = _recipe_steps(cfg, refinement, logger, device=device)
     prepared = _prepare(
         setup.plans.combined,
         steps,
@@ -121,12 +123,19 @@ def run_experiment(
 
 
 def _recipe_steps(
-    cfg: ExperimentConfig, refinement: RefinementSetup, logger: Logger
+    cfg: ExperimentConfig,
+    refinement: RefinementSetup,
+    logger: Logger,
+    *,
+    device: Device | None = None,
 ) -> list[PlanStep]:
     """The faithful default recipe as an inspectable step list (its provenance keys the lock).
 
     The orientation fit runs under the private's per-trial coupling (:func:`_trial_coupling`) -- the
     faithful objective. The tilt-independent fit is not offered here; compose it directly if needed.
+
+    ``device`` is threaded to the two fits (execution-only -- it does not alter the recipe
+    identity), so the coupled eigensolve runs on the same accelerator as the terminal.
     """
     return [
         select_beams(cfg.numerics.to_beam_selection()),
@@ -138,9 +147,12 @@ def _recipe_steps(
             cfg.preprocess.orientation.to_search(),
             method=cfg.solver.refine,
             coupling=_trial_coupling(cfg),
+            device=device,
             logger=logger,  # per-rotation fit progress (the run's long phase)
         ),
-        fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+        fit_thickness(
+            refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine, device=device
+        ),
     ]
 
 

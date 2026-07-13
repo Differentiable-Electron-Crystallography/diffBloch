@@ -8,6 +8,7 @@ known thickness, so the grid search has a ground truth to recover.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
@@ -140,6 +141,45 @@ def test_fit_thickness_single_step_bakes_the_lower_bound() -> None:
         ThicknessGrid(min_thickness=123.0, max_thickness=400.0, n_steps=1),
     )(plan)
     assert float(fitted.orientations[0].thickness[0]) == 123.0
+
+
+# --- device knob (the grid search runs on the accelerator; params.device is authoritative) --------
+
+
+def test_fit_thickness_device_cpu_is_a_no_op() -> None:
+    """``device='cpu'`` reproduces the default fit exactly -- device plumbing inert on CPU."""
+    grid, asu_plan, spec, numbers = _silicon()
+    observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
+    plan = Plan(grid=grid, orientations=(op,))
+    thickness_grid = ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5)
+
+    base = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid)(plan)
+    cpu = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid, device="cpu")(plan)
+    assert torch.equal(cpu.orientations[0].thickness, base.orientations[0].thickness)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required (runs on the A100)")
+def test_fit_thickness_cuda_matches_cpu() -> None:
+    """CPU<->GPU parity: the on-device grid search bakes the same thickness the CPU fit picks.
+
+    Skipped locally (this Mac has no complex-capable GPU); the real assertion runs on the SSEC A100.
+    Thickness is picked by argmin over a shared candidate grid, so a *well-separated* winner
+    matches exactly. The ``==`` assumes that separation (it holds for this clean synthetic): a
+    genuine near-tie between adjacent candidates could let the ~1e-11 cross-device score shift pick
+    the neighbour -- search-path divergence under FP perturbation, not a device bug, and harmless
+    (the fp64 terminal re-scores whatever the fit bakes; reproducibility is anchored at the
+    checkpoint boundary, not here).
+    """
+    grid, asu_plan, spec, numbers = _silicon()
+    observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
+    plan = Plan(grid=grid, orientations=(op,))
+    thickness_grid = ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5)
+
+    cpu = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid, device="cpu")(plan)
+    cuda = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid, device="cuda")(plan)
+    assert float(cuda.orientations[0].thickness[0]) == float(cpu.orientations[0].thickness[0])
 
 
 # Bound validation now lives in ThicknessGrid (parse, don't validate); see test_specs.py.

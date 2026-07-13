@@ -56,6 +56,7 @@ from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
+from diffBloch.params import Device
 from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
@@ -76,6 +77,7 @@ def fit_orientation(
     precision: FloatFormat = "fp64",
     coupling: TrialCoupling | None = None,
     workers: int = 1,
+    device: Device | None = None,
     logger: Logger = NULL_LOGGER,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
@@ -98,6 +100,18 @@ def fit_orientation(
     (complex64) roughly halves the per-trial O(N^3) eigensolve for large cells at the cost of a
     coarser, basin-sensitive search -- acceptable here because the fit is re-scored by the
     fp64 terminal; it must never be used for a terminal ``run_inference`` / ``refine``.
+
+    ``device`` (default ``None`` = CPU) places the search's forward solve on the given accelerator:
+    the seed params are moved there and ``engine.fgb`` is computed on-device, so every per-trial
+    ``score_orientation`` co-locates onto the param-derived ``fgb.device`` at the use site (the CPU
+    trial rebuilds are cheap numpy; only their tensors reach the device). This is the fp32 search's
+    device wiring (pair it with ``precision="fp32"`` for the large-cell fork). Kept out of the
+    recipe identity like ``workers``/``logger`` -- but unlike those it is not byte-identical: the
+    solve shifts ~1e-11 cross-device, and because the greedy search accepts on a threshold, that
+    shift can flip a near-tie into a full-radius orientation difference (a well-conditioned fit
+    stays; a knife-edge one legitimately diverges). Safe regardless: reproducibility is anchored at
+    the checkpoint boundary, so a committed CPU checkpoint is reused (not recomputed) on GPU, cannot
+    restale -- only a fresh GPU-computed checkpoint would differ from a CPU one.
 
     ``workers`` (default 1, sequential) fans the per-rotation searches over a thread pool, the
     private's ``ThreadPoolExecutor(num_workers=8)`` pattern. Rotations are independent, the engine
@@ -127,7 +141,8 @@ def fit_orientation(
 
     def run(plan: Plan) -> Plan:
         engine = build_engine(plan, refinement, method=method, precision=precision)
-        fgb = engine.fgb(refinement.params)
+        params = refinement.params if device is None else refinement.params.to(device)
+        fgb = engine.fgb(params)
 
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
             return _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
@@ -164,7 +179,8 @@ def fit_orientation(
         return replace(plan, orientations=ordered)
 
     # search rides in the config digest too, but coupling is a composition-site kwarg (not config),
-    # so it MUST be in the recipe identity; workers/logger are execution-only (no effect on output).
+    # so it MUST be in the recipe identity; workers/logger/device are execution-only (device shifts
+    # output only to solver tolerance -- see the docstring -- so it stays out of the identity).
     return as_step("fit_orientation", {"search": search, "coupling": coupling}, run)
 
 

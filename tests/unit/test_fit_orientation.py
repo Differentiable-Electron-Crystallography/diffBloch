@@ -165,6 +165,45 @@ def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() ->
     assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2
 
 
+# --- device knob (the coupled fit runs on the accelerator; params.device is authoritative) --------
+
+
+def test_fit_orientation_device_cpu_is_a_no_op() -> None:
+    """``device='cpu'`` reproduces the default fit exactly -- device plumbing inert on CPU."""
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    refinement = _refinement(asu_plan, spec, numbers)
+    plan = Plan(grid=grid, orientations=(matched,))
+
+    (base,) = fit_orientation(refinement, HexagonalSearch())(plan).orientations
+    (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
+    assert torch.equal(cpu.orientation, base.orientation)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required (runs on the A100)")
+def test_fit_orientation_cuda_matches_cpu_within_tolerance() -> None:
+    """CPU<->GPU parity: the on-device search reproduces the CPU-fitted orientation to solver tol.
+
+    Skipped locally (this Mac has no complex-capable GPU); the real assertion runs on the SSEC A100,
+    where it pins that ``device='cuda'`` carries the whole per-trial eigensolve onto the accelerator
+    and the greedy search still converges to the same orientation the CPU fit finds. The ``< 1e-6``
+    assumes a well-separated descent (it holds for this clean synthetic): the greedy
+    first-improvement accept is a branch point, so a near-tie between two trial tilts could let the
+    ~1e-11 cross-device score shift steer the path elsewhere -- a full-radius orientation
+    difference, not 1e-11 (search-path divergence under FP perturbation, not a device bug), and
+    harmless: reproducibility is anchored at the checkpoint boundary; only a fresh GPU-computed
+    checkpoint would differ.
+    """
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    refinement = _refinement(asu_plan, spec, numbers)
+    plan = Plan(grid=grid, orientations=(matched,))
+
+    (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
+    (cuda,) = fit_orientation(refinement, HexagonalSearch(), device="cuda")(plan).orientations
+    assert np.linalg.norm(np.asarray(cpu.orientation) - np.asarray(cuda.orientation)) < 1e-6
+
+
 def test_hexagonal_search_rejects_a_nonpositive_iteration_cap() -> None:
     # Bound validation now lives in HexagonalSearch (parse, don't validate); see test_specs.py for
     # the full set. This pins that fit_orientation's cap is one of those validated bounds.

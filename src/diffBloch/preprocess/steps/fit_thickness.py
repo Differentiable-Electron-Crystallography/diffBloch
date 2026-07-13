@@ -33,6 +33,7 @@ from torch import Tensor
 from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.params import Device
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
@@ -48,6 +49,7 @@ def fit_thickness(
     *,
     method: Method = "matrix_exp",
     precision: FloatFormat = "fp64",
+    device: Device | None = None,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
 
@@ -60,11 +62,17 @@ def fit_thickness(
     this function never re-validates); ``method`` configures the engine's solver. ``precision``
     (default ``"fp64"``) selects the solve's numeric field -- ``"fp32"`` (complex64) is the
     coarse search-time knob, never for a terminal estimator (see :func:`fit_orientation`).
+
+    ``device`` (default ``None`` = CPU) places the grid search's forward solve on the given
+    accelerator by moving the seed params there; the engine co-locates every invariant onto the
+    param device at the use site. Execution-only (kept out of the recipe identity), exactly as in
+    :func:`fit_orientation`.
     """
 
     def run(plan: Plan) -> Plan:
         engine = build_engine(plan, refinement, method=method, precision=precision)
-        fgb = engine.fgb(refinement.params)
+        params = refinement.params if device is None else refinement.params.to(device)
+        fgb = engine.fgb(params)
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
