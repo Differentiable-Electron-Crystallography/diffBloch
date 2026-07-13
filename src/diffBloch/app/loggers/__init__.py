@@ -17,14 +17,17 @@ from __future__ import annotations
 
 import csv
 import logging
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from diffBloch.observability import Event
+from diffBloch.observability import NULL_LOGGER, Event, Logger, OrientationFitted
 
 __all__ = [
     "CSVLogger",
     "ConsoleLogger",
+    "EarlyAbortLogger",
+    "FitAbortedError",
     "format_measurements",
     "namespaced_measurements",
 ]
@@ -86,3 +89,60 @@ class CSVLogger:
             writer = csv.writer(handle)
             for metric, value in event.measurements.items():
                 writer.writerow([event.channel, event.step, metric, value])
+
+
+class FitAbortedError(RuntimeError):
+    """Raised by :class:`EarlyAbortLogger` to unwind a fit judged unpromising and stop it early.
+
+    Carries the diagnostic that triggered the abort (rotations seen, best ``wr2``, the ceiling), so
+    the caller running the fit sees *why* it stopped, not just that it did.
+    """
+
+
+@dataclass
+class EarlyAbortLogger:
+    """Watch the per-rotation fit stream and abort a run that is not tracking the data.
+
+    A fit-quality guard for a long, oracle-less **from-scratch** fit -- e.g. LTA on the A100, where
+    no checkpoint is committed and there is no reference ``R_obs`` to pin against, so a mis-set-up
+    run (wrong energy / ``g_max``, bad data lineage) would otherwise burn its whole budget producing
+    a bad answer. ``fit_orientation`` emits one :class:`~diffBloch.observability.OrientationFitted`
+    per rotation as it finishes, carrying the scaling-optimised ``wr2`` at the fitted orientation. A
+    healthy run reaches a low ``wr2`` on essentially every rotation (measured quartz coupled ``wr2``
+    ~0.03-0.06); a fundamentally broken one stays high on all of them. This guard gives the run
+    ``patience`` rotations to show *at least one* orientation reaching ``wr2 <= wr2_ceiling``; if
+    none does, it raises :class:`FitAbortedError`, unwinding the fit before the remaining rotations
+    run. Pick ``wr2_ceiling`` generously (well above a healthy fit, well below a garbage one) so a
+    real run clears it within the first rotation or two and never false-aborts.
+
+    Only the fit stream drives the decision; **every** event is forwarded verbatim to ``inner``
+    (default :data:`~diffBloch.observability.NULL_LOGGER`), so this composes with a
+    :class:`ConsoleLogger` / :class:`CSVLogger` for the live scroll --
+    ``EarlyAbortLogger(inner=ConsoleLogger())``. Raising from :meth:`report` is the abort mechanism:
+    the fit loop's only per-rotation hook is the logger, and both the sequential and ``workers > 1``
+    paths call ``report`` from the driving thread, so the raise unwinds the run cleanly.
+    """
+
+    wr2_ceiling: float = 0.6
+    patience: int = 5
+    inner: Logger = NULL_LOGGER
+    _seen: int = field(default=0, init=False, repr=False)
+    _best_wr2: float = field(default=math.inf, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.patience < 1:
+            raise ValueError("patience must be >= 1")
+
+    def report(self, event: Event) -> None:
+        self.inner.report(event)  # forward first: the guard never swallows an observation
+        if event.channel != OrientationFitted.channel:
+            return
+        self._seen += 1
+        self._best_wr2 = min(self._best_wr2, event.measurements["wr2"])
+        if self._seen >= self.patience and self._best_wr2 > self.wr2_ceiling:
+            raise FitAbortedError(
+                f"fit aborted early: after {self._seen} rotation(s) the best wr2 is "
+                f"{self._best_wr2:.4g}, above the {self.wr2_ceiling:g} ceiling -- the run is not "
+                "tracking the data (check energy / g_max / data lineage). Raise wr2_ceiling or "
+                "patience to allow a slower/looser fit."
+            )

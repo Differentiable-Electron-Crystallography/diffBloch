@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger, EarlyAbortLogger, FitAbortedError
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
@@ -24,11 +24,16 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
+    OrientationFitted,
     RecordingLogger,
     RefinementCompleted,
     RefinementStep,
     RotationScored,
 )
+
+
+def _fitted(index: int, wr2: float) -> OrientationFitted:
+    return OrientationFitted(index=index, wr2=wr2, n_trials=10, n_passes=3, pass_cap=2000)
 
 
 def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
@@ -135,3 +140,58 @@ def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
     assert logged == [
         ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
     ]
+
+
+# --- EarlyAbortLogger: abort a from-scratch fit that is not tracking the data --------------------
+
+
+def test_early_abort_fires_when_no_rotation_clears_the_ceiling() -> None:
+    """patience rotations all above the ceiling -> FitAbortedError at the patience-th event."""
+    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=3)
+    guard.report(_fitted(0, 0.9))
+    guard.report(_fitted(1, 0.8))  # still only 2 seen, no decision yet
+    with pytest.raises(FitAbortedError, match=r"best wr2 is 0.8.*above the 0.6 ceiling"):
+        guard.report(_fitted(2, 0.85))
+
+
+def test_early_abort_does_not_fire_once_a_rotation_clears_the_ceiling() -> None:
+    """One good rotation within patience -> promising; never aborts, even on later high wr2."""
+    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=3)
+    guard.report(_fitted(0, 0.9))
+    guard.report(_fitted(1, 0.05))  # clears the ceiling -> promising
+    for i in range(2, 10):
+        guard.report(_fitted(i, 0.95))  # later poor rotations do not resurrect the abort
+
+
+def test_early_abort_waits_for_patience_before_deciding() -> None:
+    """Below patience, a high wr2 never aborts -- the guard needs patience rotations of evidence."""
+    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=5)
+    for i in range(4):  # 4 < patience 5
+        guard.report(_fitted(i, 0.99))  # no raise
+    with pytest.raises(FitAbortedError):
+        guard.report(_fitted(4, 0.99))  # the 5th tips it over
+
+
+def test_early_abort_forwards_every_event_to_inner_including_the_aborting_one() -> None:
+    """The guard is also a pass-through: inner sees all events, including the one that aborts."""
+    inner = RecordingLogger()
+    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2, inner=inner)
+    guard.report(RotationScored(index=0, r_obs=0.3, n_observed=1, n_beams=2))  # non-fit, forwarded
+    guard.report(_fitted(0, 0.9))
+    with pytest.raises(FitAbortedError):
+        guard.report(_fitted(1, 0.9))
+    # all three forwarded (the aborting event was reported to inner before the raise)
+    assert len(inner.events) == 3
+    assert isinstance(inner.events[0], RotationScored)
+
+
+def test_early_abort_ignores_non_fit_events_for_the_decision() -> None:
+    """Only the fit stream counts toward patience -- a flood of rotation events never aborts."""
+    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2)
+    for i in range(20):
+        guard.report(RotationScored(index=i, r_obs=0.99, n_observed=1, n_beams=2))  # never aborts
+
+
+def test_early_abort_rejects_nonpositive_patience() -> None:
+    with pytest.raises(ValueError, match="patience must be >= 1"):
+        EarlyAbortLogger(patience=0)
