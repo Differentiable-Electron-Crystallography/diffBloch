@@ -29,8 +29,43 @@ from diffBloch.specs import TiltSegmentUnion
 
 __all__ = [
     "Segment",
+    "assert_grid_covers_coupling",
+    "coupling_cap",
     "tilt_segment_coupling",
 ]
+
+
+def coupling_cap(policy: TiltSegmentUnion) -> float:
+    """The coupling radius cap: a beam enters a solve union only when ``|g| < cap``.
+
+    ``g_max - cap_margin`` (the private's ``4.5 / 2 - 0.2 = 2.05``). The single source of the cap,
+    shared by the excitation mask (:func:`tilt_segment_coupling`) and the coverage guard
+    (:func:`assert_grid_covers_coupling`), so the two cannot disagree about what the union contains.
+    """
+    return policy.g_max - policy.cap_margin
+
+
+def assert_grid_covers_coupling(policy: TiltSegmentUnion, grid_g_max: float) -> None:
+    """Guarantee the ``|g| <= grid_g_max`` grid sphere spans every coupled beam difference (O(1)).
+
+    A coupled solve union admits only beams with ``|g| < cap`` (:func:`coupling_cap`), so any
+    pairwise difference is ``|g_j - g_i| < 2 * cap`` (triangle inequality). When ``2 * cap <=
+    grid_g_max`` the dense integer ``grid_hkl`` sphere therefore contains every difference, so the
+    per-segment gathers cannot address a reflection outside it -- exactly the condition that makes
+    :func:`~diffBloch.core.dynamical.build_structure_factor_gather` ``validate=False`` sound on the
+    coupled fit path (it closes the silent-zero coverage gap the O(N^2) integrity checks otherwise
+    catch). The cap is orientation-independent, so this one scalar comparison covers every trial of
+    every rotation -- checked once at fit setup, failing loudly before any solve rather than
+    silently gathering zeros deep in the search.
+    """
+    cap = coupling_cap(policy)
+    if 2.0 * cap > grid_g_max:
+        raise ValueError(
+            f"coupling cap {cap:.4g} (g_max {policy.g_max} - cap_margin {policy.cap_margin}) needs "
+            f"a structure-factor grid g_max >= {2.0 * cap:.4g} to span the beam-difference "
+            f"support, but the grid g_max is {grid_g_max}. Enlarge numerics.g_max or shrink the "
+            "coupling radius; else a coupled gather silently gathers zeros under validate=False."
+        )
 
 
 @dataclass(frozen=True)
@@ -106,7 +141,7 @@ def tilt_segment_coupling(
     if tilts.ndim != 3 or tilts.shape[1:] != (3, 3):
         raise ValueError(f"tilts must have shape (B, 3, 3), got {tilts.shape}")
     n_tilts = tilts.shape[0]
-    cap = policy.g_max - policy.cap_margin
+    cap = coupling_cap(policy)
     boundaries = _split_boundaries(n_tilts, policy.n_splits)
 
     def excited_mask(tilt_index: int) -> NDArray[np.bool_]:

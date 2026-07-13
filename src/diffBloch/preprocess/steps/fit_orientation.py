@@ -57,7 +57,7 @@ from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
 from diffBloch.params import Device
-from diffBloch.preprocess.coupling import tilt_segment_coupling
+from diffBloch.preprocess.coupling import assert_grid_covers_coupling, tilt_segment_coupling
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
@@ -140,6 +140,12 @@ def fit_orientation(
         raise ValueError("workers must be >= 1")
 
     def run(plan: Plan) -> Plan:
+        # Coverage guard for the coupled path: the grid sphere must span the beam-difference
+        # support so a per-trial gather cannot address a reflection outside it -- the precondition
+        # for running those gathers validate=False (their silent-zero gap has no runtime backstop).
+        # O(1), orientation-independent, always on -- fails at setup, not deep in the search.
+        if coupling is not None:
+            assert_grid_covers_coupling(coupling.policy, plan.grid.g_max)
         engine = build_engine(plan, refinement, method=method, precision=precision)
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)

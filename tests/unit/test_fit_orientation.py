@@ -24,7 +24,13 @@ from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_orientation, hexagonal_tilt
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
-from diffBloch.specs import HexagonalSearch
+from diffBloch.specs import (
+    BeamSelection,
+    HexagonalSearch,
+    ScoredSelection,
+    TiltSegmentUnion,
+    TrialCoupling,
+)
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
@@ -202,6 +208,28 @@ def test_fit_orientation_cuda_matches_cpu_within_tolerance() -> None:
     (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
     (cuda,) = fit_orientation(refinement, HexagonalSearch(), device="cuda")(plan).orientations
     assert np.linalg.norm(np.asarray(cpu.orientation) - np.asarray(cuda.orientation)) < 1e-6
+
+
+# --- coupled coverage guard (wired into run; the unit-level invariant lives in test_coupling) -----
+
+
+def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling() -> None:
+    """A coupled fit whose grid cannot span the beam-difference support fails loudly at setup.
+
+    The synthetic silicon grid is g_max=0.45; the default coupling cap is 2.05, so 2*2.05=4.1 far
+    exceeds it. The guard must raise from ``run`` -- before the search -- rather than let the
+    per-trial gathers silently gather zeros. Proves the coverage guard is actually wired in (the
+    scalar invariant itself is tested in test_coupling).
+    """
+    grid, asu_plan, spec, numbers = _silicon()  # g_max = 0.45
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    coupling = TrialCoupling(
+        policy=TiltSegmentUnion(), scored=ScoredSelection(klar=BeamSelection(), g_max=0.3)
+    )
+    with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
+        fit_orientation(_refinement(asu_plan, spec, numbers), HexagonalSearch(), coupling=coupling)(
+            Plan(grid=grid, orientations=(matched,))
+        )
 
 
 def test_hexagonal_search_rejects_a_nonpositive_iteration_cap() -> None:

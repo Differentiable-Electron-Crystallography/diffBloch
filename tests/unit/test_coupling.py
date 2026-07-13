@@ -18,7 +18,12 @@ import pytest
 from diffBloch.config import load_experiment
 from diffBloch.engine import ScatteringGrid
 from diffBloch.io import read_structure
-from diffBloch.preprocess.coupling import Segment, tilt_segment_coupling
+from diffBloch.preprocess.coupling import (
+    Segment,
+    assert_grid_covers_coupling,
+    coupling_cap,
+    tilt_segment_coupling,
+)
 from diffBloch.specs import TiltSegmentUnion
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
@@ -87,3 +92,30 @@ def test_split_boundaries_match_private() -> None:
 def test_policy_rejects_degenerate_cap() -> None:
     with pytest.raises(ValueError, match="cap"):
         TiltSegmentUnion(g_max=0.2, cap_margin=0.2)
+
+
+# --- coverage guard (the O(1) invariant that makes validate=False sound on the coupled path) ------
+
+
+def test_coupling_cap_is_gmax_minus_margin() -> None:
+    """The single cap source: the faithful private value (4.5/2 - 0.2 = 2.05)."""
+    assert coupling_cap(TiltSegmentUnion()) == pytest.approx(2.05)
+
+
+def test_coverage_guard_passes_for_the_faithful_recipe() -> None:
+    """Faithful LTA/quartz numerics (grid g_max 4.5, coupling cap 2.05): 2*2.05 = 4.1 <= 4.5."""
+    assert_grid_covers_coupling(TiltSegmentUnion(), grid_g_max=4.5)  # does not raise
+
+
+def test_coverage_guard_accepts_the_exact_boundary() -> None:
+    """2*cap == grid_g_max is sufficient (differences are strictly < 2*cap), so equality passes."""
+    policy = TiltSegmentUnion()
+    assert_grid_covers_coupling(policy, grid_g_max=2.0 * coupling_cap(policy))  # does not raise
+
+
+def test_coverage_guard_raises_when_the_grid_is_too_small() -> None:
+    """A grid g_max below 2*cap would let a coupled difference fall outside the sphere -> silent
+    zero under validate=False. The guard turns that into a loud, actionable error at setup."""
+    policy = TiltSegmentUnion()  # cap 2.05 -> needs grid g_max >= 4.1
+    with pytest.raises(ValueError, match=r"grid g_max.*4\.1|silently gather zeros"):
+        assert_grid_covers_coupling(policy, grid_g_max=4.0)
