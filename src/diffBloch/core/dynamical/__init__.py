@@ -15,6 +15,7 @@ from diffBloch.core.dynamical.assembly import (
     build_bloch_systems,
     build_structure_factor_gather,
     gather_structure_factors,
+    grid_source_indices,
     stack_beam_plans,
     structure_matrix,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "energy2wavelength",
     "excitation_errors",
     "gather_structure_factors",
+    "grid_source_indices",
     "kappa",
     "m_factors",
     "stack_beam_plans",

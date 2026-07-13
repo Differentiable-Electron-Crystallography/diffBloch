@@ -19,6 +19,7 @@ from diffBloch.core.dynamical import (
     energy2wavelength,
     excitation_errors,
     gather_structure_factors,
+    grid_source_indices,
     kappa,
     m_factors,
     structure_matrix,
@@ -224,6 +225,16 @@ def test_build_gather_validate_false_produces_byte_identical_indices() -> None:
     skipped = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS, validate=False)
     assert torch.equal(checked.source_indices, skipped.source_indices)
     assert torch.equal(checked.destination_indices, skipped.destination_indices)
+
+
+def test_build_gather_precomputed_source_matches_the_internal_ravel() -> None:
+    # grid_source_indices is the grid-constant half of the gather; passing it via source_indices=
+    # is a pure perf hoist (skip re-raveling the support grid), so the indices must be identical.
+    internal = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
+    source = grid_source_indices(_GRID_HKL, _GPTS)
+    hoisted = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS, source_indices=source)
+    assert torch.equal(internal.source_indices, hoisted.source_indices)
+    assert torch.equal(internal.destination_indices, hoisted.destination_indices)
 
 
 def test_build_gather_validate_false_skips_the_on2_integrity_checks() -> None:

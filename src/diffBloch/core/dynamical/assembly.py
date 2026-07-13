@@ -58,12 +58,25 @@ class StructureFactorGather:
     gpts: tuple[int, int, int]
 
 
+def grid_source_indices(grid_hkl: IntArray, gpts: tuple[int, int, int]) -> IntArray:
+    """The raveled ``grid_hkl`` source offsets -- the grid-constant half of every gather index map.
+
+    ``build_structure_factor_gather`` ravels the support grid to these offsets on every call, but
+    they depend only on ``(grid_hkl, gpts)`` -- invariant across beam sets, orientations, and
+    trials. Precompute once and pass via ``source_indices=`` to skip re-raveling the (potentially
+    large) support grid on every per-trial coupled rebuild. Same values
+    ``build_structure_factor_gather`` would compute internally.
+    """
+    return ravel_hkl(_beam_index_array(grid_hkl, name="grid_hkl"), gpts)
+
+
 def build_structure_factor_gather(
     grid_hkl: IntArray,
     beam_hkl: IntArray,
     gpts: tuple[int, int, int],
     *,
     validate: bool = True,
+    source_indices: IntArray | None = None,
 ) -> StructureFactorGather:
     """Precompute the structure-factor gather for a beam set against an ``Fgb`` support grid.
 
@@ -86,16 +99,24 @@ def build_structure_factor_gather(
     never wrote: :func:`gather_structure_factors` reads a **silent zero**, with no runtime backstop.
     So ``validate=False`` is sound *only* under the upstream coverage guarantee; that guard (not the
     ``ravel_hkl`` check) is what keeps a mis-sized grid from silently gathering zeros.
+
+    ``source_indices`` optionally supplies the precomputed grid ravel (:func:`grid_source_indices`)
+    so a hot rebuild loop skips re-raveling the (large) support grid every call -- it is
+    grid-constant, so one precompute serves every beam set. When ``None`` it is raveled here (also
+    validating ``gpts`` + the grid box, which a supplied one is trusted to have satisfied).
     """
-    grid = _beam_index_array(grid_hkl, name="grid_hkl")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
 
     # Private ordering: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
     gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
 
-    source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
-    if validate and np.unique(source).size != source.size:
-        raise ValueError("grid_hkl must not contain duplicate Miller indices")
+    if source_indices is None:
+        grid = _beam_index_array(grid_hkl, name="grid_hkl")
+        source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
+        if validate and np.unique(source).size != source.size:
+            raise ValueError("grid_hkl must not contain duplicate Miller indices")
+    else:
+        source = np.asarray(source_indices, dtype=np.int64)
 
     if validate:
         # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to

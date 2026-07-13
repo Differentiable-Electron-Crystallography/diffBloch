@@ -50,7 +50,11 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from diffBloch.core.crystal import orientation_basis
-from diffBloch.core.dynamical import StructureFactorGather, build_structure_factor_gather
+from diffBloch.core.dynamical import (
+    StructureFactorGather,
+    build_structure_factor_gather,
+    grid_source_indices,
+)
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
 from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
@@ -333,13 +337,20 @@ def _coupled_trial(
     gathers = None
     if gather_cache is not None:
         grid_hkl = np.asarray(grid.grid_hkl)
+        # The gather's grid-side ravel is identical for every segment (same grid_hkl/gpts), so build
+        # it once here and reuse across this trial's segment builds -- re-raveling the support grid
+        # per segment was the residual per-trial cost after the |g|<cap pre-filter. Lazy: only paid
+        # when a segment actually misses the cache (an unchanged union rebuilds nothing).
+        source: NDArray[np.int64] | None = None
         gathers = []
         for segment in segments:
             key = np.ascontiguousarray(segment.beam_hkl).tobytes()
             gather = gather_cache.get(key)
             if gather is None:
+                if source is None:
+                    source = grid_source_indices(grid_hkl, grid.gpts)
                 gather = build_structure_factor_gather(
-                    grid_hkl, segment.beam_hkl, grid.gpts, validate=validate
+                    grid_hkl, segment.beam_hkl, grid.gpts, validate=validate, source_indices=source
                 )
                 gather_cache[key] = gather
             gathers.append(gather)
