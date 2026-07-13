@@ -39,6 +39,7 @@ from diffBloch.config import (
 )
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
+from diffBloch.params import Device
 from diffBloch.preprocess import (
     OPAQUE,
     Plan,
@@ -75,6 +76,7 @@ def run_experiment(
     logger: Logger = NULL_LOGGER,
     checkpoint: bool = True,
     refresh: bool = False,
+    device: Device | None = None,
 ) -> InferenceResult:
     """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
 
@@ -92,6 +94,11 @@ def run_experiment(
     ``checkpoint`` (default ``True``) reuses/resumes a valid ``plan.npz`` in the experiment dir and
     writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)
     while still regenerating the checkpoint. ``checkpoint=False`` neither reads nor writes.
+
+    ``device`` (default ``None`` = CPU) runs the terminal ``run_inference`` forward solve on the
+    given accelerator (e.g. ``"cuda"``); the preprocess recipe stays CPU-side (numpy geometry). Only
+    the terminal scoring is placed on-device here -- the fp32 search fits get their own device
+    wiring when the ``fork`` is enabled.
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -108,7 +115,9 @@ def run_experiment(
         checkpoint=checkpoint,
         refresh=refresh,
     )
-    return run_inference(prepared, refinement, method=cfg.solver.inference, logger=logger)
+    return run_inference(
+        prepared, refinement, method=cfg.solver.inference, device=device, logger=logger
+    )
 
 
 def _recipe_steps(

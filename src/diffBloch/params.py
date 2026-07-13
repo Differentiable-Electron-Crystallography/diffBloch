@@ -11,7 +11,7 @@ the physical quantities the diffraction calculation consumes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import torch
@@ -32,6 +32,7 @@ from diffBloch.core.constraints import (
 )
 
 type AdpKind = Literal["Uiso", "Uani", "missing"]
+type Device = torch.device | str
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,29 @@ class RefinableParams:
     occupancy_raw: Tensor | None = None
     Fgb: Tensor | None = None
     thickness_raw: Tensor | None = None
+
+    def to(self, device: Device) -> RefinableParams:
+        """Move every present parameter tensor to ``device`` (the device knob's single primitive).
+
+        ``params.asu_positions.device`` is the authoritative device for the whole forward model --
+        :func:`constrain` and the engine co-locate every invariant (spec projector, ASU plan,
+        scattering grid, beam sets) onto it at the use site -- so placing the params on an
+        accelerator is all it takes to run there. A no-op (returns tensors already on ``device``)
+        when nothing moves, so ``to("cpu")`` on a CPU params is an identity.
+        """
+
+        def move(t: Tensor | None) -> Tensor | None:
+            return None if t is None else t.to(device)
+
+        return replace(
+            self,
+            asu_positions=self.asu_positions.to(device),
+            uij_raw=move(self.uij_raw),
+            u_iso_raw=move(self.u_iso_raw),
+            occupancy_raw=move(self.occupancy_raw),
+            Fgb=move(self.Fgb),
+            thickness_raw=move(self.thickness_raw),
+        )
 
 
 @dataclass(frozen=True)
@@ -102,18 +126,20 @@ class PhysicalState:
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
     """Turn the raw unbounded parameters into the bounded physical quantities."""
     _validate_shapes(params, spec)
+    dtype, device = params.asu_positions.dtype, params.asu_positions.device
     occupancies = (
         unit_interval(params.occupancy_raw)
         if params.occupancy_raw is not None
-        else spec.occupancies.to(
-            dtype=params.asu_positions.dtype, device=params.asu_positions.device
-        )
+        else spec.occupancies.to(dtype=dtype, device=device)
     )
     return PhysicalState(
+        # Co-locate the (device-invariant) spec projector onto the param device/dtype, as with
+        # occupancies / reciprocal_basis below: params.asu_positions.device is the authoritative
+        # device, so a GPU params + CPU-built spec runs on the GPU without the caller moving spec.
         positions=apply_symmetry_projection(
             params.asu_positions,
-            projection=spec.position_projection,
-            offset=spec.position_offset,
+            projection=spec.position_projection.to(dtype=dtype, device=device),
+            offset=spec.position_offset.to(dtype=dtype, device=device),
         ),
         uij_star=_constrain_adps(params, spec),
         occupancies=occupancies,

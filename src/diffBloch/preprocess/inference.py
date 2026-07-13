@@ -29,6 +29,7 @@ from diffBloch.observability import (
     Logger,
     RotationScored,
 )
+from diffBloch.params import Device
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, identity
 from diffBloch.preprocess.plan import Plan, require_built_plans
@@ -86,6 +87,7 @@ def run_inference(
     *,
     prepare: PlanStep = identity,
     method: Method = "bloch_eigen",
+    device: Device | None = None,
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
@@ -102,11 +104,18 @@ def run_inference(
     :data:`~diffBloch.observability.NULL_LOGGER` default discards them, so the returned value is
     unchanged whether or not a sink is attached). Attach a console/wandb logger at the boundary to
     watch per-rotation ``R_obs`` live -- e.g. while chasing a residual.
+
+    ``device`` (default ``None`` = CPU, unchanged) runs the forward solve on the given accelerator:
+    the seed params are moved there, and the engine co-locates every invariant onto the param device
+    at the use site (:meth:`RefinableParams.to`), so the whole eigensolve runs on-device. The
+    scoring tail (``align`` / ``optimal_scale``) is device-safe (observed data is co-located there),
+    so the returned ``R_obs`` is identical (to solver tolerance) across devices.
     """
     plan = prepare(plan)
+    params = refinement.params if device is None else refinement.params.to(device)
     engine = build_engine(plan, refinement, method=method)
     with torch.no_grad():
-        solutions = engine.simulate(refinement.params)
+        solutions = engine.simulate(params)
     rows = tuple(
         _score_rotation(orientation, solution)
         for orientation, solution in zip(require_built_plans(plan), solutions, strict=True)

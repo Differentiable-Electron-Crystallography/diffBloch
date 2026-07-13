@@ -54,6 +54,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="neither read nor write the preprocess checkpoint (leave the experiment dir alone)",
     )
+    p_infer.add_argument(
+        "--device",
+        metavar="DEVICE",
+        default=None,
+        help="run the terminal forward solve on this torch device (e.g. 'cuda'); default CPU",
+    )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -87,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
                 logger=_build_logger(console=args.console, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
+                device=args.device,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

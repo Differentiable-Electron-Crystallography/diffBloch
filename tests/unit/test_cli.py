@@ -80,7 +80,12 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
     captured: dict[str, object] = {}
 
     def fake_run_experiment(
-        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
     ) -> InferenceResult:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -106,7 +111,12 @@ def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPat
     seen: dict[str, object] = {}
 
     def fake_run_experiment(
-        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
     ) -> InferenceResult:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
@@ -123,7 +133,12 @@ def test_run_infer_builds_console_and_csv_sinks(
     seen: dict[str, object] = {}
 
     def fake_run_experiment(
-        experiment_dir: str, *, logger: object, checkpoint: bool = True, refresh: bool = False
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
     ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())

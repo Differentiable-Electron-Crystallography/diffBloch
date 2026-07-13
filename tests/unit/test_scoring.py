@@ -226,6 +226,40 @@ def test_terminal_stays_fp64_and_exposes_no_precision_knob() -> None:
     assert solution.intensities.dtype == torch.float64
 
 
+# --- device knob (place the forward solve on an accelerator; params.device is authoritative) ------
+
+
+def test_refinable_params_to_moves_present_tensors_and_keeps_none() -> None:
+    """``.to`` moves every present parameter tensor and leaves the un-refined (None) ones None."""
+    moved = _params().to("cpu")  # _params has asu_positions + uij_raw; the rest are None
+    assert moved.asu_positions.device == torch.device("cpu")
+    assert moved.uij_raw is not None and moved.uij_raw.device == torch.device("cpu")
+    assert moved.u_iso_raw is None and moved.thickness_raw is None and moved.occupancy_raw is None
+
+
+def test_run_inference_device_cpu_is_a_no_op() -> None:
+    """The device knob is a pure no-op on CPU: ``device='cpu'`` reproduces the default exactly."""
+    plan, refinement = _silicon_plan()
+    base = run_inference(plan, refinement)
+    cpu = run_inference(plan, refinement, device="cpu")
+    assert [r.r_obs for r in cpu.per_rotation] == [r.r_obs for r in base.per_rotation]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA device required (runs on the A100)")
+def test_run_inference_cuda_matches_cpu_within_tolerance() -> None:
+    """CPU<->GPU parity: on a CUDA box the on-device forward reproduces CPU R_obs to solver tol.
+
+    Skipped locally (this Mac has no complex-capable GPU); the real assertion runs on the SSEC A100
+    cluster, where it pins that placing params on ``"cuda"`` carries the whole eigensolve there and
+    the terminal ``R_obs`` still matches the fp64 CPU reference.
+    """
+    plan, refinement = _silicon_plan()
+    cpu = run_inference(plan, refinement, device="cpu")
+    cuda = run_inference(plan, refinement, device="cuda")
+    for c, g in zip(cpu.per_rotation, cuda.per_rotation, strict=True):
+        assert abs(c.r_obs - g.r_obs) < 1e-6
+
+
 # --- fp32 on the integrating solve paths (the coverage gap that shipped a broken segmented path) --
 
 
