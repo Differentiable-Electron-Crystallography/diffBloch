@@ -37,6 +37,7 @@ from diffBloch.config import (
     sha256_file,
     write_preprocess_lock,
 )
+from diffBloch.core.solver import FloatFormat
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import Device
@@ -47,6 +48,7 @@ from diffBloch.preprocess import (
     build_orientation_plans,
     fit_orientation,
     fit_thickness,
+    fork,
     from_experiment,
     integrate_rocking_curve,
     mosaicity,
@@ -68,6 +70,22 @@ _log = logging.getLogger(__name__)
 
 _PLAN_NPZ = "plan.npz"
 _PLAN_LOCK = "plan.lock"
+
+# Above this unit-cell volume the coupled orientation search runs its coarse pass in fp32 with the
+# gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
+# exact fp64 path, byte-identical to the pre-fork recipe. The eigensolve is O(N^3) in the beam count
+# and N grows with cell volume, so the fp32 ~1.75x throughput win only pays off for large cells; a
+# small cell (quartz ~113 A^3) fits in seconds at fp64 and gains nothing from the coarser search.
+# A deliberately wide heuristic gap separates the known regimes -- quartz ~113 vs LTA/zeolites
+# ~1861 A^3 -- so classification is unambiguous; it is not a sharp physical boundary. Kept a code
+# constant, NOT a config field: a config field would enter config_digest and restale the committed
+# quartz checkpoint. It only selects which precision the *search* uses, and the fp64 terminal always
+# re-scores the found orientation, so the threshold never affects the reported score's fidelity.
+# It is NOT free of accuracy consequence, though: the coarse fp32 search can converge to a different
+# -- possibly worse -- basin than fp64 would on the bumpy coupled landscape, and the large branch
+# has no fp64 oracle in its own regime (LTA fp64 is ~hours CPU, CUDA-deferred), so that basin parity
+# is unverified until the A100 fp32-vs-fp64 check. A search-robustness trade, not a scoring one.
+_LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
 def run_experiment(
@@ -134,24 +152,54 @@ def _recipe_steps(
     The orientation fit runs under the private's per-trial coupling (:func:`_trial_coupling`) -- the
     faithful objective. The tilt-independent fit is not offered here; compose it directly if needed.
 
+    The fit tail is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large cell**
+    (> ``_LARGE_CELL_THRESHOLD_A3``) takes the coarse fp32 search with the gather integrity checks
+    skipped (``validate=False``, made sound by ``fit_orientation``'s coupled coverage guard); a
+    **small cell** takes the exact fp64 path, byte-identical to the pre-fork recipe. The predicate
+    reads only the pipeline-invariant grid, so :func:`~diffBloch.preprocess.resolve_recipe` compiles
+    the fork to a flat branch before the lock sees it (the branch is fixed per experiment). fp32 /
+    ``validate`` are execution-only and stay out of the step identity, so the resolved small-cell
+    branch keys identically to today -- the committed quartz checkpoint is untouched.
+
     ``device`` is threaded to the two fits (execution-only -- it does not alter the recipe
     identity), so the coupled eigensolve runs on the same accelerator as the terminal.
     """
+    search = cfg.preprocess.orientation.to_search()
+    thickness_grid = cfg.preprocess.thickness.to_grid()
+    coupling = _trial_coupling(cfg)
+
+    def orientation_fit(*, precision: FloatFormat, validate: bool) -> PlanStep:
+        return fit_orientation(
+            refinement,
+            search,
+            method=cfg.solver.refine,
+            coupling=coupling,
+            precision=precision,
+            validate=validate,
+            device=device,
+            logger=logger,  # per-rotation fit progress (the run's long phase)
+        )
+
+    def thickness_fit(*, precision: FloatFormat) -> PlanStep:
+        return fit_thickness(
+            refinement, thickness_grid, method=cfg.solver.refine, precision=precision, device=device
+        )
+
     return [
         select_beams(cfg.numerics.to_beam_selection()),
         build_orientation_plans(),
         integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
         mosaicity(cfg.numerics.mosaicity),
-        fit_orientation(
-            refinement,
-            cfg.preprocess.orientation.to_search(),
-            method=cfg.solver.refine,
-            coupling=_trial_coupling(cfg),
-            device=device,
-            logger=logger,  # per-rotation fit progress (the run's long phase)
-        ),
-        fit_thickness(
-            refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine, device=device
+        fork(
+            lambda grid: grid.cell_volume > _LARGE_CELL_THRESHOLD_A3,
+            when_true=[  # large cell: coarse fp32 search, integrity checks skipped
+                orientation_fit(precision="fp32", validate=False),
+                thickness_fit(precision="fp32"),
+            ],
+            when_false=[  # small cell: exact fp64, byte-identical to the pre-fork recipe
+                orientation_fit(precision="fp64", validate=True),
+                thickness_fit(precision="fp64"),
+            ],
         ),
     ]
 

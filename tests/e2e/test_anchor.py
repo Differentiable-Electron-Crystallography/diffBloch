@@ -69,6 +69,7 @@ from diffBloch.preprocess import (
     integrate_rocking_curve,
     mosaicity,
     pipeline,
+    resolve_recipe,
     run_inference,
     select_beams,
     step_records,
@@ -205,12 +206,16 @@ def test_quartz_coupled_anchor(tmp_path: Path, caplog: pytest.LogCaptureFixture)
 
     # Fail-fast staleness gate: compare the committed lock against the recipe run_experiment will
     # run (_recipe_steps is that recipe -- the one private import here, so the precheck can never
-    # drift from the default it guards).
+    # drift from the default it guards). The recipe is a fork on cell volume, so resolve it against
+    # the base grid first -- exactly as _prepare does before recording -- to key on the flat branch.
     cfg, _lock = load_experiment(exp)
     structure = read_structure(exp / cfg.inputs.structure)
     observations = read_observations(exp / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
-    records = step_records(_recipe_steps(cfg, setup.refinement, NULL_LOGGER))
+    steps = resolve_recipe(
+        _recipe_steps(cfg, setup.refinement, NULL_LOGGER), setup.plans.combined.grid
+    )
+    records = step_records(steps)
     status = preprocess_lock_status(
         read_preprocess_lock(exp / "plan.lock"),
         experiment_lock_sha256=sha256_file(exp / "experiment.lock"),

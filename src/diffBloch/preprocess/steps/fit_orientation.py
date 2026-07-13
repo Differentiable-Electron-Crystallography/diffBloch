@@ -76,6 +76,7 @@ def fit_orientation(
     method: Method = "matrix_exp",
     precision: FloatFormat = "fp64",
     coupling: TrialCoupling | None = None,
+    validate: bool = True,
     workers: int = 1,
     device: Device | None = None,
     logger: Logger = NULL_LOGGER,
@@ -100,6 +101,15 @@ def fit_orientation(
     (complex64) roughly halves the per-trial O(N^3) eigensolve for large cells at the cost of a
     coarser, basin-sensitive search -- acceptable here because the fit is re-scored by the
     fp64 terminal; it must never be used for a terminal ``run_inference`` / ``refine``.
+
+    ``validate`` (default ``True``) forwards to the per-trial coupled gather rebuild
+    (:func:`~diffBloch.core.dynamical.build_structure_factor_gather`). ``False`` skips its O(N^2)
+    integrity checks -- the dominant per-trial cost over a large coupled union -- for the large-cell
+    fast path. It is sound **only** because the coupled coverage guard (above) proves the grid
+    spans the beam-difference support; without that guarantee a skipped check would let a gather
+    silently read zeros. Inert unless ``coupling`` is set (the tilt-independent path rebuilds no
+    gather in the search), and, like the coverage guard, it does not enter the recipe identity: the
+    checks are pure, so ``False`` yields byte-identical gather indices when coverage holds.
 
     ``device`` (default ``None`` = CPU) places the search's forward solve on the given accelerator:
     the seed params are moved there and ``engine.fgb`` is computed on-device, so every per-trial
@@ -151,7 +161,9 @@ def fit_orientation(
         fgb = engine.fgb(params)
 
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
-            return _refine_one(engine, fgb, plan, op, search=search, coupling=coupling)
+            return _refine_one(
+                engine, fgb, plan, op, search=search, coupling=coupling, validate=validate
+            )
 
         built = require_built_plans(plan)
         fitted_by_index: dict[int, OrientationPlanLike] = {}
@@ -198,6 +210,7 @@ def _refine_one(
     *,
     search: HexagonalSearch,
     coupling: TrialCoupling | None,
+    validate: bool = True,
 ) -> tuple[OrientationPlanLike, float, int, int]:
     """Palatinus hexagonal search over one orientation.
 
@@ -225,7 +238,12 @@ def _refine_one(
         current = op
     else:
         current = _coupled_trial(
-            grid, op, np.asarray(op.orientation, dtype=np.float64), coupling, gather_cache
+            grid,
+            op,
+            np.asarray(op.orientation, dtype=np.float64),
+            coupling,
+            gather_cache,
+            validate=validate,
         )
     current_score = float(engine.score_orientation(current, fgb))
     search_angle = search.max_search_angle
@@ -243,7 +261,9 @@ def _refine_one(
             if coupling is None:
                 trial = current.with_orientation(grid, orientation)
             else:
-                trial = _coupled_trial(grid, op, orientation, coupling, gather_cache)
+                trial = _coupled_trial(
+                    grid, op, orientation, coupling, gather_cache, validate=validate
+                )
             n_trials += 1
             trial_score = float(engine.score_orientation(trial, fgb))
             if trial_score < current_score:  # greedy first-improvement; restart at this radius
@@ -263,6 +283,8 @@ def _coupled_trial(
     orientation: NDArray[np.float64],
     coupling: TrialCoupling,
     gather_cache: dict[bytes, StructureFactorGather] | None = None,
+    *,
+    validate: bool = True,
 ) -> SegmentedOrientationPlan:
     """Re-couple the solve union and re-select the scored set at ``orientation`` (faithful trial).
 
@@ -276,6 +298,12 @@ def _coupled_trial(
     untouched either way; ``gather_cache`` (keyed by a segment's beam-set bytes) reuses the
     orientation-free per-segment F-gathers across a search's trials -- identical beam set, identical
     gather -- collapsing the per-trial rebuild cost the way the private's per-union cache does.
+
+    ``validate`` (default ``True``) is forwarded to each cache-miss
+    :func:`~diffBloch.core.dynamical.build_structure_factor_gather`; ``False`` skips its O(N^2)
+    integrity checks on the hot path (safe under the caller's coverage guard). It reaches only that
+    build -- the ``SegmentedOrientationPlan.build`` below always receives the precomputed
+    ``gathers``, so its own ``validate`` never triggers a rebuild here.
     """
     cell = np.asarray(grid.cell, dtype=np.float64)
     tilts = np.asarray(op.tilts, dtype=np.float64)
@@ -310,7 +338,9 @@ def _coupled_trial(
             key = np.ascontiguousarray(segment.beam_hkl).tobytes()
             gather = gather_cache.get(key)
             if gather is None:
-                gather = build_structure_factor_gather(grid_hkl, segment.beam_hkl, grid.gpts)
+                gather = build_structure_factor_gather(
+                    grid_hkl, segment.beam_hkl, grid.gpts, validate=validate
+                )
                 gather_cache[key] = gather
             gathers.append(gather)
     return SegmentedOrientationPlan.build(
