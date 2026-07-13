@@ -173,7 +173,8 @@ def fit_orientation(
         fitted_by_index: dict[int, OrientationPlanLike] = {}
         cap = search.max_iterations
         if workers > 1:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
+            pool = ThreadPoolExecutor(max_workers=workers)
+            try:
                 futures = {pool.submit(refine, op): index for index, op in enumerate(built)}
                 for future in as_completed(futures):  # emit progress as searches finish
                     index = futures[future]
@@ -188,6 +189,15 @@ def fit_orientation(
                             pass_cap=cap,
                         )
                     )
+            finally:
+                # An early abort surfaces as a logger.report() raising mid-loop. Cancel the
+                # not-yet-started searches and don't block on the in-flight ones, so the abort
+                # actually saves the remaining budget instead of draining every queued rotation
+                # first (the whole point of stopping early). The `with`-block's default
+                # shutdown(wait=True) would run them all before the exception surfaced. Rotations
+                # already executing cannot be interrupted, so up to `workers` still finish; the
+                # queued remainder is dropped. On normal completion nothing is pending -- a no-op.
+                pool.shutdown(wait=False, cancel_futures=True)
         else:
             for index, op in enumerate(built):
                 fitted, wr2, n_trials, n_passes = refine(op)

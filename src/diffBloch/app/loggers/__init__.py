@@ -120,7 +120,10 @@ class EarlyAbortLogger:
     :class:`ConsoleLogger` / :class:`CSVLogger` for the live scroll --
     ``EarlyAbortLogger(inner=ConsoleLogger())``. Raising from :meth:`report` is the abort mechanism:
     the fit loop's only per-rotation hook is the logger, and both the sequential and ``workers > 1``
-    paths call ``report`` from the driving thread, so the raise unwinds the run cleanly.
+    paths call ``report`` from the driving thread, so the raise unwinds the run cleanly. Compute
+    saved: **all** remaining rotations under ``workers = 1`` (sequential -- nothing further starts);
+    under ``workers > 1`` the queued rotations are cancelled but the ``<= workers`` already running
+    cannot be interrupted and finish first (``fit_orientation`` cancels the rest on abort).
     """
 
     wr2_ceiling: float = 0.6
