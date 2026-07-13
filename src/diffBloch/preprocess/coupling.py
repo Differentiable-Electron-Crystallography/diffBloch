@@ -144,12 +144,20 @@ def tilt_segment_coupling(
     cap = coupling_cap(policy)
     boundaries = _split_boundaries(n_tilts, policy.n_splits)
 
+    # ``|g|`` is invariant under the orientation/tilt rotation (an orthogonal transform preserves
+    # the vector norm), so the coupling-radius cut ``|g| < cap`` selects the SAME candidate subset
+    # at every tilt. Apply it once up front to shrink the pool each per-tilt excitation mask scans:
+    # ``candidate_hkl`` is the full ``|g| <= g_max`` grid, but only the ``|g| < cap`` core (a
+    # ~(cap/g_max)^3 fraction of the sphere) can ever couple. Scanning the whole grid at every
+    # boundary tilt was the dominant per-trial cost of the coupled fit; being orientation-invariant,
+    # one pass replaces the redundant per-boundary full-grid scans.
+    g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # any orientation: |g| invar.
+    pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < cap]
+
     def excited_mask(tilt_index: int) -> NDArray[np.bool_]:
         basis = orientation_basis(cell, tilts[tilt_index] @ orientation)
-        g = candidate_hkl @ basis
-        g_len = np.linalg.norm(g, axis=1)
-        sg = excitation_errors(g, energy, u0=u0)
-        return (np.abs(sg) < policy.sg_max) & (g_len < cap)
+        sg = excitation_errors(pool @ basis, energy, u0=u0)
+        return np.abs(sg) < policy.sg_max  # |g| < cap already guaranteed by the pool
 
     masks = {int(b): excited_mask(int(b)) for b in boundaries}
     segments = []
@@ -157,5 +165,5 @@ def tilt_segment_coupling(
         a, b = int(boundaries[i]), int(boundaries[i + 1])
         union = masks[a] | masks[b]
         cover = tuple(range(a, n_tilts if i == len(boundaries) - 2 else b))
-        segments.append(Segment(beam_hkl=candidate_hkl[union].copy(), cover=cover))
+        segments.append(Segment(beam_hkl=pool[union].copy(), cover=cover))
     return tuple(segments)
