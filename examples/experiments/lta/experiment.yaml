@@ -1,0 +1,23 @@
+# Zeolite A (LTA) 3D-ED anchor — real binned dynamical data (private lineage).
+# Coupled special positions: O2 on (x,x,z), O3 on (0,y,y); T1/O1 axis-aligned.
+name: lta
+inputs:
+  structure: lta.cif
+  observations: lta_exp_data.cif_pets
+sample:
+  thicknesses: [500.0]
+numerics:
+  # g_max >= 2 * (coupling cap 2.05) so the structure-factor grid spans the coupled beam-difference
+  # support (as quartz's 4.5); g_max_refine is the full data resolution / seed-pool radius.
+  g_max: 4.5
+  g_max_refine: 1.4
+  rocking_curve_sampling: 42
+  dsg: 0.0015
+  rsg: 0.9
+solver:
+  inference: bloch_eigen
+  refine: matrix_exp
+refinement:
+  split:
+    train: all_except_validation
+    validation: every_10th_rotation
