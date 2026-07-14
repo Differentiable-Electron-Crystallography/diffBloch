@@ -19,7 +19,7 @@ from __future__ import annotations
 from torch import Tensor
 
 from diffBloch.core.solver import FloatFormat, Method
-from diffBloch.engine import LossFn, RefinementEngine, w_rbragg_loss
+from diffBloch.engine import LossFn, RefinementEngine, scaled_w_rbragg_loss
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
 
@@ -30,7 +30,7 @@ def build_engine(
     plan: Plan,
     refinement: RefinementSetup,
     *,
-    loss: LossFn = w_rbragg_loss,
+    loss: LossFn = scaled_w_rbragg_loss,
     method: Method = "matrix_exp",
     precision: FloatFormat = "fp64",
 ) -> RefinementEngine:
@@ -42,8 +42,10 @@ def build_engine(
     ASU atomic numbers) is static structure context. ``build_engine`` is the single place that
     rejoins them when a simulation is actually needed; both ``score_orientations``
     here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
-    minimise (irrelevant to :meth:`RefinementEngine.fgb` /
-    :meth:`RefinementEngine.score_orientation`, which use a scaling-optimised wR2 internally).
+    minimise; it defaults to :func:`~diffBloch.engine.scaled_w_rbragg_loss` (wR2 after matching
+    calculated total intensity to observed -- calc and obs are on different scales, so the raw
+    metric would be flat/gradient-free). It is irrelevant to :meth:`RefinementEngine.fgb` /
+    :meth:`RefinementEngine.score_orientation`, which apply their own scaling-optimised wR2.
 
     ``precision`` defaults to ``"fp64"`` (complex128 -- byte-identical to today). ``"fp32"``
     (complex64) is a search-time knob only the preprocess fits set on their transient scoring

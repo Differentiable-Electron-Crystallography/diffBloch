@@ -13,6 +13,7 @@ from diffBloch.engine.losses import (
     l1_loss,
     mse_loss,
     rbragg_loss,
+    scaled_w_rbragg_loss,
     w_rbragg_loss,
     weighted_mse_loss,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "mse_loss",
     "rbragg_loss",
     "run_refinement",
+    "scaled_w_rbragg_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",
 ]
