@@ -1,0 +1,30 @@
+# Abiraterone acetate 3D-ED anchor -- real molecular-crystal data (private lineage).
+# A well-conditioned molecular crystal (P2_1 2_1 2_1, sg 19): the refinement positive control, and a
+# forward-parity anchor vs the private (rotation-0 R_obs: public 0.0978 vs private 0.09697). NOT a
+# canonical examples/ experiment -- reproducing the private forward requires load_hydrogens AND
+# explicit solve-set coupling, neither of which the public app/config path expresses yet (see README).
+name: abiraterone-anchor
+inputs:
+  structure: abiraterone.cif
+  observations: abiraterone_exp_data.cif_pets
+sample:
+  thicknesses: [1460.0]
+numerics:
+  # match the private abiraterone config exactly (diffbloch_private .../abiraterone_acetate/config.yml):
+  # structure-factor grid g_max 3, scoring/seed-pool g_max_refine 1, and the rocking-curve
+  # integration geometry (dsg/rsg/sampling/semiangle). The numerical quadrature (sampling, dsg) is
+  # converged by sampling>=60 (R_obs flat 60->120); 30 is the private's value, kept for parity.
+  g_max: 3.0
+  g_max_refine: 1.0
+  rocking_curve_sampling: 30
+  dsg: 0.0025
+  rsg: 0.6
+  integration:
+    semiangle: 1.422
+solver:
+  inference: bloch_eigen
+  refine: matrix_exp
+refinement:
+  split:
+    train: all_except_validation
+    validation: every_10th_rotation

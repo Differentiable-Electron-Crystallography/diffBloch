@@ -63,6 +63,7 @@ from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER
 from diffBloch.preprocess import (
     build_orientation_plans,
+    couple_beams,
     fit_orientation,
     fit_thickness,
     from_experiment,
@@ -74,6 +75,7 @@ from diffBloch.preprocess import (
     select_beams,
     step_records,
 )
+from diffBloch.specs import TiltSegmentUnion
 
 pytestmark = pytest.mark.e2e
 
@@ -310,3 +312,71 @@ def test_quartz_tilt_independent_anchor() -> None:
         )
     else:  # subset sanity: proves the pipeline runs and beats the static baseline
         assert result.mean_r_obs < STATIC_BASELINE_R_OBS
+
+
+# --- abiraterone acetate: real-data forward parity vs the private reference --------------------
+
+ABIRATERONE_ROOT = Path(__file__).parent.parent / "fixtures" / "abiraterone_anchor"
+
+# Rotation-0 forward R_obs. The private reference computed 0.09697 on this exact observation file
+# (its `exp_data.cif_pets`); the public forward reproduces 0.0978 -- genuine parity (Δ < 0.001) on
+# real data once two things hold: hydrogens are loaded, and the SOLVE set is coupled (see below).
+# The public value is pinned tightly (repeatability, not the private gap); loosen to 1e-3 only if
+# cross-platform eigensolver variance appears -- never to 1e-2, now that parity is this close.
+PRIVATE_ABIRATERONE_R_OBS = 0.09697  # documentation/context only (private lineage)
+EXPECTED_PUBLIC_ABIRATERONE_R_OBS = 0.0978
+ABIRATERONE_R_OBS_TOL = 5e-4
+
+# The private's abiraterone dynamical-matrix beam mask is |Sg| < 0.02 and |g| < g_max_sf/2 - 0.2 =
+# 1.5 - 0.2 = 1.3. The public analog is a TiltSegmentUnion with those knobs (n_splits from the
+# private's union_splits=4). Its coverage stays inside the g_max=3 grid (2 * 1.3 = 2.6 <= 3).
+_ABIRATERONE_COUPLING = TiltSegmentUnion(n_splits=4, g_max=1.5, cap_margin=0.2, sg_max=0.02)
+
+
+def test_abiraterone_forward_parity_private_rotation0() -> None:
+    """Public forward reproduces the private reference's rotation-0 R_obs on the same real data.
+
+    Forward-only (no fit). Two non-obvious requirements make this parity rather than a loose
+    characterization: (1) ``load_hydrogens=True`` -- a light-atom organic where H matter; (2)
+    explicit solve-set coupling -- the public wires ``couple_beams`` only inside the fit steps, so a
+    forward-only pipeline under-couples the dynamical matrix (rot-0 R_obs ~0.137 uncoupled). With
+    both, the public reaches 0.0978 vs the private 0.09697 and scores 24 reflections -- the same
+    count as the private's ``N_int_obs`` (only the count is pinned; neither side exports the scored
+    HKL identity, so this asserts count, not set membership).
+
+    ``couple_beams`` is intentionally last and after ``integrate_rocking_curve``: it consumes the
+    rocking-curve tilts (raising if absent) and emits a terminal ``SegmentedOrientationPlan`` no
+    other ``Plan -> Plan`` step can consume.
+    """
+    cfg, lock = load_experiment(ABIRATERONE_ROOT)
+    assert cfg.name == "abiraterone-anchor"
+    assert cfg.numerics.g_max == 3.0
+    assert cfg.numerics.g_max_refine == 1.0
+    assert cfg.sample.thicknesses == (1460.0,)
+
+    structure = read_structure(ABIRATERONE_ROOT / cfg.inputs.structure, load_hydrogens=True)
+    observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.observations)
+    assert structure.n_atoms == 62  # 29 non-H + 33 H (load_hydrogens is load-bearing for parity)
+    assert observations.n_rotations == 55
+
+    setup = from_experiment(structure, observations, cfg)
+    plan = replace(
+        setup.plans.combined, orientations=setup.plans.combined.orientations[:1]
+    )  # rotation 0 only -- the private reference's single forward frame
+    prepare = pipeline(
+        [
+            select_beams(cfg.numerics.to_beam_selection()),
+            build_orientation_plans(),
+            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+            mosaicity(cfg.numerics.mosaicity),
+            couple_beams(_ABIRATERONE_COUPLING),  # expand SOLVE set; scored set stays Klar-pinned
+        ]
+    )
+    result = run_inference(plan, setup.refinement, prepare=prepare, method=cfg.solver.inference)
+
+    assert result.n_evaluated == 1
+    # same scored count as the private's N_int_obs (count only; HKL identity not exported)
+    assert result.per_rotation[0].n_observed == 24
+    assert result.mean_r_obs == pytest.approx(
+        EXPECTED_PUBLIC_ABIRATERONE_R_OBS, abs=ABIRATERONE_R_OBS_TOL
+    )
