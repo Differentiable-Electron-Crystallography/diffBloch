@@ -58,7 +58,16 @@ def main(argv: list[str] | None = None) -> int:
         "--device",
         metavar="DEVICE",
         default=None,
-        help="run the terminal forward solve on this torch device (e.g. 'cuda'); default CPU",
+        help="run the forward solve on this torch device (e.g. 'cuda'); default CPU",
+    )
+    p_infer.add_argument(
+        "--workers",
+        metavar="N",
+        type=int,
+        default=1,
+        help="fan the per-rotation orientation search over N threads (default 1); cap host threads "
+        "to 1 (OMP_NUM_THREADS/MKL_NUM_THREADS/TORCH_NUM_THREADS, or torch.set_num_threads(1)) or "
+        "the node-sized BLAS/torch pools oversubscribe the cores",
     )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
@@ -94,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
+                workers=args.workers,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

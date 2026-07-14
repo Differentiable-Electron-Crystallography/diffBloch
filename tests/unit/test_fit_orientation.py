@@ -235,6 +235,24 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
         )
 
 
+def test_fit_orientation_workers_matches_sequential() -> None:
+    """``workers>1`` fans rotations over threads but returns byte-identical results (order kept).
+
+    Rotations are independent and the engine/``F_gb`` are read-only shared context, so a threaded
+    run must reproduce the sequential fit exactly -- the property that lets ``workers`` be
+    execution-only (out of the recipe identity). Pinned on the fast synthetic system.
+    """
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    refinement = _refinement(asu_plan, spec, numbers)
+    plan = Plan(grid=grid, orientations=(matched,) * 5)
+
+    sequential = fit_orientation(refinement, HexagonalSearch())(plan).orientations
+    threaded = fit_orientation(refinement, HexagonalSearch(), workers=3)(plan).orientations
+    for a, b in zip(sequential, threaded, strict=True):
+        assert torch.equal(a.orientation, b.orientation)
+
+
 def test_fit_orientation_workers_abort_cancels_pending_rotations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

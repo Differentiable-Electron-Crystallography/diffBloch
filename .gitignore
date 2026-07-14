@@ -33,3 +33,4 @@ plan.lock
 # OS / editors
 .DS_Store
 .idea/
+.ssec.env

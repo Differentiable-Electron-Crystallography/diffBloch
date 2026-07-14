@@ -95,6 +95,7 @@ def run_experiment(
     checkpoint: bool = True,
     refresh: bool = False,
     device: Device | None = None,
+    workers: int = 1,
 ) -> InferenceResult:
     """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
 
@@ -119,6 +120,17 @@ def run_experiment(
     eigensolve -- the O(N^3) cost -- moves to the device (the fits move the seed params, so ``fgb``
     and every per-trial score co-locate there). Device is execution-only: it does not enter the
     checkpoint lock, so a committed CPU checkpoint is still reused when a run moves to GPU.
+
+    ``workers`` (default 1, sequential) fans the per-rotation orientation search over a thread pool
+    (rotations are independent). On a GPU run the per-trial cost is host-bound around a small
+    eigensolve, so overlapping rotations across cores is the main wall-clock lever (measured best
+    ~4 on the A100; gains flatten past that as the solves serialise on one CUDA stream). Like
+    ``device`` it is execution-only -- the results are identical to a sequential run and it does not
+    enter the checkpoint lock. **Cap host threads to 1 when using it** --
+    ``OMP_NUM_THREADS``/``MKL_NUM_THREADS``/``TORCH_NUM_THREADS`` (or ``torch.set_num_threads(1)``);
+    in a pod torch/BLAS size their pools from the *node* core count, not the cgroup limit, so an
+    uncapped run oversubscribes the cores the workers need (measured: capping alone cut the LTA
+    per-trial ~1.4 s -> ~0.2 s, before any parallelism).
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -126,7 +138,7 @@ def run_experiment(
     observations = read_observations(root / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
-    steps = _recipe_steps(cfg, refinement, logger, device=device)
+    steps = _recipe_steps(cfg, refinement, logger, device=device, workers=workers)
     prepared = _prepare(
         setup.plans.combined,
         steps,
@@ -146,6 +158,7 @@ def _recipe_steps(
     logger: Logger,
     *,
     device: Device | None = None,
+    workers: int = 1,
 ) -> list[PlanStep]:
     """The faithful default recipe as an inspectable step list (its provenance keys the lock).
 
@@ -161,8 +174,9 @@ def _recipe_steps(
     ``validate`` are execution-only and stay out of the step identity, so the resolved small-cell
     branch keys identically to today -- the committed quartz checkpoint is untouched.
 
-    ``device`` is threaded to the two fits (execution-only -- it does not alter the recipe
-    identity), so the coupled eigensolve runs on the same accelerator as the terminal.
+    Both ``device`` and ``workers`` are execution-only -- neither alters the recipe identity.
+    ``device`` is threaded to *both* fits (so the coupled eigensolve runs on the same accelerator as
+    the terminal); ``workers`` fans only the orientation search (the run's long phase) over threads.
     """
     search = cfg.preprocess.orientation.to_search()
     thickness_grid = cfg.preprocess.thickness.to_grid()
@@ -177,6 +191,7 @@ def _recipe_steps(
             precision=precision,
             validate=validate,
             device=device,
+            workers=workers,
             logger=logger,  # per-rotation fit progress (the run's long phase)
         )
 

@@ -86,11 +86,13 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
         checkpoint: bool = True,
         refresh: bool = False,
         device: object = None,
+        workers: int = 1,
     ) -> InferenceResult:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
         captured["checkpoint"] = checkpoint
         captured["refresh"] = refresh
+        captured["workers"] = workers
         rotation = RotationInference(r_obs=0.05, n_observed=9, n_beams=20)
         return InferenceResult(per_rotation=(rotation,))
 
@@ -102,6 +104,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
     assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
     assert captured["checkpoint"] is True  # checkpoint on by default
     assert captured["refresh"] is False
+    assert captured["workers"] == 1  # sequential by default
     out = capsys.readouterr().out
     assert "evaluated 1 rotations" in out
     assert "mean R_obs = 0.0500" in out
@@ -117,14 +120,16 @@ def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPat
         checkpoint: bool = True,
         refresh: bool = False,
         device: object = None,
+        workers: int = 1,
     ) -> InferenceResult:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
+        seen["workers"] = workers
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["run", "infer", "x", "--no-checkpoint", "--refresh"]) == 0
-    assert seen == {"checkpoint": False, "refresh": True}
+    assert main(["run", "infer", "x", "--no-checkpoint", "--refresh", "--workers", "4"]) == 0
+    assert seen == {"checkpoint": False, "refresh": True, "workers": 4}
 
 
 def test_run_infer_builds_console_and_csv_sinks(
@@ -139,6 +144,7 @@ def test_run_infer_builds_console_and_csv_sinks(
         checkpoint: bool = True,
         refresh: bool = False,
         device: object = None,
+        workers: int = 1,
     ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())
