@@ -78,12 +78,14 @@ from diffBloch.preprocess.steps.coverage import (
 )
 from diffBloch.preprocess.steps.fit_orientation import fit_orientation
 from diffBloch.preprocess.steps.fit_thickness import fit_thickness
+from diffBloch.preprocess.steps.frames import select_frames
 from diffBloch.preprocess.steps.mosaicity import mosaicity
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     BeamSelection,
     ConvergenceTest,
     ConvergenceTolerance,
+    FrameSelection,
     HexagonalSearch,
     Mosaicity,
     RockingCurve,
@@ -98,6 +100,7 @@ __all__ = [
     "ConvergenceTolerance",
     "ExperimentSetup",
     "Fork",
+    "FrameSelection",
     "HexagonalSearch",
     "InferenceResult",
     "Mosaicity",
@@ -147,6 +150,7 @@ __all__ = [
     "run_inference",
     "score_orientations",
     "select_beams",
+    "select_frames",
     "simulation_converged",
     "simulation_rfactor",
     "step_records",

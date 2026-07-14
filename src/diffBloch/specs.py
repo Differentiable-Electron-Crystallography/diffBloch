@@ -26,6 +26,7 @@ __all__ = [
     "BeamSelection",
     "ConvergenceTest",
     "ConvergenceTolerance",
+    "FrameSelection",
     "HexagonalSearch",
     "IntegrationGeometry",
     "Mosaicity",
@@ -90,6 +91,31 @@ class BeamSelection:
     def __post_init__(self) -> None:
         if self.rsg <= 0.0:
             raise ValueError("rsg must be positive")
+
+
+@dataclass(frozen=True)
+class FrameSelection:
+    """Validated criterion for the ``select_frames`` per-rotation (whole-frame) drop.
+
+    The sibling of :class:`BeamSelection`: where that prunes *reflections within* a frame,
+    ``select_frames`` drops *whole frames* whose observed pattern is too sparse to inform the fit --
+    the public analog to ``diffBloch_private``'s per-dataset ``ignore_orientations``, for the
+    beam-damaged tail of a rotation scan. ``min_observed`` is the fewest *strong* observed
+    reflections (``intensity > 3 * sigma``, strict) a frame must carry to be kept; frames below it
+    are dropped. The count is **model-independent** -- it reads the observed pattern only, never the
+    calculated fit -- so it cannot circularly keep the frames the current model already explains.
+
+    ``min_observed == 0`` keeps every frame (the disabled / no-op default -- opting in requires a
+    positive threshold); a negative count is meaningless and rejected. This carries no
+    ``diffBloch_private`` value analog: the private hard-codes an explicit index list, whereas this
+    derives the drop from a data-quality floor.
+    """
+
+    min_observed: int = 0  # keep a frame iff its strong-reflection count (I > 3 sigma) >= this
+
+    def __post_init__(self) -> None:
+        if self.min_observed < 0:
+            raise ValueError("min_observed must be >= 0")
 
 
 @dataclass(frozen=True)
