@@ -35,6 +35,7 @@ from diffBloch.engine.refine import (
     ObjectiveValue,
     OptimizerName,
     RefinementResult,
+    RestraintTerm,
     TrainableSpec,
     run_refinement,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "RefinementEngine",
     "RefinementProblem",
     "RefinementResult",
+    "RestraintTerm",
     "ScatteringGrid",
     "SegmentedOrientationPlan",
     "TrainableSpec",

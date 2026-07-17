@@ -45,11 +45,12 @@ from diffBloch.engine.refine import (
     ObjectiveValue,
     OptimizerName,
     RefinementResult,
+    RestraintTerm,
     TrainableSpec,
     run_refinement,
 )
 from diffBloch.observability import NULL_LOGGER, Logger
-from diffBloch.params import ConstraintSpec, RefinableParams, constrain
+from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
 
 __all__ = [
     "LossFn",
@@ -139,16 +140,19 @@ class RefinementEngine:
             ]
         )
 
-    def objective_value(self, params: RefinableParams) -> ObjectiveValue:
+    def objective_value(
+        self, params: RefinableParams, restraints: tuple[RestraintTerm, ...] = ()
+    ) -> ObjectiveValue:
         """Return the objective as a scalar total plus named scalar components.
 
-        Differentiable in ``params``. The only component today is ``"diffraction"``; this shape is
-        the public seam for future geometric/restraint terms without making the optimizer know their
+        Differentiable in ``params``. The ``"diffraction"`` component is always present;
+        ``restraints`` add weighted soft-penalty components without making the optimizer know their
         details.
         """
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
-        fgb = self._structure_factors(params)
+        state = self.physical_state(params)
+        fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
         for orientation in self.orientations:
             solution = self._solve(orientation, fgb, self._thickness_for(orientation, params))
@@ -159,7 +163,14 @@ class RefinementEngine:
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
-        return ObjectiveValue({"diffraction": ObjectiveComponent(raw=total)})
+        components = {"diffraction": ObjectiveComponent(raw=total)}
+        for restraint in restraints:
+            if restraint.name in components:
+                raise ValueError(f"duplicate objective component name {restraint.name!r}")
+            components[restraint.name] = ObjectiveComponent(
+                raw=restraint.loss(state), weight=restraint.weight
+            )
+        return ObjectiveValue(components)
 
     def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
         """The thickness ``(T,)`` the forward model uses for one orientation.
@@ -184,8 +195,15 @@ class RefinementEngine:
             return orientation.thickness
         return positive(params.thickness_raw)
 
+    def physical_state(self, params: RefinableParams) -> PhysicalState:
+        """Return bounded physical ASU quantities for ``params``."""
+        return constrain(params, self.spec)
+
     def _structure_factors(self, params: RefinableParams) -> Tensor:
-        state = constrain(params, self.spec)
+        state = self.physical_state(params)
+        return self._structure_factors_from_state(state)
+
+    def _structure_factors_from_state(self, state: PhysicalState) -> Tensor:
         device = state.positions.device  # the active (params) device; co-locate invariants here
         expanded = expand_asu(
             self.asu_plan,
@@ -287,13 +305,14 @@ class RefinementEngine:
 class RefinementProblem:
     """The pure-data scientific definition of one refinement run.
 
-    Initially this records the starting parameters and whole-group trainable selections. Later
-    phases will add hard policies and restraints here. The live :class:`RefinementEngine` remains an
-    explicit executor/context argument rather than being stored on the problem.
+    Initially this records the starting parameters, whole-group trainable selections, and soft
+    restraints. Later phases will add hard policies here. The live :class:`RefinementEngine` remains
+    an explicit executor/context argument rather than being stored on the problem.
     """
 
     initial: RefinableParams
     trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
+    restraints: tuple[RestraintTerm, ...] = ()
 
 
 def run_refinement_problem(
@@ -306,8 +325,12 @@ def run_refinement_problem(
     logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
     """Optimize a pure-data refinement problem with the supplied engine/context."""
+
+    def objective_value(params: RefinableParams) -> ObjectiveValue:
+        return engine.objective_value(params, restraints=problem.restraints)
+
     return run_refinement(
-        engine.objective_value,
+        objective_value,
         problem.initial,
         steps=steps,
         trainable=problem.trainable,

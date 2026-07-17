@@ -35,7 +35,7 @@ from diffBloch.observability import (
     RefinementCompleted,
     RefinementStep,
 )
-from diffBloch.params import RefinableParams
+from diffBloch.params import PhysicalState, RefinableParams
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5) I
@@ -258,6 +258,55 @@ def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> Non
 
     assert result.losses.shape == (6,)
     assert result.losses[-1] < result.losses[0]
+
+
+@dataclasses.dataclass(frozen=True)
+class _DummyRestraint:
+    name: str = "dummy_restraint"
+    weight: float = 0.25
+
+    def loss(self, state: PhysicalState) -> torch.Tensor:
+        return state.positions[:, 0].sum() + 2.0
+
+
+def test_objective_value_composes_restraint_components() -> None:
+    engine = _engine()
+    params = _params(asu_positions=torch.tensor([[0.5, 0.0, 0.0]], dtype=torch.float64))
+
+    unrestrained = engine.objective_value(params)
+    restrained = engine.objective_value(params, restraints=(_DummyRestraint(),))
+    component = restrained.components["dummy_restraint"]
+
+    assert set(restrained.components) == {"diffraction", "dummy_restraint"}
+    assert torch.equal(component.raw, torch.tensor(2.5, dtype=torch.float64))
+    assert component.weight == 0.25
+    assert torch.equal(
+        restrained.total,
+        unrestrained.total + component.contribution,
+    )
+
+
+def test_objective_value_restraint_contributes_gradient() -> None:
+    engine = _engine()
+    params = _params(requires_grad=True)
+
+    engine.objective_value(params, restraints=(_DummyRestraint(),)).total.backward()
+
+    assert params.asu_positions.grad is not None
+    assert params.asu_positions.grad[0, 0] != 0.0
+
+
+def test_objective_value_rejects_duplicate_component_name() -> None:
+    engine = _engine()
+    with pytest.raises(ValueError, match="duplicate objective component"):
+        engine.objective_value(_params(), restraints=(_DummyRestraint(name="diffraction"),))
+
+
+def test_refinement_problem_records_restraints() -> None:
+    restraint = _DummyRestraint()
+    problem = RefinementProblem(initial=_params(), restraints=(restraint,))
+
+    assert problem.restraints == (restraint,)
 
 
 def test_objective_value_computes_weighted_total_from_components() -> None:

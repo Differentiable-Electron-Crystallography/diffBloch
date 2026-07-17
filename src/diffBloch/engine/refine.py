@@ -19,7 +19,7 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import gemmi
 import torch
@@ -31,14 +31,15 @@ from diffBloch.observability import (
     RefinementCompleted,
     RefinementStep,
 )
-from diffBloch.params import RefinableParams
+from diffBloch.params import PhysicalState, RefinableParams
 
 __all__ = [
-    "ObjectiveComponent",
     "AtomSelection",
+    "ObjectiveComponent",
     "ObjectiveValue",
     "OptimizerName",
     "RefinementResult",
+    "RestraintTerm",
     "TrainableSpec",
     "run_refinement",
 ]
@@ -186,6 +187,21 @@ class ObjectiveValue:
             total = total + contribution
         object.__setattr__(self, "total", total)
         object.__setattr__(self, "components", MappingProxyType(copied))
+
+
+class RestraintTerm(Protocol):
+    """A soft refinement penalty evaluated on the physical ASU state.
+
+    Restraints are objective components, not hard constraints: ``loss`` returns the raw scientific
+    diagnostic and ``weight`` scales it into the optimizer-facing contribution.
+    """
+
+    name: str
+    weight: float
+
+    def loss(self, state: PhysicalState) -> Tensor:
+        """Return this restraint's raw scalar loss for the current physical state."""
+        ...
 
 
 @dataclass(frozen=True)
