@@ -313,5 +313,6 @@ def run_refinement_problem(
         trainable=problem.trainable,
         optimizer=optimizer,
         lr=lr,
+        atomic_numbers=engine.numbers,
         logger=logger,
     )

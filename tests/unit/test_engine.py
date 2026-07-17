@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import cast
 
 import numpy as np
@@ -45,12 +46,16 @@ def _engine(
     loss: LossFn = mse_loss,
     pattern: PatternBatch | None = None,
     tilts: np.ndarray | None = None,
+    asu_positions: np.ndarray | None = None,
+    numbers: torch.Tensor | None = None,
 ) -> RefinementEngine:
     grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
+    if asu_positions is None:
+        asu_positions = np.zeros((1, 3))
     asu_plan = build_asu_expansion_plan(
-        np.zeros((1, 3)),
+        asu_positions,
         np.eye(3)[None],
-        np.zeros((1, 3)),  # P1: single atom, identity symop
+        np.zeros((1, 3)),  # P1: identity symop
     )
     if pattern is None:
         pattern = PatternBatch(
@@ -61,11 +66,11 @@ def _engine(
     orientation = OrientationPlan.build(
         grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,), tilts=tilts
     )  # 300 A: dynamical regime (I_diff ~0.1)
-    spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
+    spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis, n_atoms=len(asu_positions))
     return RefinementEngine(
         spec=spec,
         asu_plan=asu_plan,
-        numbers=torch.tensor([14], dtype=torch.int64),  # silicon
+        numbers=torch.tensor([14], dtype=torch.int64) if numbers is None else numbers,
         grid=grid,
         orientations=(orientation,),
         loss=loss,
@@ -73,11 +78,17 @@ def _engine(
 
 
 def _params(
-    *, requires_grad: bool = False, u_iso_scale: float = 0.1, occupancy_logit: float | None = None
+    *,
+    requires_grad: bool = False,
+    u_iso_scale: float = 0.1,
+    occupancy_logit: float | None = None,
+    asu_positions: torch.Tensor | None = None,
 ) -> RefinableParams:
-    uij = torch.eye(3, dtype=torch.float64)[None] * u_iso_scale
+    if asu_positions is None:
+        asu_positions = torch.zeros((1, 3), dtype=torch.float64)
+    uij = torch.eye(3, dtype=torch.float64).expand(asu_positions.shape[0], 3, 3) * u_iso_scale
     fields = {
-        "asu_positions": torch.zeros((1, 3), dtype=torch.float64, requires_grad=requires_grad),
+        "asu_positions": asu_positions.detach().clone().requires_grad_(requires_grad),
         "uij_raw": uij.requires_grad_(requires_grad),
     }
     if occupancy_logit is not None:
@@ -86,14 +97,32 @@ def _params(
     return RefinableParams(**fields)
 
 
-def _observed_pattern(true_params: RefinableParams, *, sigma: float = 0.01) -> PatternBatch:
+def _with_pattern(engine: RefinementEngine, pattern: PatternBatch) -> RefinementEngine:
+    """Return ``engine`` with the same context but a replacement observed pattern."""
+    orientation = OrientationPlan.build(
+        engine.grid,
+        _BEAM_HKL,
+        pattern,
+        energy=_ENERGY,
+        thickness=(300.0,),
+    )
+    return dataclasses.replace(engine, orientations=(orientation,))
+
+
+def _observed_pattern(
+    true_params: RefinableParams,
+    *,
+    sigma: float = 0.01,
+    engine: RefinementEngine | None = None,
+) -> PatternBatch:
     """Self-consistent observations: the intensities the engine produces at ``true_params``."""
     dummy = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=torch.zeros(3, dtype=torch.float64),
         sigmas=torch.ones(3, dtype=torch.float64),
     )
-    (solution,) = _engine(pattern=dummy).simulate(true_params)
+    engine = _engine(pattern=dummy) if engine is None else _with_pattern(engine, dummy)
+    (solution,) = engine.simulate(true_params)
     return PatternBatch(
         hkl=solution.beam_hkl,
         intensities=solution.intensities[0].detach(),
@@ -200,6 +229,11 @@ def test_refinable_thickness_drives_the_forward_model() -> None:
 def test_atom_selection_rejects_invalid_runtime_mode() -> None:
     with pytest.raises(ValueError, match="atom selection mode"):
         AtomSelection("bogus")  # type: ignore[arg-type]
+
+
+def test_atom_selection_rejects_unknown_element_symbol() -> None:
+    with pytest.raises(ValueError, match="unknown element symbol"):
+        AtomSelection.exclude_elements("not-an-element")
 
 
 def test_refinement_problem_is_pure_data() -> None:
@@ -385,6 +419,36 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     assert completed.best_loss == result.best_loss
 
 
+def test_refine_element_selection_freezes_excluded_position_rows() -> None:
+    numbers = torch.tensor([6, 1], dtype=torch.int64)  # C, H
+    positions = torch.tensor([[0.0, 0.0, 0.0], [0.25, 0.0, 0.0]], dtype=torch.float64)
+    true_positions = positions.clone()
+    true_positions[0, 0] = 0.05
+    engine = _engine(
+        numbers=numbers,
+        asu_positions=positions.numpy(),
+        loss=mse_loss,
+    )
+    observed = _observed_pattern(
+        _params(asu_positions=true_positions),
+        engine=engine,
+    )
+    engine = _with_pattern(engine, observed)
+    start = _params(asu_positions=positions)
+
+    result = _refine(
+        engine,
+        start,
+        steps=8,
+        trainable=TrainableSpec(positions=AtomSelection.exclude_elements("H")),
+        optimizer="adam",
+        lr=0.02,
+    )
+
+    assert torch.equal(result.params.asu_positions[1], start.asu_positions[1])
+    assert not torch.equal(result.params.asu_positions[0], start.asu_positions[0])
+
+
 def test_refine_only_selected_targets_change() -> None:
     # With only "adp" selected, positions must be carried through as an untouched constant.
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(u_iso_scale=0.15)))
@@ -408,6 +472,16 @@ def test_refine_only_selected_targets_change() -> None:
 def test_refine_rejects_empty_trainable_spec() -> None:
     with pytest.raises(ValueError, match="at least one trainable parameter group"):
         _refine(_engine(), _params(), steps=1, trainable=TrainableSpec())
+
+
+def test_refine_rejects_element_selection_matching_no_atoms() -> None:
+    with pytest.raises(ValueError, match="matched no atoms"):
+        _refine(
+            _engine(),
+            _params(),
+            steps=1,
+            trainable=TrainableSpec(positions=AtomSelection.exclude_elements("Si")),
+        )
 
 
 def test_refine_rejects_trainable_group_with_no_parameter() -> None:

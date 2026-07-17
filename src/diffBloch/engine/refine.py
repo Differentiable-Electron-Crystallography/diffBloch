@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
 
+import gemmi
 import torch
 from torch import Tensor
 
@@ -65,16 +66,35 @@ class AtomSelection:
     """
 
     mode: Literal["all", "none"]
+    element_include: tuple[str, ...] = ()
+    element_exclude: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject invalid runtime construction, not just invalid static/config values."""
         if self.mode not in {"all", "none"}:
             raise ValueError(f"atom selection mode must be 'all' or 'none'; got {self.mode!r}")
+        _element_numbers(self.element_include)
+        _element_numbers(self.element_exclude)
+        overlap = set(self.element_include) & set(self.element_exclude)
+        if overlap:
+            raise ValueError(f"elements cannot be both included and excluded: {sorted(overlap)}")
+        if self.mode == "none" and (self.element_include or self.element_exclude):
+            raise ValueError("element filters require selection mode 'all'")
 
     @classmethod
     def all(cls) -> AtomSelection:
         """Select every present parameter in the group."""
         return cls("all")
+
+    @classmethod
+    def include_elements(cls, *symbols: str) -> AtomSelection:
+        """Select only atoms whose element symbol is listed."""
+        return cls("all", element_include=tuple(symbols))
+
+    @classmethod
+    def exclude_elements(cls, *symbols: str) -> AtomSelection:
+        """Select all atoms except those whose element symbol is listed."""
+        return cls("all", element_exclude=tuple(symbols))
 
     @classmethod
     def none(cls) -> AtomSelection:
@@ -85,6 +105,23 @@ class AtomSelection:
     def selects_any(self) -> bool:
         """Whether this selection unlocks the corresponding trainable group."""
         return self.mode == "all"
+
+    @property
+    def has_element_filter(self) -> bool:
+        """Whether this selection needs ASU atomic numbers to resolve per-row leaves."""
+        return bool(self.element_include or self.element_exclude)
+
+
+def _element_numbers(symbols: tuple[str, ...]) -> frozenset[int]:
+    """Resolve element symbols to atomic numbers at the API boundary."""
+    numbers: set[int] = set()
+    for symbol in symbols:
+        element = gemmi.Element(symbol)
+        number = int(element.atomic_number)
+        if number <= 0 or element.name.lower() != symbol.lower():
+            raise ValueError(f"unknown element symbol {symbol!r}")
+        numbers.add(number)
+    return frozenset(numbers)
 
 
 @dataclass(frozen=True)
@@ -179,6 +216,7 @@ def run_refinement(
     trainable: TrainableSpec,
     optimizer: OptimizerName,
     lr: float,
+    atomic_numbers: Tensor | None = None,
     logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
     """Optimize the ``trainable`` parameter groups to minimise ``objective_value(params).total``.
@@ -196,7 +234,9 @@ def run_refinement(
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
-    trainable_params = _to_trainable_params(params, _resolve_trainable(params, trainable))
+    trainable_params = _to_trainable_params(
+        params, _resolve_trainable(params, trainable, atomic_numbers=atomic_numbers)
+    )
     opt = _build_optimizer(optimizer, list(trainable_params.leaves), lr)
 
     def closure() -> float:
@@ -227,20 +267,75 @@ def run_refinement(
     )
 
 
-def _resolve_trainable(params: RefinableParams, trainable: TrainableSpec) -> frozenset[str]:
-    """Map trainable selections to the present RefinableParams field names they unlock."""
-    fields: set[str] = set()
+def _resolve_trainable(
+    params: RefinableParams,
+    trainable: TrainableSpec,
+    *,
+    atomic_numbers: Tensor | None,
+) -> Mapping[str, Tensor | None]:
+    """Map trainable selections to RefinableParams field names plus optional row masks."""
+    fields: dict[str, Tensor | None] = {}
     selected_groups = [name for name in _TRAINABLE_FIELDS if getattr(trainable, name).selects_any]
     if not selected_groups:
         raise ValueError("at least one trainable parameter group is required")
     for group in selected_groups:
+        selection = getattr(trainable, group)
         present = [name for name in _TRAINABLE_FIELDS[group] if getattr(params, name) is not None]
         if not present:
             raise ValueError(
                 f"trainable group {group!r} selected but no matching parameter is present"
             )
-        fields.update(present)
-    return frozenset(fields)
+        if selection.has_element_filter and group not in {"positions", "adp", "occupancy"}:
+            raise ValueError(f"element filters are not meaningful for trainable group {group!r}")
+        row_mask = _row_mask(selection, params=params, atomic_numbers=atomic_numbers)
+        for field_name in present:
+            fields[field_name] = row_mask
+    return MappingProxyType(fields)
+
+
+def _row_mask(
+    selection: AtomSelection,
+    *,
+    params: RefinableParams,
+    atomic_numbers: Tensor | None,
+) -> Tensor | None:
+    """Resolve an atom selection into a boolean ASU-row mask, or ``None`` for whole group."""
+    if not selection.has_element_filter:
+        return None
+    if atomic_numbers is None:
+        raise ValueError("element-filtered trainable selections require atomic numbers")
+    if atomic_numbers.shape != (params.asu_positions.shape[0],):
+        raise ValueError("atomic_numbers must have shape (N,) matching asu_positions")
+    include = _element_numbers(selection.element_include)
+    exclude = _element_numbers(selection.element_exclude)
+    numbers = atomic_numbers.detach().cpu().to(dtype=torch.int64)
+    mask = torch.ones_like(numbers, dtype=torch.bool)
+    if include:
+        mask = torch.zeros_like(numbers, dtype=torch.bool)
+        for number in include:
+            mask |= numbers == number
+    for number in exclude:
+        mask &= numbers != number
+    if not bool(mask.any()):
+        raise ValueError("trainable atom selection matched no atoms")
+    return mask
+
+
+@dataclass(frozen=True)
+class _FieldOverride:
+    """A trainable leaf plus optional row mask for reconstructing one parameter field."""
+
+    leaf: Tensor
+    row_mask: Tensor | None = None
+
+    def apply(self, baseline: Tensor) -> Tensor:
+        """Overlay this leaf onto a detached full-field baseline."""
+        if self.row_mask is None:
+            return self.leaf
+        mask = self.row_mask.to(device=baseline.device)
+        full = baseline.clone()
+        full[mask] = self.leaf
+        return full
 
 
 @dataclass(frozen=True)
@@ -253,31 +348,37 @@ class _TrainableParams:
     """
 
     frozen: RefinableParams
-    overrides: Mapping[str, Tensor]
+    overrides: Mapping[str, _FieldOverride]
     leaves: tuple[Tensor, ...]
 
     def params(self) -> RefinableParams:
         """Reconstruct the full parameter value for the current leaf tensors."""
-        return dataclasses.replace(self.frozen, **self.overrides)
+        values = {
+            name: override.apply(getattr(self.frozen, name))
+            for name, override in self.overrides.items()
+        }
+        return dataclasses.replace(self.frozen, **values)
 
 
 def _to_trainable_params(
-    params: RefinableParams, trainable_fields: frozenset[str]
+    params: RefinableParams, trainable_fields: Mapping[str, Tensor | None]
 ) -> _TrainableParams:
     """Split ``params`` into detached frozen context and explicit trainable leaves."""
     frozen_values: dict[str, Any] = {}
-    overrides: dict[str, Tensor] = {}
+    overrides: dict[str, _FieldOverride] = {}
     leaves: list[Tensor] = []
     for param_field in dataclasses.fields(RefinableParams):
         value = getattr(params, param_field.name)
         if value is None:
             frozen_values[param_field.name] = None
         elif param_field.name in trainable_fields:
-            leaf = value.detach().clone().requires_grad_(True)
+            row_mask = trainable_fields[param_field.name]
+            leaf_value = value[row_mask.to(device=value.device)] if row_mask is not None else value
+            leaf = leaf_value.detach().clone().requires_grad_(True)
             # Keep the detached full-field baseline even when this whole field is overridden today:
             # future per-atom leaves will reconstruct by scattering selected rows onto it.
             frozen_values[param_field.name] = value.detach().clone()
-            overrides[param_field.name] = leaf
+            overrides[param_field.name] = _FieldOverride(leaf=leaf, row_mask=row_mask)
             leaves.append(leaf)
         else:
             frozen_values[param_field.name] = value.detach().clone()
