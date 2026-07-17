@@ -39,9 +39,11 @@ from diffBloch.engine.refine import (
     TrainableSpec,
     run_refinement,
 )
+from diffBloch.engine.restraints import BondRestraints
 
 __all__ = [
     "AtomSelection",
+    "BondRestraints",
     "LossFn",
     "ObjectiveComponent",
     "ObjectiveValue",

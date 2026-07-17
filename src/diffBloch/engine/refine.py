@@ -193,7 +193,9 @@ class RestraintTerm(Protocol):
     """A soft refinement penalty evaluated on the physical ASU state.
 
     Restraints are objective components, not hard constraints: ``loss`` returns the raw scientific
-    diagnostic and ``weight`` scales it into the optimizer-facing contribution.
+    diagnostic and ``weight`` scales it into the optimizer-facing contribution. Concrete terms own
+    their invariant context (for example metric/cell, connectivity, targets, and sigmas) instead of
+    bloating :class:`~diffBloch.params.PhysicalState` with every possible restraint input.
     """
 
     name: str
