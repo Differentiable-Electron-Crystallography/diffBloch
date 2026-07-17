@@ -196,21 +196,21 @@ def run_refinement(
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
-    leaf_params, leaves = _to_leaves(params, _resolve_trainable(params, trainable))
-    opt = _build_optimizer(optimizer, leaves, lr)
+    trainable_params = _to_trainable_params(params, _resolve_trainable(params, trainable))
+    opt = _build_optimizer(optimizer, list(trainable_params.leaves), lr)
 
     def closure() -> float:
         opt.zero_grad()
-        loss = objective_value(leaf_params).total
+        loss = objective_value(trainable_params.params()).total
         loss.backward()  # type: ignore[no-untyped-call]
         return float(loss.detach())
 
     losses: list[float] = []
     best_loss = math.inf
     best_step = 0
-    best_params = _detach_params(leaf_params)
+    best_params = _detach_params(trainable_params.params())
     for step in range(steps):
-        snapshot = _detach_params(leaf_params)  # params behind this step's pre-update loss
+        snapshot = _detach_params(trainable_params.params())  # params behind this step's loss
         loss_value = opt.step(closure)
         assert loss_value is not None  # closure is always provided -> step returns the loss
         loss_value = float(loss_value)
@@ -220,7 +220,7 @@ def run_refinement(
             best_loss, best_step, best_params = loss_value, step, snapshot
     logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
     return RefinementResult(
-        params=_detach_params(leaf_params),
+        params=_detach_params(trainable_params.params()),
         losses=torch.tensor(losses, dtype=torch.float64),
         best_params=best_params,
         best_step=best_step,
@@ -243,23 +243,49 @@ def _resolve_trainable(params: RefinableParams, trainable: TrainableSpec) -> fro
     return frozenset(fields)
 
 
-def _to_leaves(
+@dataclass(frozen=True)
+class _TrainableParams:
+    """Frozen parameter context plus the trainable leaves that override it.
+
+    This keeps optimizer leaves explicit and reconstructs a full :class:`RefinableParams` value for
+    each objective evaluation. With today's whole-group selections the overrides are full tensors;
+    later per-atom selections can reconstruct full fields from smaller selected leaves here.
+    """
+
+    frozen: RefinableParams
+    overrides: Mapping[str, Tensor]
+    leaves: tuple[Tensor, ...]
+
+    def params(self) -> RefinableParams:
+        """Reconstruct the full parameter value for the current leaf tensors."""
+        return dataclasses.replace(self.frozen, **self.overrides)
+
+
+def _to_trainable_params(
     params: RefinableParams, trainable_fields: frozenset[str]
-) -> tuple[RefinableParams, list[Tensor]]:
-    """Clone ``params`` so ``trainable_fields`` are fresh grad leaves, the rest constants."""
-    values: dict[str, Any] = {}
+) -> _TrainableParams:
+    """Split ``params`` into detached frozen context and explicit trainable leaves."""
+    frozen_values: dict[str, Any] = {}
+    overrides: dict[str, Tensor] = {}
     leaves: list[Tensor] = []
     for param_field in dataclasses.fields(RefinableParams):
         value = getattr(params, param_field.name)
         if value is None:
-            values[param_field.name] = None
+            frozen_values[param_field.name] = None
         elif param_field.name in trainable_fields:
             leaf = value.detach().clone().requires_grad_(True)
-            values[param_field.name] = leaf
+            # Keep the detached full-field baseline even when this whole field is overridden today:
+            # future per-atom leaves will reconstruct by scattering selected rows onto it.
+            frozen_values[param_field.name] = value.detach().clone()
+            overrides[param_field.name] = leaf
             leaves.append(leaf)
         else:
-            values[param_field.name] = value.detach().clone()
-    return dataclasses.replace(params, **values), leaves
+            frozen_values[param_field.name] = value.detach().clone()
+    return _TrainableParams(
+        frozen=dataclasses.replace(params, **frozen_values),
+        overrides=MappingProxyType(overrides),
+        leaves=tuple(leaves),
+    )
 
 
 def _detach_params(params: RefinableParams) -> RefinableParams:
