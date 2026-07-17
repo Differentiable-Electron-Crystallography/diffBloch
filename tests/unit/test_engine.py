@@ -12,6 +12,8 @@ from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
     LossFn,
+    ObjectiveComponent,
+    ObjectiveValue,
     OrientationPlan,
     RefinementEngine,
     ScatteringGrid,
@@ -119,6 +121,17 @@ def test_objective_returns_scalar() -> None:
     assert torch.isfinite(loss) and loss >= 0.0
 
 
+def test_objective_value_names_the_diffraction_component() -> None:
+    objective = _engine().objective_value(_params())
+    assert objective.total.shape == ()
+    assert set(objective.components) == {"diffraction"}
+    diffraction = objective.components["diffraction"]
+    assert diffraction.weight == 1.0
+    assert torch.equal(diffraction.raw, diffraction.contribution)
+    assert torch.equal(objective.total, sum(c.contribution for c in objective.components.values()))
+    assert torch.equal(objective.total, _engine().objective(_params()))
+
+
 def test_refinable_thickness_drives_the_forward_model() -> None:
     # The "thickness" refine target maps to thickness_raw; the forward model must consume it (not
     # silently use each orientation's frozen thickness). orientation seed = 300 A.
@@ -145,6 +158,19 @@ def test_refinable_thickness_drives_the_forward_model() -> None:
     assert not torch.allclose(thick_500.intensities, no_thickness.intensities)
     # ...and equals the orientation's frozen thickness exactly at 300 A (proving the wiring).
     assert torch.allclose(thick_300.intensities, no_thickness.intensities)
+
+
+def test_objective_value_computes_weighted_total_from_components() -> None:
+    value = ObjectiveValue(
+        {
+            "diffraction": ObjectiveComponent(torch.tensor(2.0, dtype=torch.float64)),
+            "bond": ObjectiveComponent(torch.tensor(3.0, dtype=torch.float64), weight=0.25),
+        }
+    )
+
+    assert torch.equal(value.total, torch.tensor(2.75, dtype=torch.float64))
+    with pytest.raises(TypeError):
+        value.components["angle"] = ObjectiveComponent(torch.tensor(1.0))  # type: ignore[index]
 
 
 def test_objective_is_differentiable_through_the_whole_chain() -> None:

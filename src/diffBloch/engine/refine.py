@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Literal
 
 import torch
@@ -31,6 +32,8 @@ from diffBloch.observability import (
 from diffBloch.params import RefinableParams
 
 __all__ = [
+    "ObjectiveComponent",
+    "ObjectiveValue",
     "OptimizerName",
     "RefinementResult",
     "run_refinement",
@@ -48,6 +51,54 @@ _TARGET_FIELDS: dict[str, tuple[str, ...]] = {
     "Fgb": ("Fgb",),
     "thickness": ("thickness_raw",),
 }
+
+
+@dataclass(frozen=True)
+class ObjectiveComponent:
+    """One named refinement objective term.
+
+    ``raw`` is the scientifically meaningful scalar diagnostic (for example, a bond restraint before
+    weighting). ``weight`` scales that diagnostic into the optimizer-facing ``contribution``.
+    """
+
+    raw: Tensor
+    weight: float = 1.0
+
+    @property
+    def contribution(self) -> Tensor:
+        """The weighted scalar contribution this component adds to the objective total."""
+        return self.raw * self.weight
+
+
+@dataclass(frozen=True, init=False)
+class ObjectiveValue:
+    """A scalar refinement objective plus named scalar components.
+
+    ``total`` is computed from component contributions so reporting and optimization cannot silently
+    drift. ``components`` is a read-only mapping whose values retain both raw diagnostics and
+    weights for future restraint reporting.
+    """
+
+    total: Tensor
+    components: Mapping[str, ObjectiveComponent]
+
+    def __init__(self, components: Mapping[str, ObjectiveComponent]) -> None:
+        if not components:
+            raise ValueError("at least one objective component is required")
+        copied = dict(components)
+        contributions: list[Tensor] = []
+        for name, component in copied.items():
+            if component.raw.ndim != 0:
+                raise ValueError(
+                    f"objective component {name!r} must be scalar, got shape "
+                    f"{tuple(component.raw.shape)}"
+                )
+            contributions.append(component.contribution)
+        total = contributions[0].new_zeros(())
+        for contribution in contributions:
+            total = total + contribution
+        object.__setattr__(self, "total", total)
+        object.__setattr__(self, "components", MappingProxyType(copied))
 
 
 @dataclass(frozen=True)

@@ -39,7 +39,13 @@ from diffBloch.engine.plan import (
     ScatteringGrid,
     SegmentedOrientationPlan,
 )
-from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
+from diffBloch.engine.refine import (
+    ObjectiveComponent,
+    ObjectiveValue,
+    OptimizerName,
+    RefinementResult,
+    run_refinement,
+)
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 
@@ -129,10 +135,12 @@ class RefinementEngine:
             ]
         )
 
-    def objective(self, params: RefinableParams) -> Tensor:
-        """Return the scalar objective: the per-orientation ``loss`` summed over orientations.
+    def objective_value(self, params: RefinableParams) -> ObjectiveValue:
+        """Return the objective as a scalar total plus named scalar components.
 
-        Differentiable in ``params``; this is the quantity ``refine`` minimises.
+        Differentiable in ``params``. The only component today is ``"diffraction"``; this shape is
+        the public seam for future geometric/restraint terms without making the optimizer know their
+        details.
         """
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
@@ -147,7 +155,14 @@ class RefinementEngine:
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
-        return total
+        return ObjectiveValue({"diffraction": ObjectiveComponent(raw=total)})
+
+    def objective(self, params: RefinableParams) -> Tensor:
+        """Return the scalar objective: the per-orientation ``loss`` summed over orientations.
+
+        Differentiable in ``params``; this is the quantity ``refine`` minimises.
+        """
+        return self.objective_value(params).total
 
     def refine(
         self,

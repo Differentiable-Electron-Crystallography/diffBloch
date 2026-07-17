@@ -23,10 +23,18 @@ from diffBloch.engine.plan import (
     ScatteringGrid,
     SegmentedOrientationPlan,
 )
-from diffBloch.engine.refine import OptimizerName, RefinementResult, run_refinement
+from diffBloch.engine.refine import (
+    ObjectiveComponent,
+    ObjectiveValue,
+    OptimizerName,
+    RefinementResult,
+    run_refinement,
+)
 
 __all__ = [
     "LossFn",
+    "ObjectiveComponent",
+    "ObjectiveValue",
     "OptimizerName",
     "OrientationPlan",
     "OrientationPlanLike",
