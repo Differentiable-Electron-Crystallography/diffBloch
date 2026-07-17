@@ -2,9 +2,10 @@
 
 ``torch.optim`` optimizers mutate ``.grad`` and leaf tensors in place and carry internal state, so a
 training loop cannot be a pure function. This module quarantines that imperativeness behind a
-functional contract: :func:`run_refinement` takes the engine's pure ``objective`` callable and the
-caller's parameters, clones the *target* fields into fresh ``requires_grad`` leaves (the rest become
-detached constants), steps a chosen backend, and returns a new detached :class:`RefinementResult`.
+functional contract: :func:`run_refinement` takes the engine's pure ``objective_value`` callable
+and the caller's parameters, clones the *target* fields into fresh ``requires_grad`` leaves (the
+rest become detached constants), steps a chosen backend, and returns a new detached
+:class:`RefinementResult`.
 The caller's parameters are never touched. ``core/`` stays free of ``torch.optim`` entirely.
 
 Deliberately deferred surface: per-group learning rates, ``least_squares``, component ``activate``,
@@ -122,7 +123,7 @@ class RefinementResult:
 
 
 def run_refinement(
-    objective: Callable[[RefinableParams], Tensor],
+    objective_value: Callable[[RefinableParams], ObjectiveValue],
     params: RefinableParams,
     *,
     steps: int,
@@ -131,7 +132,7 @@ def run_refinement(
     lr: float,
     logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
-    """Optimize the selected ``targets`` to minimise ``objective(params)``; return a result.
+    """Optimize the selected ``targets`` to minimise ``objective_value(params).total``.
 
     Functional contract over an unavoidably imperative core: the caller's ``params`` are never
     mutated. Target fields become fresh ``requires_grad`` leaves (non-target fields detached
@@ -151,7 +152,7 @@ def run_refinement(
 
     def closure() -> float:
         opt.zero_grad()
-        loss = objective(leaf_params)
+        loss = objective_value(leaf_params).total
         loss.backward()  # type: ignore[no-untyped-call]
         return float(loss.detach())
 

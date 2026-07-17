@@ -7,8 +7,9 @@ rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiabl
     constrain -> expand ASU -> structure_factors (Fgb on the shared grid)
               -> per orientation: build_bloch_system -> propagate -> intensities -> align -> loss
 
-``objective`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the quarantined
-imperative loop in :mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
+``objective_value`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the
+quarantined imperative loop in :mod:`diffBloch.engine.refine`. ``from_config`` /
+``from_experiment``
 construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
 per-orientation beam sets.
 """
@@ -158,9 +159,11 @@ class RefinementEngine:
         return ObjectiveValue({"diffraction": ObjectiveComponent(raw=total)})
 
     def objective(self, params: RefinableParams) -> Tensor:
-        """Return the scalar objective: the per-orientation ``loss`` summed over orientations.
+        """Return the scalar objective convenience view.
 
-        Differentiable in ``params``; this is the quantity ``refine`` minimises.
+        This accessor is for callers that only need the optimizer-facing scalar. The refinement loop
+        itself consumes :meth:`objective_value` so named components remain available for reporting
+        and future restraints.
         """
         return self.objective_value(params).total
 
@@ -177,13 +180,13 @@ class RefinementEngine:
         """Optimize the selected ``targets`` to minimise the objective; return a result snapshot.
 
         Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
-        ``objective``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
+        ``objective_value``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
         (per-group rates deferred); ``least_squares`` and component ``activate`` are likewise
         deferred. ``logger`` streams per-step and
         completion events (default :data:`NULL_LOGGER` = no-op, result unchanged).
         """
         return run_refinement(
-            self.objective,
+            self.objective_value,
             params,
             steps=steps,
             targets=targets,
