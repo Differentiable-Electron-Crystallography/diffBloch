@@ -247,8 +247,8 @@ def run_refinement(
 
     ``logger`` receives a :class:`RefinementStep` per iteration and one
     :class:`RefinementCompleted` at the end; the default :data:`NULL_LOGGER` makes emission a no-op,
-    so the returned result is unchanged. Measurements are the already-materialised per-step loss, so
-    emission adds no extra device sync.
+    so the returned result is unchanged. Step events include the structured ``ObjectiveValue``
+    components as numeric diagnostics, making diffraction/restraint tradeoffs inspectable.
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
@@ -256,10 +256,18 @@ def run_refinement(
         params, _resolve_trainable(params, trainable, atomic_numbers=atomic_numbers)
     )
     opt = _build_optimizer(optimizer, list(trainable_params.leaves), lr)
+    reported_objective: ObjectiveValue | None = None
 
     def closure() -> float:
+        nonlocal reported_objective
         opt.zero_grad()
-        loss = objective_value(trainable_params.params()).total
+        current_objective = objective_value(trainable_params.params())
+        if reported_objective is None:
+            # LBFGS may evaluate the closure multiple times during one outer step. ``step`` returns
+            # the first/pre-update loss, so diagnostics must snapshot that same ObjectiveValue, not
+            # a later line-search probe.
+            reported_objective = current_objective
+        loss = current_objective.total
         loss.backward()  # type: ignore[no-untyped-call]
         return float(loss.detach())
 
@@ -269,11 +277,21 @@ def run_refinement(
     best_params = _detach_params(trainable_params.params())
     for step in range(steps):
         snapshot = _detach_params(trainable_params.params())  # params behind this step's loss
+        reported_objective = None
         loss_value = opt.step(closure)
         assert loss_value is not None  # closure is always provided -> step returns the loss
         loss_value = float(loss_value)
+        if reported_objective is None:
+            raise RuntimeError("optimizer did not evaluate the refinement objective")
         losses.append(loss_value)
-        logger.report(RefinementStep(iteration=step, loss=loss_value))
+        logger.report(
+            RefinementStep(
+                iteration=step,
+                loss=loss_value,
+                objective_total=_scalar_float(reported_objective.total),
+                components=_component_measurements(reported_objective),
+            )
+        )
         if loss_value < best_loss:
             best_loss, best_step, best_params = loss_value, step, snapshot
     logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
@@ -283,6 +301,25 @@ def run_refinement(
         best_params=best_params,
         best_step=best_step,
     )
+
+
+def _component_measurements(objective: ObjectiveValue) -> Mapping[str, Mapping[str, float]]:
+    return MappingProxyType(
+        {
+            name: MappingProxyType(
+                {
+                    "raw": _scalar_float(component.raw),
+                    "weight": float(component.weight),
+                    "contribution": _scalar_float(component.contribution),
+                }
+            )
+            for name, component in objective.components.items()
+        }
+    )
+
+
+def _scalar_float(value: Tensor) -> float:
+    return float(value.detach())
 
 
 def _resolve_trainable(

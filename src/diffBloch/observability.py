@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import ClassVar, Protocol, runtime_checkable
 
 __all__ = [
@@ -153,11 +154,23 @@ class InferenceCompleted:
 
 @dataclass(frozen=True)
 class RefinementStep:
-    """One optimizer iteration's pre-update loss, emitted per step by ``run_refinement``."""
+    """One optimizer iteration, emitted per step by ``run_refinement``.
+
+    ``loss`` is the scalar value recorded by the optimizer loop. When available,
+    ``objective_total`` and ``components`` expose the structured
+    :class:`diffBloch.engine.refine.ObjectiveValue` diagnostics as plain numeric measurements:
+    every component contributes ``component.<name>.raw``, ``.weight``, and ``.contribution``.
+    """
 
     channel: ClassVar[str] = "refinement"
     iteration: int
     loss: float
+    objective_total: float | None = None
+    components: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
+        object.__setattr__(self, "components", MappingProxyType(copied))
 
     @property
     def step(self) -> int | None:
@@ -165,7 +178,13 @@ class RefinementStep:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {"loss": self.loss}
+        measurements = {"loss": self.loss}
+        if self.objective_total is not None:
+            measurements["objective_total"] = self.objective_total
+        for name, values in self.components.items():
+            for field_name, value in values.items():
+                measurements[f"component.{name}.{field_name}"] = value
+        return measurements
 
 
 @dataclass(frozen=True)

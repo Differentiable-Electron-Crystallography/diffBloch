@@ -463,9 +463,36 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     (completed,) = [e for e in recorder.events if isinstance(e, RefinementCompleted)]
     assert [e.iteration for e in steps] == [0, 1, 2, 3, 4, 5]  # one event per step, in order
     assert [e.loss for e in steps] == [float(x) for x in result.losses]  # the reported curve
+    first = steps[0]
+    assert first.objective_total == first.loss
+    assert first.components.keys() == {"diffraction"}
+    assert first.measurements["component.diffraction.raw"] == first.loss
+    assert first.measurements["component.diffraction.weight"] == 1.0
+    assert first.measurements["component.diffraction.contribution"] == first.loss
     assert completed.n_steps == 6
     assert completed.best_step == result.best_step
     assert completed.best_loss == result.best_loss
+
+
+def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
+    recorder = RecordingLogger()
+
+    result = _refine(
+        engine,
+        _params(occupancy_logit=0.0),
+        steps=1,
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        optimizer="lbfgs",
+        lr=0.2,
+        logger=recorder,
+    )
+
+    (step,) = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    assert step.loss == float(result.losses[0])
+    assert step.objective_total == step.loss
+    assert step.measurements["component.diffraction.raw"] == step.loss
+    assert step.measurements["component.diffraction.contribution"] == step.loss
 
 
 def test_refine_element_selection_freezes_excluded_position_rows() -> None:

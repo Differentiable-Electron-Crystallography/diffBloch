@@ -56,6 +56,20 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert refinement.step == 4  # a refinement step's step is its iteration
     assert refinement.measurements == {"loss": 1.5}
 
+    structured_refinement = RefinementStep(
+        iteration=5,
+        loss=2.0,
+        objective_total=2.0,
+        components={"diffraction": {"raw": 1.0, "weight": 2.0, "contribution": 2.0}},
+    )
+    assert structured_refinement.measurements == {
+        "loss": 2.0,
+        "objective_total": 2.0,
+        "component.diffraction.raw": 1.0,
+        "component.diffraction.weight": 2.0,
+        "component.diffraction.contribution": 2.0,
+    }
+
     refinement_done = RefinementCompleted(n_steps=20, best_step=17, best_loss=0.3)
     assert refinement_done.channel == "refinement"  # shares the stream's channel
     assert refinement_done.step is None  # separated from the stream by step, not channel
