@@ -39,7 +39,7 @@ from diffBloch.engine.refine import (
     TrainableSpec,
     run_refinement,
 )
-from diffBloch.engine.restraints import BondRestraints
+from diffBloch.engine.restraints import BondRestraints, perceive_bond_restraints
 
 __all__ = [
     "AtomSelection",
@@ -59,6 +59,7 @@ __all__ = [
     "TrainableSpec",
     "l1_loss",
     "mse_loss",
+    "perceive_bond_restraints",
     "rbragg_loss",
     "run_refinement",
     "run_refinement_problem",
