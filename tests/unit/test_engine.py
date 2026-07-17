@@ -16,8 +16,10 @@ from diffBloch.engine import (
     ObjectiveValue,
     OrientationPlan,
     RefinementEngine,
+    RefinementProblem,
     ScatteringGrid,
     mse_loss,
+    run_refinement_problem,
 )
 from diffBloch.observability import RecordingLogger, RefinementCompleted, RefinementStep
 from diffBloch.params import RefinableParams
@@ -158,6 +160,28 @@ def test_refinable_thickness_drives_the_forward_model() -> None:
     assert not torch.allclose(thick_500.intensities, no_thickness.intensities)
     # ...and equals the orientation's frozen thickness exactly at 300 A (proving the wiring).
     assert torch.allclose(thick_300.intensities, no_thickness.intensities)
+
+
+def test_refinement_problem_is_pure_data() -> None:
+    params = _params()
+    problem = RefinementProblem(initial=params)
+
+    assert problem.initial is params
+    assert not hasattr(problem, "engine")
+    assert not hasattr(problem, "refine")
+
+
+def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> None:
+    observed = _observed_pattern(_params(occupancy_logit=2.2))
+    engine = _engine(loss=mse_loss, pattern=observed)
+    problem = RefinementProblem(initial=_params(occupancy_logit=0.0))
+
+    result = run_refinement_problem(
+        engine, problem, steps=6, targets=("occupancy",), optimizer="adam", lr=0.2
+    )
+
+    assert result.losses.shape == (6,)
+    assert result.losses[-1] < result.losses[0]
 
 
 def test_objective_value_computes_weighted_total_from_components() -> None:

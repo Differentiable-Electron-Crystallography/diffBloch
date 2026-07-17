@@ -8,7 +8,12 @@
 The dependency points one way (refine -> forward -> core); ``core/`` stays free of ``torch.optim``.
 """
 
-from diffBloch.engine.forward import LossFn, RefinementEngine
+from diffBloch.engine.forward import (
+    LossFn,
+    RefinementEngine,
+    RefinementProblem,
+    run_refinement_problem,
+)
 from diffBloch.engine.losses import (
     l1_loss,
     mse_loss,
@@ -39,6 +44,7 @@ __all__ = [
     "OrientationPlan",
     "OrientationPlanLike",
     "RefinementEngine",
+    "RefinementProblem",
     "RefinementResult",
     "ScatteringGrid",
     "SegmentedOrientationPlan",
@@ -46,6 +52,7 @@ __all__ = [
     "mse_loss",
     "rbragg_loss",
     "run_refinement",
+    "run_refinement_problem",
     "scaled_w_rbragg_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",

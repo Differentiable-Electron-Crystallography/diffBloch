@@ -53,6 +53,8 @@ from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 __all__ = [
     "LossFn",
     "RefinementEngine",
+    "RefinementProblem",
+    "run_refinement_problem",
 ]
 
 # A loss reduces one orientation's aligned intensities to a scalar term (calculated vs observed).
@@ -185,9 +187,9 @@ class RefinementEngine:
         deferred. ``logger`` streams per-step and
         completion events (default :data:`NULL_LOGGER` = no-op, result unchanged).
         """
-        return run_refinement(
-            self.objective_value,
-            params,
+        return run_refinement_problem(
+            self,
+            RefinementProblem(initial=params),
             steps=steps,
             targets=targets,
             optimizer=optimizer,
@@ -315,3 +317,37 @@ class RefinementEngine:
         return BlochSolution(
             total.sqrt().to(complex_dtype), total, plan.beam_hkl.to(device), thicknesses
         )
+
+
+@dataclass(frozen=True)
+class RefinementProblem:
+    """The pure-data scientific definition of one refinement run.
+
+    Initially this records only the starting parameters. Later phases will add trainable selections,
+    hard policies, and restraints here. The live :class:`RefinementEngine` remains an explicit
+    executor/context argument rather than being stored on the problem.
+    """
+
+    initial: RefinableParams
+
+
+def run_refinement_problem(
+    engine: RefinementEngine,
+    problem: RefinementProblem,
+    *,
+    steps: int,
+    targets: Sequence[str] = ("positions", "adp"),
+    optimizer: OptimizerName = "lbfgs",
+    lr: float = 1e-3,
+    logger: Logger = NULL_LOGGER,
+) -> RefinementResult:
+    """Optimize a pure-data refinement problem with the supplied engine/context."""
+    return run_refinement(
+        engine.objective_value,
+        problem.initial,
+        steps=steps,
+        targets=targets,
+        optimizer=optimizer,
+        lr=lr,
+        logger=logger,
+    )
