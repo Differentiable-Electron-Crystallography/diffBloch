@@ -147,11 +147,25 @@ class OptimizerConfig(_StrictConfig):
     max_line_search_steps: int = 20
 
 
+class TrainableConfig(_StrictConfig):
+    """Whole-group trainable selections for a refinement stage.
+
+    Config scaffolding for the future app-level refinement stage: parsed and validated here now;
+    converted to ``TrainableSpec`` when the stage is wired into ``run_experiment``.
+    """
+
+    positions: Literal["all", "none"] = "all"
+    adp: Literal["all", "none"] = "all"
+    occupancy: Literal["all", "none"] = "none"
+    fgb: Literal["all", "none"] = "none"
+    thickness: Literal["all", "none"] = "none"
+
+
 class RefinementConfig(_StrictConfig):
     """Default refinement-stage hyperparameters."""
 
     steps: int = 500
-    targets: tuple[str, ...] = ("positions", "adp")
+    trainable: TrainableConfig = Field(default_factory=TrainableConfig)
     optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)

@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
 
@@ -34,24 +34,73 @@ from diffBloch.params import RefinableParams
 
 __all__ = [
     "ObjectiveComponent",
+    "AtomSelection",
     "ObjectiveValue",
     "OptimizerName",
     "RefinementResult",
+    "TrainableSpec",
     "run_refinement",
 ]
 
 # The torch.optim backends wired here; least_squares (Gauss-Newton/LM) is deferred.
 type OptimizerName = Literal["adam", "adamw", "lbfgs"]
 
-# Refinement-target name -> the RefinableParams field(s) it unlocks for optimization. "adp" maps to
+# Trainable group name -> the RefinableParams field(s) it unlocks for optimization. "adp" maps to
 # both raw ADP fields; only those actually present become leaves.
-_TARGET_FIELDS: dict[str, tuple[str, ...]] = {
+_TRAINABLE_FIELDS: dict[str, tuple[str, ...]] = {
     "positions": ("asu_positions",),
     "adp": ("uij_raw", "u_iso_raw"),
     "occupancy": ("occupancy_raw",),
-    "Fgb": ("Fgb",),
+    "fgb": ("Fgb",),
     "thickness": ("thickness_raw",),
 }
+
+
+@dataclass(frozen=True)
+class AtomSelection:
+    """A coarse atom/parameter selection for one trainable group.
+
+    Phase 5 only distinguishes whole-group ``all`` vs ``none``. Later phases can extend this value
+    with element or index filters without reintroducing stringly-typed refinement targets.
+    """
+
+    mode: Literal["all", "none"]
+
+    def __post_init__(self) -> None:
+        """Reject invalid runtime construction, not just invalid static/config values."""
+        if self.mode not in {"all", "none"}:
+            raise ValueError(f"atom selection mode must be 'all' or 'none'; got {self.mode!r}")
+
+    @classmethod
+    def all(cls) -> AtomSelection:
+        """Select every present parameter in the group."""
+        return cls("all")
+
+    @classmethod
+    def none(cls) -> AtomSelection:
+        """Select no parameters in the group."""
+        return cls("none")
+
+    @property
+    def selects_any(self) -> bool:
+        """Whether this selection unlocks the corresponding trainable group."""
+        return self.mode == "all"
+
+
+@dataclass(frozen=True)
+class TrainableSpec:
+    """Explicit selection of which parameter groups are trainable in a refinement problem."""
+
+    positions: AtomSelection = field(default_factory=AtomSelection.none)
+    adp: AtomSelection = field(default_factory=AtomSelection.none)
+    occupancy: AtomSelection = field(default_factory=AtomSelection.none)
+    fgb: AtomSelection = field(default_factory=AtomSelection.none)
+    thickness: AtomSelection = field(default_factory=AtomSelection.none)
+
+    @classmethod
+    def positions_and_adp(cls) -> TrainableSpec:
+        """The historical default: refine positions and ADPs when present."""
+        return cls(positions=AtomSelection.all(), adp=AtomSelection.all())
 
 
 @dataclass(frozen=True)
@@ -127,18 +176,18 @@ def run_refinement(
     params: RefinableParams,
     *,
     steps: int,
-    targets: Sequence[str],
+    trainable: TrainableSpec,
     optimizer: OptimizerName,
     lr: float,
     logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
-    """Optimize the selected ``targets`` to minimise ``objective_value(params).total``.
+    """Optimize the ``trainable`` parameter groups to minimise ``objective_value(params).total``.
 
     Functional contract over an unavoidably imperative core: the caller's ``params`` are never
-    mutated. Target fields become fresh ``requires_grad`` leaves (non-target fields detached
+    mutated. Selected fields become fresh ``requires_grad`` leaves (non-selected fields detached
     constants); a backend steps them for ``steps`` iterations via a closure (which unifies LBFGS'
-    re-evaluation with Adam/AdamW). ``targets`` names map through ``_TARGET_FIELDS``; a named target
-    with no present parameter, or zero ``steps``, raises.
+    re-evaluation with Adam/AdamW). Trainable selections map through ``_TRAINABLE_FIELDS``; a
+    selected group with no present parameter, or zero ``steps``, raises.
 
     ``logger`` receives a :class:`RefinementStep` per iteration and one
     :class:`RefinementCompleted` at the end; the default :data:`NULL_LOGGER` makes emission a no-op,
@@ -147,7 +196,7 @@ def run_refinement(
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
-    leaf_params, leaves = _to_leaves(params, _resolve_targets(params, targets))
+    leaf_params, leaves = _to_leaves(params, _resolve_trainable(params, trainable))
     opt = _build_optimizer(optimizer, leaves, lr)
 
     def closure() -> float:
@@ -178,47 +227,47 @@ def run_refinement(
     )
 
 
-def _resolve_targets(params: RefinableParams, targets: Sequence[str]) -> frozenset[str]:
-    """Map target names to the present RefinableParams field names they unlock."""
-    if not targets:
-        raise ValueError("at least one refinement target is required")
+def _resolve_trainable(params: RefinableParams, trainable: TrainableSpec) -> frozenset[str]:
+    """Map trainable selections to the present RefinableParams field names they unlock."""
     fields: set[str] = set()
-    for target in targets:
-        if target not in _TARGET_FIELDS:
-            valid = sorted(_TARGET_FIELDS)
-            raise ValueError(f"unknown refinement target {target!r}; valid: {valid}")
-        present = [name for name in _TARGET_FIELDS[target] if getattr(params, name) is not None]
+    selected_groups = [name for name in _TRAINABLE_FIELDS if getattr(trainable, name).selects_any]
+    if not selected_groups:
+        raise ValueError("at least one trainable parameter group is required")
+    for group in selected_groups:
+        present = [name for name in _TRAINABLE_FIELDS[group] if getattr(params, name) is not None]
         if not present:
-            raise ValueError(f"target {target!r} selected but no matching parameter is present")
+            raise ValueError(
+                f"trainable group {group!r} selected but no matching parameter is present"
+            )
         fields.update(present)
     return frozenset(fields)
 
 
 def _to_leaves(
-    params: RefinableParams, target_fields: frozenset[str]
+    params: RefinableParams, trainable_fields: frozenset[str]
 ) -> tuple[RefinableParams, list[Tensor]]:
-    """Clone ``params`` so ``target_fields`` are fresh requires_grad leaves, the rest constants."""
+    """Clone ``params`` so ``trainable_fields`` are fresh grad leaves, the rest constants."""
     values: dict[str, Any] = {}
     leaves: list[Tensor] = []
-    for field in dataclasses.fields(RefinableParams):
-        value = getattr(params, field.name)
+    for param_field in dataclasses.fields(RefinableParams):
+        value = getattr(params, param_field.name)
         if value is None:
-            values[field.name] = None
-        elif field.name in target_fields:
+            values[param_field.name] = None
+        elif param_field.name in trainable_fields:
             leaf = value.detach().clone().requires_grad_(True)
-            values[field.name] = leaf
+            values[param_field.name] = leaf
             leaves.append(leaf)
         else:
-            values[field.name] = value.detach().clone()
+            values[param_field.name] = value.detach().clone()
     return dataclasses.replace(params, **values), leaves
 
 
 def _detach_params(params: RefinableParams) -> RefinableParams:
     """Return a fully-detached clone of ``params`` (no grad history)."""
     detached: dict[str, Any] = {}
-    for field in dataclasses.fields(RefinableParams):
-        value = getattr(params, field.name)
-        detached[field.name] = None if value is None else value.detach().clone()
+    for param_field in dataclasses.fields(RefinableParams):
+        value = getattr(params, param_field.name)
+        detached[param_field.name] = None if value is None else value.detach().clone()
     return dataclasses.replace(params, **detached)
 
 

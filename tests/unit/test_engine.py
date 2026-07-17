@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import cast
 
 import numpy as np
@@ -14,6 +13,7 @@ from diffBloch.core.losses import mse
 from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
+    AtomSelection,
     LossFn,
     ObjectiveComponent,
     ObjectiveValue,
@@ -23,6 +23,7 @@ from diffBloch.engine import (
     RefinementProblem,
     RefinementResult,
     ScatteringGrid,
+    TrainableSpec,
     mse_loss,
     run_refinement_problem,
 )
@@ -105,7 +106,7 @@ def _refine(
     initial: RefinableParams,
     *,
     steps: int,
-    targets: Sequence[str],
+    trainable: TrainableSpec | None = None,
     optimizer: OptimizerName | str = "lbfgs",
     lr: float = 1e-3,
     logger: Logger = NULL_LOGGER,
@@ -113,9 +114,11 @@ def _refine(
     """Test helper for the explicit problem + executor API."""
     return run_refinement_problem(
         engine,
-        RefinementProblem(initial=initial),
+        RefinementProblem(
+            initial=initial,
+            trainable=trainable or TrainableSpec.positions_and_adp(),
+        ),
         steps=steps,
-        targets=targets,
         optimizer=cast(OptimizerName, optimizer),
         lr=lr,
         logger=logger,
@@ -167,7 +170,7 @@ def test_objective_value_names_the_diffraction_component() -> None:
 
 
 def test_refinable_thickness_drives_the_forward_model() -> None:
-    # The "thickness" refine target maps to thickness_raw; the forward model must consume it (not
+    # The thickness trainable group maps to thickness_raw; the forward model must consume it (not
     # silently use each orientation's frozen thickness). orientation seed = 300 A.
     engine = _engine()
     base = _params()
@@ -194,11 +197,17 @@ def test_refinable_thickness_drives_the_forward_model() -> None:
     assert torch.allclose(thick_300.intensities, no_thickness.intensities)
 
 
+def test_atom_selection_rejects_invalid_runtime_mode() -> None:
+    with pytest.raises(ValueError, match="atom selection mode"):
+        AtomSelection("bogus")  # type: ignore[arg-type]
+
+
 def test_refinement_problem_is_pure_data() -> None:
     params = _params()
     problem = RefinementProblem(initial=params)
 
     assert problem.initial is params
+    assert problem.trainable == TrainableSpec.positions_and_adp()
     assert not hasattr(problem, "engine")
     assert not hasattr(problem, "refine")
 
@@ -206,11 +215,12 @@ def test_refinement_problem_is_pure_data() -> None:
 def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> None:
     observed = _observed_pattern(_params(occupancy_logit=2.2))
     engine = _engine(loss=mse_loss, pattern=observed)
-    problem = RefinementProblem(initial=_params(occupancy_logit=0.0))
-
-    result = run_refinement_problem(
-        engine, problem, steps=6, targets=("occupancy",), optimizer="adam", lr=0.2
+    problem = RefinementProblem(
+        initial=_params(occupancy_logit=0.0),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
     )
+
+    result = run_refinement_problem(engine, problem, steps=6, optimizer="adam", lr=0.2)
 
     assert result.losses.shape == (6,)
     assert result.losses[-1] < result.losses[0]
@@ -301,7 +311,14 @@ def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> No
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(true_params))
     start = _params(occupancy_logit=0.0)
 
-    result = _refine(engine, start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
+    result = _refine(
+        engine,
+        start,
+        steps=20,
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        optimizer=optimizer,
+        lr=0.2,
+    )
 
     assert result.losses.shape == (20,)
     assert result.losses[-1] < result.losses[0]  # the loop made progress
@@ -313,7 +330,14 @@ def test_refine_does_not_mutate_caller_params() -> None:
     start = _params(u_iso_scale=0.05)
     before = start.uij_raw.detach().clone()
 
-    _refine(engine, start, steps=5, targets=("adp",), optimizer="adam", lr=0.05)
+    _refine(
+        engine,
+        start,
+        steps=5,
+        trainable=TrainableSpec(adp=AtomSelection.all()),
+        optimizer="adam",
+        lr=0.05,
+    )
 
     # functional contract: the caller's tensors are untouched and gradient-free
     assert torch.equal(start.uij_raw, before)
@@ -327,7 +351,7 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
         engine,
         _params(occupancy_logit=0.0),
         steps=12,
-        targets=("occupancy",),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
         optimizer="adam",
         lr=0.2,
     )
@@ -346,7 +370,7 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
         engine,
         _params(occupancy_logit=0.0),
         steps=6,
-        targets=("occupancy",),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
         optimizer="adam",
         lr=0.2,
         logger=recorder,
@@ -368,28 +392,46 @@ def test_refine_only_selected_targets_change() -> None:
         asu_positions=torch.full((1, 3), 0.1, dtype=torch.float64),
         uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.05,
     )
-    result = _refine(engine, start, steps=8, targets=("adp",), optimizer="adam", lr=0.05)
+    result = _refine(
+        engine,
+        start,
+        steps=8,
+        trainable=TrainableSpec(adp=AtomSelection.all()),
+        optimizer="adam",
+        lr=0.05,
+    )
 
     assert torch.equal(result.params.asu_positions, start.asu_positions)
     assert not torch.equal(result.params.uij_raw, start.uij_raw)
 
 
-def test_refine_rejects_unknown_target() -> None:
-    with pytest.raises(ValueError, match="unknown refinement target"):
-        _refine(_engine(), _params(), steps=1, targets=("spin",))
+def test_refine_rejects_empty_trainable_spec() -> None:
+    with pytest.raises(ValueError, match="at least one trainable parameter group"):
+        _refine(_engine(), _params(), steps=1, trainable=TrainableSpec())
 
 
-def test_refine_rejects_target_with_no_parameter() -> None:
+def test_refine_rejects_trainable_group_with_no_parameter() -> None:
     # occupancy lives on the spec here, not as a refinable occupancy_raw -> nothing to optimize.
     with pytest.raises(ValueError, match="no matching parameter"):
-        _refine(_engine(), _params(), steps=1, targets=("occupancy",))
+        _refine(
+            _engine(),
+            _params(),
+            steps=1,
+            trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        )
 
 
 def test_refine_rejects_non_positive_steps() -> None:
     with pytest.raises(ValueError, match="steps must be"):
-        _refine(_engine(), _params(), steps=0, targets=("adp",))
+        _refine(_engine(), _params(), steps=0, trainable=TrainableSpec(adp=AtomSelection.all()))
 
 
 def test_refine_rejects_unknown_optimizer() -> None:
     with pytest.raises(ValueError, match="optimizer must be"):
-        _refine(_engine(), _params(), steps=1, targets=("adp",), optimizer="sgd")
+        _refine(
+            _engine(),
+            _params(),
+            steps=1,
+            trainable=TrainableSpec(adp=AtomSelection.all()),
+            optimizer="sgd",
+        )

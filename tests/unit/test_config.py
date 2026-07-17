@@ -1,9 +1,13 @@
 """The Pydantic config boundary validates and supplies sensible defaults."""
 
+from dataclasses import fields
+
 import pytest
 from pydantic import ValidationError
 
-from diffBloch.config.schema import ExperimentConfig
+from diffBloch.config.schema import ExperimentConfig, TrainableConfig
+from diffBloch.engine import TrainableSpec
+from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     HexagonalSearch,
     RockingCurve,
@@ -21,6 +25,9 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.solver.inference == "bloch_eigen"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.numerics.g_max == 4.5
+    assert cfg.refinement.trainable.positions == "all"
+    assert cfg.refinement.trainable.adp == "all"
+    assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.refinement.objective.data_term == "weighted_r"
     assert cfg.refinement.split.validation == "every_10th_rotation"
@@ -84,6 +91,26 @@ def test_input_refs_must_stay_inside_experiment_directory() -> None:
                 "inputs": {"structure": "../q.cif", "observations": "q.cif_pets"},
             }
         )
+
+
+def test_trainable_group_keysets_do_not_drift() -> None:
+    assert set(_TRAINABLE_FIELDS) == {field.name for field in fields(TrainableSpec)}
+    assert set(_TRAINABLE_FIELDS) == set(TrainableConfig.model_fields)
+
+
+def test_refinement_trainable_replaces_string_targets() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    cfg = ExperimentConfig.model_validate(
+        {**base, "refinement": {"trainable": {"positions": "none", "occupancy": "all"}}}
+    )
+    assert cfg.refinement.trainable.positions == "none"
+    assert cfg.refinement.trainable.occupancy == "all"
+    with pytest.raises(ValidationError, match="Input should be"):
+        ExperimentConfig.model_validate(
+            {**base, "refinement": {"trainable": {"positions": "heavy_only"}}}
+        )
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "refinement": {"targets": ["positions"]}})
 
 
 def test_optimizer_and_objective_values_are_enumerated() -> None:

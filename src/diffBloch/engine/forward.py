@@ -16,8 +16,8 @@ per-orientation beam sets.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import torch
 from torch import Tensor
@@ -45,6 +45,7 @@ from diffBloch.engine.refine import (
     ObjectiveValue,
     OptimizerName,
     RefinementResult,
+    TrainableSpec,
     run_refinement,
 )
 from diffBloch.observability import NULL_LOGGER, Logger
@@ -173,7 +174,7 @@ class RefinementEngine:
           overrides the per-orientation value for every orientation (a single refined thickness
           shared across all of them). It is an unconstrained real number mapped to a positive
           thickness by ``positive`` -- the same mapping :func:`diffBloch.params.constrain` uses --
-          so selecting the ``"thickness"`` refine target actually changes the simulation.
+          so selecting ``trainable.thickness`` actually changes the simulation.
 
         ``params.thickness_raw is None`` means "not refining thickness", so the per-orientation
         value is used. Letting thickness vary per orientation while being refined (a learned
@@ -286,12 +287,13 @@ class RefinementEngine:
 class RefinementProblem:
     """The pure-data scientific definition of one refinement run.
 
-    Initially this records only the starting parameters. Later phases will add trainable selections,
-    hard policies, and restraints here. The live :class:`RefinementEngine` remains an explicit
-    executor/context argument rather than being stored on the problem.
+    Initially this records the starting parameters and whole-group trainable selections. Later
+    phases will add hard policies and restraints here. The live :class:`RefinementEngine` remains an
+    explicit executor/context argument rather than being stored on the problem.
     """
 
     initial: RefinableParams
+    trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
 
 
 def run_refinement_problem(
@@ -299,7 +301,6 @@ def run_refinement_problem(
     problem: RefinementProblem,
     *,
     steps: int,
-    targets: Sequence[str] = ("positions", "adp"),
     optimizer: OptimizerName = "lbfgs",
     lr: float = 1e-3,
     logger: Logger = NULL_LOGGER,
@@ -309,7 +310,7 @@ def run_refinement_problem(
         engine.objective_value,
         problem.initial,
         steps=steps,
-        targets=targets,
+        trainable=problem.trainable,
         optimizer=optimizer,
         lr=lr,
         logger=logger,
