@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import cast
+
 import numpy as np
 import pytest
 import torch
@@ -14,14 +17,22 @@ from diffBloch.engine import (
     LossFn,
     ObjectiveComponent,
     ObjectiveValue,
+    OptimizerName,
     OrientationPlan,
     RefinementEngine,
     RefinementProblem,
+    RefinementResult,
     ScatteringGrid,
     mse_loss,
     run_refinement_problem,
 )
-from diffBloch.observability import RecordingLogger, RefinementCompleted, RefinementStep
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Logger,
+    RecordingLogger,
+    RefinementCompleted,
+    RefinementStep,
+)
 from diffBloch.params import RefinableParams
 
 _ENERGY = 200e3
@@ -89,6 +100,28 @@ def _observed_pattern(true_params: RefinableParams, *, sigma: float = 0.01) -> P
     )
 
 
+def _refine(
+    engine: RefinementEngine,
+    initial: RefinableParams,
+    *,
+    steps: int,
+    targets: Sequence[str],
+    optimizer: OptimizerName | str = "lbfgs",
+    lr: float = 1e-3,
+    logger: Logger = NULL_LOGGER,
+) -> RefinementResult:
+    """Test helper for the explicit problem + executor API."""
+    return run_refinement_problem(
+        engine,
+        RefinementProblem(initial=initial),
+        steps=steps,
+        targets=targets,
+        optimizer=cast(OptimizerName, optimizer),
+        lr=lr,
+        logger=logger,
+    )
+
+
 def test_simulate_returns_a_solution_per_orientation() -> None:
     engine = _engine()
     solutions = engine.simulate(_params())
@@ -117,8 +150,8 @@ def test_simulate_sums_intensities_over_rocking_curve_tilts() -> None:
     assert not torch.allclose(integrated.intensities, static.intensities)
 
 
-def test_objective_returns_scalar() -> None:
-    loss = _engine().objective(_params())
+def test_objective_value_returns_scalar_total() -> None:
+    loss = _engine().objective_value(_params()).total
     assert loss.shape == ()
     assert torch.isfinite(loss) and loss >= 0.0
 
@@ -131,7 +164,6 @@ def test_objective_value_names_the_diffraction_component() -> None:
     assert diffraction.weight == 1.0
     assert torch.equal(diffraction.raw, diffraction.contribution)
     assert torch.equal(objective.total, sum(c.contribution for c in objective.components.values()))
-    assert torch.equal(objective.total, _engine().objective(_params()))
 
 
 def test_refinable_thickness_drives_the_forward_model() -> None:
@@ -201,7 +233,7 @@ def test_objective_is_differentiable_through_the_whole_chain() -> None:
     engine = _engine()
     params = _params(requires_grad=True)
 
-    engine.objective(params).backward()
+    engine.objective_value(params).total.backward()
 
     # gradient flows back through align -> intensity -> propagate -> A -> Fgb -> expand -> constrain
     for grad in (params.asu_positions.grad, params.uij_raw.grad):
@@ -234,7 +266,7 @@ def test_objective_rejects_engine_without_orientations() -> None:
         loss=engine.loss,
     )
     with pytest.raises(ValueError, match="no orientations"):
-        empty.objective(_params())
+        empty.objective_value(_params())
     with pytest.raises(ValueError, match="no orientations"):
         empty.simulate(_params())
 
@@ -243,7 +275,7 @@ def test_objective_rejects_non_scalar_loss() -> None:
     # A loss term that forgets to reduce to a scalar is caught at the engine, not later in backward.
     engine = _engine(loss=lambda aligned: mse(aligned.calculated, aligned.observed))
     with pytest.raises(ValueError, match="loss must return a scalar"):
-        engine.objective(_params())
+        engine.objective_value(_params())
 
 
 def test_scattering_grid_from_cell_spans_difference_support() -> None:
@@ -269,7 +301,7 @@ def test_refine_reduces_loss_toward_self_consistent_target(optimizer: str) -> No
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(true_params))
     start = _params(occupancy_logit=0.0)
 
-    result = engine.refine(start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
+    result = _refine(engine, start, steps=20, targets=("occupancy",), optimizer=optimizer, lr=0.2)
 
     assert result.losses.shape == (20,)
     assert result.losses[-1] < result.losses[0]  # the loop made progress
@@ -281,7 +313,7 @@ def test_refine_does_not_mutate_caller_params() -> None:
     start = _params(u_iso_scale=0.05)
     before = start.uij_raw.detach().clone()
 
-    engine.refine(start, steps=5, targets=("adp",), optimizer="adam", lr=0.05)
+    _refine(engine, start, steps=5, targets=("adp",), optimizer="adam", lr=0.05)
 
     # functional contract: the caller's tensors are untouched and gradient-free
     assert torch.equal(start.uij_raw, before)
@@ -291,8 +323,13 @@ def test_refine_does_not_mutate_caller_params() -> None:
 def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
     observed = _observed_pattern(_params(occupancy_logit=2.2))
     engine = _engine(loss=mse_loss, pattern=observed)
-    result = engine.refine(
-        _params(occupancy_logit=0.0), steps=12, targets=("occupancy",), optimizer="adam", lr=0.2
+    result = _refine(
+        engine,
+        _params(occupancy_logit=0.0),
+        steps=12,
+        targets=("occupancy",),
+        optimizer="adam",
+        lr=0.2,
     )
 
     assert 0 <= result.best_step < 12
@@ -305,7 +342,8 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
     recorder = RecordingLogger()
 
-    result = engine.refine(
+    result = _refine(
+        engine,
         _params(occupancy_logit=0.0),
         steps=6,
         targets=("occupancy",),
@@ -330,7 +368,7 @@ def test_refine_only_selected_targets_change() -> None:
         asu_positions=torch.full((1, 3), 0.1, dtype=torch.float64),
         uij_raw=torch.eye(3, dtype=torch.float64)[None] * 0.05,
     )
-    result = engine.refine(start, steps=8, targets=("adp",), optimizer="adam", lr=0.05)
+    result = _refine(engine, start, steps=8, targets=("adp",), optimizer="adam", lr=0.05)
 
     assert torch.equal(result.params.asu_positions, start.asu_positions)
     assert not torch.equal(result.params.uij_raw, start.uij_raw)
@@ -338,20 +376,20 @@ def test_refine_only_selected_targets_change() -> None:
 
 def test_refine_rejects_unknown_target() -> None:
     with pytest.raises(ValueError, match="unknown refinement target"):
-        _engine().refine(_params(), steps=1, targets=("spin",))
+        _refine(_engine(), _params(), steps=1, targets=("spin",))
 
 
 def test_refine_rejects_target_with_no_parameter() -> None:
     # occupancy lives on the spec here, not as a refinable occupancy_raw -> nothing to optimize.
     with pytest.raises(ValueError, match="no matching parameter"):
-        _engine().refine(_params(), steps=1, targets=("occupancy",))
+        _refine(_engine(), _params(), steps=1, targets=("occupancy",))
 
 
 def test_refine_rejects_non_positive_steps() -> None:
     with pytest.raises(ValueError, match="steps must be"):
-        _engine().refine(_params(), steps=0, targets=("adp",))
+        _refine(_engine(), _params(), steps=0, targets=("adp",))
 
 
 def test_refine_rejects_unknown_optimizer() -> None:
     with pytest.raises(ValueError, match="optimizer must be"):
-        _engine().refine(_params(), steps=1, targets=("adp",), optimizer="sgd")
+        _refine(_engine(), _params(), steps=1, targets=("adp",), optimizer="sgd")

@@ -7,9 +7,9 @@ rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiabl
     constrain -> expand ASU -> structure_factors (Fgb on the shared grid)
               -> per orientation: build_bloch_system -> propagate -> intensities -> align -> loss
 
-``objective_value`` / ``simulate`` are pure and differentiable; ``refine`` delegates to the
-quarantined imperative loop in :mod:`diffBloch.engine.refine`. ``from_config`` /
-``from_experiment``
+``objective_value`` / ``simulate`` are pure and differentiable;
+:func:`run_refinement_problem` delegates to the quarantined imperative loop in
+:mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
 construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
 per-orientation beam sets.
 """
@@ -58,13 +58,13 @@ __all__ = [
 ]
 
 # A loss reduces one orientation's aligned intensities to a scalar term (calculated vs observed).
-# The engine sums these per-orientation terms into the scalar ``objective`` ``refine`` minimises.
+# The engine sums these per-orientation terms into the scalar objective refinement minimises.
 type LossFn = Callable[[AlignedIntensities], Tensor]
 
 
 @dataclass(frozen=True)
 class RefinementEngine:
-    """Forward from raw parameters to a differentiable scalar objective (plus a refinement driver).
+    """Forward from raw parameters to a differentiable scalar objective.
 
     Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,
     the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations`` (each
@@ -159,43 +159,6 @@ class RefinementEngine:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
         return ObjectiveValue({"diffraction": ObjectiveComponent(raw=total)})
-
-    def objective(self, params: RefinableParams) -> Tensor:
-        """Return the scalar objective convenience view.
-
-        This accessor is for callers that only need the optimizer-facing scalar. The refinement loop
-        itself consumes :meth:`objective_value` so named components remain available for reporting
-        and future restraints.
-        """
-        return self.objective_value(params).total
-
-    def refine(
-        self,
-        params: RefinableParams,
-        *,
-        steps: int,
-        targets: Sequence[str] = ("positions", "adp"),
-        optimizer: OptimizerName = "lbfgs",
-        lr: float = 1e-3,
-        logger: Logger = NULL_LOGGER,
-    ) -> RefinementResult:
-        """Optimize the selected ``targets`` to minimise the objective; return a result snapshot.
-
-        Delegates to :func:`diffBloch.engine.refine.run_refinement` over this engine's pure
-        ``objective_value``: the caller's ``params`` are never mutated. Single shared ``lr`` for now
-        (per-group rates deferred); ``least_squares`` and component ``activate`` are likewise
-        deferred. ``logger`` streams per-step and
-        completion events (default :data:`NULL_LOGGER` = no-op, result unchanged).
-        """
-        return run_refinement_problem(
-            self,
-            RefinementProblem(initial=params),
-            steps=steps,
-            targets=targets,
-            optimizer=optimizer,
-            lr=lr,
-            logger=logger,
-        )
 
     def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
         """The thickness ``(T,)`` the forward model uses for one orientation.
