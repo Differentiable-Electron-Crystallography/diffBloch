@@ -1,6 +1,6 @@
 {
   "experiment_lock_sha256": "57bfc48b59ae1614ed850c719ece0cfb0639393e269ec9a556d43b23ac81b129",
-  "config_digest": "3e9ae1964eb3b5cf0394f1fa1e79298d5e27aa28a7dbfa59e277c666ba807b68",
+  "config_digest": "a3c8cc90147e3280df34ba67359f0b1b81cc38352eb6ff8a00faaca1a6ea216e",
   "code_version": "0.2.0",
   "recipe": [
     {

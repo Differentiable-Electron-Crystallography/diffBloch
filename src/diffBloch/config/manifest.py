@@ -141,13 +141,35 @@ def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
 
 
 def config_digest(config: ExperimentConfig) -> str:
-    """SHA256 of the resolved config's canonical JSON.
+    """SHA256 of the *preprocess-determining* config -- the checkpoint's config identity.
 
-    Keyed on the *resolved* :class:`ExperimentConfig` (not the ``experiment.yaml`` bytes): stable
-    under comment/whitespace/field-order edits, sensitive to any validated-value change.
-    ``sort_keys`` makes it order-independent -- a deterministic config identity for the lock.
+    Keyed on the resolved :class:`ExperimentConfig` (not the ``experiment.yaml`` bytes): stable
+    under comment/whitespace/field-order edits, sensitive to any validated-value change in scope.
+    ``sort_keys`` makes it order-independent.
+
+    Scope is an **explicit projection** onto exactly what determines the settled preprocess
+    ``Plan`` -- so a committed preprocess checkpoint is restaled only by a change that could alter
+    it:
+
+    - ``inputs``, ``sample``, ``numerics``, ``preprocess`` -- shape the grid, beams, and fits;
+    - ``solver.refine`` -- the solver the coupled fits run under;
+    - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.
+
+    Everything else is excluded because it cannot change the Plan: ``name`` (a label),
+    ``solver.inference`` (terminal scoring only), and the rest of ``refinement``
+    (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` -- refinement-stage execution). This
+    is the config axis of the preprocess lock only, not a whole-config identity.
     """
-    canonical = json.dumps(config.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    dump = config.model_dump(mode="json")
+    preprocess_identity = {
+        "inputs": dump["inputs"],
+        "sample": dump["sample"],
+        "numerics": dump["numerics"],
+        "solver": {"refine": dump["solver"]["refine"]},
+        "preprocess": dump["preprocess"],
+        "refinement": {"split": dump["refinement"]["split"]},
+    }
+    canonical = json.dumps(preprocess_identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

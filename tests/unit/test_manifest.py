@@ -135,11 +135,58 @@ def test_pack_run_requires_manifest(tmp_path: Path) -> None:
 # --- preprocess checkpoint lock: the four-axis freshness check ---
 
 
+def _other_method(method: str) -> str:
+    return "bloch_eigen" if method == "matrix_exp" else "matrix_exp"
+
+
 def test_config_digest_is_stable_and_value_sensitive() -> None:
     cfg = load_config(LOCKED / "experiment.yaml")
     assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
-    bumped = cfg.model_copy(update={"name": "different"})
+    # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
+    bumped = cfg.model_copy(
+        update={"numerics": cfg.numerics.model_copy(update={"g_max": cfg.numerics.g_max + 1.0})}
+    )
     assert config_digest(bumped) != config_digest(cfg)
+
+
+def test_config_digest_scopes_to_preprocess_determining_config() -> None:
+    """The digest keys only on what determines the settled Plan, so unrelated config edits reuse."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    base = config_digest(cfg)
+
+    def with_solver(**update: object) -> object:
+        return cfg.model_copy(update={"solver": cfg.solver.model_copy(update=update)})
+
+    def with_refinement(**update: object) -> object:
+        return cfg.model_copy(update={"refinement": cfg.refinement.model_copy(update=update)})
+
+    # excluded -- cannot alter the preprocess Plan, so must not restale the checkpoint
+    assert config_digest(cfg.model_copy(update={"name": "different"})) == base
+    assert config_digest(with_solver(inference=_other_method(cfg.solver.inference))) == base
+    assert (
+        config_digest(
+            with_refinement(
+                objective=cfg.refinement.objective.model_copy(update={"penalties_weight": 9.0})
+            )
+        )
+        == base
+    )
+    assert (
+        config_digest(
+            with_refinement(optimizer=cfg.refinement.optimizer.model_copy(update={"name": "adam"}))
+        )
+        == base
+    )
+    # included -- determine the settled Plan, so a change must restale
+    assert config_digest(with_solver(refine=_other_method(cfg.solver.refine))) != base
+    assert (
+        config_digest(
+            with_refinement(
+                split=cfg.refinement.split.model_copy(update={"validation": "every_5th_rotation"})
+            )
+        )
+        != base
+    )
 
 
 def test_code_version_carries_the_package_version() -> None:
@@ -196,7 +243,11 @@ def test_shorter_recipe_is_stale(tmp_path: Path) -> None:
 def test_config_change_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     args = _args(cfg, recipe, npz, tmp_path)
-    args["config_digest"] = config_digest(cfg.model_copy(update={"name": "different"}))
+    args["config_digest"] = config_digest(
+        cfg.model_copy(
+            update={"numerics": cfg.numerics.model_copy(update={"g_max": cfg.numerics.g_max + 1.0})}
+        )
+    )
     assert preprocess_lock_status(lock, **args) == "stale"
 
 
