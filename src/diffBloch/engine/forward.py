@@ -35,6 +35,7 @@ from diffBloch.core.products import (
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import FloatFormat, Method, precision_dtypes, propagate
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
+from diffBloch.engine.constraints import ConstraintTransform
 from diffBloch.engine.plan import (
     OrientationPlanLike,
     ScatteringGrid,
@@ -141,7 +142,10 @@ class RefinementEngine:
         )
 
     def objective_value(
-        self, params: RefinableParams, penalties: tuple[PenaltyTerm, ...] = ()
+        self,
+        params: RefinableParams,
+        penalties: tuple[PenaltyTerm, ...] = (),
+        constraints: tuple[ConstraintTransform, ...] = (),
     ) -> ObjectiveValue:
         """Return the objective as a scalar total plus named scalar components.
 
@@ -152,19 +156,26 @@ class RefinementEngine:
               -> crystallographic constraints (constrain / ConstraintSpec):
                    site-symmetry position projector, ADP equalities, positivity/bounded transforms
               -> PhysicalState
-              -> molecular hard constraints        (a future ConstraintTransform layer -- H-riding)
+              -> molecular hard constraints  (the `constraints` ConstraintTransform layer)
               -> diffraction term + soft penalties
               -> scalar objective
 
-        ``self.physical_state(params)`` applies the crystallographic constraints. The
-        ``"diffraction"`` component is always present; ``penalties`` add weighted soft-penalty
-        components (bond-length, etc.) without making the optimizer know their details. Molecular
-        hard constraints (e.g. hydrogen riding) are *reparameterizations* of the physical state and
-        will slot between :class:`PhysicalState` and the diffraction term, not become penalty terms.
+        ``self.physical_state(params)`` applies the crystallographic constraints; each
+        ``ConstraintTransform`` in ``constraints`` then reparameterizes that state in tuple order
+        (duplicate names rejected), so both the diffraction term and the ``penalties`` see the
+        transformed state. The ``"diffraction"`` component is always present; ``penalties`` add
+        weighted soft-penalty components (bond-length, etc.) without making the optimizer know their
+        details. Hydrogen riding will be the first concrete ``ConstraintTransform``; a soft penalty
+        and a hard constraint are distinct -- a constraint reparameterizes, it is not a cost term.
         """
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
+        names = [constraint.name for constraint in constraints]
+        if len(names) != len(set(names)):
+            raise ValueError(f"duplicate constraint name among {names!r}")
         state = self.physical_state(params)
+        for constraint in constraints:
+            state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
         for orientation in self.orientations:
@@ -318,14 +329,16 @@ class RefinementEngine:
 class RefinementProblem:
     """The pure-data scientific definition of one refinement run.
 
-    Initially this records the starting parameters, whole-group trainable selections, and soft
-    penalties. Later phases will add hard policies here. The live :class:`RefinementEngine` remains
-    an explicit executor/context argument rather than being stored on the problem.
+    Records the starting parameters, whole-group trainable selections, soft ``penalties`` (additive
+    objective terms), and hard ``constraints`` -- ``ConstraintTransform`` reparameterizations of the
+    physical state such as hydrogen riding. The live :class:`RefinementEngine` remains an explicit
+    executor/context argument rather than being stored on the problem.
     """
 
     initial: RefinableParams
     trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
     penalties: tuple[PenaltyTerm, ...] = ()
+    constraints: tuple[ConstraintTransform, ...] = ()
 
 
 def run_refinement_problem(
@@ -340,7 +353,9 @@ def run_refinement_problem(
     """Optimize a pure-data refinement problem with the supplied engine/context."""
 
     def objective_value(params: RefinableParams) -> ObjectiveValue:
-        return engine.objective_value(params, penalties=problem.penalties)
+        return engine.objective_value(
+            params, penalties=problem.penalties, constraints=problem.constraints
+        )
 
     return run_refinement(
         objective_value,
