@@ -9,26 +9,11 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from diffBloch.engine.chemistry import covalent_radius
 from diffBloch.io.record import StructureRecord
 from diffBloch.params import PhysicalState
 
 __all__ = ["BondLengthPenalty", "perceive_bond_length_penalty"]
-
-# Pyykkö/Atsumi-style single-bond covalent radii rounded for common organic elements (Angstrom).
-# The source layer only uses these to perceive likely connectivity; explicit/Mogul penalties can
-# replace this heuristic later.
-_COVALENT_RADII_ANGSTROM: dict[int, float] = {
-    1: 0.31,  # H
-    6: 0.76,  # C
-    7: 0.71,  # N
-    8: 0.66,  # O
-    9: 0.57,  # F
-    15: 1.07,  # P
-    16: 1.05,  # S
-    17: 1.02,  # Cl
-    35: 1.20,  # Br
-    53: 1.39,  # I
-}
 
 
 @dataclass(frozen=True)
@@ -117,11 +102,11 @@ def perceive_bond_length_penalty(
     for i in range(structure.n_atoms):
         if not include_hydrogen and numbers[i] == 1:
             continue
-        radius_i = _covalent_radius(numbers[i])
+        radius_i = covalent_radius(numbers[i])
         for j in range(i + 1, structure.n_atoms):
             if not include_hydrogen and numbers[j] == 1:
                 continue
-            radius_j = _covalent_radius(numbers[j])
+            radius_j = covalent_radius(numbers[j])
             distance = float(np.linalg.norm(positions_cart[j] - positions_cart[i]))
             cutoff = cutoff_scale * (radius_i + radius_j) + cutoff_margin_angstrom
             if 1e-8 < distance <= cutoff:
@@ -137,11 +122,3 @@ def perceive_bond_length_penalty(
         weight=weight,
         criterion=criterion,
     )
-
-
-def _covalent_radius(number: np.integer | int) -> float:
-    atomic_number = int(number)
-    try:
-        return _COVALENT_RADII_ANGSTROM[atomic_number]
-    except KeyError as exc:
-        raise ValueError(f"no covalent radius for atomic number {atomic_number}") from exc

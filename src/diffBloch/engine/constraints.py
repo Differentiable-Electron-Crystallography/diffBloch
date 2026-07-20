@@ -18,8 +18,9 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from diffBloch.engine.penalties import _covalent_radius
+from diffBloch.engine.chemistry import covalent_radius
 from diffBloch.io.record import StructureRecord
+from diffBloch.io.symmetry_setup import general_position_mask
 from diffBloch.params import PhysicalState
 
 __all__ = ["ConstraintTransform", "HydrogenRiding", "perceive_hydrogen_riding"]
@@ -68,13 +69,20 @@ class HydrogenRiding:
 
     def __post_init__(self) -> None:
         h = self.h_index
+        if h.dtype != torch.int64 or self.parent_index.dtype != torch.int64:
+            raise ValueError("h_index and parent_index must be int64 tensors")
         if h.ndim != 1 or self.parent_index.shape != h.shape:
             raise ValueError("h_index and parent_index must be 1-D tensors of equal length")
         if self.offset.shape != (h.shape[0], 3):
             raise ValueError("offset must have shape (H, 3)")
         if self.u_iso_scale.shape != h.shape:
             raise ValueError("u_iso_scale must have shape (H,)")
-        if set(h.tolist()) & set(self.parent_index.tolist()):
+        if bool((h < 0).any()) or bool((self.parent_index < 0).any()):
+            raise ValueError("h_index and parent_index must be non-negative")
+        h_rows = h.tolist()
+        if len(set(h_rows)) != len(h_rows):
+            raise ValueError("h_index must not contain duplicate hydrogen rows")
+        if set(h_rows) & set(self.parent_index.tolist()):
             raise ValueError("riding-hydrogen rows and parent rows must be disjoint")
 
     def apply(self, state: PhysicalState) -> PhysicalState:
@@ -105,8 +113,12 @@ def perceive_hydrogen_riding(
     cutoff ``cutoff_scale * (r_H + r_heavy) + cutoff_margin_angstrom`` (Cartesian distance via the
     cell). The stored ``offset`` is the fractional parent->H vector from the input structure; the
     molecule is assumed ASU-contiguous, so no minimum-image wrapping is applied (matching the
-    penalties layer). Returns ``None`` when the structure has no hydrogens; raises when a hydrogen
-    has no heavy neighbour within the cutoff.
+    penalties layer).
+
+    Riding is for **general-position hydrogens only**: it overwrites the H coordinate *after* the
+    crystallographic projector, so a special-position H would be pushed off its site-symmetry
+    manifold. A hydrogen on a special position is therefore rejected. Returns ``None`` when the
+    structure has no hydrogens; raises when a hydrogen has no heavy neighbour within the cutoff.
     """
     if cutoff_scale <= 0:
         raise ValueError("cutoff_scale must be positive")
@@ -120,6 +132,7 @@ def perceive_hydrogen_riding(
         return None
     frac = np.asarray(structure.frac_positions, dtype=np.float64)
     cart = np.asarray(frac @ structure.unit_cell, dtype=np.float64)
+    general = general_position_mask(structure)
 
     h_rows: list[int] = []
     parent_rows: list[int] = []
@@ -127,14 +140,19 @@ def perceive_hydrogen_riding(
     for i in range(structure.n_atoms):
         if numbers[i] != 1:
             continue
-        radius_h = _covalent_radius(numbers[i])
+        if not general[i]:
+            raise ValueError(
+                f"hydrogen {structure.labels[i]!r} (row {i}) is on a special position; riding is "
+                "only supported for general-position hydrogens"
+            )
+        radius_h = covalent_radius(numbers[i])
         nearest: tuple[float, int] | None = None
         for j in range(structure.n_atoms):
             if numbers[j] == 1:
                 continue
             distance = float(np.linalg.norm(cart[j] - cart[i]))
             cutoff = (
-                cutoff_scale * (radius_h + _covalent_radius(numbers[j])) + cutoff_margin_angstrom
+                cutoff_scale * (radius_h + covalent_radius(numbers[j])) + cutoff_margin_angstrom
             )
             if 1e-8 < distance <= cutoff and (nearest is None or distance < nearest[0]):
                 nearest = (distance, j)

@@ -77,6 +77,28 @@ def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> S
     )
 
 
+def general_position_mask(record: StructureRecord, *, symprec: float = 1e-3) -> NDArray[np.bool_]:
+    """Per-atom mask, ``True`` where the atom is on a general position (trivial site stabilizer).
+
+    An atom is on a *special* position when a non-identity symmetry operator fixes its site
+    (mod 1) -- its stabilizer holds more than the identity, so some coordinates are
+    symmetry-constrained. Callers that reparameterize positions freely (e.g. hydrogen riding) must
+    not move such atoms, which would push them off their site-symmetry manifold.
+    """
+    if symprec <= 0.0:
+        raise ValueError("symprec must be positive")
+    positions = np.asarray(record.frac_positions, dtype=np.float64)
+    rotations = np.asarray(record.symops_R, dtype=np.float64)
+    translations = np.asarray(record.symops_t, dtype=np.float64)
+    return np.array(
+        [
+            _site_stabilizer(position, rotations, translations, symprec=symprec).shape[0] == 1
+            for position in positions
+        ],
+        dtype=np.bool_,
+    )
+
+
 def _site_stabilizer(
     position: NDArray[np.float64],
     rotations: NDArray[np.float64],

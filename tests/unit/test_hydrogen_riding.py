@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 import torch
+from tests.unit.test_engine import _engine, _params
 from tests.unit.test_engine_penalties import _state, _structure
 
+from diffBloch.engine import AtomSelection, RefinementProblem, TrainableSpec, run_refinement_problem
 from diffBloch.engine.constraints import HydrogenRiding, perceive_hydrogen_riding
 
 
@@ -138,3 +141,68 @@ def test_perceive_raises_on_isolated_hydrogen() -> None:
 def test_perceive_returns_none_without_hydrogen() -> None:
     structure = _structure(positions=[[0.0, 0.0, 0.0], [0.15, 0.0, 0.0]], numbers=[6, 8])
     assert perceive_hydrogen_riding(structure) is None
+
+
+def test_perceive_rejects_special_position_hydrogen() -> None:
+    # inversion symmetry fixes the origin, so an H at (0,0,0) is on a special position
+    base = _structure(positions=[[0.0, 0.0, 0.0], [0.109, 0.0, 0.0]], numbers=[1, 6])
+    special = base.model_copy(
+        update={
+            "symops_R": np.stack([np.eye(3), -np.eye(3)]),
+            "symops_t": np.zeros((2, 3), dtype=np.float64),
+        }
+    )
+    with pytest.raises(ValueError, match="special position"):
+        perceive_hydrogen_riding(special)
+
+
+# --- index validation (hand-constructed specs must fail at construction) ---
+
+
+def _valid_kwargs() -> dict:
+    return {
+        "name": "hydrogen_riding",
+        "h_index": torch.tensor([1], dtype=torch.int64),
+        "parent_index": torch.tensor([0], dtype=torch.int64),
+        "offset": torch.zeros((1, 3), dtype=torch.float64),
+        "u_iso_scale": torch.tensor([1.2], dtype=torch.float64),
+    }
+
+
+def test_rejects_non_integer_index() -> None:
+    with pytest.raises(ValueError, match="int64"):
+        HydrogenRiding(**{**_valid_kwargs(), "h_index": torch.tensor([1.0])})
+
+
+def test_rejects_duplicate_hydrogen_index() -> None:
+    with pytest.raises(ValueError, match="duplicate"):
+        HydrogenRiding(
+            **{
+                **_valid_kwargs(),
+                "h_index": torch.tensor([1, 1], dtype=torch.int64),
+                "parent_index": torch.tensor([0, 2], dtype=torch.int64),
+                "offset": torch.zeros((2, 3), dtype=torch.float64),
+                "u_iso_scale": torch.tensor([1.2, 1.2], dtype=torch.float64),
+            }
+        )
+
+
+def test_rejects_negative_index() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        HydrogenRiding(**{**_valid_kwargs(), "parent_index": torch.tensor([-1], dtype=torch.int64)})
+
+
+def test_riding_runs_through_run_refinement_problem() -> None:
+    # a 2-atom C + H engine: riding must thread through the real optimizer shell without error
+    positions = np.array([[0.0, 0.0, 0.0], [0.2, 0.0, 0.0]], dtype=np.float64)
+    engine = _engine(asu_positions=positions, numbers=torch.tensor([6, 1], dtype=torch.int64))
+    problem = RefinementProblem(
+        initial=_params(asu_positions=torch.tensor(positions)),
+        trainable=TrainableSpec(
+            positions=AtomSelection.exclude_elements("H"), adp=AtomSelection.exclude_elements("H")
+        ),
+        constraints=(_riding([[0.2, 0.0, 0.0]]),),
+    )
+    result = run_refinement_problem(engine, problem, steps=2, optimizer="adam", lr=1e-3)
+    assert result.losses.shape == (2,)
+    assert torch.isfinite(result.losses).all()
