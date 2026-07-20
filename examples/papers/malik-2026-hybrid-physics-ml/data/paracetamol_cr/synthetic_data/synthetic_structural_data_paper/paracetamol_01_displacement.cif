@@ -1,0 +1,51 @@
+data_paracetamol01_disp
+_cell_length_a 11.76000
+_cell_length_b 7.23200
+_cell_length_c 17.16000
+_cell_angle_alpha 90.00000
+_cell_angle_beta 90.00000
+_cell_angle_gamma 90.00000
+_cell_volume 1459.42917
+_symmetry_space_group_name_H-M 'Pbca'
+_symmetry_Int_Tables_number 61
+
+loop_
+_symmetry_equiv_pos_site_id
+_symmetry_equiv_pos_as_xyz
+1 x,y,z
+2 -x+1/2,-y,z+1/2
+3 x+1/2,-y+1/2,-z
+4 -x,y+1/2,-z+1/2
+5 -x,-y,-z
+6 x+1/2,y,-z+1/2
+7 -x+1/2,y+1/2,z
+8 x,-y+1/2,z+1/2
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_U_iso_or_equiv
+_atom_site_thermal_displace_type
+O1 O 0.246031 0.774775 -0.364023 0.02 Uiso
+O2 O 0.109355 0.741613 0.006789 0.02 Uiso
+N1 N -0.024152 0.779491 -0.092029 0.02 Uiso
+C1 C 0.016148 0.858315 -0.235995 0.02 Uiso
+C2 C 0.064516 0.866615 -0.297241 0.02 Uiso
+C3 C 0.171168 0.769075 -0.304602 0.02 Uiso
+C4 C 0.223615 0.714598 -0.228116 0.02 Uiso
+C5 C 0.159638 0.703378 -0.158315 0.02 Uiso
+C6 C 0.048711 0.795671 -0.162294 0.02 Uiso
+C7 C 0.006328 0.763588 -0.020197 0.02 Uiso
+C8 C -0.089729 0.770932 0.038145 0.02 Uiso
+H1 H 0.200175 0.647468 -0.106591 0.05 Uiso
+H2 H 0.304752 0.638900 -0.232216 0.05 Uiso
+H3 H 0.180195 0.774738 -0.409632 0.05 Uiso
+H4 H 0.044586 0.928399 -0.348611 0.05 Uiso
+H5 H -0.077914 0.930118 -0.229001 0.05 Uiso
+H6 H -0.107311 0.791076 -0.109638 0.05 Uiso
+H7 H -0.161175 0.861392 0.005967 0.05 Uiso
+H8 H -0.133137 0.641363 0.045619 0.05 Uiso
+H9 H -0.072362 0.806190 0.091794 0.05 Uiso

@@ -1,0 +1,42 @@
+# Malik et al. 2026, Nature Communications — CsPbBr3 experimental dataset port.
+# Source data/config: Zenodo DOI 10.5281/zenodo.18281349, original config
+# `configs/experiment/cspbbr3_experimental.yaml`.
+name: malik-2026-cspbbr3-experimental
+
+inputs:
+  structure: data/cspbbr3/experimental_data/cspbbr3.cif
+  observations: data/cspbbr3/experimental_data/CsPbBr_P67-crot-050_dyn.cif_pets
+  load_hydrogens: false
+
+sample:
+  # The original Malik config activates a thicknessNN with min/max 400..1100 A. The public baseline
+  # config starts from a single fixed seed until the hybrid thickness model is ported.
+  thicknesses: [820.0]
+
+numerics:
+  # From the Malik cspbbr3_experimental Hydra config.
+  g_max: 5.0
+  g_max_refine: 1.0
+  rocking_curve_sampling: 60
+  dsg: 0.0015
+  rsg: 0.66
+  integration:
+    semiangle: 1.5
+
+solver:
+  inference: bloch_eigen
+  refine: matrix_exp
+
+preprocess:
+  # Public explicit coupling analog for the original private/default TiltSegmentUnion with
+  # g_max_sf=5.0: coupling radius g_max=2.5 and cap=2.3 after the private 0.2 margin.
+  coupling:
+    n_splits: 12
+    g_max: 2.5
+    cap_margin: 0.2
+    sg_max: 0.01
+
+refinement:
+  split:
+    train: all_except_validation
+    validation: every_10th_rotation

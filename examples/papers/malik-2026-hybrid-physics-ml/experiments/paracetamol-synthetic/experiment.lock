@@ -1,0 +1,8 @@
+structure:
+  ref: data/paracetamol_cr/synthetic_data/synthetic_structural_data_paper/paracetamol_02_displacement.cif
+  sha256: b083e5f56a217926dac981d915be5e9d8e6d42e1b4d666e14b5eaa876a97c101
+  bytes: 1471
+observations:
+  ref: data/paracetamol_cr/synthetic_data/synthetic_structural_data_paper/paracetamol_paper_data.cif_pets
+  sha256: 6c28f2ded1e4510994d3ad28d26a755dc8b9ea6dc9a98268d77c0a0ec945e0b2
+  bytes: 1179657

@@ -1,0 +1,8 @@
+structure:
+  ref: data/quartz/synthetic_data/synthetic_structural_data_paper/quartz_02_displacement.cif
+  sha256: 4cd1b81fada03b0f66745ed24668822c01a9a2c26cd2467fd54009410b410029
+  bytes: 939
+observations:
+  ref: data/quartz/synthetic_data/synthetic_structural_data_paper/quartz_paper_data.cif_pets
+  sha256: 0ecc87db382b63057f882688538d0c3cd2fe4c98371a96443a805f54d6281766
+  bytes: 149688

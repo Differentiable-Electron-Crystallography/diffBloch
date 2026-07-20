@@ -1,0 +1,8 @@
+structure:
+  ref: data/quartz/quartz_kinematical.cif
+  sha256: 8b5e11c7ceb880c1d9a8e1dc8cd567f59a65a21b9b8e619ae7a75f017e60ab30
+  bytes: 2002
+observations:
+  ref: data/quartz/experimental_data/quartz.cif_pets
+  sha256: 323e37219b5e429831ee4bb211c22ceb08fa421a325170eff08bf48c86887864
+  bytes: 296334
