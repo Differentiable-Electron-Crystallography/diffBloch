@@ -1,4 +1,4 @@
-"""Soft refinement restraints evaluated on the bounded physical ASU state."""
+"""Soft refinement penalties evaluated on the bounded physical ASU state."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from torch import Tensor
 from diffBloch.io.record import StructureRecord
 from diffBloch.params import PhysicalState
 
-__all__ = ["BondRestraints", "perceive_bond_restraints"]
+__all__ = ["BondLengthPenalty", "perceive_bond_length_penalty"]
 
 # Pyykkö/Atsumi-style single-bond covalent radii rounded for common organic elements (Angstrom).
-# The source layer only uses these to perceive likely connectivity; explicit/Mogul restraints can
+# The source layer only uses these to perceive likely connectivity; explicit/Mogul penalties can
 # replace this heuristic later.
 _COVALENT_RADII_ANGSTROM: dict[int, float] = {
     1: 0.31,  # H
@@ -32,12 +32,12 @@ _COVALENT_RADII_ANGSTROM: dict[int, float] = {
 
 
 @dataclass(frozen=True)
-class BondRestraints:
-    """Bond-length soft restraints in Cartesian Angstrom units.
+class BondLengthPenalty:
+    """Bond-length soft penalties in Cartesian Angstrom units.
 
-    The current ASU positions are fractional coordinates, so the restraint owns the invariant
+    The current ASU positions are fractional coordinates, so the penalty owns the invariant
     fractional-to-Cartesian cell matrix. ``pairs`` indexes ASU atom rows; ``target_angstrom`` and
-    ``sigma_angstrom`` carry the restraint target and tolerance for each pair. The raw loss is the
+    ``sigma_angstrom`` carry the penalty target and tolerance for each pair. The raw loss is the
     mean squared normalized bond-distance residual by default. ``flat_bottom_l1`` is the
     private/abiraterone-style robust criterion: zero inside the sigma tolerance and linear outside.
     """
@@ -63,9 +63,9 @@ class BondRestraints:
         if bool((self.sigma_angstrom <= 0).any()):
             raise ValueError("bond sigmas must be positive")
         if self.weight < 0:
-            raise ValueError("bond restraint weight must be non-negative")
+            raise ValueError("bond penalty weight must be non-negative")
         if self.criterion not in {"mse", "flat_bottom_l1"}:
-            raise ValueError("bond restraint criterion must be 'mse' or 'flat_bottom_l1'")
+            raise ValueError("bond penalty criterion must be 'mse' or 'flat_bottom_l1'")
 
     def loss(self, state: PhysicalState) -> Tensor:
         """Return the raw mean squared normalized bond-distance residual."""
@@ -85,7 +85,7 @@ class BondRestraints:
         return torch.clamp(deviations.abs() - sigmas, min=0.0).mean()
 
 
-def perceive_bond_restraints(
+def perceive_bond_length_penalty(
     structure: StructureRecord,
     *,
     include_hydrogen: bool = False,
@@ -94,17 +94,17 @@ def perceive_bond_restraints(
     cutoff_margin_angstrom: float = 0.1,
     weight: float = 1.0,
     criterion: Literal["mse", "flat_bottom_l1"] = "mse",
-) -> BondRestraints:
-    """Perceive ASU-contiguous bonds and restrain them to the starting distances.
+) -> BondLengthPenalty:
+    """Perceive ASU-contiguous bonds and tether them to the starting distances.
 
-    This is an explicit source/builder layer, separate from the pure restraint value. It assumes
+    This is an explicit source/builder layer, separate from the pure penalty value. It assumes
     the bonded molecule is contiguous in the ASU and deliberately does **not** do minimum-image
     wrapping, matching the private bond loss. The perceived target for each bond is the current
-    Cartesian distance in the input structure; Mogul/CIF restraint sources can later provide
+    Cartesian distance in the input structure; Mogul/CIF penalty sources can later provide
     literature targets and sigmas.
     """
     if sigma_angstrom <= 0:
-        raise ValueError("bond-restraint sigma must be positive")
+        raise ValueError("bond-penalty sigma must be positive")
     if cutoff_scale <= 0:
         raise ValueError("bond perception cutoff_scale must be positive")
     if cutoff_margin_angstrom < 0:
@@ -129,7 +129,7 @@ def perceive_bond_restraints(
                 distances.append(distance)
     if not pairs:
         raise ValueError("bond perception found no bonds")
-    return BondRestraints(
+    return BondLengthPenalty(
         pairs=torch.tensor(pairs, dtype=torch.int64),
         target_angstrom=torch.tensor(distances, dtype=torch.float64),
         sigma_angstrom=torch.full((len(pairs),), sigma_angstrom, dtype=torch.float64),

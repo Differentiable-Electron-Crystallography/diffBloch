@@ -39,7 +39,7 @@ __all__ = [
     "ObjectiveValue",
     "OptimizerName",
     "RefinementResult",
-    "RestraintTerm",
+    "PenaltyTerm",
     "TrainableSpec",
     "run_refinement",
 ]
@@ -145,7 +145,7 @@ class TrainableSpec:
 class ObjectiveComponent:
     """One named refinement objective term.
 
-    ``raw`` is the scientifically meaningful scalar diagnostic (for example, a bond restraint before
+    ``raw`` is the scientifically meaningful scalar diagnostic (for example, a bond penalty before
     weighting). ``weight`` scales that diagnostic into the optimizer-facing ``contribution``.
     """
 
@@ -164,7 +164,7 @@ class ObjectiveValue:
 
     ``total`` is computed from component contributions so reporting and optimization cannot silently
     drift. ``components`` is a read-only mapping whose values retain both raw diagnostics and
-    weights for future restraint reporting.
+    weights for future penalty reporting.
     """
 
     total: Tensor
@@ -189,20 +189,20 @@ class ObjectiveValue:
         object.__setattr__(self, "components", MappingProxyType(copied))
 
 
-class RestraintTerm(Protocol):
+class PenaltyTerm(Protocol):
     """A soft refinement penalty evaluated on the physical ASU state.
 
-    Restraints are objective components, not hard constraints: ``loss`` returns the raw scientific
+    Penalties are objective components, not hard constraints: ``loss`` returns the raw scientific
     diagnostic and ``weight`` scales it into the optimizer-facing contribution. Concrete terms own
     their invariant context (for example metric/cell, connectivity, targets, and sigmas) instead of
-    bloating :class:`~diffBloch.params.PhysicalState` with every possible restraint input.
+    bloating :class:`~diffBloch.params.PhysicalState` with every possible penalty input.
     """
 
     name: str
     weight: float
 
     def loss(self, state: PhysicalState) -> Tensor:
-        """Return this restraint's raw scalar loss for the current physical state."""
+        """Return this penalty's raw scalar loss for the current physical state."""
         ...
 
 
@@ -248,7 +248,7 @@ def run_refinement(
     ``logger`` receives a :class:`RefinementStep` per iteration and one
     :class:`RefinementCompleted` at the end; the default :data:`NULL_LOGGER` makes emission a no-op,
     so the returned result is unchanged. Step events include the structured ``ObjectiveValue``
-    components as numeric diagnostics, making diffraction/restraint tradeoffs inspectable.
+    components as numeric diagnostics, making diffraction/penalty tradeoffs inspectable.
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")

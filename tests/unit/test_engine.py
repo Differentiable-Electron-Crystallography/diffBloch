@@ -261,36 +261,36 @@ def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> Non
 
 
 @dataclasses.dataclass(frozen=True)
-class _DummyRestraint:
-    name: str = "dummy_restraint"
+class _DummyPenalty:
+    name: str = "dummy_penalty"
     weight: float = 0.25
 
     def loss(self, state: PhysicalState) -> torch.Tensor:
         return state.positions[:, 0].sum() + 2.0
 
 
-def test_objective_value_composes_restraint_components() -> None:
+def test_objective_value_composes_penalty_components() -> None:
     engine = _engine()
     params = _params(asu_positions=torch.tensor([[0.5, 0.0, 0.0]], dtype=torch.float64))
 
-    unrestrained = engine.objective_value(params)
-    restrained = engine.objective_value(params, restraints=(_DummyRestraint(),))
-    component = restrained.components["dummy_restraint"]
+    baseline = engine.objective_value(params)
+    penalized = engine.objective_value(params, penalties=(_DummyPenalty(),))
+    component = penalized.components["dummy_penalty"]
 
-    assert set(restrained.components) == {"diffraction", "dummy_restraint"}
+    assert set(penalized.components) == {"diffraction", "dummy_penalty"}
     assert torch.equal(component.raw, torch.tensor(2.5, dtype=torch.float64))
     assert component.weight == 0.25
     assert torch.equal(
-        restrained.total,
-        unrestrained.total + component.contribution,
+        penalized.total,
+        baseline.total + component.contribution,
     )
 
 
-def test_objective_value_restraint_contributes_gradient() -> None:
+def test_objective_value_penalty_contributes_gradient() -> None:
     engine = _engine()
     params = _params(requires_grad=True)
 
-    engine.objective_value(params, restraints=(_DummyRestraint(),)).total.backward()
+    engine.objective_value(params, penalties=(_DummyPenalty(),)).total.backward()
 
     assert params.asu_positions.grad is not None
     assert params.asu_positions.grad[0, 0] != 0.0
@@ -299,14 +299,14 @@ def test_objective_value_restraint_contributes_gradient() -> None:
 def test_objective_value_rejects_duplicate_component_name() -> None:
     engine = _engine()
     with pytest.raises(ValueError, match="duplicate objective component"):
-        engine.objective_value(_params(), restraints=(_DummyRestraint(name="diffraction"),))
+        engine.objective_value(_params(), penalties=(_DummyPenalty(name="diffraction"),))
 
 
-def test_refinement_problem_records_restraints() -> None:
-    restraint = _DummyRestraint()
-    problem = RefinementProblem(initial=_params(), restraints=(restraint,))
+def test_refinement_problem_records_penalties() -> None:
+    penalty = _DummyPenalty()
+    problem = RefinementProblem(initial=_params(), penalties=(penalty,))
 
-    assert problem.restraints == (restraint,)
+    assert problem.penalties == (penalty,)
 
 
 def test_objective_value_computes_weighted_total_from_components() -> None:

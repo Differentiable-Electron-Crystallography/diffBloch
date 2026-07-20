@@ -44,8 +44,8 @@ from diffBloch.engine.refine import (
     ObjectiveComponent,
     ObjectiveValue,
     OptimizerName,
+    PenaltyTerm,
     RefinementResult,
-    RestraintTerm,
     TrainableSpec,
     run_refinement,
 )
@@ -141,12 +141,12 @@ class RefinementEngine:
         )
 
     def objective_value(
-        self, params: RefinableParams, restraints: tuple[RestraintTerm, ...] = ()
+        self, params: RefinableParams, penalties: tuple[PenaltyTerm, ...] = ()
     ) -> ObjectiveValue:
         """Return the objective as a scalar total plus named scalar components.
 
         Differentiable in ``params``. The ``"diffraction"`` component is always present;
-        ``restraints`` add weighted soft-penalty components without making the optimizer know their
+        ``penalties`` add weighted soft-penalty components without making the optimizer know their
         details.
         """
         if not self.orientations:
@@ -164,11 +164,11 @@ class RefinementEngine:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
         components = {"diffraction": ObjectiveComponent(raw=total)}
-        for restraint in restraints:
-            if restraint.name in components:
-                raise ValueError(f"duplicate objective component name {restraint.name!r}")
-            components[restraint.name] = ObjectiveComponent(
-                raw=restraint.loss(state), weight=restraint.weight
+        for penalty in penalties:
+            if penalty.name in components:
+                raise ValueError(f"duplicate objective component name {penalty.name!r}")
+            components[penalty.name] = ObjectiveComponent(
+                raw=penalty.loss(state), weight=penalty.weight
             )
         return ObjectiveValue(components)
 
@@ -306,13 +306,13 @@ class RefinementProblem:
     """The pure-data scientific definition of one refinement run.
 
     Initially this records the starting parameters, whole-group trainable selections, and soft
-    restraints. Later phases will add hard policies here. The live :class:`RefinementEngine` remains
+    penalties. Later phases will add hard policies here. The live :class:`RefinementEngine` remains
     an explicit executor/context argument rather than being stored on the problem.
     """
 
     initial: RefinableParams
     trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
-    restraints: tuple[RestraintTerm, ...] = ()
+    penalties: tuple[PenaltyTerm, ...] = ()
 
 
 def run_refinement_problem(
@@ -327,7 +327,7 @@ def run_refinement_problem(
     """Optimize a pure-data refinement problem with the supplied engine/context."""
 
     def objective_value(params: RefinableParams) -> ObjectiveValue:
-        return engine.objective_value(params, restraints=problem.restraints)
+        return engine.objective_value(params, penalties=problem.penalties)
 
     return run_refinement(
         objective_value,

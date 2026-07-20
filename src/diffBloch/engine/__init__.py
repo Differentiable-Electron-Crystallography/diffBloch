@@ -23,6 +23,7 @@ from diffBloch.engine.losses import (
     w_rbragg_loss,
     weighted_mse_loss,
 )
+from diffBloch.engine.penalties import BondLengthPenalty, perceive_bond_length_penalty
 from diffBloch.engine.plan import (
     OrientationPlan,
     OrientationPlanLike,
@@ -34,16 +35,15 @@ from diffBloch.engine.refine import (
     ObjectiveComponent,
     ObjectiveValue,
     OptimizerName,
+    PenaltyTerm,
     RefinementResult,
-    RestraintTerm,
     TrainableSpec,
     run_refinement,
 )
-from diffBloch.engine.restraints import BondRestraints, perceive_bond_restraints
 
 __all__ = [
     "AtomSelection",
-    "BondRestraints",
+    "BondLengthPenalty",
     "LossFn",
     "ObjectiveComponent",
     "ObjectiveValue",
@@ -53,13 +53,13 @@ __all__ = [
     "RefinementEngine",
     "RefinementProblem",
     "RefinementResult",
-    "RestraintTerm",
+    "PenaltyTerm",
     "ScatteringGrid",
     "SegmentedOrientationPlan",
     "TrainableSpec",
     "l1_loss",
     "mse_loss",
-    "perceive_bond_restraints",
+    "perceive_bond_length_penalty",
     "rbragg_loss",
     "run_refinement",
     "run_refinement_problem",

@@ -135,7 +135,7 @@ class ObjectiveConfig(_StrictConfig):
 
     data_term: Literal["weighted_r", "poisson_nll", "least_squares"] = "weighted_r"
     outlier_rejection: Literal["none", "tukey", "sigma_clip"] = "none"
-    restraints_weight: float = 1.0
+    penalties_weight: float = 1.0
     nuisance_weight: float = 1.0
     report_gradient_norms: bool = True
 

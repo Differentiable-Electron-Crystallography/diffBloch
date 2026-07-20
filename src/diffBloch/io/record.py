@@ -93,7 +93,7 @@ class StructureRecord(BaseModel):
     """Asymmetric-unit structure data in CIF convention.
 
     Nominal arrays feed downstream kernels. The corresponding ``*_su`` arrays preserve CIF
-    standard uncertainties as provenance metadata for reporting or later optional restraints.
+    standard uncertainties as provenance metadata for reporting or later optional penalties.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
