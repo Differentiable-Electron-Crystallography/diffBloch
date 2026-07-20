@@ -1,17 +1,17 @@
 {
-  "experiment_lock_sha256": "798ba1b49d7511e116a5c682ccfa501232f64ba7ab108c2407dc5f10771c55cf",
-  "config_digest": "f7189dc00bb5adf3be7881e715131124b744a52f82d243467fddda7a83bedbc2",
-  "code_version": "0.2.0+g47cdc9e.dirty",
+  "experiment_lock_sha256": "57bfc48b59ae1614ed850c719ece0cfb0639393e269ec9a556d43b23ac81b129",
+  "config_digest": "3e9ae1964eb3b5cf0394f1fa1e79298d5e27aa28a7dbfa59e277c666ba807b68",
+  "code_version": "0.2.0",
   "recipe": [
     {
       "name": "select_beams",
       "params": {
         "__type__": "BeamSelection",
-        "rsg": 0.9,
-        "dsg": 0.0015,
+        "rsg": 0.6,
+        "dsg": 0.0025,
         "integration": {
           "__type__": "IntegrationGeometry",
-          "semiangle": 1.0,
+          "semiangle": 1.422,
           "geometry": "continuous_rotation"
         }
       }
@@ -24,10 +24,10 @@
       "name": "integrate_rocking_curve",
       "params": {
         "__type__": "RockingCurve",
-        "sampling": 42,
+        "sampling": 30,
         "integration": {
           "__type__": "IntegrationGeometry",
-          "semiangle": 1.0,
+          "semiangle": 1.422,
           "geometry": "continuous_rotation"
         }
       }
@@ -53,24 +53,24 @@
           "__type__": "TrialCoupling",
           "policy": {
             "__type__": "TiltSegmentUnion",
-            "n_splits": 12,
-            "g_max": 2.25,
+            "n_splits": 4,
+            "g_max": 1.5,
             "cap_margin": 0.2,
-            "sg_max": 0.01
+            "sg_max": 0.02
           },
           "scored": {
             "__type__": "ScoredSelection",
             "klar": {
               "__type__": "BeamSelection",
-              "rsg": 0.9,
-              "dsg": 0.0015,
+              "rsg": 0.6,
+              "dsg": 0.0025,
               "integration": {
                 "__type__": "IntegrationGeometry",
-                "semiangle": 1.0,
+                "semiangle": 1.422,
                 "geometry": "continuous_rotation"
               }
             },
-            "g_max": 1.6
+            "g_max": 1.0
           }
         }
       }
@@ -87,8 +87,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "f913fb0be6c6f81843b1e95e39d23300d790efeae501b1ff5370341602112367",
-    "bytes": 993616,
+    "sha256": "7fbb36a3ba23938efbedae426be9f1c03b77fdba1dfb0b8dd60249cd63944e96",
+    "bytes": 645067,
     "media_type": "application/octet-stream"
   }
 }

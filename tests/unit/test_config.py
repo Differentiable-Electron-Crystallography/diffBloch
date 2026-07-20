@@ -12,6 +12,7 @@ from diffBloch.specs import (
     HexagonalSearch,
     RockingCurve,
     ThicknessGrid,
+    TiltSegmentUnion,
 )
 
 
@@ -169,6 +170,68 @@ def test_preprocess_thickness_defaults_match_the_private() -> None:
     # 1:1 edge over ThicknessGrid: a default config round-trips to the value-type's defaults; the
     # concrete values are pinned once, in test_specs.
     assert thickness.to_grid() == ThicknessGrid()
+
+
+def test_coupling_has_no_default_and_is_absent_unless_declared() -> None:
+    # Unlike the numerical preprocess blocks, coupling has NO faithful default -- omitting it leaves
+    # preprocess.coupling None (the recipe build, not config load, rejects a missing policy).
+    cfg = ExperimentConfig.model_validate(
+        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    )
+    assert cfg.preprocess.coupling is None
+
+
+def test_coupling_policy_requires_all_fields_when_declared() -> None:
+    # The block is all-or-nothing explicit: a partial coupling block is a load-time error, not a
+    # silent per-field fill from the value-type.
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    with pytest.raises(ValidationError, match="[Ff]ield required"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"coupling": {"n_splits": 4, "g_max": 1.5}}}  # missing fields
+        )
+
+
+def test_coupling_policy_override_parses() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    cfg = ExperimentConfig.model_validate(
+        {
+            **base,
+            "preprocess": {
+                "coupling": {"n_splits": 4, "g_max": 1.5, "cap_margin": 0.2, "sg_max": 0.02}
+            },
+        }
+    )
+    assert cfg.preprocess.coupling is not None
+    assert cfg.preprocess.coupling.to_policy() == TiltSegmentUnion(
+        n_splits=4, g_max=1.5, cap_margin=0.2, sg_max=0.02
+    )
+
+
+def test_coupling_policy_bounds_are_validated() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+
+    def coupling(**overrides: float) -> dict:
+        policy = {"n_splits": 12, "g_max": 2.25, "cap_margin": 0.2, "sg_max": 0.01, **overrides}
+        return {**base, "preprocess": {"coupling": policy}}
+
+    with pytest.raises(ValidationError, match="n_splits must be >= 1"):
+        ExperimentConfig.model_validate(coupling(n_splits=0))
+    with pytest.raises(ValidationError, match="g_max and sg_max must be positive"):
+        ExperimentConfig.model_validate(coupling(sg_max=0.0))
+    with pytest.raises(ValidationError, match="coupling cap"):
+        ExperimentConfig.model_validate(coupling(g_max=0.2, cap_margin=0.2))
+
+
+def test_load_hydrogens_defaults_off_and_parses() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    assert ExperimentConfig.model_validate(base).inputs.load_hydrogens is False
+    withH = ExperimentConfig.model_validate(
+        {
+            "name": "abi",
+            "inputs": {"structure": "a.cif", "observations": "a.cif_pets", "load_hydrogens": True},
+        }
+    )
+    assert withH.inputs.load_hydrogens is True
 
 
 def test_numerics_to_rocking_curve_shares_the_integration_geometry() -> None:

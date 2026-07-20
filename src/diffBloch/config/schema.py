@@ -21,6 +21,7 @@ from diffBloch.specs import (
     Mosaicity,
     RockingCurve,
     ThicknessGrid,
+    TiltSegmentUnion,
 )
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
@@ -227,18 +228,59 @@ class ThicknessFitConfig(_StrictConfig):
         return self
 
 
+class CouplingConfig(_StrictConfig):
+    """Per-trial beam coupling policy for ``fit_orientation`` (preprocess).
+
+    The YAML edge: parses (via :meth:`to_policy`) into the validated
+    :class:`~diffBloch.specs.TiltSegmentUnion` value-type the coupled fit consumes, and delegates
+    all validation there (one rule home, no drift).
+
+    Unlike the numerical preprocess blocks, coupling carries **no defaults**: it determines the
+    physics (the per-trial SOLVE union) and is experiment-specific, so a silent faithful-default
+    would let a forgotten policy pass as a deliberate one. All four fields are required when the
+    block is present, and the block itself is optional only for experiments that never run the
+    coupled fit (see :class:`PreprocessConfig`); composing the fit without it raises. The value-type
+    keeps its own defaults for programmatic pipeline authors -- only the config edge is explicit.
+    """
+
+    n_splits: int  # contiguous tilt chunks
+    g_max: float  # coupling radius (1/Angstrom)
+    cap_margin: float  # subtracted from g_max for the coupling cap
+    sg_max: float  # excitation-error cutoff
+
+    def to_policy(self) -> TiltSegmentUnion:
+        """Parse into the validated value-type the coupled ``fit_orientation`` consumes."""
+        return TiltSegmentUnion(
+            n_splits=self.n_splits,
+            g_max=self.g_max,
+            cap_margin=self.cap_margin,
+            sg_max=self.sg_max,
+        )
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> CouplingConfig:
+        self.to_policy()  # the rules live in TiltSegmentUnion; fail fast at config load
+        return self
+
+
 class PreprocessConfig(_StrictConfig):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
     Grouping, not composition: each block configures one preprocess step. Only steps the default run
-    composes get a config block here: ``fit_orientation`` and ``fit_thickness``. The optional
-    ``converge_numerics`` driver is *not* in the default recipe, so it has no config block -- a
-    caller that composes it constructs :class:`~diffBloch.specs.ConvergenceTest` /
+    composes get a config block here: ``fit_orientation`` (its search bounds under ``orientation``
+    and its per-trial ``coupling`` policy) and ``fit_thickness``. The optional ``converge_numerics``
+    driver is *not* in the default recipe, so it has no config block -- a caller that composes it
+    constructs :class:`~diffBloch.specs.ConvergenceTest` /
     :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (their defaults are the
     faithful values). Opt-in step config lives with the step, not in an always-present block.
+
+    ``coupling`` is ``None`` unless declared: it has no faithful default (see
+    :class:`CouplingConfig`), so an experiment that runs the coupled orientation fit must declare it
+    or the recipe build raises. An experiment that never runs the fit may leave it unset.
     """
 
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
+    coupling: CouplingConfig | None = None
     thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
 
 
@@ -247,6 +289,7 @@ class Inputs(_StrictConfig):
 
     structure: str
     observations: str
+    load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
     @field_validator("structure", "observations")
     @classmethod

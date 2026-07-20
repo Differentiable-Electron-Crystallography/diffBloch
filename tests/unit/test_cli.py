@@ -1,6 +1,7 @@
 """The thin CLI validates an experiment file and reports success."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -164,6 +165,90 @@ def test_run_infer_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = main(["run", "infer", "/no/such/experiment"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+class _FakePlan:
+    """Minimal stand-in for a settled Plan: enough for the CLI's summary line."""
+
+    def __init__(self) -> None:
+        self.orientations = (object(), object())
+        self.provenance = (
+            SimpleNamespace(name="fit_orientation"),
+            SimpleNamespace(name="fit_thickness"),
+        )
+
+
+def test_run_preprocess_delegates_and_reports_without_scoring(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_preprocess_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
+        workers: int = 1,
+    ) -> _FakePlan:
+        captured["dir"] = experiment_dir
+        captured["logger"] = logger
+        captured["checkpoint"] = checkpoint
+        captured["refresh"] = refresh
+        captured["device"] = device
+        captured["workers"] = workers
+        return _FakePlan()
+
+    monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
+    rc = main(["run", "preprocess", "/some/experiment"])
+
+    assert rc == 0
+    assert captured["dir"] == "/some/experiment"
+    assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
+    assert captured["checkpoint"] is True and captured["refresh"] is False
+    assert captured["workers"] == 1 and captured["device"] is None
+    out = capsys.readouterr().out
+    assert "preprocessed 2 rotations" in out
+    assert "fit_orientation, fit_thickness" in out  # recipe echoed; no R_obs (no scoring)
+    assert "R_obs" not in out
+
+
+def test_run_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_preprocess_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
+        workers: int = 1,
+    ) -> _FakePlan:
+        seen["checkpoint"] = checkpoint
+        seen["refresh"] = refresh
+        seen["device"] = device
+        seen["workers"] = workers
+        return _FakePlan()
+
+    monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
+    rc = main(
+        ["run", "preprocess", "x"]
+        + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
+    )
+    assert rc == 0
+    assert seen == {"checkpoint": False, "refresh": True, "device": "cuda", "workers": 4}
+
+
+def test_run_preprocess_missing_experiment_reports_concise_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(["run", "preprocess", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")

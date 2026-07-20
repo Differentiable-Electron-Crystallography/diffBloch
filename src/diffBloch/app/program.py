@@ -62,9 +62,9 @@ from diffBloch.preprocess import (
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
-from diffBloch.specs import ScoredSelection, TiltSegmentUnion, TrialCoupling
+from diffBloch.specs import ScoredSelection, TrialCoupling
 
-__all__ = ["run_experiment"]
+__all__ = ["preprocess_experiment", "run_experiment"]
 
 _log = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ _PLAN_LOCK = "plan.lock"
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
-def run_experiment(
+def preprocess_experiment(
     experiment_dir: str | Path,
     *,
     logger: Logger = NULL_LOGGER,
@@ -96,30 +96,35 @@ def run_experiment(
     refresh: bool = False,
     device: Device | None = None,
     workers: int = 1,
-) -> InferenceResult:
-    """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
+) -> Plan:
+    """Load and preprocess the experiment at ``experiment_dir``, returning the settled ``Plan``.
 
-    Loads ``experiment.yaml`` (verifying the input lock), reads the structure + observations, builds
-    the geometry via ``from_experiment``, runs the faithful integrated recipe, and evaluates the
-    forward model over all rotations with ``run_inference`` -- emitting per-rotation observations to
-    ``logger`` (the null default discards them). Returns the
-    :class:`~diffBloch.preprocess.inference.InferenceResult` (per-rotation ``R_obs`` + aggregate).
+    The preprocess half of :func:`run_experiment` with the terminal scoring stripped off: it loads
+    ``experiment.yaml`` (verifying the input lock), reads the structure + observations, builds the
+    geometry via ``from_experiment``, and runs the faithful integrated recipe -- returning the
+    settled coupled :class:`~diffBloch.preprocess.plan.Plan` (fitted orientations, tilt-segment
+    couplings, pinned scored sets). This is the entry point for callers who want *only* the
+    calibrated Plan (to checkpoint it, or to drive their own downstream refinement) without paying
+    for the terminal inference pass.
 
     The recipe is the private's faithful pipeline, **per-trial beam coupling included** (the fit
     re-derives the SOLVE union + SCORED set at every trial orientation -- the private's exact
-    objective). This is the opinionated default; a caller wanting a different composition (e.g. the
-    cheaper tilt-independent fit) composes their own ``pipeline([...])`` with the public steps.
+    objective). Its coupling policy, orientation-search bounds, thickness grid, and whether
+    hydrogens are loaded all come from config (``preprocess.coupling`` / ``preprocess.orientation``
+    / ``preprocess.thickness`` / ``inputs.load_hydrogens``). A caller wanting a different
+    composition (e.g. the cheaper tilt-independent fit) composes their own ``pipeline([...])`` with
+    the public steps.
 
     ``checkpoint`` (default ``True``) reuses/resumes a valid ``plan.npz`` in the experiment dir and
     writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)
     while still regenerating the checkpoint. ``checkpoint=False`` neither reads nor writes.
 
     ``device`` (default ``None`` = CPU) runs the forward solve on the given accelerator (e.g.
-    ``"cuda"``) for both the coupled preprocess fits and the terminal ``run_inference``. The
-    preprocess *geometry* (beam selection, coupling unions) stays CPU-side numpy; only the
-    eigensolve -- the O(N^3) cost -- moves to the device (the fits move the seed params, so ``fgb``
-    and every per-trial score co-locate there). Device is execution-only: it does not enter the
-    checkpoint lock, so a committed CPU checkpoint is still reused when a run moves to GPU.
+    ``"cuda"``) for the coupled preprocess fits. The preprocess *geometry* (beam selection, coupling
+    unions) stays CPU-side numpy; only the eigensolve -- the O(N^3) cost -- moves to the device (the
+    fits move the seed params, so ``fgb`` and every per-trial score co-locate there). Device is
+    execution-only: it does not enter the checkpoint lock, so a committed CPU checkpoint is still
+    reused when a run moves to GPU.
 
     ``workers`` (default 1, sequential) fans the per-rotation orientation search over a thread pool
     (rotations are independent). On a GPU run the per-trial cost is host-bound around a small
@@ -134,11 +139,76 @@ def run_experiment(
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    structure = read_structure(root / cfg.inputs.structure)
+    _refinement, prepared = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+    )
+    return prepared
+
+
+def run_experiment(
+    experiment_dir: str | Path,
+    *,
+    logger: Logger = NULL_LOGGER,
+    checkpoint: bool = True,
+    refresh: bool = False,
+    device: Device | None = None,
+    workers: int = 1,
+) -> InferenceResult:
+    """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
+
+    :func:`preprocess_experiment` followed by the terminal forward model: it settles the coupled
+    ``Plan`` (see that function for the recipe, ``checkpoint``/``refresh``, and
+    ``device``/``workers`` semantics -- all shared), then evaluates every rotation with
+    ``run_inference`` -- emitting
+    per-rotation observations to ``logger`` (the null default discards them). Returns the
+    :class:`~diffBloch.preprocess.inference.InferenceResult` (per-rotation ``R_obs`` + aggregate).
+    ``device`` also runs the terminal eigensolve on the accelerator.
+    """
+    root = Path(experiment_dir)
+    cfg, _lock = load_experiment(root)
+    refinement, prepared = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+    )
+    return run_inference(
+        prepared, refinement, method=cfg.solver.inference, device=device, logger=logger
+    )
+
+
+def _preprocess(
+    root: Path,
+    cfg: ExperimentConfig,
+    *,
+    logger: Logger,
+    checkpoint: bool,
+    refresh: bool,
+    device: Device | None,
+    workers: int,
+) -> tuple[RefinementSetup, Plan]:
+    """Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.
+
+    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs)
+    alongside the settled ``Plan``, so :func:`preprocess_experiment` can drop the setup and
+    :func:`run_experiment` can score with it -- neither loads the inputs twice. Hydrogen sites are
+    loaded per ``inputs.load_hydrogens``.
+    """
+    structure = read_structure(
+        root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
+    )
     observations = read_observations(root / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
-    refinement = setup.refinement
-    steps = _recipe_steps(cfg, refinement, logger, device=device, workers=workers)
+    steps = _recipe_steps(cfg, setup.refinement, logger, device=device, workers=workers)
     prepared = _prepare(
         setup.plans.combined,
         steps,
@@ -147,9 +217,7 @@ def run_experiment(
         checkpoint=checkpoint,
         refresh=refresh,
     )
-    return run_inference(
-        prepared, refinement, method=cfg.solver.inference, device=device, logger=logger
-    )
+    return setup.refinement, prepared
 
 
 def _recipe_steps(
@@ -220,15 +288,20 @@ def _recipe_steps(
 
 
 def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
-    """Assemble the per-trial coupling from config, with the faithful private policy defaults.
+    """Assemble the per-trial coupling from config; raise if the coupled fit has no policy.
 
-    Coupling is the faithful objective; its policy carries no config block (mirroring
-    ``converge_numerics``), so the SOLVE policy uses :class:`~diffBloch.specs.TiltSegmentUnion`'s
-    faithful defaults. The SCORED set reuses the *same* Klar window as ``select_beams`` (so the two
-    filters cannot disagree) and the config's ``g_max_refine`` as the scoring-resolution cap.
+    Coupling is the faithful objective and carries no default (it determines the physics), so a
+    config that runs the coupled orientation fit must declare ``preprocess.coupling``. The SCORED
+    set reuses the *same* Klar window as ``select_beams`` (so the two filters cannot disagree) and
+    the config's ``g_max_refine`` as the scoring-resolution cap.
     """
+    if cfg.preprocess.coupling is None:
+        raise ValueError(
+            "the coupled orientation fit needs a coupling policy, but preprocess.coupling is "
+            "unset; add a preprocess.coupling block (n_splits, g_max, cap_margin, sg_max) to config"
+        )
     return TrialCoupling(
-        policy=TiltSegmentUnion(),
+        policy=cfg.preprocess.coupling.to_policy(),
         scored=ScoredSelection(
             klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine
         ),

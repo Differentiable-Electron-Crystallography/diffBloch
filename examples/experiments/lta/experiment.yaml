@@ -17,6 +17,14 @@ numerics:
 solver:
   inference: bloch_eigen
   refine: matrix_exp
+preprocess:
+  # Per-trial SOLVE-union coupling for the orientation fit (declared explicitly; coupling has no
+  # config default). Faithful diffBloch_private values, recovered from the committed plan.lock.
+  coupling:
+    n_splits: 12
+    g_max: 2.25
+    cap_margin: 0.2
+    sg_max: 0.01
 refinement:
   split:
     train: all_except_validation
