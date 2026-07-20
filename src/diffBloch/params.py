@@ -124,7 +124,15 @@ class PhysicalState:
 
 
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
-    """Turn the raw unbounded parameters into the bounded physical quantities."""
+    """Apply the *crystallographic* constraints, mapping raw parameters to the physical state.
+
+    This is the hard-constraint layer on the raw parameters: per-atom site-symmetry position
+    projection, ADP site-symmetry equalities, and positivity/bounded transforms (occupancy, ADP,
+    thickness). It produces the crystallographically valid :class:`PhysicalState`, which the
+    refinement objective may further transform -- *molecular* hard constraints (e.g. hydrogen
+    riding, a future ConstraintTransform layer) -- before the diffraction term and soft penalties
+    (:meth:`diffBloch.engine.forward.RefinementEngine.objective_value`).
+    """
     _validate_shapes(params, spec)
     dtype, device = params.asu_positions.dtype, params.asu_positions.device
     occupancies = (

@@ -145,9 +145,22 @@ class RefinementEngine:
     ) -> ObjectiveValue:
         """Return the objective as a scalar total plus named scalar components.
 
-        Differentiable in ``params``. The ``"diffraction"`` component is always present;
-        ``penalties`` add weighted soft-penalty components without making the optimizer know their
-        details.
+        Differentiable in ``params``. The objective is composed in a fixed order that separates hard
+        *constraints* (enforced transforms) from soft *penalties* (additive terms)::
+
+            raw RefinableParams
+              -> crystallographic constraints (constrain / ConstraintSpec):
+                   site-symmetry position projector, ADP equalities, positivity/bounded transforms
+              -> PhysicalState
+              -> molecular hard constraints        (a future ConstraintTransform layer -- H-riding)
+              -> diffraction term + soft penalties
+              -> scalar objective
+
+        ``self.physical_state(params)`` applies the crystallographic constraints. The
+        ``"diffraction"`` component is always present; ``penalties`` add weighted soft-penalty
+        components (bond-length, etc.) without making the optimizer know their details. Molecular
+        hard constraints (e.g. hydrogen riding) are *reparameterizations* of the physical state and
+        will slot between :class:`PhysicalState` and the diffraction term, not become penalty terms.
         """
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
