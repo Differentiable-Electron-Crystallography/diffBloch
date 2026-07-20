@@ -9,7 +9,11 @@
 The dependency points one way (refine -> forward -> core); ``core/`` stays free of ``torch.optim``.
 """
 
-from diffBloch.engine.constraints import ConstraintTransform
+from diffBloch.engine.constraints import (
+    ConstraintTransform,
+    HydrogenRiding,
+    perceive_hydrogen_riding,
+)
 from diffBloch.engine.forward import (
     LossFn,
     RefinementEngine,
@@ -46,6 +50,7 @@ __all__ = [
     "AtomSelection",
     "BondLengthPenalty",
     "ConstraintTransform",
+    "HydrogenRiding",
     "LossFn",
     "ObjectiveComponent",
     "ObjectiveValue",
@@ -62,6 +67,7 @@ __all__ = [
     "l1_loss",
     "mse_loss",
     "perceive_bond_length_penalty",
+    "perceive_hydrogen_riding",
     "rbragg_loss",
     "run_refinement",
     "run_refinement_problem",

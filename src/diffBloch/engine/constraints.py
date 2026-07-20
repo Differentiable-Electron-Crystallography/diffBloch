@@ -2,20 +2,27 @@
 
 A :class:`ConstraintTransform` is a hard *reparameterization* of the bounded
 :class:`~diffBloch.params.PhysicalState`, distinct from a soft
-:class:`~diffBloch.engine.refine.PenaltyTerm`: a constraint rewrites the state so an invariant holds
-exactly at every optimizer step (e.g. deriving hydrogen positions from their parents), rather than
-adding a cost the optimizer may trade against. Constraints are applied in the refinement objective
-after ``constrain`` and before the diffraction term, so the diffraction *and* the penalties see the
-transformed state.
+:class:`~diffBloch.engine.penalties.BondLengthPenalty`: a constraint rewrites the state so an
+invariant holds exactly at every optimizer step (e.g. deriving hydrogen positions from their
+parents), rather than adding a cost the optimizer may trade against. Constraints are applied in the
+refinement objective after ``constrain`` and before the diffraction term, so the diffraction *and*
+the penalties see the transformed state.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Protocol, runtime_checkable
 
+import numpy as np
+import torch
+from torch import Tensor
+
+from diffBloch.engine.penalties import _covalent_radius
+from diffBloch.io.record import StructureRecord
 from diffBloch.params import PhysicalState
 
-__all__ = ["ConstraintTransform"]
+__all__ = ["ConstraintTransform", "HydrogenRiding", "perceive_hydrogen_riding"]
 
 
 @runtime_checkable
@@ -33,3 +40,117 @@ class ConstraintTransform(Protocol):
     def apply(self, state: PhysicalState) -> PhysicalState:
         """Return a new physical state with this constraint enforced."""
         ...
+
+
+@dataclasses.dataclass(frozen=True)
+class HydrogenRiding:
+    """Ride each hydrogen on its parent heavy atom -- a hard constraint on the physical state.
+
+    Constant-offset riding: a hydrogen's position is its parent's position plus a fixed fractional
+    ``offset`` taken from the input structure, and its displacement is ``u_iso_scale`` times the
+    parent's ``uij_star``. Both are reparameterizations -- the H rows are overwritten so they carry
+    no independent degree of freedom, and gradients flow through to the parent -- so hydrogens stay
+    in the forward scattering while tracking the refined heavy-atom frame. Pair with
+    ``TrainableSpec(positions=exclude_elements("H"), adp=exclude_elements("H"))`` so the H rows are
+    never optimizer leaves.
+
+    Limitations (the model deliberately kept simple; upgrades slot into this same transform):
+    the fixed offset does not re-point H when the parent's local frame *rotates* (only translation
+    is followed); the ``uij_star`` scale is exact for an isotropic parent (abiraterone is all-Uiso)
+    and approximate for an anisotropic one.
+    """
+
+    name: str
+    h_index: Tensor  # (H,) long -- riding-hydrogen ASU rows
+    parent_index: Tensor  # (H,) long -- heavy-parent ASU row per hydrogen
+    offset: Tensor  # (H, 3) fixed fractional parent->H vector
+    u_iso_scale: Tensor  # (H,) per-hydrogen displacement multiplier
+
+    def __post_init__(self) -> None:
+        h = self.h_index
+        if h.ndim != 1 or self.parent_index.shape != h.shape:
+            raise ValueError("h_index and parent_index must be 1-D tensors of equal length")
+        if self.offset.shape != (h.shape[0], 3):
+            raise ValueError("offset must have shape (H, 3)")
+        if self.u_iso_scale.shape != h.shape:
+            raise ValueError("u_iso_scale must have shape (H,)")
+        if set(h.tolist()) & set(self.parent_index.tolist()):
+            raise ValueError("riding-hydrogen rows and parent rows must be disjoint")
+
+    def apply(self, state: PhysicalState) -> PhysicalState:
+        positions = state.positions
+        h_index = self.h_index.to(positions.device)
+        parent_index = self.parent_index.to(positions.device)
+        offset = self.offset.to(dtype=positions.dtype, device=positions.device)
+        derived = positions.index_select(0, parent_index) + offset.detach()
+        new_positions = positions.index_copy(0, h_index, derived)
+
+        uij = state.uij_star
+        scale = self.u_iso_scale.to(dtype=uij.dtype, device=uij.device)
+        parent_uij = uij.index_select(0, parent_index.to(uij.device))
+        new_uij = uij.index_copy(0, h_index.to(uij.device), scale[:, None, None] * parent_uij)
+        return dataclasses.replace(state, positions=new_positions, uij_star=new_uij)
+
+
+def perceive_hydrogen_riding(
+    structure: StructureRecord,
+    *,
+    cutoff_scale: float = 1.2,
+    cutoff_margin_angstrom: float = 0.1,
+    u_iso_scale: float = 1.2,
+) -> HydrogenRiding | None:
+    """Build a :class:`HydrogenRiding` from a structure: each H rides its nearest bonded heavy atom.
+
+    For every hydrogen (atomic number 1) the parent is the *nearest* heavy atom within the covalent
+    cutoff ``cutoff_scale * (r_H + r_heavy) + cutoff_margin_angstrom`` (Cartesian distance via the
+    cell). The stored ``offset`` is the fractional parent->H vector from the input structure; the
+    molecule is assumed ASU-contiguous, so no minimum-image wrapping is applied (matching the
+    penalties layer). Returns ``None`` when the structure has no hydrogens; raises when a hydrogen
+    has no heavy neighbour within the cutoff.
+    """
+    if cutoff_scale <= 0:
+        raise ValueError("cutoff_scale must be positive")
+    if cutoff_margin_angstrom < 0:
+        raise ValueError("cutoff_margin_angstrom must be non-negative")
+    if u_iso_scale <= 0:
+        raise ValueError("u_iso_scale must be positive")
+
+    numbers = np.asarray(structure.numbers, dtype=np.int64)
+    if not np.any(numbers == 1):
+        return None
+    frac = np.asarray(structure.frac_positions, dtype=np.float64)
+    cart = np.asarray(frac @ structure.unit_cell, dtype=np.float64)
+
+    h_rows: list[int] = []
+    parent_rows: list[int] = []
+    offsets: list[np.ndarray] = []
+    for i in range(structure.n_atoms):
+        if numbers[i] != 1:
+            continue
+        radius_h = _covalent_radius(numbers[i])
+        nearest: tuple[float, int] | None = None
+        for j in range(structure.n_atoms):
+            if numbers[j] == 1:
+                continue
+            distance = float(np.linalg.norm(cart[j] - cart[i]))
+            cutoff = (
+                cutoff_scale * (radius_h + _covalent_radius(numbers[j])) + cutoff_margin_angstrom
+            )
+            if 1e-8 < distance <= cutoff and (nearest is None or distance < nearest[0]):
+                nearest = (distance, j)
+        if nearest is None:
+            raise ValueError(
+                f"hydrogen {structure.labels[i]!r} (row {i}) has no covalently-bonded heavy "
+                "neighbour within the cutoff"
+            )
+        h_rows.append(i)
+        parent_rows.append(nearest[1])
+        offsets.append(frac[i] - frac[nearest[1]])
+
+    return HydrogenRiding(
+        name="hydrogen_riding",
+        h_index=torch.tensor(h_rows, dtype=torch.int64),
+        parent_index=torch.tensor(parent_rows, dtype=torch.int64),
+        offset=torch.tensor(np.asarray(offsets), dtype=torch.float64),
+        u_iso_scale=torch.full((len(h_rows),), u_iso_scale, dtype=torch.float64),
+    )
