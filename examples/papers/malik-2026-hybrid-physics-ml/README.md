@@ -55,8 +55,21 @@ cfg, lock = load_experiment(EXPERIMENT_DIR)
 structure = read_structure(EXPERIMENT_DIR / cfg.inputs.structure)
 observations = read_observations(EXPERIMENT_DIR / cfg.inputs.observations)
 setup = from_experiment(structure, observations, cfg)
-plan = preprocess_experiment(EXPERIMENT_DIR, checkpoint=True, refresh=False, device=device)
-plan = keep_finite_loss_quartz_frames(plan, setup, cfg)
+integration = IntegrationGeometry(semiangle=1.0)
+beam_selection = BeamSelection(rsg=0.9, dsg=0.0015, integration=integration)
+orientation_search = HexagonalSearch(max_search_angle=0.4, min_search_angle=0.001)
+coupling = TrialCoupling(
+    policy=TiltSegmentUnion(n_splits=12, g_max=1.0, cap_margin=0.2, sg_max=0.01),
+    scored=ScoredSelection(klar=beam_selection, g_max=1.0),
+)
+plan = pipeline([
+    select_beams(beam_selection),
+    build_orientation_plans(),
+    integrate_rocking_curve(RockingCurve(sampling=42, integration=integration)),
+    mosaicity(Mosaicity(window=5)),
+    fit_orientation(setup.refinement, orientation_search, coupling=coupling),
+    select_finite_loss_frames(setup.refinement, loss=cfg.refinement.objective.to_loss()),
+])(setup.plans.combined)
 engine = build_engine(plan, setup.refinement, loss=cfg.refinement.objective.to_loss())
 
 trainable = TrainableSpec(positions=AtomSelection.all())

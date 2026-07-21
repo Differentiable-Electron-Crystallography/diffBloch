@@ -8,31 +8,46 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import torch
 
-from diffBloch.app.program import preprocess_experiment
 from diffBloch.config import ExperimentConfig, load_experiment
 from diffBloch.engine import (
     ApparentThicknessNN,
     AtomSelection,
     ModelRefinementResult,
     RefinementEngine,
-    RefinementModel,
-    RefinementProblem,
     ThicknessBounds,
     TrainableSpec,
     build_refinement_model,
     build_refinement_problem,
-    mean_plan_thickness,
     run_refinement_model,
 )
+from diffBloch.engine.plan import mean_plan_thickness
 from diffBloch.io import read_observations, read_structure
-from diffBloch.preprocess import Plan, RefinementSetup, from_experiment
+from diffBloch.preprocess import (
+    build_orientation_plans,
+    fit_orientation,
+    from_experiment,
+    integrate_rocking_curve,
+    mosaicity,
+    pipeline,
+    select_beams,
+    select_finite_loss_frames,
+)
 from diffBloch.preprocess.scoring import build_engine
+from diffBloch.specs import (
+    BeamSelection,
+    HexagonalSearch,
+    IntegrationGeometry,
+    Mosaicity,
+    RockingCurve,
+    ScoredSelection,
+    TiltSegmentUnion,
+    TrialCoupling,
+)
 
 
 def run_quartz_thickness_nn_example(
@@ -50,21 +65,62 @@ def run_quartz_thickness_nn_example(
         load_hydrogens=cfg.inputs.load_hydrogens,
     )
     observations = read_observations(experiment_dir / cfg.inputs.observations)
-    refinement = from_experiment(structure, observations, cfg).refinement
-    plan = preprocess_experiment(experiment_dir, checkpoint=True, refresh=False, device=device)
-    plan = _finite_loss_plan(plan, refinement, cfg)
+    setup = from_experiment(structure, observations, cfg)
+    refinement = setup.refinement
+    integration = IntegrationGeometry(semiangle=1.0)
+    beam_selection = BeamSelection(rsg=0.9, dsg=0.0015, integration=integration)
+    orientation_search = HexagonalSearch(
+        max_search_angle=0.4,
+        min_search_angle=0.001,
+        n_steps=6,
+        max_iterations=2000,
+    )
+    coupling = TrialCoupling(
+        policy=TiltSegmentUnion(n_splits=12, g_max=1.0, cap_margin=0.2, sg_max=0.01),
+        scored=ScoredSelection(klar=beam_selection, g_max=1.0),
+    )
+    plan = pipeline(
+        [
+            select_beams(beam_selection),
+            build_orientation_plans(),
+            integrate_rocking_curve(RockingCurve(sampling=42, integration=integration)),
+            mosaicity(Mosaicity(window=5)),
+            fit_orientation(
+                refinement,
+                orientation_search,
+                method=cfg.solver.refine,
+                coupling=coupling,
+                device=device,
+            ),
+            select_finite_loss_frames(
+                refinement,
+                loss=cfg.refinement.objective.to_loss(),
+                method=cfg.solver.refine,
+            ),
+        ]
+    )(setup.plans.combined)
     engine = build_engine(
         plan,
         refinement,
         loss=cfg.refinement.objective.to_loss(),
         method=cfg.solver.refine,
     )
-    model, problem, trainable, thickness_nn = _build_model(
-        refinement,
-        engine,
-        device=device,
-        thickness_bounds=thickness_bounds,
+    initial = refinement.params.to(device)
+    thickness_nn = ApparentThicknessNN(bounds=thickness_bounds)
+    component_params = {
+        thickness_nn.key: thickness_nn.initial_params(
+            dtype=initial.asu_positions.dtype,
+            device=device,
+            initial_thickness=mean_plan_thickness(engine.orientations),
+        )
+    }
+    model = build_refinement_model(
+        initial=initial,
+        components=(thickness_nn,),
+        component_params=component_params,
     )
+    problem = build_refinement_problem()
+    trainable = TrainableSpec(positions=AtomSelection.all())
     result = run_refinement_model(
         engine,
         model,
@@ -89,57 +145,14 @@ def run_quartz_thickness_nn_example(
     return summary
 
 
-def _finite_loss_plan(plan: Plan, refinement: RefinementSetup, cfg: ExperimentConfig) -> Plan:
-    finite = []
-    for orientation in plan.orientations:
-        one = replace(plan, orientations=(orientation,))
-        engine = build_engine(
-            one,
-            refinement,
-            loss=cfg.refinement.objective.to_loss(),
-            method=cfg.solver.refine,
-        )
-        if torch.isfinite(engine.objective_value(refinement.params).total):
-            finite.append(orientation)
-    if not finite:
-        raise RuntimeError("quartz preprocess produced no finite-loss orientations")
-    return replace(plan, orientations=tuple(finite))
-
-
-def _build_model(
-    refinement: RefinementSetup,
-    engine: RefinementEngine,
-    *,
-    device: torch.device,
-    thickness_bounds: ThicknessBounds,
-) -> tuple[RefinementModel, RefinementProblem, TrainableSpec, ApparentThicknessNN]:
-    initial = refinement.params.to(device)
-    thickness_nn = ApparentThicknessNN(bounds=thickness_bounds)
-    component_params = {
-        thickness_nn.key: thickness_nn.initial_params(
-            dtype=initial.asu_positions.dtype,
-            device=device,
-            initial_thickness=mean_plan_thickness(engine.orientations),
-        )
-    }
-    model = build_refinement_model(
-        initial=initial,
-        components=(thickness_nn,),
-        component_params=component_params,
-    )
-    problem = build_refinement_problem()
-    trainable = TrainableSpec(positions=AtomSelection.all())
-    return model, problem, trainable, thickness_nn
-
-
 def _summary(
     *,
     cfg: ExperimentConfig,
     n_atoms: int,
     n_observed_rotations: int,
     engine: RefinementEngine,
-    model: RefinementModel,
-    problem: RefinementProblem,
+    model: Any,
+    problem: Any,
     result: ModelRefinementResult,
     thickness_nn: ApparentThicknessNN,
     steps: int,
