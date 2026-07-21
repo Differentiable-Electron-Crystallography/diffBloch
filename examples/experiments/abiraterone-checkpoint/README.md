@@ -30,12 +30,33 @@ From the repository root:
 diffbloch run preprocess examples/experiments/abiraterone-checkpoint            # settle the Plan (reuses the checkpoint)
 diffbloch run preprocess examples/experiments/abiraterone-checkpoint --refresh  # recompute the coupled fit from scratch
 diffbloch run infer examples/experiments/abiraterone-checkpoint                 # reuse the checkpoint, then score every rotation
+diffbloch run refine examples/experiments/abiraterone-checkpoint                # reuse the checkpoint, then refine (default path)
 ```
 
 The unit cell (~2186 Å³) is above the large-cell threshold, so the orientation search runs on the
 coarse fp32 fast path; the fp64 terminal re-scores the fitted orientation, so the reported score
 keeps full fidelity. Generating the checkpoint uses a CUDA device (`--device cuda`); the committed
 checkpoint is then reused on CPU or GPU alike.
+
+## Refinement
+
+`run refine` is the **default single-stage path**: it refines positions + ADPs with the optimizer /
+step budget in `experiment.yaml` (`refinement.steps`, `refinement.optimizer`, `refinement.trainable`,
+`refinement.objective`). Those are stable execution knobs; the config does **not** author a
+scientific program.
+
+Scientific composition is typed Python, not config. Hydrogen **riding** — which the faithful
+abiraterone match uses (each H derived from its parent heavy atom each step) — is composed with
+`diffBloch.engine.with_hydrogen_riding`, not a YAML mode:
+
+```python
+from diffBloch.engine import build_refinement_problem, run_refinement_problem, with_hydrogen_riding
+
+trainable, constraints = with_hydrogen_riding(structure, cfg.refinement.trainable.to_spec())
+problem = build_refinement_problem(initial=params, trainable=trainable, constraints=constraints)
+run_refinement_problem(engine, problem, steps=cfg.refinement.steps,
+                       optimizer=cfg.refinement.optimizer.name, lr=cfg.refinement.optimizer.lr)
+```
 
 ## Why it reuses across a fresh clone
 
