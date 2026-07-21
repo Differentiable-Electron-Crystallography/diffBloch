@@ -8,7 +8,13 @@ import torch
 from tests.unit.test_engine import _engine, _params
 from tests.unit.test_engine_penalties import _state, _structure
 
-from diffBloch.engine import AtomSelection, RefinementProblem, TrainableSpec, run_refinement_problem
+from diffBloch.engine import (
+    AtomSelection,
+    RefinementProblem,
+    TrainableSpec,
+    build_refinement_model,
+    run_refinement_model,
+)
 from diffBloch.engine.constraints import HydrogenRiding, perceive_hydrogen_riding
 
 
@@ -192,17 +198,20 @@ def test_rejects_negative_index() -> None:
         HydrogenRiding(**{**_valid_kwargs(), "parent_index": torch.tensor([-1], dtype=torch.int64)})
 
 
-def test_riding_runs_through_run_refinement_problem() -> None:
+def test_riding_runs_through_run_refinement_model() -> None:
     # a 2-atom C + H engine: riding must thread through the real optimizer shell without error
     positions = np.array([[0.0, 0.0, 0.0], [0.2, 0.0, 0.0]], dtype=np.float64)
     engine = _engine(asu_positions=positions, numbers=torch.tensor([6, 1], dtype=torch.int64))
-    problem = RefinementProblem(
+    model = build_refinement_model(
         initial=_params(asu_positions=torch.tensor(positions)),
-        trainable=TrainableSpec(
-            positions=AtomSelection.exclude_elements("H"), adp=AtomSelection.exclude_elements("H")
-        ),
         constraints=(_riding([[0.2, 0.0, 0.0]]),),
     )
-    result = run_refinement_problem(engine, problem, steps=2, optimizer="adam", lr=1e-3)
+    trainable = TrainableSpec(
+        positions=AtomSelection.exclude_elements("H"), adp=AtomSelection.exclude_elements("H")
+    )
+    problem = RefinementProblem()
+    result = run_refinement_model(
+        engine, model, problem, trainable=trainable, steps=2, optimizer="adam", lr=1e-3
+    )
     assert result.losses.shape == (2,)
     assert torch.isfinite(result.losses).all()

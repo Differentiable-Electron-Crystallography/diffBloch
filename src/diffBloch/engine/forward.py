@@ -1,4 +1,4 @@
-"""The forward composition spine: raw parameters -> simulated diffraction -> scalar objective.
+"""Forward composition spine: raw structure parameters -> diffraction -> scalar objective.
 
 A :class:`RefinementEngine` holds the refinement-invariant plans (constraint spec, ASU-expansion
 plan, the shared scattering grid, and one :class:`~diffBloch.engine.plan.OrientationPlan` per
@@ -8,7 +8,7 @@ rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiabl
               -> per orientation: build_bloch_system -> propagate -> intensities -> align -> loss
 
 ``objective_value`` / ``simulate`` are pure and differentiable;
-:func:`run_refinement_problem` delegates to the quarantined imperative loop in
+:func:`run_refinement_model` delegates to the quarantined imperative loop in
 :mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
 construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
 per-orientation beam sets.
@@ -16,13 +16,15 @@ per-orientation beam sets.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
+import dataclasses
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Protocol
 
 import torch
 from torch import Tensor
 
-from diffBloch.core.constraints import positive
 from diffBloch.core.dynamical import build_bloch_system, build_bloch_systems, stack_beam_plans
 from diffBloch.core.losses import optimal_scale
 from diffBloch.core.products import (
@@ -46,19 +48,29 @@ from diffBloch.engine.refine import (
     ObjectiveValue,
     OptimizerName,
     PenaltyTerm,
-    RefinementResult,
     TrainableSpec,
-    run_refinement,
+    _build_optimizer,
+    _component_measurements,
+    _detach_params,
+    _resolve_trainable,
+    _scalar_float,
+    _to_trainable_params,
 )
-from diffBloch.observability import NULL_LOGGER, Logger
+from diffBloch.observability import NULL_LOGGER, Logger, RefinementCompleted, RefinementStep
 from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
 
 __all__ = [
+    "ForwardContext",
     "LossFn",
+    "ModelComponent",
+    "StructureComponent",
     "RefinementEngine",
+    "RefinementModel",
+    "ModelRefinementResult",
     "RefinementProblem",
+    "build_refinement_model",
     "build_refinement_problem",
-    "run_refinement_problem",
+    "run_refinement_model",
 ]
 
 # A loss reduces one orientation's aligned intensities to a scalar term (calculated vs observed).
@@ -68,7 +80,7 @@ type LossFn = Callable[[AlignedIntensities], Tensor]
 
 @dataclass(frozen=True)
 class RefinementEngine:
-    """Forward from raw parameters to a differentiable scalar objective.
+    """Forward from raw structure parameters to a differentiable scalar objective.
 
     Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,
     the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations`` (each
@@ -169,6 +181,41 @@ class RefinementEngine:
         details. Hydrogen riding will be the first concrete ``ConstraintTransform``; a soft penalty
         and a hard constraint are distinct -- a constraint reparameterizes, it is not a cost term.
         """
+        return self._objective_value(
+            params,
+            penalties=penalties,
+            constraints=constraints,
+            forward_context_for=None,
+        )
+
+    def objective_value_model(
+        self,
+        model: RefinementModel,
+        *,
+        penalties: tuple[PenaltyTerm, ...] = (),
+    ) -> ObjectiveValue:
+        """Return the objective for a JAX-style refinement model.
+
+        Structure-only models delegate to :meth:`objective_value` for exact behavior parity. Models
+        with components use the same objective order, but let components supply forward-context
+        values such as per-orientation thickness before falling back to the built-in thickness path.
+        """
+        return self._objective_value(
+            model.structure.initial,
+            penalties=penalties,
+            constraints=model.structure.constraints,
+            forward_context_for=_component_forward_context_for(model) if model.components else None,
+        )
+
+    def _objective_value(
+        self,
+        params: RefinableParams,
+        *,
+        penalties: tuple[PenaltyTerm, ...],
+        constraints: tuple[ConstraintTransform, ...],
+        forward_context_for: Callable[[int, OrientationPlanLike], ForwardContext] | None,
+    ) -> ObjectiveValue:
+        """Shared objective implementation for structure-only and component model paths."""
         if not self.orientations:
             raise ValueError("engine has no orientations to evaluate")
         names = [constraint.name for constraint in constraints]
@@ -179,12 +226,18 @@ class RefinementEngine:
             state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
-        for orientation in self.orientations:
-            solution = self._solve(orientation, fgb, self._thickness_for(orientation, params))
+        for orientation_index, orientation in enumerate(self.orientations):
+            context = (
+                ForwardContext()
+                if forward_context_for is None
+                else forward_context_for(orientation_index, orientation)
+            )
+            thickness = context.thickness
+            if thickness is None:
+                thickness = self._thickness_for(orientation, params)
+            solution = self._solve(orientation, fgb, thickness)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             term = self.loss(aligned)
-            # Catch a non-reducing loss here, where the mistake is, rather than letting a
-            # non-scalar surface much later as an opaque ``backward()`` failure.
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
@@ -206,19 +259,11 @@ class RefinementEngine:
           (``orientation.thickness``), because the specimen presents a different path length at each
           tilt. It is seeded from the
           sample thickness and later replaced by the best-fitting value found by ``fit_thickness``.
-        - **When the caller is also refining thickness**, ``params.thickness_raw`` is set, and it
-          overrides the per-orientation value for every orientation (a single refined thickness
-          shared across all of them). It is an unconstrained real number mapped to a positive
-          thickness by ``positive`` -- the same mapping :func:`diffBloch.params.constrain` uses --
-          so selecting ``trainable.thickness`` actually changes the simulation.
-
-        ``params.thickness_raw is None`` means "not refining thickness", so the per-orientation
-        value is used. Letting thickness vary per orientation while being refined (a learned
-        ``theta -> thickness`` model) is deliberately deferred future work.
+        Trainable thickness refinement is represented by model components that provide
+        ``ForwardContext.thickness``. Without such a component, the settled per-orientation Plan
+        thickness is the sole source used by the Bloch solve.
         """
-        if params.thickness_raw is None:
-            return orientation.thickness
-        return positive(params.thickness_raw)
+        return orientation.thickness
 
     def physical_state(self, params: RefinableParams) -> PhysicalState:
         """Return bounded physical ASU quantities for ``params``."""
@@ -327,64 +372,302 @@ class RefinementEngine:
 
 
 @dataclass(frozen=True)
-class RefinementProblem:
-    """The pure-data scientific definition of one refinement run.
+class ForwardContext:
+    """Forward-model values supplied by refinement model components.
 
-    Records the starting parameters, whole-group trainable selections, soft ``penalties`` (additive
-    objective terms), and hard ``constraints`` -- ``ConstraintTransform`` reparameterizations of the
-    physical state such as hydrogen riding. The live :class:`RefinementEngine` remains an explicit
-    executor/context argument rather than being stored on the problem.
+    Phase 4 keeps this narrow: apparent thickness is the only value admitted because it is the only
+    upcoming concrete component. Scale/background/damage fields should be added only when consumed.
+    """
+
+    thickness: Tensor | None = None
+
+
+class ModelComponent(Protocol):
+    """A trainable/differentiable model component that can feed the forward simulation."""
+
+    @property
+    def key(self) -> str:
+        """Stable component parameter-tree key for validation and optimizer grouping."""
+        ...
+
+    def initial_params(
+        self,
+        *,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> Mapping[str, Tensor]:
+        """Return initial parameter tensors for this component."""
+        ...
+
+    def forward_context(
+        self,
+        params: Mapping[str, Tensor],
+        *,
+        orientation_index: int,
+        orientation: OrientationPlanLike,
+    ) -> ForwardContext:
+        """Return this component's values for one orientation."""
+        ...
+
+
+@dataclass(frozen=True)
+class StructureComponent:
+    """The physical-structure component of a refinement model.
+
+    This is a no-behavior-change wrapper around the existing structure refinement inputs:
+    ``initial`` is today's :class:`~diffBloch.params.RefinableParams`, and ``constraints`` is
+    today's tuple of hard molecular transforms applied after crystallographic ``constrain``. The
+    long-term JAX-style endpoint is for structure-local hard parameterizations to live here.
     """
 
     initial: RefinableParams
-    trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
-    penalties: tuple[PenaltyTerm, ...] = ()
     constraints: tuple[ConstraintTransform, ...] = ()
+
+
+@dataclass(frozen=True)
+class RefinementModel:
+    """Trainable refinement model value, currently structure-only.
+
+    The model is the value optimized against a static :class:`RefinementEngine`. Non-structure
+    components provide forward-context values such as apparent thickness.
+    """
+
+    structure: StructureComponent
+    components: tuple[ModelComponent, ...] = ()
+    component_params: Mapping[str, Mapping[str, Tensor]] = MappingProxyType({})
+
+    def __post_init__(self) -> None:
+        keys = [component.key for component in self.components]
+        if len(keys) != len(set(keys)):
+            raise ValueError(f"duplicate refinement component key among {keys!r}")
+        params = {key: MappingProxyType(dict(self.component_params.get(key, {}))) for key in keys}
+        unexpected = set(self.component_params) - set(keys)
+        if unexpected:
+            raise ValueError(
+                f"component_params has no matching component for {sorted(unexpected)!r}"
+            )
+        object.__setattr__(self, "component_params", MappingProxyType(params))
+
+
+def _component_forward_context_for(
+    model: RefinementModel,
+) -> Callable[[int, OrientationPlanLike], ForwardContext]:
+    def forward_context_for(
+        orientation_index: int, orientation: OrientationPlanLike
+    ) -> ForwardContext:
+        return _forward_context(model, orientation_index=orientation_index, orientation=orientation)
+
+    return forward_context_for
+
+
+def _forward_context(
+    model: RefinementModel,
+    *,
+    orientation_index: int,
+    orientation: OrientationPlanLike,
+) -> ForwardContext:
+    thickness: Tensor | None = None
+    for component in model.components:
+        params = model.component_params[component.key]
+        context = component.forward_context(
+            params, orientation_index=orientation_index, orientation=orientation
+        )
+        if context.thickness is not None:
+            if thickness is not None:
+                raise ValueError("multiple refinement components provided thickness")
+            thickness = context.thickness
+    return ForwardContext(thickness=thickness)
+
+
+def build_refinement_model(
+    *,
+    initial: RefinableParams,
+    constraints: tuple[ConstraintTransform, ...] = (),
+    components: tuple[ModelComponent, ...] = (),
+    component_params: Mapping[str, Mapping[str, Tensor]] = MappingProxyType({}),
+) -> RefinementModel:
+    """Construct the phase-1 JAX-style refinement model wrapper.
+
+    This is intentionally behavior-equivalent to today's structure-only refinement when no
+    components are supplied. Concrete component execution is added in later phases.
+    """
+    return RefinementModel(
+        structure=StructureComponent(initial=initial, constraints=constraints),
+        components=components,
+        component_params=component_params,
+    )
+
+
+@dataclass(frozen=True)
+class ModelRefinementResult:
+    """The outcome of optimizing a refinement model.
+
+    The JAX-style result returns the optimized model value. ``params``/``best_params`` properties
+    preserve the structure-only convenience used by the default app path and existing tests.
+    """
+
+    model: RefinementModel
+    losses: Tensor
+    best_model: RefinementModel
+    best_step: int
+
+    @property
+    def params(self) -> RefinableParams:
+        """Final refined structure parameters."""
+        return self.model.structure.initial
+
+    @property
+    def best_params(self) -> RefinableParams:
+        """Best recorded structure parameters."""
+        return self.best_model.structure.initial
+
+    @property
+    def best_loss(self) -> float:
+        """The lowest recorded (pre-update) loss."""
+        return float(self.losses[self.best_step])
+
+
+@dataclass(frozen=True)
+class RefinementProblem:
+    """Objective-side scientific composition for one refinement run.
+
+    The trainable model value is passed separately to ``run_refinement_model``. The problem records
+    only additive objective terms such as bond, angle, and planarity penalties.
+    """
+
+    penalties: tuple[PenaltyTerm, ...] = ()
 
 
 def build_refinement_problem(
     *,
-    initial: RefinableParams,
-    trainable: TrainableSpec,
-    constraints: tuple[ConstraintTransform, ...] = (),
     penalties: tuple[PenaltyTerm, ...] = (),
 ) -> RefinementProblem:
-    """Construct a :class:`RefinementProblem` -- the pure factory for scientific composition.
+    """Construct objective-side refinement composition data."""
+    return RefinementProblem(penalties=penalties)
 
-    A keyword-only factory shared by the app's default path and Python/API callers: the default
-    ``run refine`` builds the boring positions/ADP problem from config, while callers add hard
-    constraints (e.g. :func:`~diffBloch.engine.with_hydrogen_riding`) or soft penalties by passing
-    them here. A named factory -- rather than constructing ``RefinementProblem`` inline -- is where
-    richer default composition would later attach.
-    """
-    return RefinementProblem(
-        initial=initial, trainable=trainable, constraints=constraints, penalties=penalties
+
+@dataclass(frozen=True)
+class _TrainableComponentParams:
+    params_by_component: Mapping[str, Mapping[str, Tensor]]
+    leaves: tuple[Tensor, ...]
+
+    def params(self) -> Mapping[str, Mapping[str, Tensor]]:
+        return self.params_by_component
+
+
+def _to_trainable_component_params(
+    component_params: Mapping[str, Mapping[str, Tensor]],
+) -> _TrainableComponentParams:
+    params_by_component: dict[str, Mapping[str, Tensor]] = {}
+    leaves: list[Tensor] = []
+    for component_key, params in component_params.items():
+        cloned: dict[str, Tensor] = {}
+        for tensor_name, tensor in params.items():
+            leaf = tensor.detach().clone().requires_grad_(True)
+            cloned[tensor_name] = leaf
+            leaves.append(leaf)
+        params_by_component[component_key] = MappingProxyType(cloned)
+    return _TrainableComponentParams(
+        params_by_component=MappingProxyType(params_by_component), leaves=tuple(leaves)
     )
 
 
-def run_refinement_problem(
+def _detach_component_params(
+    component_params: Mapping[str, Mapping[str, Tensor]],
+) -> Mapping[str, Mapping[str, Tensor]]:
+    params_by_component: dict[str, Mapping[str, Tensor]] = {}
+    for component_key, params in component_params.items():
+        params_by_component[component_key] = MappingProxyType(
+            {name: tensor.detach().clone() for name, tensor in params.items()}
+        )
+    return MappingProxyType(params_by_component)
+
+
+def _detach_model(model: RefinementModel) -> RefinementModel:
+    return dataclasses.replace(
+        model,
+        structure=dataclasses.replace(
+            model.structure, initial=_detach_params(model.structure.initial)
+        ),
+        component_params=_detach_component_params(model.component_params),
+    )
+
+
+def run_refinement_model(
     engine: RefinementEngine,
+    model: RefinementModel,
     problem: RefinementProblem,
     *,
+    trainable: TrainableSpec,
     steps: int,
     optimizer: OptimizerName = "lbfgs",
     lr: float = 1e-3,
     logger: Logger = NULL_LOGGER,
-) -> RefinementResult:
-    """Optimize a pure-data refinement problem with the supplied engine/context."""
+) -> ModelRefinementResult:
+    """Optimize a refinement model against the supplied engine/static context and problem terms."""
+    if steps < 1:
+        raise ValueError("steps must be >= 1")
+    trainable_params = _to_trainable_params(
+        model.structure.initial,
+        _resolve_trainable(model.structure.initial, trainable, atomic_numbers=engine.numbers),
+    )
+    component_params = _to_trainable_component_params(model.component_params)
+    opt = _build_optimizer(
+        optimizer,
+        [*trainable_params.leaves, *component_params.leaves],
+        lr,
+    )
+    reported_objective: ObjectiveValue | None = None
 
-    def objective_value(params: RefinableParams) -> ObjectiveValue:
-        return engine.objective_value(
-            params, penalties=problem.penalties, constraints=problem.constraints
+    def current_model() -> RefinementModel:
+        return dataclasses.replace(
+            model,
+            structure=dataclasses.replace(model.structure, initial=trainable_params.params()),
+            component_params=component_params.params(),
         )
 
-    return run_refinement(
-        objective_value,
-        problem.initial,
-        steps=steps,
-        trainable=problem.trainable,
-        optimizer=optimizer,
-        lr=lr,
-        atomic_numbers=engine.numbers,
-        logger=logger,
+    def closure() -> float:
+        nonlocal reported_objective
+        opt.zero_grad()
+        current_objective = engine.objective_value_model(
+            current_model(), penalties=problem.penalties
+        )
+        if reported_objective is None:
+            reported_objective = current_objective
+        loss = current_objective.total
+        loss.backward()  # type: ignore[no-untyped-call]
+        for leaf in [*trainable_params.leaves, *component_params.leaves]:
+            if leaf.grad is not None and not leaf.grad.is_contiguous():
+                leaf.grad = leaf.grad.contiguous()
+        return float(loss.detach())
+
+    losses: list[float] = []
+    best_loss = float("inf")
+    best_step = 0
+    best_model = _detach_model(current_model())
+    for step in range(steps):
+        snapshot = _detach_model(current_model())
+        reported_objective = None
+        loss_value = opt.step(closure)
+        assert loss_value is not None
+        loss_value = float(loss_value)
+        if reported_objective is None:
+            raise RuntimeError("optimizer did not evaluate the refinement objective")
+        losses.append(loss_value)
+        logger.report(
+            RefinementStep(
+                iteration=step,
+                loss=loss_value,
+                objective_total=_scalar_float(reported_objective.total),
+                components=_component_measurements(reported_objective),
+            )
+        )
+        if loss_value < best_loss:
+            best_loss, best_step, best_model = loss_value, step, snapshot
+    logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
+    return ModelRefinementResult(
+        model=_detach_model(current_model()),
+        losses=torch.tensor(losses, dtype=torch.float64),
+        best_model=best_model,
+        best_step=best_step,
     )

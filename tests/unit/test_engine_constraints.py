@@ -8,7 +8,12 @@ import pytest
 import torch
 from tests.unit.test_engine import _engine, _params
 
-from diffBloch.engine import RefinementProblem, run_refinement_problem
+from diffBloch.engine import (
+    RefinementProblem,
+    TrainableSpec,
+    build_refinement_model,
+    run_refinement_model,
+)
 from diffBloch.params import PhysicalState
 
 
@@ -103,13 +108,13 @@ def test_no_constraints_is_a_noop() -> None:
     )
 
 
-def test_refinement_problem_records_constraints() -> None:
+def test_physical_structure_records_constraints() -> None:
     constraint = _ShiftX()
-    problem = RefinementProblem(initial=_params(), constraints=(constraint,))
-    assert problem.constraints == (constraint,)
+    model = build_refinement_model(initial=_params(), constraints=(constraint,))
+    assert model.structure.constraints == (constraint,)
 
 
-def test_run_refinement_problem_threads_constraints_into_the_objective() -> None:
+def test_run_refinement_model_threads_constraints_into_the_objective() -> None:
     engine = _engine()
     applied: list[str] = []
 
@@ -121,6 +126,15 @@ def test_run_refinement_problem_threads_constraints_into_the_objective() -> None
             applied.append(self.name)
             return state
 
-    problem = RefinementProblem(initial=_params(), constraints=(_Spy(),))
-    run_refinement_problem(engine, problem, steps=1, optimizer="adam", lr=1e-3)
+    model = build_refinement_model(initial=_params(), constraints=(_Spy(),))
+    problem = RefinementProblem()
+    run_refinement_model(
+        engine,
+        model,
+        problem,
+        trainable=TrainableSpec.positions_and_adp(),
+        steps=1,
+        optimizer="adam",
+        lr=1e-3,
+    )
     assert applied  # the executor invoked the constraint's apply during optimization

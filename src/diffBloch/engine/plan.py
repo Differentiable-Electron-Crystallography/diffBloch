@@ -40,6 +40,7 @@ __all__ = [
     "ScatteringGrid",
     "SegmentPlan",
     "SegmentedOrientationPlan",
+    "mean_plan_thickness",
 ]
 
 
@@ -443,3 +444,11 @@ class SegmentedOrientationPlan:
 # both;
 # only the terminal, post-fit ``couple_beams`` step produces the segmented variant.
 OrientationPlanLike = OrientationPlan | SegmentedOrientationPlan
+
+
+def mean_plan_thickness(plan: Sequence[OrientationPlanLike]) -> Tensor:
+    """Return the mean physical thickness across a settled orientation plan."""
+    if not plan:
+        raise ValueError("plan has no orientations to read thickness from")
+    values = [orientation.thickness.reshape(-1) for orientation in plan]
+    return torch.cat(values).mean()

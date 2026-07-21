@@ -9,6 +9,12 @@
 The dependency points one way (refine -> forward -> core); ``core/`` stays free of ``torch.optim``.
 """
 
+from diffBloch.engine.components import (
+    ApparentThicknessNN,
+    PerOrientationThickness,
+    QuadraticThicknessProfile,
+    ThicknessBounds,
+)
 from diffBloch.engine.constraints import (
     ConstraintTransform,
     HydrogenRiding,
@@ -16,11 +22,17 @@ from diffBloch.engine.constraints import (
     with_hydrogen_riding,
 )
 from diffBloch.engine.forward import (
+    ForwardContext,
     LossFn,
+    ModelComponent,
+    ModelRefinementResult,
     RefinementEngine,
+    RefinementModel,
     RefinementProblem,
+    StructureComponent,
+    build_refinement_model,
     build_refinement_problem,
-    run_refinement_problem,
+    run_refinement_model,
 )
 from diffBloch.engine.losses import (
     l1_loss,
@@ -36,6 +48,7 @@ from diffBloch.engine.plan import (
     OrientationPlanLike,
     ScatteringGrid,
     SegmentedOrientationPlan,
+    mean_plan_thickness,
 )
 from diffBloch.engine.refine import (
     AtomSelection,
@@ -49,23 +62,34 @@ from diffBloch.engine.refine import (
 )
 
 __all__ = [
+    "ApparentThicknessNN",
     "AtomSelection",
     "BondLengthPenalty",
     "ConstraintTransform",
+    "ForwardContext",
     "HydrogenRiding",
     "LossFn",
+    "mean_plan_thickness",
+    "ModelComponent",
     "ObjectiveComponent",
     "ObjectiveValue",
     "OptimizerName",
     "OrientationPlan",
     "OrientationPlanLike",
+    "PerOrientationThickness",
+    "QuadraticThicknessProfile",
+    "StructureComponent",
     "RefinementEngine",
+    "RefinementModel",
+    "ModelRefinementResult",
     "RefinementProblem",
     "RefinementResult",
     "PenaltyTerm",
     "ScatteringGrid",
     "SegmentedOrientationPlan",
+    "ThicknessBounds",
     "TrainableSpec",
+    "build_refinement_model",
     "build_refinement_problem",
     "l1_loss",
     "mse_loss",
@@ -73,7 +97,7 @@ __all__ = [
     "perceive_hydrogen_riding",
     "rbragg_loss",
     "run_refinement",
-    "run_refinement_problem",
+    "run_refinement_model",
     "scaled_w_rbragg_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",

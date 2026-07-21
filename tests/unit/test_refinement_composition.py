@@ -14,6 +14,7 @@ from diffBloch.engine import (
     AtomSelection,
     HydrogenRiding,
     TrainableSpec,
+    build_refinement_model,
     build_refinement_problem,
     with_hydrogen_riding,
 )
@@ -32,16 +33,16 @@ def _load(
     return structure, RefinementSetup.from_structure(structure).params
 
 
-# --- build_refinement_problem: the pure factory passes its fields through unchanged ---
+# --- model/problem composition: structure state split from objective terms ---
 
 
-def test_build_refinement_problem_passes_fields_through() -> None:
-    structure, initial = _load("abiraterone_anchor", "abiraterone.cif", load_hydrogens=True)
-    trainable = TrainableSpec(positions=AtomSelection.all(), adp=AtomSelection.none())
-    problem = build_refinement_problem(initial=initial, trainable=trainable)
-    assert problem.initial is initial
-    assert problem.trainable == trainable
-    assert problem.constraints == () and problem.penalties == ()
+def test_build_refinement_problem_records_objective_terms_only() -> None:
+    _structure, initial = _load("abiraterone_anchor", "abiraterone.cif", load_hydrogens=True)
+    model = build_refinement_model(initial=initial)
+    problem = build_refinement_problem()
+    assert model.structure.initial is initial
+    assert model.structure.constraints == ()
+    assert problem.penalties == ()
 
 
 # --- with_hydrogen_riding: freeze H + perceive the riding constraint ---

@@ -39,9 +39,10 @@ from diffBloch.config import (
 )
 from diffBloch.core.solver import FloatFormat
 from diffBloch.engine import (
-    RefinementResult,
+    ModelRefinementResult,
+    build_refinement_model,
     build_refinement_problem,
-    run_refinement_problem,
+    run_refinement_model,
 )
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
@@ -200,7 +201,7 @@ def refine_experiment(
     refresh: bool = False,
     device: Device | None = None,
     workers: int = 1,
-) -> RefinementResult:
+) -> ModelRefinementResult:
     """Settle the coupled ``Plan`` and gradient-refine the structure against the observed data.
 
     :func:`preprocess_experiment` for the geometry (checkpoint reuse for free -- see it for the
@@ -211,11 +212,12 @@ def refine_experiment(
     (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and the optimizer/step budget all
     come from ``experiment.yaml``. It composes no hard constraints or penalties -- scientific
     composition (hydrogen riding, freeze-H, penalties, multi-stage) is a Python/API concern, built
-    with :func:`~diffBloch.engine.build_refinement_problem` /
-    :func:`~diffBloch.engine.with_hydrogen_riding` and run via ``run_refinement_problem``. The
+    with :func:`~diffBloch.engine.build_refinement_model`,
+    :func:`~diffBloch.engine.build_refinement_problem`, and
+    :func:`~diffBloch.engine.with_hydrogen_riding`, then run via ``run_refinement_model``. The
     :class:`~diffBloch.engine.RefinementProblem` here is pure optimization-definition data; the
-    imperative loop lives in ``run_refinement_problem``. Returns the
-    :class:`~diffBloch.engine.RefinementResult` (per-step losses + best snapshot); the refined
+    imperative loop lives in ``run_refinement_model``. Returns the
+    :class:`~diffBloch.engine.ModelRefinementResult` (per-step losses + best snapshot); the refined
     structure is not persisted (deferred).
 
     ``device`` places the refinement solve on the accelerator: the seed params move there and the
@@ -236,12 +238,13 @@ def refine_experiment(
         prepared, refinement, loss=cfg.refinement.objective.to_loss(), method=cfg.solver.refine
     )
     initial = refinement.params if device is None else refinement.params.to(device)
-    problem = build_refinement_problem(
-        initial=initial, trainable=cfg.refinement.trainable.to_spec()
-    )
-    return run_refinement_problem(
+    model = build_refinement_model(initial=initial)
+    problem = build_refinement_problem()
+    return run_refinement_model(
         engine,
+        model,
         problem,
+        trainable=cfg.refinement.trainable.to_spec(),
         steps=cfg.refinement.steps,
         optimizer=cfg.refinement.optimizer.name,
         lr=cfg.refinement.optimizer.lr,

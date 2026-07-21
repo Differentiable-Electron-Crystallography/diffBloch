@@ -196,8 +196,9 @@ def with_hydrogen_riding(
     parent->H offset) and Uiso (scaled from the parent) -- so the hydrogens must not also be
     optimizer leaves. This freezes them (excludes H from both ``positions`` and ``adp``) and
     perceives the :class:`HydrogenRiding` constraint from the structure geometry, returning the
-    ``(trainable, constraints)`` pair to hand to
-    :func:`~diffBloch.engine.build_refinement_problem`. This is expressed here in Python, not in
+    ``(trainable, constraints)`` pair to place on
+    :class:`~diffBloch.engine.StructureComponent` via
+    :func:`~diffBloch.engine.build_refinement_model`. This is expressed here in Python, not in
     config: it is scientific composition, not a stable default-path knob.
 
     When the structure has no hydrogens the constraint tuple is empty and the freeze is harmless

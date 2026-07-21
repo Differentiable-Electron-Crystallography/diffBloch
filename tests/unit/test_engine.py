@@ -25,8 +25,9 @@ from diffBloch.engine import (
     RefinementResult,
     ScatteringGrid,
     TrainableSpec,
+    build_refinement_model,
     mse_loss,
-    run_refinement_problem,
+    run_refinement_model,
 )
 from diffBloch.observability import (
     NULL_LOGGER,
@@ -141,12 +142,11 @@ def _refine(
     logger: Logger = NULL_LOGGER,
 ) -> RefinementResult:
     """Test helper for the explicit problem + executor API."""
-    return run_refinement_problem(
+    return run_refinement_model(
         engine,
-        RefinementProblem(
-            initial=initial,
-            trainable=trainable or TrainableSpec.positions_and_adp(),
-        ),
+        build_refinement_model(initial=initial),
+        RefinementProblem(),
+        trainable=trainable or TrainableSpec.positions_and_adp(),
         steps=steps,
         optimizer=cast(OptimizerName, optimizer),
         lr=lr,
@@ -198,34 +198,6 @@ def test_objective_value_names_the_diffraction_component() -> None:
     assert torch.equal(objective.total, sum(c.contribution for c in objective.components.values()))
 
 
-def test_refinable_thickness_drives_the_forward_model() -> None:
-    # The thickness trainable group maps to thickness_raw; the forward model must consume it (not
-    # silently use each orientation's frozen thickness). orientation seed = 300 A.
-    engine = _engine()
-    base = _params()
-    base_params = RefinableParams(asu_positions=base.asu_positions, uij_raw=base.uij_raw)
-    raw_500 = torch.log(torch.expm1(torch.tensor([500.0], dtype=torch.float64)))  # softplus^-1
-    raw_300 = torch.log(torch.expm1(torch.tensor([300.0], dtype=torch.float64)))
-
-    (no_thickness,) = engine.simulate(base_params)
-    (thick_500,) = engine.simulate(
-        RefinableParams(
-            asu_positions=base.asu_positions, uij_raw=base.uij_raw, thickness_raw=raw_500
-        )
-    )
-    (thick_300,) = engine.simulate(
-        RefinableParams(
-            asu_positions=base.asu_positions, uij_raw=base.uij_raw, thickness_raw=raw_300
-        )
-    )
-
-    # Refinable thickness is honoured (carried onto the solution) and changes the intensities...
-    assert torch.allclose(thick_500.thicknesses, torch.tensor([500.0], dtype=torch.float64))
-    assert not torch.allclose(thick_500.intensities, no_thickness.intensities)
-    # ...and equals the orientation's frozen thickness exactly at 300 A (proving the wiring).
-    assert torch.allclose(thick_300.intensities, no_thickness.intensities)
-
-
 def test_atom_selection_rejects_invalid_runtime_mode() -> None:
     with pytest.raises(ValueError, match="atom selection mode"):
         AtomSelection("bogus")  # type: ignore[arg-type]
@@ -238,10 +210,11 @@ def test_atom_selection_rejects_unknown_element_symbol() -> None:
 
 def test_refinement_problem_is_pure_data() -> None:
     params = _params()
-    problem = RefinementProblem(initial=params)
+    model = build_refinement_model(initial=params)
+    problem = RefinementProblem()
 
-    assert problem.initial is params
-    assert problem.trainable == TrainableSpec.positions_and_adp()
+    assert model.structure.initial is params
+    assert problem.penalties == ()
     assert not hasattr(problem, "engine")
     assert not hasattr(problem, "refine")
 
@@ -249,12 +222,18 @@ def test_refinement_problem_is_pure_data() -> None:
 def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> None:
     observed = _observed_pattern(_params(occupancy_logit=2.2))
     engine = _engine(loss=mse_loss, pattern=observed)
-    problem = RefinementProblem(
-        initial=_params(occupancy_logit=0.0),
-        trainable=TrainableSpec(occupancy=AtomSelection.all()),
-    )
+    model = build_refinement_model(initial=_params(occupancy_logit=0.0))
+    problem = RefinementProblem()
 
-    result = run_refinement_problem(engine, problem, steps=6, optimizer="adam", lr=0.2)
+    result = run_refinement_model(
+        engine,
+        model,
+        problem,
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        steps=6,
+        optimizer="adam",
+        lr=0.2,
+    )
 
     assert result.losses.shape == (6,)
     assert result.losses[-1] < result.losses[0]
@@ -304,7 +283,7 @@ def test_objective_value_rejects_duplicate_component_name() -> None:
 
 def test_refinement_problem_records_penalties() -> None:
     penalty = _DummyPenalty()
-    problem = RefinementProblem(initial=_params(), penalties=(penalty,))
+    problem = RefinementProblem(penalties=(penalty,))
 
     assert problem.penalties == (penalty,)
 
