@@ -2,9 +2,9 @@
 
 Refinement varies a set of unbounded numbers, but the physical quantities they stand for are
 bounded: atomic displacement parameters (ADPs) must stay positive-definite, site occupancies lie in
-[0, 1], the sample thickness is positive, and atoms sitting on symmetry elements have some
-coordinates fixed. Rather than restrict the optimizer, we store each quantity as an unbounded "raw"
-number and apply a fixed transform (:func:`constrain`) that maps it onto its physical range.
+[0, 1], and atoms sitting on symmetry elements have some coordinates fixed. Rather than restrict
+the optimizer, we store each quantity as an unbounded "raw" number and apply a fixed transform
+(:func:`constrain`) that maps it onto its physical range.
 :class:`RefinableParams` holds the raw numbers the optimizer varies; :class:`PhysicalState` holds
 the physical quantities the diffraction calculation consumes.
 """
@@ -49,7 +49,6 @@ class RefinableParams:
     u_iso_raw: Tensor | None = None
     occupancy_raw: Tensor | None = None
     Fgb: Tensor | None = None
-    thickness_raw: Tensor | None = None
 
     def to(self, device: Device) -> RefinableParams:
         """Move every present parameter tensor to ``device`` (the device knob's single primitive).
@@ -71,7 +70,6 @@ class RefinableParams:
             u_iso_raw=move(self.u_iso_raw),
             occupancy_raw=move(self.occupancy_raw),
             Fgb=move(self.Fgb),
-            thickness_raw=move(self.thickness_raw),
         )
 
 
@@ -120,15 +118,14 @@ class PhysicalState:
     uij_star: Tensor
     occupancies: Tensor
     Fgb: Tensor | None = None
-    thicknesses: Tensor | None = None
 
 
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
     """Apply the *crystallographic* constraints, mapping raw parameters to the physical state.
 
     This is the hard-constraint layer on the raw parameters: per-atom site-symmetry position
-    projection, ADP site-symmetry equalities, and positivity/bounded transforms (occupancy, ADP,
-    thickness). It produces the crystallographically valid :class:`PhysicalState`, which the
+    projection, ADP site-symmetry equalities, and positivity/bounded transforms (occupancy, ADP).
+    It produces the crystallographically valid :class:`PhysicalState`, which the
     refinement objective may further transform -- *molecular* hard constraints (e.g. hydrogen
     riding, a future ConstraintTransform layer) -- before the diffraction term and soft penalties
     (:meth:`diffBloch.engine.forward.RefinementEngine.objective_value`).
@@ -152,7 +149,6 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
         uij_star=_constrain_adps(params, spec),
         occupancies=occupancies,
         Fgb=params.Fgb,
-        thicknesses=positive(params.thickness_raw) if params.thickness_raw is not None else None,
     )
 
 

@@ -148,6 +148,8 @@ def test_refinement_trainable_replaces_string_targets() -> None:
         )
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "refinement": {"targets": ["positions"]}})
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "refinement": {"trainable": {"thickness": "all"}}})
 
 
 def test_optimizer_and_objective_values_are_enumerated() -> None:

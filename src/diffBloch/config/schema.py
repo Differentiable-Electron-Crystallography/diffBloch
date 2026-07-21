@@ -180,7 +180,6 @@ class TrainableConfig(_StrictConfig):
     adp: Literal["all", "none"] = "all"
     occupancy: Literal["all", "none"] = "none"
     fgb: Literal["all", "none"] = "none"
-    thickness: Literal["all", "none"] = "none"
 
     def to_spec(self) -> TrainableSpec:
         """Parse into the ``TrainableSpec`` the refinement optimizer consumes."""
@@ -189,7 +188,6 @@ class TrainableConfig(_StrictConfig):
             adp=_atom_selection(self.adp),
             occupancy=_atom_selection(self.occupancy),
             fgb=_atom_selection(self.fgb),
-            thickness=_atom_selection(self.thickness),
         )
 
 
@@ -199,7 +197,8 @@ class RefinementConfig(_StrictConfig):
     These tune the default path; they do not author a scientific program. Scientific composition
     (hard constraints such as hydrogen riding, soft penalties, freeze-H masks, multi-stage
     workflows) is expressed as typed Python/API values -- see
-    :func:`~diffBloch.engine.build_refinement_problem` and
+    :func:`~diffBloch.engine.build_refinement_model`,
+    :func:`~diffBloch.engine.build_refinement_problem`, and
     :func:`~diffBloch.engine.with_hydrogen_riding` -- and is promoted to config only once the
     default recipe commits to it as stable public behaviour.
     """

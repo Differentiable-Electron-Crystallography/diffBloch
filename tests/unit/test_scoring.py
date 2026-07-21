@@ -237,7 +237,7 @@ def test_refinable_params_to_moves_present_tensors_and_keeps_none() -> None:
     moved = _params().to("cpu")  # _params has asu_positions + uij_raw; the rest are None
     assert moved.asu_positions.device == torch.device("cpu")
     assert moved.uij_raw is not None and moved.uij_raw.device == torch.device("cpu")
-    assert moved.u_iso_raw is None and moved.thickness_raw is None and moved.occupancy_raw is None
+    assert moved.u_iso_raw is None and moved.occupancy_raw is None
 
 
 def test_run_inference_device_cpu_is_a_no_op() -> None:
