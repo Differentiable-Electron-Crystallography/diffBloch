@@ -17,12 +17,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import torch
+
+from diffBloch.core.solver import Method
+from diffBloch.engine.forward import LossFn
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan
+from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import FrameSelection
 
-__all__ = ["select_frames"]
+__all__ = ["select_finite_loss_frames", "select_frames"]
 
 
 def select_frames(selection: FrameSelection) -> PlanStep:
@@ -51,6 +57,35 @@ def select_frames(selection: FrameSelection) -> PlanStep:
         return replace(plan, orientations=kept)
 
     return as_step("select_frames", selection, run)
+
+
+def select_finite_loss_frames(
+    refinement: RefinementSetup,
+    *,
+    loss: LossFn,
+    method: Method = "matrix_exp",
+) -> PlanStep:
+    """Return a ``Plan -> Plan`` step that keeps frames with finite initial objective loss.
+
+    This is an explicit model-dependent filter for compact demos or diagnostic recipes where a
+    settled Plan may contain orientations that produce non-finite diffraction loss under the chosen
+    refinement objective. It evaluates each orientation independently at ``refinement.params`` and
+    keeps only finite totals. Prefer model-independent :func:`select_frames` for scientific frame
+    exclusion policies.
+    """
+
+    def run(plan: Plan) -> Plan:
+        kept = []
+        for orientation in plan.orientations:
+            one = replace(plan, orientations=(orientation,))
+            engine = build_engine(one, refinement, loss=loss, method=method)
+            if torch.isfinite(engine.objective_value(refinement.params).total):
+                kept.append(orientation)
+        if not kept:
+            raise ValueError("select_finite_loss_frames dropped every frame")
+        return replace(plan, orientations=tuple(kept))
+
+    return as_step("select_finite_loss_frames", None, run)
 
 
 def _n_observed(op: CandidatePlan | OrientationPlanLike) -> int:

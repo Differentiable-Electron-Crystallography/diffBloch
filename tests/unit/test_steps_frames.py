@@ -12,7 +12,13 @@ import torch
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine.plan import ScatteringGrid
-from diffBloch.preprocess import FrameSelection, Plan, select_frames, step_records
+from diffBloch.preprocess import (
+    FrameSelection,
+    Plan,
+    select_finite_loss_frames,
+    select_frames,
+    step_records,
+)
 from diffBloch.preprocess.plan import CandidatePlan
 
 _CELL = np.eye(3, dtype=np.float64) * 5.0
@@ -73,6 +79,41 @@ def test_grid_is_preserved() -> None:
     plan = _plan(_strong(50), _strong(1))
     kept = select_frames(FrameSelection(min_observed=5))(plan)
     assert kept.grid is plan.grid
+
+
+def test_select_finite_loss_frames_drops_nonfinite_initial_objectives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _plan(_frame([1.0]), _frame([float("nan")]), _frame([2.0]))
+
+    class _FakeObjective:
+        def __init__(self, total: torch.Tensor) -> None:
+            self.total = total
+
+    class _FakeEngine:
+        def __init__(self, one: Plan) -> None:
+            self._one = one
+
+        def objective_value(self, params: object) -> _FakeObjective:
+            _ = params
+            value = self._one.orientations[0].pattern.intensities[0]
+            return _FakeObjective(value)
+
+    class _FakeRefinement:
+        params = object()
+
+    def fake_build_engine(plan: Plan, *args: object, **kwargs: object) -> _FakeEngine:
+        _ = args, kwargs
+        return _FakeEngine(plan)
+
+    monkeypatch.setattr("diffBloch.preprocess.steps.frames.build_engine", fake_build_engine)
+
+    kept = select_finite_loss_frames(
+        _FakeRefinement(),
+        loss=lambda *_: torch.tensor(0.0),  # type: ignore[arg-type]
+    )(plan)
+
+    assert [float(op.pattern.intensities[0]) for op in kept.orientations] == [1.0, 2.0]
 
 
 def test_step_record_round_trips_for_provenance() -> None:
