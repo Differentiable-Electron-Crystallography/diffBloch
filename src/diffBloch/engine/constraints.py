@@ -34,9 +34,16 @@ class ConstraintTransform(Protocol):
     returns a *new* :class:`~diffBloch.params.PhysicalState` with the constraint enforced (no
     in-place mutation), so gradients flow through the reparameterization to the free parameters it
     depends on.
+
+    ``name`` is a read-only member: constraints are immutable value-types (frozen dataclasses), so
+    the protocol must not demand a *settable* attribute (a settable one excludes frozen
+    implementations).
     """
 
-    name: str
+    @property
+    def name(self) -> str:
+        """A stable identifier for deterministic ordering and duplicate rejection."""
+        ...
 
     def apply(self, state: PhysicalState) -> PhysicalState:
         """Return a new physical state with this constraint enforced."""
