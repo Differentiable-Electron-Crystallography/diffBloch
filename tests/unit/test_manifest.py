@@ -166,7 +166,7 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
     assert (
         config_digest(
             with_refinement(
-                objective=cfg.refinement.objective.model_copy(update={"penalties_weight": 9.0})
+                objective=cfg.refinement.objective.model_copy(update={"data_term": "least_squares"})
             )
         )
         == base

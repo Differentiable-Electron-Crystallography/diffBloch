@@ -136,18 +136,17 @@ class DataSplitConfig(_StrictConfig):
 
 
 class ObjectiveConfig(_StrictConfig):
-    """First-class target composition, not one opaque scalar loss.
+    """The differentiable data loss for the default refinement path.
 
-    ``data_term`` is the differentiable data loss; it parses (via :meth:`to_loss`) into the
+    ``data_term`` parses (via :meth:`to_loss`) into the
     :data:`~diffBloch.engine.forward.LossFn` ``build_engine`` consumes. Only implemented terms are
-    admissible (a Poisson NLL and a Gauss-Newton least-squares backend are deferred).
+    admissible (a Poisson NLL and a Gauss-Newton least-squares backend are deferred). Only knobs the
+    default path actually consumes live here -- outlier rejection, penalty/nuisance weighting, and
+    gradient-norm reporting are deferred until wired, not accepted-but-ignored (cf. penalties, which
+    are Python/API composition, not config).
     """
 
     data_term: Literal["weighted_r", "least_squares"] = "weighted_r"
-    outlier_rejection: Literal["none", "tukey", "sigma_clip"] = "none"
-    penalties_weight: float = 1.0
-    nuisance_weight: float = 1.0
-    report_gradient_norms: bool = True
 
     def to_loss(self) -> LossFn:
         """Parse the data term into the ``LossFn`` the engine scores with."""
