@@ -19,11 +19,17 @@ import torch
 from torch import Tensor
 
 from diffBloch.engine.chemistry import covalent_radius
+from diffBloch.engine.refine import AtomSelection, TrainableSpec
 from diffBloch.io.record import StructureRecord
 from diffBloch.io.symmetry_setup import general_position_mask
 from diffBloch.params import PhysicalState
 
-__all__ = ["ConstraintTransform", "HydrogenRiding", "perceive_hydrogen_riding"]
+__all__ = [
+    "ConstraintTransform",
+    "HydrogenRiding",
+    "perceive_hydrogen_riding",
+    "with_hydrogen_riding",
+]
 
 
 @runtime_checkable
@@ -178,4 +184,45 @@ def perceive_hydrogen_riding(
         parent_index=torch.tensor(parent_rows, dtype=torch.int64),
         offset=torch.tensor(np.asarray(offsets), dtype=torch.float64),
         u_iso_scale=torch.full((len(h_rows),), u_iso_scale, dtype=torch.float64),
+    )
+
+
+def with_hydrogen_riding(
+    structure: StructureRecord, trainable: TrainableSpec
+) -> tuple[TrainableSpec, tuple[ConstraintTransform, ...]]:
+    """Compose hydrogen riding onto a base trainable selection (Python/API scientific composition).
+
+    Riding *derives* every hydrogen from its parent heavy atom each step -- position (constant
+    parent->H offset) and Uiso (scaled from the parent) -- so the hydrogens must not also be
+    optimizer leaves. This freezes them (excludes H from both ``positions`` and ``adp``) and
+    perceives the :class:`HydrogenRiding` constraint from the structure geometry, returning the
+    ``(trainable, constraints)`` pair to hand to
+    :func:`~diffBloch.engine.build_refinement_problem`. This is expressed here in Python, not in
+    config: it is scientific composition, not a stable default-path knob.
+
+    When the structure has no hydrogens the constraint tuple is empty and the freeze is harmless
+    (no H rows to exclude), so the call is safe to apply unconditionally.
+    """
+    frozen = dataclasses.replace(
+        trainable,
+        positions=_freeze_hydrogens(trainable.positions),
+        adp=_freeze_hydrogens(trainable.adp),
+    )
+    riding = perceive_hydrogen_riding(structure)
+    constraints: tuple[ConstraintTransform, ...] = () if riding is None else (riding,)
+    return frozen, constraints
+
+
+def _freeze_hydrogens(selection: AtomSelection) -> AtomSelection:
+    """Add H to a selecting group's exclusion set, preserving any existing element filters.
+
+    A group that trains nothing stays untouched. Existing include/exclude filters are kept -- an API
+    caller's ``include_elements("C")`` stays C-only rather than broadening to every non-H atom -- H
+    is merely added to the exclusion set. (A selection that *includes* H is contradictory with
+    freezing H and is rejected at :class:`AtomSelection` construction.)
+    """
+    if not selection.selects_any:
+        return selection
+    return dataclasses.replace(
+        selection, element_exclude=tuple(sorted({*selection.element_exclude, "H"}))
     )

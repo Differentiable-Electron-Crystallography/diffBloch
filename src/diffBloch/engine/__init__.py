@@ -13,6 +13,7 @@ from diffBloch.engine.constraints import (
     ConstraintTransform,
     HydrogenRiding,
     perceive_hydrogen_riding,
+    with_hydrogen_riding,
 )
 from diffBloch.engine.forward import (
     LossFn,
@@ -76,4 +77,5 @@ __all__ = [
     "scaled_w_rbragg_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",
+    "with_hydrogen_riding",
 ]
