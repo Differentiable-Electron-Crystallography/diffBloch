@@ -17,11 +17,8 @@ from diffBloch.engine.constraints import (
 )
 from diffBloch.engine.forward import (
     LossFn,
-    PhysicalStructure,
     RefinementEngine,
-    RefinementModel,
     RefinementProblem,
-    build_refinement_model,
     build_refinement_problem,
     run_refinement_problem,
 )
@@ -62,16 +59,13 @@ __all__ = [
     "OptimizerName",
     "OrientationPlan",
     "OrientationPlanLike",
-    "PhysicalStructure",
     "RefinementEngine",
-    "RefinementModel",
     "RefinementProblem",
     "RefinementResult",
     "PenaltyTerm",
     "ScatteringGrid",
     "SegmentedOrientationPlan",
     "TrainableSpec",
-    "build_refinement_model",
     "build_refinement_problem",
     "l1_loss",
     "mse_loss",

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
 
 import torch
 from torch import Tensor
@@ -56,11 +55,8 @@ from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, con
 
 __all__ = [
     "LossFn",
-    "PhysicalStructure",
     "RefinementEngine",
-    "RefinementModel",
     "RefinementProblem",
-    "build_refinement_model",
     "build_refinement_problem",
     "run_refinement_problem",
 ]
@@ -201,25 +197,6 @@ class RefinementEngine:
             )
         return ObjectiveValue(components)
 
-    def objective_value_model(
-        self,
-        model: RefinementModel,
-        *,
-        penalties: tuple[PenaltyTerm, ...] = (),
-    ) -> ObjectiveValue:
-        """Return the objective for a JAX-style refinement model wrapper.
-
-        Phase 1 keeps the physical structure path behavior-equivalent to
-        :meth:`objective_value`: ``PhysicalStructure.initial`` is today's
-        ``RefinableParams`` and ``PhysicalStructure.constraints`` is today's molecular hard
-        constraint tuple. Later phases will move execution to this model-shaped API directly.
-        """
-        return self.objective_value(
-            model.structure.initial,
-            penalties=penalties,
-            constraints=model.structure.constraints,
-        )
-
     def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
         """The thickness ``(T,)`` the forward model uses for one orientation.
 
@@ -347,67 +324,6 @@ class RefinementEngine:
         return BlochSolution(
             total.sqrt().to(complex_dtype), total, plan.beam_hkl.to(device), thicknesses
         )
-
-
-class ModelComponent(Protocol):
-    """A future trainable/differentiable model component.
-
-    Phase 1 introduces the model vocabulary without executing non-structure components yet. The
-    concrete protocol surface lands with the component plumbing phase.
-    """
-
-    @property
-    def name(self) -> str:
-        """Stable component name for validation and optimizer grouping."""
-        ...
-
-
-@dataclass(frozen=True)
-class PhysicalStructure:
-    """The physical-structure component of a refinement model.
-
-    This is a no-behavior-change wrapper around the existing structure refinement inputs:
-    ``initial`` is today's raw :class:`~diffBloch.params.RefinableParams`, and ``constraints`` is
-    today's tuple of hard molecular transforms applied after crystallographic ``constrain``. The
-    long-term JAX-style endpoint is for structure-local hard parameterizations to live here.
-    """
-
-    initial: RefinableParams
-    constraints: tuple[ConstraintTransform, ...] = ()
-
-
-@dataclass(frozen=True)
-class RefinementModel:
-    """Trainable refinement model value, currently structure-only.
-
-    The model is the value optimized against a static :class:`RefinementEngine`. Non-structure
-    components are accepted as inert declarations for the phase-1 seam but are rejected by the
-    execution adapter until component forwarding exists.
-    """
-
-    structure: PhysicalStructure
-    components: tuple[ModelComponent, ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.components:
-            names = [component.name for component in self.components]
-            raise ValueError(
-                f"non-structure refinement components are not executable yet; got {names!r}"
-            )
-
-
-def build_refinement_model(
-    *,
-    initial: RefinableParams,
-    constraints: tuple[ConstraintTransform, ...] = (),
-) -> RefinementModel:
-    """Construct the phase-1 JAX-style refinement model wrapper.
-
-    This is intentionally behavior-equivalent to passing ``initial`` and ``constraints`` directly
-    to :class:`RefinementProblem`; it exists so callers and tests can prove the model split before
-    introducing concrete side components.
-    """
-    return RefinementModel(structure=PhysicalStructure(initial=initial, constraints=constraints))
 
 
 @dataclass(frozen=True)
