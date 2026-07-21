@@ -8,12 +8,17 @@ input references and overrides.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from diffBloch.core.solver import Method
+from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
+from diffBloch.engine.refine import AtomSelection, TrainableSpec
+
+if TYPE_CHECKING:
+    from diffBloch.engine.forward import LossFn
 from diffBloch.specs import (
     BeamSelection,
     HexagonalSearch,
@@ -131,28 +136,45 @@ class DataSplitConfig(_StrictConfig):
 
 
 class ObjectiveConfig(_StrictConfig):
-    """First-class target composition, not one opaque scalar loss."""
+    """First-class target composition, not one opaque scalar loss.
 
-    data_term: Literal["weighted_r", "poisson_nll", "least_squares"] = "weighted_r"
+    ``data_term`` is the differentiable data loss; it parses (via :meth:`to_loss`) into the
+    :data:`~diffBloch.engine.forward.LossFn` ``build_engine`` consumes. Only implemented terms are
+    admissible (a Poisson NLL and a Gauss-Newton least-squares backend are deferred).
+    """
+
+    data_term: Literal["weighted_r", "least_squares"] = "weighted_r"
     outlier_rejection: Literal["none", "tukey", "sigma_clip"] = "none"
     penalties_weight: float = 1.0
     nuisance_weight: float = 1.0
     report_gradient_norms: bool = True
 
+    def to_loss(self) -> LossFn:
+        """Parse the data term into the ``LossFn`` the engine scores with."""
+        return {
+            "weighted_r": scaled_w_rbragg_loss,
+            "least_squares": weighted_mse_loss,
+        }[self.data_term]
+
 
 class OptimizerConfig(_StrictConfig):
-    """Explicit optimizer backend for a refinement stage."""
+    """Explicit optimizer backend for a refinement stage (matches ``OptimizerName``)."""
 
-    name: Literal["lbfgs", "adam", "adamw", "least_squares"] = "lbfgs"
+    name: Literal["lbfgs", "adam", "adamw"] = "lbfgs"
     lr: float = 1e-3
-    max_line_search_steps: int = 20
+
+
+def _atom_selection(mode: Literal["all", "none"]) -> AtomSelection:
+    return AtomSelection.all() if mode == "all" else AtomSelection.none()
 
 
 class TrainableConfig(_StrictConfig):
     """Whole-group trainable selections for a refinement stage.
 
-    Config scaffolding for the future app-level refinement stage: parsed and validated here now;
-    converted to ``TrainableSpec`` when the stage is wired into ``run_experiment``.
+    A 1:1 edge over :class:`~diffBloch.engine.refine.TrainableSpec`: each group is ``all`` or
+    ``none`` and parses (via :meth:`to_spec`) into an ``AtomSelection``. Element-filtered selections
+    (e.g. freeze H) are not config: they are Python/API composition (see
+    :func:`~diffBloch.engine.with_hydrogen_riding`).
     """
 
     positions: Literal["all", "none"] = "all"
@@ -161,9 +183,27 @@ class TrainableConfig(_StrictConfig):
     fgb: Literal["all", "none"] = "none"
     thickness: Literal["all", "none"] = "none"
 
+    def to_spec(self) -> TrainableSpec:
+        """Parse into the ``TrainableSpec`` the refinement optimizer consumes."""
+        return TrainableSpec(
+            positions=_atom_selection(self.positions),
+            adp=_atom_selection(self.adp),
+            occupancy=_atom_selection(self.occupancy),
+            fgb=_atom_selection(self.fgb),
+            thickness=_atom_selection(self.thickness),
+        )
+
 
 class RefinementConfig(_StrictConfig):
-    """Default refinement-stage hyperparameters."""
+    """Stable execution knobs for the *default* single-stage app refinement (``run refine``).
+
+    These tune the default path; they do not author a scientific program. Scientific composition
+    (hard constraints such as hydrogen riding, soft penalties, freeze-H masks, multi-stage
+    workflows) is expressed as typed Python/API values -- see
+    :func:`~diffBloch.engine.build_refinement_problem` and
+    :func:`~diffBloch.engine.with_hydrogen_riding` -- and is promoted to config only once the
+    default recipe commits to it as stable public behaviour.
+    """
 
     steps: int = 500
     trainable: TrainableConfig = Field(default_factory=TrainableConfig)

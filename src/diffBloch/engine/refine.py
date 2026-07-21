@@ -269,6 +269,13 @@ def run_refinement(
             reported_objective = current_objective
         loss = current_objective.total
         loss.backward()  # type: ignore[no-untyped-call]
+        # Some objective ops (symmetry projection, ADP reparameterization) leave a leaf's grad
+        # non-contiguous; LBFGS flattens grads with ``.view(-1)`` and would raise on that, so make
+        # them contiguous here (a no-op for the grads that already are, and for optimizers that
+        # don't flatten).
+        for leaf in trainable_params.leaves:
+            if leaf.grad is not None and not leaf.grad.is_contiguous():
+                leaf.grad = leaf.grad.contiguous()
         return float(loss.detach())
 
     losses: list[float] = []

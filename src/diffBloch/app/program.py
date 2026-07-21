@@ -38,6 +38,11 @@ from diffBloch.config import (
     write_preprocess_lock,
 )
 from diffBloch.core.solver import FloatFormat
+from diffBloch.engine import (
+    RefinementResult,
+    build_refinement_problem,
+    run_refinement_problem,
+)
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import Device
@@ -62,9 +67,10 @@ from diffBloch.preprocess import (
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import ScoredSelection, TrialCoupling
 
-__all__ = ["preprocess_experiment", "run_experiment"]
+__all__ = ["preprocess_experiment", "refine_experiment", "run_experiment"]
 
 _log = logging.getLogger(__name__)
 
@@ -183,6 +189,63 @@ def run_experiment(
     )
     return run_inference(
         prepared, refinement, method=cfg.solver.inference, device=device, logger=logger
+    )
+
+
+def refine_experiment(
+    experiment_dir: str | Path,
+    *,
+    logger: Logger = NULL_LOGGER,
+    checkpoint: bool = True,
+    refresh: bool = False,
+    device: Device | None = None,
+    workers: int = 1,
+) -> RefinementResult:
+    """Settle the coupled ``Plan`` and gradient-refine the structure against the observed data.
+
+    :func:`preprocess_experiment` for the geometry (checkpoint reuse for free -- see it for the
+    recipe and ``checkpoint``/``refresh``/``device``/``workers`` semantics), then run the
+    **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs
+    path: the data term (:meth:`~diffBloch.config.schema.ObjectiveConfig.to_loss`), the trainable
+    selection
+    (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and the optimizer/step budget all
+    come from ``experiment.yaml``. It composes no hard constraints or penalties -- scientific
+    composition (hydrogen riding, freeze-H, penalties, multi-stage) is a Python/API concern, built
+    with :func:`~diffBloch.engine.build_refinement_problem` /
+    :func:`~diffBloch.engine.with_hydrogen_riding` and run via ``run_refinement_problem``. The
+    :class:`~diffBloch.engine.RefinementProblem` here is pure optimization-definition data; the
+    imperative loop lives in ``run_refinement_problem``. Returns the
+    :class:`~diffBloch.engine.RefinementResult` (per-step losses + best snapshot); the refined
+    structure is not persisted (deferred).
+
+    ``device`` places the refinement solve on the accelerator: the seed params move there and the
+    forward co-locates onto them (as in the preprocess fits).
+    """
+    root = Path(experiment_dir)
+    cfg, _lock = load_experiment(root)
+    refinement, prepared = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+    )
+    engine = build_engine(
+        prepared, refinement, loss=cfg.refinement.objective.to_loss(), method=cfg.solver.refine
+    )
+    initial = refinement.params if device is None else refinement.params.to(device)
+    problem = build_refinement_problem(
+        initial=initial, trainable=cfg.refinement.trainable.to_spec()
+    )
+    return run_refinement_problem(
+        engine,
+        problem,
+        steps=cfg.refinement.steps,
+        optimizer=cfg.refinement.optimizer.name,
+        lr=cfg.refinement.optimizer.lr,
+        logger=logger,
     )
 
 

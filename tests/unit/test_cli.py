@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 from pydantic import ValidationError
 
 from diffBloch.app.cli import main
@@ -249,6 +250,78 @@ def test_run_preprocess_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     rc = main(["run", "preprocess", "/no/such/experiment"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
+
+
+def _fake_refinement_result() -> SimpleNamespace:
+    """Minimal stand-in for a RefinementResult: enough for the CLI's summary line."""
+    return SimpleNamespace(losses=torch.tensor([2.0, 1.0]), best_loss=1.0, best_step=1)
+
+
+def test_run_refine_delegates_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_refine_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
+        workers: int = 1,
+    ) -> SimpleNamespace:
+        captured["dir"] = experiment_dir
+        captured["logger"] = logger
+        captured["checkpoint"] = checkpoint
+        return _fake_refinement_result()
+
+    monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
+    rc = main(["run", "refine", "/some/experiment"])
+
+    assert rc == 0
+    assert captured["dir"] == "/some/experiment"
+    assert isinstance(captured["logger"], NullLogger)
+    out = capsys.readouterr().out
+    assert "refined 2 steps" in out
+    assert "objective 2.000000 -> 1.000000 (best at step 1)" in out
+
+
+def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_refine_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
+        workers: int = 1,
+    ) -> SimpleNamespace:
+        seen["checkpoint"] = checkpoint
+        seen["refresh"] = refresh
+        seen["device"] = device
+        seen["workers"] = workers
+        return _fake_refinement_result()
+
+    monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
+    rc = main(
+        ["run", "refine", "x"]
+        + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
+    )
+    assert rc == 0
+    assert seen == {"checkpoint": False, "refresh": True, "device": "cuda", "workers": 4}
+
+
+def test_run_refine_missing_experiment_reports_concise_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(["run", "refine", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")

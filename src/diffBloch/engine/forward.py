@@ -57,6 +57,7 @@ __all__ = [
     "LossFn",
     "RefinementEngine",
     "RefinementProblem",
+    "build_refinement_problem",
     "run_refinement_problem",
 ]
 
@@ -339,6 +340,26 @@ class RefinementProblem:
     trainable: TrainableSpec = field(default_factory=TrainableSpec.positions_and_adp)
     penalties: tuple[PenaltyTerm, ...] = ()
     constraints: tuple[ConstraintTransform, ...] = ()
+
+
+def build_refinement_problem(
+    *,
+    initial: RefinableParams,
+    trainable: TrainableSpec,
+    constraints: tuple[ConstraintTransform, ...] = (),
+    penalties: tuple[PenaltyTerm, ...] = (),
+) -> RefinementProblem:
+    """Construct a :class:`RefinementProblem` -- the pure factory for scientific composition.
+
+    A keyword-only factory shared by the app's default path and Python/API callers: the default
+    ``run refine`` builds the boring positions/ADP problem from config, while callers add hard
+    constraints (e.g. :func:`~diffBloch.engine.with_hydrogen_riding`) or soft penalties by passing
+    them here. A named factory -- rather than constructing ``RefinementProblem`` inline -- is where
+    richer default composition would later attach.
+    """
+    return RefinementProblem(
+        initial=initial, trainable=trainable, constraints=constraints, penalties=penalties
+    )
 
 
 def run_refinement_problem(

@@ -5,8 +5,14 @@ from dataclasses import fields
 import pytest
 from pydantic import ValidationError
 
-from diffBloch.config.schema import ExperimentConfig, TrainableConfig
-from diffBloch.engine import TrainableSpec
+from diffBloch.config.schema import (
+    ExperimentConfig,
+    ObjectiveConfig,
+    OptimizerConfig,
+    TrainableConfig,
+)
+from diffBloch.engine import AtomSelection, TrainableSpec
+from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
 from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     HexagonalSearch,
@@ -92,6 +98,36 @@ def test_input_refs_must_stay_inside_experiment_directory() -> None:
                 "inputs": {"structure": "../q.cif", "observations": "q.cif_pets"},
             }
         )
+
+
+def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
+    spec = TrainableConfig(positions="all", adp="none", occupancy="all").to_spec()
+    assert isinstance(spec, TrainableSpec)
+    assert spec.positions == AtomSelection.all()
+    assert spec.adp == AtomSelection.none()
+    assert spec.occupancy == AtomSelection.all()
+
+
+def test_objective_data_term_parses_to_loss() -> None:
+    assert ObjectiveConfig(data_term="weighted_r").to_loss() is scaled_w_rbragg_loss
+    assert ObjectiveConfig(data_term="least_squares").to_loss() is weighted_mse_loss
+
+
+def test_objective_rejects_unimplemented_data_term() -> None:
+    with pytest.raises(ValidationError):
+        ObjectiveConfig(data_term="poisson_nll")  # deferred: no LossFn
+
+
+def test_optimizer_rejects_deferred_backend() -> None:
+    with pytest.raises(ValidationError):
+        OptimizerConfig(name="least_squares")  # deferred: not in OptimizerName
+
+
+def test_optimizer_rejects_unconsumed_line_search_field() -> None:
+    # max_line_search_steps was accepted but never wired to any torch backend; removed so the config
+    # cannot promise a knob it does not honour (strict configs reject the now-unknown key).
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        OptimizerConfig(max_line_search_steps=20)
 
 
 def test_trainable_group_keysets_do_not_drift() -> None:
@@ -232,6 +268,14 @@ def test_load_hydrogens_defaults_off_and_parses() -> None:
         }
     )
     assert withH.inputs.load_hydrogens is True
+
+
+def test_refinement_rejects_hydrogen_mode_as_unknown_key() -> None:
+    # H handling is scientific composition (Python/API via with_hydrogen_riding), not a config mode;
+    # a strict config rejects the removed key rather than silently accepting a dead knob.
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "refinement": {"hydrogen_mode": "riding"}})
 
 
 def test_numerics_to_rocking_curve_shares_the_integration_geometry() -> None:

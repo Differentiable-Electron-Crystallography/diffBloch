@@ -18,6 +18,7 @@ from diffBloch.engine.forward import (
     LossFn,
     RefinementEngine,
     RefinementProblem,
+    build_refinement_problem,
     run_refinement_problem,
 )
 from diffBloch.engine.losses import (
@@ -64,6 +65,7 @@ __all__ = [
     "ScatteringGrid",
     "SegmentedOrientationPlan",
     "TrainableSpec",
+    "build_refinement_problem",
     "l1_loss",
     "mse_loss",
     "perceive_bond_length_penalty",

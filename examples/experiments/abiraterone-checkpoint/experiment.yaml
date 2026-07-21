@@ -47,6 +47,21 @@ preprocess:
     sg_max: 0.02
 
 refinement:
+  # Stable execution knobs for the DEFAULT `diffbloch run refine` path: refine positions + ADPs
+  # against the observed intensities, Adam at the private abiraterone learning rate. This is the
+  # boring config-knobs default; it composes no hard constraints. Hydrogen *riding* (deriving each H
+  # from its parent) is scientific composition expressed in Python via engine.with_hydrogen_riding /
+  # build_refinement_problem -- see the abiraterone runner -- not a YAML mode.
+  #
+  # This block (bar `split`) is outside the preprocess config_digest, so editing optimizer / steps
+  # never restales the committed plan.npz checkpoint above.
+  steps: 200
+  trainable:
+    positions: all
+    adp: all
+  optimizer:
+    name: adam
+    lr: 1.0e-3
   split:
     train: all_except_validation
     validation: every_10th_rotation

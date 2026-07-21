@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, CSVLogger
-from diffBloch.app.program import preprocess_experiment, run_experiment
+from diffBloch.app.program import preprocess_experiment, refine_experiment, run_experiment
 from diffBloch.config import load_config, pack_run
 from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
 
@@ -78,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
     )
     _add_run_flags(p_preprocess)
+    p_refine = run_sub.add_parser(
+        "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
+    )
+    _add_run_flags(p_refine)
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -141,6 +145,30 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         recipe = ", ".join(record.name for record in plan.provenance)
         print(f"preprocessed {len(plan.orientations)} rotations; recipe: {recipe}")
+        return 0
+
+    if args.command == "run" and args.run_command == "refine":
+        if args.console:
+            logging.basicConfig(level=logging.INFO, format="%(message)s")
+        try:
+            refined = refine_experiment(
+                args.experiment_directory,
+                logger=_build_logger(console=args.console, csv=args.csv),
+                checkpoint=not args.no_checkpoint,
+                refresh=args.refresh,
+                device=args.device,
+                workers=args.workers,
+            )
+        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"refined {refined.losses.shape[0]} steps; objective "
+            f"{float(refined.losses[0]):.6f} -> {refined.best_loss:.6f} "
+            f"(best at step {refined.best_step})"
+        )
         return 0
 
     if args.command == "run" and args.run_command == "pack":
