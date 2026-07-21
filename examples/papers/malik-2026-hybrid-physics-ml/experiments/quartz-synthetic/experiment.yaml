@@ -11,7 +11,7 @@ sample:
 
 numerics:
   g_max: 2.0
-  g_max_refine: 1.6
+  g_max_refine: 1.0
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9

@@ -1,134 +1,215 @@
 # %% [markdown]
-# # Malik et al. 2026 — CsPbBr3 reimplementation scaffold
+# # Malik et al. 2026 — quartz ThicknessNN public API example
 #
-# Paper: **Hybrid physics-machine learning models for quantitative electron diffraction
-# refinements**, Nature Communications (2026), DOI:
-# https://doi.org/10.1038/s41467-026-71673-9.
-#
-# Data/code source cited by the paper: https://doi.org/10.5281/zenodo.18281349.
-#
-# This notebook is a Jupytext notebook (`py:percent` format). It starts with the CsPbBr3,
-# paracetamol, and quartz synthetic/experimental datasets because the Zenodo bundle includes the
-# exact CIF/CIF-PETS inputs for those runs. The current public implementation below is a **baseline
-# port** into diffBloch's public `ExperimentConfig`; the paper's hybrid physics-ML pieces are marked
-# as future sections.
+# A compact public `diffBloch` script: preprocess quartz, build a refinement engine, compose the
+# structure component plus `ApparentThicknessNN`, and run a CPU-safe refinement evaluation.
 
 # %%
 from __future__ import annotations
 
 import json
-import os
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
-from diffBloch.config import load_experiment
+import torch
+
+from diffBloch.app.program import preprocess_experiment
+from diffBloch.config import ExperimentConfig, load_experiment
+from diffBloch.engine import (
+    ApparentThicknessNN,
+    AtomSelection,
+    ModelRefinementResult,
+    RefinementEngine,
+    RefinementModel,
+    RefinementProblem,
+    ThicknessBounds,
+    TrainableSpec,
+    build_refinement_model,
+    build_refinement_problem,
+    mean_plan_thickness,
+    run_refinement_model,
+)
 from diffBloch.io import read_observations, read_structure
+from diffBloch.preprocess import Plan, RefinementSetup, from_experiment
+from diffBloch.preprocess.scoring import build_engine
 
-ROOT = Path(__file__).resolve().parent
-EXPERIMENTS = tuple(sorted((ROOT / "experiments").glob("*/experiment.yaml")))
 
-print(ROOT)
-
-# %% [markdown]
-# ## 1. Verify the copied data and public experiment ports
-#
-# The experiment directories contain `experiment.yaml` + `experiment.lock`. Their local `data/`
-# entries are symlinks to the shared `../../data` directory, so the copied Zenodo data remains
-# colocated once.
-
-# %%
-for experiment_yaml in EXPERIMENTS:
-    experiment_dir = experiment_yaml.parent
-    cfg, lock = load_experiment(experiment_dir)
+def run_quartz_thickness_nn_example(
+    experiment_dir: Path,
+    *,
+    output_dir: Path,
+    device: torch.device,
+    steps: int,
+    lr: float,
+    thickness_bounds: ThicknessBounds,
+) -> dict[str, Any]:
+    cfg, _lock = load_experiment(experiment_dir)
     structure = read_structure(
-        experiment_dir / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
+        experiment_dir / cfg.inputs.structure,
+        load_hydrogens=cfg.inputs.load_hydrogens,
     )
     observations = read_observations(experiment_dir / cfg.inputs.observations)
-    print(
-        json.dumps(
-            {
-                "experiment": cfg.name,
-                "structure": cfg.inputs.structure,
-                "observations": cfg.inputs.observations,
-                "n_atoms": structure.n_atoms,
-                "n_rotations": observations.n_rotations,
-                "g_max": cfg.numerics.g_max,
-                "g_max_refine": cfg.numerics.g_max_refine,
-                "rocking_curve_sampling": cfg.numerics.rocking_curve_sampling,
-                "semiangle": cfg.numerics.integration.semiangle,
-                "coupling": cfg.preprocess.coupling.model_dump(mode="json")
-                if cfg.preprocess.coupling
-                else None,
-                "structure_lock_bytes": lock.structure.bytes,
-                "observations_lock_bytes": lock.observations.bytes,
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    refinement = from_experiment(structure, observations, cfg).refinement
+    plan = preprocess_experiment(experiment_dir, checkpoint=True, refresh=False, device=device)
+    plan = _finite_loss_plan(plan, refinement, cfg)
+    engine = build_engine(
+        plan,
+        refinement,
+        loss=cfg.refinement.objective.to_loss(),
+        method=cfg.solver.refine,
     )
+    model, problem, trainable, thickness_nn = _build_model(
+        refinement,
+        engine,
+        device=device,
+        thickness_bounds=thickness_bounds,
+    )
+    result = run_refinement_model(
+        engine,
+        model,
+        problem,
+        trainable=trainable,
+        steps=steps,
+        optimizer="adam",
+        lr=lr,
+    )
+    summary = _summary(
+        cfg=cfg,
+        n_atoms=structure.n_atoms,
+        n_observed_rotations=observations.n_rotations,
+        engine=engine,
+        model=model,
+        problem=problem,
+        result=result,
+        thickness_nn=thickness_nn,
+        steps=steps,
+    )
+    _write_outputs(output_dir, result, thickness_nn, engine, summary)
+    return summary
 
-# %% [markdown]
-# ## 2. Mapping from the Malik/Zenodo configuration to public diffBloch config
-#
-# The public ports preserve the key data/preprocess values from the Zenodo submission:
-#
-# | Malik/Zenodo field | public field |
-# | --- | --- |
-# | `atoms.data.cif_file_path` | `inputs.structure` |
-# | `refinement.data.pets_path` | `inputs.observations` |
-# | `bloch.g_max_sf` | `numerics.g_max` |
-# | `bloch.g_max_refine` | `numerics.g_max_refine` |
-# | `refinement.data.integration_semiangle` | `numerics.integration.semiangle` |
-# | `refinement.data.rocking_curve_sampling` | `numerics.rocking_curve_sampling` |
-# | `refinement.data.dsg/rsg` | `numerics.dsg/rsg` |
-# | implicit private/default tilt-segment union | explicit `preprocess.coupling` |
-#
-# The original paper workflow also includes a learned thickness-profile model (`thicknessNN`) and a
-# hybrid physics-ML refinement loop. Those are not yet public diffBloch components.
 
-# %% [markdown]
-# ## 3. Optional: run a public Bloch-physics baseline
-#
-# A full preprocess can be expensive because it fits orientations/thickness over all rotations.
-# Therefore this notebook does not run it by default. To opt in from the command line:
-#
-# ```bash
-# RUN_MALIK_BASELINE=1 MALIK_EXPERIMENT=cspbbr3-synthetic \
-#   uv run python examples/papers/malik-2026-hybrid-physics-ml/malik_2026_reimplementation.py
-# ```
-#
-# For interactive use, set `RUN_BASELINE = True` and `BASELINE_EXPERIMENT` below.
+def _finite_loss_plan(plan: Plan, refinement: RefinementSetup, cfg: ExperimentConfig) -> Plan:
+    finite = []
+    for orientation in plan.orientations:
+        one = replace(plan, orientations=(orientation,))
+        engine = build_engine(
+            one,
+            refinement,
+            loss=cfg.refinement.objective.to_loss(),
+            method=cfg.solver.refine,
+        )
+        if torch.isfinite(engine.objective_value(refinement.params).total):
+            finite.append(orientation)
+    if not finite:
+        raise RuntimeError("quartz preprocess produced no finite-loss orientations")
+    return replace(plan, orientations=tuple(finite))
 
-# %%
-RUN_BASELINE = os.environ.get("RUN_MALIK_BASELINE") == "1"
-BASELINE_EXPERIMENT = os.environ.get("MALIK_EXPERIMENT", "cspbbr3-synthetic")
 
-if RUN_BASELINE:
-    from diffBloch.app.program import run_experiment
-
-    baseline_dir = ROOT / "experiments" / BASELINE_EXPERIMENT
-    result = run_experiment(baseline_dir, checkpoint=True, refresh=False)
-    summary = {
-        "experiment": BASELINE_EXPERIMENT,
-        "n_evaluated": result.n_evaluated,
-        "mean_r_obs": result.mean_r_obs,
+def _build_model(
+    refinement: RefinementSetup,
+    engine: RefinementEngine,
+    *,
+    device: torch.device,
+    thickness_bounds: ThicknessBounds,
+) -> tuple[RefinementModel, RefinementProblem, TrainableSpec, ApparentThicknessNN]:
+    initial = refinement.params.to(device)
+    thickness_nn = ApparentThicknessNN(bounds=thickness_bounds)
+    component_params = {
+        thickness_nn.key: thickness_nn.initial_params(
+            dtype=initial.asu_positions.dtype,
+            device=device,
+            initial_thickness=mean_plan_thickness(engine.orientations),
+        )
     }
-    output_dir = ROOT / "outputs"
-    output_dir.mkdir(exist_ok=True)
-    (output_dir / f"{BASELINE_EXPERIMENT}_public_baseline.json").write_text(
+    model = build_refinement_model(
+        initial=initial,
+        components=(thickness_nn,),
+        component_params=component_params,
+    )
+    problem = build_refinement_problem()
+    trainable = TrainableSpec(positions=AtomSelection.all())
+    return model, problem, trainable, thickness_nn
+
+
+def _summary(
+    *,
+    cfg: ExperimentConfig,
+    n_atoms: int,
+    n_observed_rotations: int,
+    engine: RefinementEngine,
+    model: RefinementModel,
+    problem: RefinementProblem,
+    result: ModelRefinementResult,
+    thickness_nn: ApparentThicknessNN,
+    steps: int,
+) -> dict[str, Any]:
+    initial_params = model.component_params[thickness_nn.key]
+    final_params = result.model.component_params[thickness_nn.key]
+    changed = any(
+        not torch.equal(final_params[name].cpu(), initial_params[name].cpu())
+        for name in initial_params
+    )
+    return {
+        "experiment": cfg.name,
+        "steps": steps,
+        "initial_loss": float(result.losses[0]),
+        "final_loss": float(result.losses[-1]),
+        "best_step": result.best_step,
+        "component_params_changed": changed,
+        "n_atoms": n_atoms,
+        "n_observed_rotations": n_observed_rotations,
+        "n_refinement_orientations": len(engine.orientations),
+        "mean_plan_thickness_angstrom": float(mean_plan_thickness(engine.orientations)),
+        "structure_component": type(model.structure).__name__,
+        "components": [component.key for component in model.components],
+        "constraints": [constraint.name for constraint in model.structure.constraints],
+        "penalties": [penalty.name for penalty in problem.penalties],
+    }
+
+
+def _write_outputs(
+    output_dir: Path,
+    result: ModelRefinementResult,
+    thickness_nn: ApparentThicknessNN,
+    engine: RefinementEngine,
+    summary: dict[str, Any],
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "thickness_nn_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n"
     )
-    print(json.dumps(summary, indent=2, sort_keys=True))
-else:
-    print("Skipping expensive baseline run. Set RUN_MALIK_BASELINE=1 to run it.")
+    (output_dir / "thickness_nn_profile.json").write_text(
+        json.dumps(_thickness_profile(result, thickness_nn, engine), indent=2, sort_keys=True)
+        + "\n"
+    )
 
-# %% [markdown]
-# ## 4. Future implementation sections
-#
-# Planned notebook sections for the actual paper reimplementation:
-#
-# 1. reproduce the paper's synthetic CsPbBr3 baseline refinement setup;
-# 2. port or approximate the learned thickness-profile component;
-# 3. compare fixed-thickness Bloch physics vs hybrid thickness/profile prediction;
-# 4. add the hybrid learned correction objective if/when the public API has the required seam;
-# 5. report metrics in the paper's style (`wR`, RMSD where a ground-truth synthetic model is
-#    available, and thickness-profile diagnostics).
+
+def _thickness_profile(
+    result: ModelRefinementResult,
+    thickness_nn: ApparentThicknessNN,
+    engine: RefinementEngine,
+) -> list[dict[str, float]]:
+    params = result.model.component_params[thickness_nn.key]
+    rows = []
+    for i, orientation in enumerate(engine.orientations):
+        context = thickness_nn.forward_context(params, orientation_index=i, orientation=orientation)
+        assert context.thickness is not None
+        rows.append(
+            {"orientation_index": float(i), "thickness_angstrom": float(context.thickness[0])}
+        )
+    return rows
+
+
+# %%
+if __name__ == "__main__" or "get_ipython" in globals():
+    root = Path("examples/papers/malik-2026-hybrid-physics-ml").resolve()
+    summary = run_quartz_thickness_nn_example(
+        root / "experiments" / "quartz-synthetic",
+        output_dir=root / "outputs" / "quartz-synthetic",
+        device=torch.device("cpu"),
+        steps=1,
+        lr=1e-5,
+        thickness_bounds=ThicknessBounds(100.0, 2000.0),
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
