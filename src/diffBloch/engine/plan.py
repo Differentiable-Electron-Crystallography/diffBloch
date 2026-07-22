@@ -64,7 +64,12 @@ class ScatteringGrid:
 
     @classmethod
     def from_cell(cls, cell: NDArray[np.float64], g_max: float) -> ScatteringGrid:
-        """Build the grid from a real-space cell ``(3, 3)`` and a structure-factor ``g_max``."""
+        """Build the grid from a real-space cell ``(3, 3)`` and a structure-factor ``g_max``.
+
+        ``g_max`` here is the *structure-factor support* radius -- the grid must already span the
+        beam difference support. Callers who know their solve cutoff rather than the support radius
+        should use :meth:`from_cell_for_solve_cutoff`, which derives the support for them.
+        """
         cell = np.asarray(cell, dtype=np.float64)
         return cls(
             grid_hkl=torch.tensor(make_hkl_grid(cell, g_max), dtype=torch.int64),
@@ -74,6 +79,24 @@ class ScatteringGrid:
             cell_volume=_cell_volume(cell),
             g_max=float(g_max),
         )
+
+    @classmethod
+    def from_cell_for_solve_cutoff(
+        cls, cell: NDArray[np.float64], solve_g_max: float
+    ) -> ScatteringGrid:
+        """Build the grid from the *solve cutoff* -- the radius of the beams in one Bloch solve.
+
+        A beam set bounded by ``|g| <= solve_g_max`` produces dynamical-matrix terms
+        ``F(g_j - g_i)`` whose differences reach ``|g_j - g_i| <= 2 * solve_g_max`` (triangle
+        inequality), so the structure-factor support must cover ``2 * solve_g_max``. This derives
+        that support rather than making the caller pass the doubled radius to :meth:`from_cell` (the
+        error-prone convention the ``diffBloch_private`` #154 fix removed). ``solve_g_max`` is the
+        beam/coupling cutoff, distinct from the scoring-resolution cutoff (``g_max_refine``), which
+        selects reflections for the objective, not the solve.
+        """
+        if solve_g_max <= 0.0:
+            raise ValueError("solve_g_max must be positive")
+        return cls.from_cell(cell, g_max=2.0 * solve_g_max)
 
 
 @dataclass(frozen=True)
