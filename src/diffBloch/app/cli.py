@@ -117,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run" and args.run_command == "infer":
         if args.console:
-            logging.basicConfig(level=logging.INFO, format="%(message)s")
+            logging.basicConfig(
+                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+            )
         try:
             result = run_experiment(
                 args.experiment_directory,
@@ -138,7 +140,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run" and args.run_command == "preprocess":
         if args.console:
-            logging.basicConfig(level=logging.INFO, format="%(message)s")
+            logging.basicConfig(
+                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+            )
         try:
             plan = preprocess_experiment(
                 args.experiment_directory,
@@ -160,7 +164,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run" and args.run_command == "refine":
         if args.console:
-            logging.basicConfig(level=logging.INFO, format="%(message)s")
+            logging.basicConfig(
+                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+            )
         try:
             refined = refine_experiment(
                 args.experiment_directory,

@@ -33,6 +33,7 @@ from torch import Tensor
 from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.observability import NULL_LOGGER, Logger, ThicknessFitted
 from diffBloch.params import Device
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
@@ -51,6 +52,7 @@ def fit_thickness(
     precision: FloatFormat = "fp64",
     device: Device | None = None,
     max_batch: int | None = None,
+    logger: Logger = NULL_LOGGER,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
 
@@ -75,6 +77,10 @@ def fit_thickness(
     ``(C, T, N, N)`` propagator can be tens of GiB if left unbounded. Raise it to fill a larger GPU.
     The bound matches the unbounded solve to machine precision (memory only) and is execution-only,
     like ``device``.
+
+    ``logger`` (default the null sink) receives a :class:`~diffBloch.observability.ThicknessFitted`
+    per rotation as its grid search completes -- the progress stream for this phase (mirroring
+    ``fit_orientation``); the memory-heavy thickness fit is otherwise silent under a console logger.
     """
 
     def run(plan: Plan) -> Plan:
@@ -86,10 +92,12 @@ def fit_thickness(
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
-        orientations = tuple(
-            _fit_one(engine, fgb, op, candidates) for op in require_built_plans(plan)
-        )
-        return replace(plan, orientations=orientations)
+        fitted = []
+        for index, op in enumerate(require_built_plans(plan)):
+            orientation, wr2, thickness = _fit_one(engine, fgb, op, candidates)
+            logger.report(ThicknessFitted(index=index, wr2=wr2, thickness=thickness))
+            fitted.append(orientation)
+        return replace(plan, orientations=tuple(fitted))
 
     # method rides in the config digest (cfg.solver.refine); the grid is the step's own param.
     return as_step("fit_thickness", grid, run)
@@ -100,9 +108,13 @@ def _fit_one(
     fgb: Tensor,
     op: OrientationPlanLike,
     candidates: Tensor,
-) -> OrientationPlanLike:
-    """Score every candidate thickness for one orientation; bake the lowest-wR2 winner."""
+) -> tuple[OrientationPlanLike, float, float]:
+    """Score every candidate thickness for one orientation; bake the lowest-wR2 winner.
+
+    Returns the baked orientation plus the winner's ``(wr2, thickness)`` for the progress event.
+    """
     trial = replace(op, thickness=candidates)  # geometry unchanged; only the (T,) thickness swaps
     scores = engine.score_orientation_per_thickness(trial, fgb)  # one pass over all candidates
     best = int(torch.argmin(scores))
-    return replace(op, thickness=candidates[best : best + 1])  # (1,) baked thickness
+    baked = replace(op, thickness=candidates[best : best + 1])  # (1,) baked thickness
+    return baked, float(scores[best]), float(candidates[best])

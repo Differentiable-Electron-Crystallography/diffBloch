@@ -38,6 +38,7 @@ __all__ = [
     "RefinementCompleted",
     "RefinementStep",
     "RotationScored",
+    "ThicknessFitted",
 ]
 
 
@@ -128,6 +129,31 @@ class OrientationFitted:
             "n_passes": float(self.n_passes),
             "pass_cap": float(self.pass_cap),
         }
+
+
+@dataclass(frozen=True)
+class ThicknessFitted:
+    """One rotation's finished thickness grid search, emitted per rotation by ``fit_thickness``.
+
+    The thickness fit is the memory-heavy tail phase (each rotation scores the whole
+    ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationFitted` this makes it a
+    progress stream rather than a silent block: ``index`` is the rotation's position in the plan,
+    ``wr2`` the scaling-optimised objective at the baked thickness, and ``thickness`` that winning
+    candidate (Angstrom). Emitted in plan order (the fit is sequential).
+    """
+
+    channel: ClassVar[str] = "fit_thickness"
+    index: int
+    wr2: float
+    thickness: float
+
+    @property
+    def step(self) -> int | None:
+        return self.index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"wr2": self.wr2, "thickness": self.thickness}
 
 
 @dataclass(frozen=True)

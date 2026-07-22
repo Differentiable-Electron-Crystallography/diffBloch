@@ -366,6 +366,7 @@ def _recipe_steps(
             precision=precision,
             device=device,
             max_batch=max_batch,
+            logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
         )
 
     return [
