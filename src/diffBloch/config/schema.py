@@ -351,6 +351,26 @@ class ExperimentConfig(_StrictConfig):
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
+    @model_validator(mode="after")
+    def _coupling_support_fits_the_grid(self) -> ExperimentConfig:
+        """Fail at load if the SF grid cannot span the coupled beam-difference support.
+
+        ``from_experiment`` sizes the shared ``ScatteringGrid`` at exactly
+        ``numerics.g_max``, and the coupled solve union admits beams to ``coupling_cap`` -- so their
+        pairwise ``g - h`` differences reach ``2 * coupling_cap``. When that exceeds the grid the
+        gather addresses reflections the SF table never tabulated (a silent zero under
+        ``validate=False``, or a deep runtime error otherwise). The same check runs at fit setup
+        (:func:`~diffBloch.preprocess.coupling.assert_grid_covers_coupling`, which also guards
+        programmatic callers that bypass config); lifting it here fails before any data is read.
+        Reuses that one rule home rather than restating ``2 * cap`` -- imported lazily to break the
+        config <-> preprocess import cycle (``preprocess.experiment`` imports this module).
+        """
+        if self.preprocess.coupling is not None:
+            from diffBloch.preprocess.coupling import assert_grid_covers_coupling
+
+            assert_grid_covers_coupling(self.preprocess.coupling.to_policy(), self.numerics.g_max)
+        return self
+
 
 def load_config(path: str | Path) -> ExperimentConfig:
     """Parse and validate one ``experiment.yaml``.
