@@ -18,6 +18,7 @@ step turns the segments into per-chunk plans and reassembles their curves before
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -108,6 +109,43 @@ def _split_boundaries(n_tilts: int, n_splits: int) -> NDArray[np.int64]:
     return boundaries
 
 
+def _adaptive_segment_ranges(
+    n_tilts: int,
+    excited_mask: Callable[[int], NDArray[np.bool_]],
+    max_new_pct: float,
+) -> list[tuple[int, int]]:
+    """Adaptive chunk boundaries by recursive bisection (the private's ``union_adaptive`` path).
+
+    Ported from ``BlochNet.forward``: a range ``(a, b)`` is split at its midpoint only while the
+    midpoint's excited set adds more than ``max_new_pct`` *new* beams beyond the boundary union
+    ``mask(a) | mask(b)`` (else the range freezes as one chunk). Returns the ordered, inclusive
+    ``(a, b)`` segment ranges partitioning ``0 .. n_tilts - 1`` (disjoint, covering each tilt once);
+    each chunk's beam set is later the boundary union of *its own* endpoints, as in the fixed path.
+    """
+    if n_tilts <= 1:
+        return [(0, max(0, n_tilts - 1))]
+    stack: list[tuple[int, int]] = [(0, n_tilts - 1)]
+    final: list[tuple[int, int]] = []
+    while stack:
+        a, b = stack.pop()
+        if b <= a + 1:
+            final.append((a, b))
+            continue
+        mid = (a + b) // 2
+        union_end = excited_mask(a) | excited_mask(b)
+        if not bool(union_end.any()):  # defensive: (0,0,0) is always excited, so normally non-empty
+            union_end = union_end | excited_mask(mid)
+        new_mid = excited_mask(mid) & ~union_end
+        new_pct = int(new_mid.sum()) / max(int(union_end.sum()), 1)
+        if new_pct > max_new_pct:
+            stack.append((mid + 1, b))
+            stack.append((a, mid))
+        else:
+            final.append((a, b))
+    final.sort(key=lambda ab: ab[0])
+    return final
+
+
 def tilt_segment_coupling(
     policy: TiltSegmentUnion,
     candidate_hkl: NDArray[np.int64],
@@ -142,7 +180,6 @@ def tilt_segment_coupling(
         raise ValueError(f"tilts must have shape (B, 3, 3), got {tilts.shape}")
     n_tilts = tilts.shape[0]
     cap = coupling_cap(policy)
-    boundaries = _split_boundaries(n_tilts, policy.n_splits)
 
     # ``|g|`` is invariant under the orientation/tilt rotation (an orthogonal transform preserves
     # the vector norm), so the coupling-radius cut ``|g| < cap`` selects the SAME candidate subset
@@ -154,16 +191,35 @@ def tilt_segment_coupling(
     g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # any orientation: |g| invar.
     pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < cap]
 
+    _mask_cache: dict[int, NDArray[np.bool_]] = {}
+
     def excited_mask(tilt_index: int) -> NDArray[np.bool_]:
+        cached = _mask_cache.get(tilt_index)
+        if cached is not None:
+            return cached
         basis = orientation_basis(cell, tilts[tilt_index] @ orientation)
         sg = excitation_errors(pool @ basis, energy, u0=u0)
-        return np.abs(sg) < policy.sg_max  # |g| < cap already guaranteed by the pool
+        mask = np.abs(sg) < policy.sg_max  # |g| < cap already guaranteed by the pool
+        _mask_cache[tilt_index] = mask
+        return mask
 
-    masks = {int(b): excited_mask(int(b)) for b in boundaries}
+    if policy.union_adaptive:
+        # Adaptive boundaries by recursive bisection (n_splits ignored). Each segment's beam set is
+        # the union of *its own* inclusive endpoints, and the covers tile every tilt exactly once.
+        ranges = _adaptive_segment_ranges(n_tilts, excited_mask, policy.union_max_new_beams_pct)
+        return tuple(
+            Segment(
+                beam_hkl=pool[excited_mask(a) | excited_mask(b)].copy(),
+                cover=tuple(range(a, b + 1)),
+            )
+            for a, b in ranges
+        )
+
+    boundaries = _split_boundaries(n_tilts, policy.n_splits)
     segments = []
     for i in range(len(boundaries) - 1):
         a, b = int(boundaries[i]), int(boundaries[i + 1])
-        union = masks[a] | masks[b]
+        union = excited_mask(a) | excited_mask(b)
         cover = tuple(range(a, n_tilts if i == len(boundaries) - 2 else b))
         segments.append(Segment(beam_hkl=pool[union].copy(), cover=cover))
     return tuple(segments)

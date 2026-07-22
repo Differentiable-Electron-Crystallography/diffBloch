@@ -308,19 +308,27 @@ class TiltSegmentUnion:
     the safety margin subtracted from it (the private's hardcoded ``0.2``), so the effective cap is
     ``g_max - cap_margin = 2.05``. ``sg_max`` is the excitation-error cutoff. The mean-inner-
     potential ``u0`` and beam energy are experiment quantities threaded in at build time, not policy
-    knobs. The ``union_adaptive`` recursive-bisection variant is deferred (only the fixed even-split
-    ``union_adaptive = False`` path is ported).
+    knobs.
+
+    ``union_adaptive`` chooses how the chunk boundaries are placed. ``False`` (default) uses
+    ``n_splits`` fixed even-sized chunks. ``True`` places boundaries by recursive bisection: a tilt
+    range is split further only while its midpoint adds more than ``union_max_new_beams_pct`` of the
+    boundary union's beams (else the range is frozen as one chunk), so segments are dense where the
+    excited set drifts and sparse where it is stable. In the adaptive mode ``n_splits`` is ignored.
 
     Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
-    ``self.g_max = 4.5 / 2``, cap margin ``0.2``, ``self.sg_max = 0.01``).
+    ``self.g_max = 4.5 / 2``, cap margin ``0.2``, ``self.sg_max = 0.01``,
+    ``union_adaptive = False``, ``union_max_new_beams_pct = 0.01``).
     """
 
-    n_splits: int = 12  # contiguous tilt chunks; each gets its own boundary-union beam set
+    n_splits: int = 12  # contiguous tilt chunks (fixed mode); each gets its boundary-union beam set
     g_max: float = (
         2.25  # coupling radius (private g_max_sf / 2); effective cap = g_max - cap_margin
     )
     cap_margin: float = 0.2  # subtracted from g_max for the coupling cap (private hardcoded 0.2)
     sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
+    union_adaptive: bool = False  # place chunk boundaries by recursive bisection, not even splits
+    union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
     def __post_init__(self) -> None:
         if self.n_splits < 1:
@@ -329,6 +337,8 @@ class TiltSegmentUnion:
             raise ValueError("g_max and sg_max must be positive")
         if self.g_max - self.cap_margin <= 0.0:
             raise ValueError("coupling cap g_max - cap_margin must be positive")
+        if not 0.0 < self.union_max_new_beams_pct <= 1.0:
+            raise ValueError("union_max_new_beams_pct must be in (0, 1]")
 
 
 @dataclass(frozen=True)
