@@ -15,6 +15,7 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
+from diffBloch.observability import RecordingLogger, ThicknessFitted
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_thickness
 from diffBloch.preprocess.plan import Plan
@@ -141,6 +142,27 @@ def test_fit_thickness_single_step_bakes_the_lower_bound() -> None:
         ThicknessGrid(min_thickness=123.0, max_thickness=400.0, n_steps=1),
     )(plan)
     assert float(fitted.orientations[0].thickness[0]) == 123.0
+
+
+def test_fit_thickness_emits_one_thicknessfitted_per_rotation() -> None:
+    """The progress stream: one ThicknessFitted per rotation, in plan order, tied to the result."""
+    grid, asu_plan, spec, numbers = _silicon()
+    observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
+    plan = Plan(grid=grid, orientations=(op, op))  # two rotations -> indices 0, 1
+
+    log = RecordingLogger()
+    fitted = fit_thickness(
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
+        logger=log,
+    )(plan)
+
+    events = [event for event in log.events if isinstance(event, ThicknessFitted)]
+    assert [event.index for event in events] == [0, 1]
+    # each event's thickness is the value baked onto the matching returned orientation
+    for index, event in enumerate(events):
+        assert event.thickness == float(fitted.orientations[index].thickness[0])
 
 
 # --- device knob (the grid search runs on the accelerator; params.device is authoritative) --------

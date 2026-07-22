@@ -29,6 +29,7 @@ from diffBloch.observability import (
     RefinementCompleted,
     RefinementStep,
     RotationScored,
+    ThicknessFitted,
 )
 
 
@@ -50,6 +51,11 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "n_evaluated": 97.0,
         "mean_r_obs": 0.065,
     }
+
+    thickness = ThicknessFitted(index=7, wr2=0.031, thickness=1460.0)
+    assert thickness.channel == "fit_thickness"
+    assert thickness.step == 7  # a thickness fit's step is its rotation index
+    assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
 
     refinement = RefinementStep(iteration=4, loss=1.5)
     assert refinement.channel == "refinement"
