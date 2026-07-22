@@ -160,18 +160,26 @@ class RefinementEngine:
 
         ``fit_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;
         :meth:`score_orientation` collapses it with ``.min()`` (thickness is a nuisance there).
+
+        Runs under ``torch.no_grad()``: this is search scoring (``fit_orientation`` /
+        ``fit_thickness`` grid search + argmin), never backpropagated -- every caller consumes a
+        detached scalar. Without it the ``T``-thickness solve builds an autograd graph whose
+        retained ``matrix_exp`` intermediates accumulate across every propagator block, defeating
+        the ``max_batch`` memory bound (:func:`~diffBloch.core.solver.propagate`) and OOMing a wide
+        coupled segment on the GPU. Grad-off does not change the returned scores.
         """
-        aligned = align(
-            self._solve(orientation, fgb, orientation.thickness),
-            orientation.pattern,
-            orientation.alignment,
-        )
-        return torch.stack(
-            [
-                optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
-                for t in range(aligned.calculated.shape[0])
-            ]
-        )
+        with torch.no_grad():
+            aligned = align(
+                self._solve(orientation, fgb, orientation.thickness),
+                orientation.pattern,
+                orientation.alignment,
+            )
+            return torch.stack(
+                [
+                    optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
+                    for t in range(aligned.calculated.shape[0])
+                ]
+            )
 
     def objective_value(
         self,
