@@ -33,6 +33,7 @@ def build_engine(
     loss: LossFn = scaled_w_rbragg_loss,
     method: Method = "matrix_exp",
     precision: FloatFormat = "fp64",
+    max_batch: int | None = None,
 ) -> RefinementEngine:
     """Wire a geometry ``plan`` and a structure ``refinement`` into a runnable engine (no compute).
 
@@ -51,6 +52,11 @@ def build_engine(
     (complex64) is a search-time knob only the preprocess fits set on their transient scoring
     engines; the terminal callers here and in ``run_inference`` omit it, so scoring/refinement that
     produce the pinned result stay fp64. See :func:`diffBloch.core.solver.propagate`.
+
+    ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block; ``None`` lets each
+    solve pick a memory-safe block from its beam count, bounding peak memory while matching the
+    unbounded solve to machine precision (a pin is only needed for a specific device budget).
+    Execution-only, like ``precision``/``method``.
     """
     return RefinementEngine(
         spec=refinement.spec,
@@ -61,6 +67,7 @@ def build_engine(
         loss=loss,
         method=method,
         precision=precision,
+        max_batch=max_batch,
     )
 
 

@@ -83,6 +83,7 @@ def fit_orientation(
     validate: bool = True,
     workers: int = 1,
     device: Device | None = None,
+    max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
@@ -133,6 +134,11 @@ def fit_orientation(
     rotation's gather cache is thread-local -- so the results are identical to a sequential run.
     Threads (not processes) suffice because torch's CPU linalg releases the GIL.
 
+    ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block; ``None`` lets each
+    solve derive a memory-safe block from its beam count. Execution-only and matches the unbounded
+    solve to machine precision (memory only), like ``device`` -- raise it to fill a larger GPU. See
+    :func:`build_engine`.
+
     ``logger`` receives an :class:`~diffBloch.observability.OrientationFitted` per rotation as its
     search completes (the fit is the run's long phase, so this is the progress stream); the default
     :data:`NULL_LOGGER` discards them. With ``workers > 1`` events arrive in completion order.
@@ -160,7 +166,9 @@ def fit_orientation(
         # O(1), orientation-independent, always on -- fails at setup, not deep in the search.
         if coupling is not None:
             assert_grid_covers_coupling(coupling.policy, plan.grid.g_max)
-        engine = build_engine(plan, refinement, method=method, precision=precision)
+        engine = build_engine(
+            plan, refinement, method=method, precision=precision, max_batch=max_batch
+        )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
 
