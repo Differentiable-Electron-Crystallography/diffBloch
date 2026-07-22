@@ -17,7 +17,6 @@ sample:
 numerics:
   # From the Malik cspbbr3_synthetic Hydra config: g_max_sf=5.0, g_max_refine=1.0,
   # integration_semiangle=1.5, rocking_curve_sampling=60, dsg=0.0015, rsg=0.66.
-  g_max: 5.0
   g_max_refine: 1.0
   rocking_curve_sampling: 60
   dsg: 0.0015

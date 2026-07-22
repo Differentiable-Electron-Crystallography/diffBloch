@@ -27,7 +27,6 @@ from diffBloch.specs import (
     RockingCurve,
     ThicknessGrid,
     TiltSegmentUnion,
-    assert_grid_covers_coupling,
 )
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
@@ -69,17 +68,20 @@ class SolverConfig(_StrictConfig):
 class NumericsConfig(_StrictConfig):
     """Stage-3 numerical-accuracy controls, frozen into the simulation spec.
 
-    ``g_max`` (structure-factor grid radius) and ``g_max_refine`` (seed beam-pool radius) are grid
-    primitives consumed directly. ``rsg`` / ``dsg`` are the Klar beam-selection cutoffs and
-    ``rocking_curve_sampling`` the tilt count -- the parts of :class:`BeamSelection` /
-    :class:`RockingCurve` those value-types do *not* share. ``integration`` is the shared
-    :class:`IntegrationGeometry` (one physical angle + geometry feeding both), carried once as its
-    own value-type so it cannot be given two values; ``mosaicity`` is the :class:`Mosaicity`
-    reduction. The last two are the value-types themselves (identity, not a projected copy), so
-    pydantic validates them and forbids unknown keys inside them too.
+    ``g_max_refine`` (seed beam-pool / scoring-resolution radius) is a grid primitive consumed
+    directly. The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
+    solve cutoff (the ``preprocess.coupling`` radius, or ``g_max_refine`` when a run is
+    tilt-independent), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
+    reaching ``2 * cutoff`` -- so declaring both cutoff and support would let them contradict
+    (the ``diffBloch_private`` #154 model: one beam cutoff, support derived). ``rsg`` / ``dsg`` are
+    the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count -- the parts of
+    :class:`BeamSelection` / :class:`RockingCurve` those value-types do *not* share. ``integration``
+    is the shared :class:`IntegrationGeometry` (one physical angle + geometry feeding both), carried
+    once as its own value-type so it cannot be given two values; ``mosaicity`` is the
+    :class:`Mosaicity` reduction. The last two are the value-types themselves (identity, not a
+    projected copy), so pydantic validates them and forbids unknown keys inside them too.
     """
 
-    g_max: float = 4.5
     g_max_refine: float = 1.6
     rsg: float = 0.9
     dsg: float = 0.0015
@@ -351,23 +353,6 @@ class ExperimentConfig(_StrictConfig):
     solver: SolverConfig = Field(default_factory=SolverConfig)
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
-
-    @model_validator(mode="after")
-    def _coupling_support_fits_the_grid(self) -> ExperimentConfig:
-        """Fail at load if the SF grid cannot span the coupled beam-difference support.
-
-        ``from_experiment`` sizes the shared ``ScatteringGrid`` at exactly
-        ``numerics.g_max``, and the coupled solve union admits beams to ``coupling_cap`` -- so their
-        pairwise ``g - h`` differences reach ``2 * coupling_cap``. When that exceeds the grid the
-        gather addresses reflections the SF table never tabulated (a silent zero under
-        ``validate=False``, or a deep runtime error otherwise). The same check runs at fit setup
-        (``assert_grid_covers_coupling`` also guards programmatic callers that bypass config);
-        lifting it here fails before any data is read. Reuses that one rule home
-        (:mod:`diffBloch.specs`, alongside the ``TiltSegmentUnion`` value-type) not restating it.
-        """
-        if self.preprocess.coupling is not None:
-            assert_grid_covers_coupling(self.preprocess.coupling.to_policy(), self.numerics.g_max)
-        return self
 
 
 def load_config(path: str | Path) -> ExperimentConfig:

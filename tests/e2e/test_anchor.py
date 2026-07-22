@@ -132,7 +132,7 @@ def test_quartz_reference_anchor(material: str) -> None:
     cfg, lock = load_experiment(FIXTURE_ROOT)
     assert cfg.name == "quartz-anchor"
     assert cfg.solver.inference == "bloch_eigen"
-    assert cfg.numerics.g_max == 4.5
+    assert cfg.numerics.g_max_refine == 1.6
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
     assert cfg.inputs.observations == lock.observations.ref
@@ -350,7 +350,6 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     """
     cfg, lock = load_experiment(ABIRATERONE_ROOT)
     assert cfg.name == "abiraterone-anchor"
-    assert cfg.numerics.g_max == 3.0
     assert cfg.numerics.g_max_refine == 1.0
     assert cfg.sample.thicknesses == (1460.0,)
 
