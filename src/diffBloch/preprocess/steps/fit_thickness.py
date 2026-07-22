@@ -50,6 +50,7 @@ def fit_thickness(
     method: Method = "matrix_exp",
     precision: FloatFormat = "fp64",
     device: Device | None = None,
+    max_batch: int | None = None,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
 
@@ -67,10 +68,19 @@ def fit_thickness(
     accelerator by moving the seed params there; the engine co-locates every invariant onto the
     param device at the use site. Execution-only (kept out of the recipe identity), exactly as in
     :func:`fit_orientation`.
+
+    ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block. ``None`` lets each
+    solve derive a memory-safe block from its beam count -- it matters most here because the grid
+    search evaluates ``grid.n_steps`` thicknesses at once, so a wide coupled segment's
+    ``(C, T, N, N)`` propagator can be tens of GiB if left unbounded. Raise it to fill a larger GPU.
+    The bound matches the unbounded solve to machine precision (memory only) and is execution-only,
+    like ``device``.
     """
 
     def run(plan: Plan) -> Plan:
-        engine = build_engine(plan, refinement, method=method, precision=precision)
+        engine = build_engine(
+            plan, refinement, method=method, precision=precision, max_batch=max_batch
+        )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
         candidates = torch.linspace(

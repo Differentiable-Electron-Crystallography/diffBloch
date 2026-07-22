@@ -14,7 +14,7 @@ from diffBloch.core.dynamical import (
     stack_beam_plans,
 )
 from diffBloch.core.reciprocal import g_vectors
-from diffBloch.core.solver import propagate
+from diffBloch.core.solver import memory_safe_max_batch, propagate
 
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
 _GRID_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
@@ -147,6 +147,86 @@ def test_precision_fp32_still_flows_gradient_to_structure_factors(method: str) -
     assert factors.grad is not None
     assert factors.grad.dtype == torch.complex128
     assert factors.grad.abs().sum() > 0
+
+
+def _batched_system(scales: tuple[float, ...], factors: torch.Tensor | None = None):
+    if factors is None:
+        factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128)
+    plans = [
+        build_beam_plan(_BEAM_HKL, _GRID_HKL, _RECIP_BASIS * s, energy=_ENERGY, gpts=_GPTS)
+        for s in scales
+    ]
+    return build_bloch_systems(stack_beam_plans(plans), factors)
+
+
+@pytest.mark.parametrize("max_batch", [1, 2, 5, 7, 999])
+def test_max_batch_matches_unbounded_to_machine_precision_batched(max_batch: int) -> None:
+    # The matrix_exp chunk streams the flattened (B*T, N, N) operator stack in blocks of `max_batch`
+    # instead of materializing the whole (B, T, N, N) transfer. torch.matrix_exp shares one
+    # scaling-and-squaring count across a batch (from its max norm), so regrouping into blocks
+    # shifts rounding by ~1 ulp -- the amplitudes match to machine precision, never in accuracy.
+    system = _batched_system((1.0, 1.002, 0.998))  # B = 3
+    thicknesses = torch.tensor([0.0, 12.0, 55.0, 137.0], dtype=torch.float64)  # T = 4 -> B*T = 12
+    unbounded = propagate(system, thicknesses, max_batch=None)
+    chunked = propagate(system, thicknesses, max_batch=max_batch)
+    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-13)
+
+
+@pytest.mark.parametrize("max_batch", [1, 3, 999])
+def test_max_batch_matches_unbounded_for_single_system(max_batch: int) -> None:
+    # Leading dim collapses to (T, N): the single (N, N) system chunks over thickness alone.
+    system = _system()
+    thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
+    unbounded = propagate(system, thicknesses, max_batch=None)
+    chunked = propagate(system, thicknesses, max_batch=max_batch)
+    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-13)
+
+
+def test_max_batch_matches_unbounded_under_fp32() -> None:
+    system = _batched_system((1.0, 1.002, 0.998))
+    thicknesses = torch.tensor([0.0, 12.0, 55.0, 137.0], dtype=torch.float64)
+    unbounded = propagate(system, thicknesses, precision="fp32", max_batch=None)
+    chunked = propagate(system, thicknesses, precision="fp32", max_batch=2)
+    assert chunked.dtype == torch.complex64
+    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-5)
+
+
+def test_max_batch_chunk_still_flows_gradient_to_structure_factors() -> None:
+    factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128, requires_grad=True)
+    system = _batched_system((1.0, 1.002, 0.998), factors)
+    psi = propagate(system, torch.tensor([1.0, 8.0, 42.0], dtype=torch.float64), max_batch=2)
+    psi[:, :, 1].abs().square().sum().backward()
+    assert factors.grad is not None and factors.grad.abs().sum() > 0
+
+
+def test_max_batch_is_ignored_by_bloch_eigen() -> None:
+    # bloch_eigen diagonalises once (no (B, T, N, N) intermediate), so max_batch is inert there.
+    system = _system()
+    thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
+    assert torch.equal(
+        propagate(system, thicknesses, method="bloch_eigen", max_batch=1),
+        propagate(system, thicknesses, method="bloch_eigen", max_batch=None),
+    )
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_propagate_rejects_nonpositive_max_batch(bad: int) -> None:
+    with pytest.raises(ValueError, match="max_batch must be a positive integer"):
+        propagate(_system(), [1.0], max_batch=bad)
+
+
+def test_memory_safe_max_batch_shrinks_with_beam_count_and_precision() -> None:
+    # The bound adapts to N (cubically heavier propagator -> smaller block) and to the field width
+    # (complex64 is half complex128, so fp32 permits a larger block at the same budget).
+    small = memory_safe_max_batch(40, "fp64")
+    large = memory_safe_max_batch(640, "fp64")
+    assert small > large >= 1
+    assert memory_safe_max_batch(640, "fp32") > memory_safe_max_batch(640, "fp64")
+
+
+def test_memory_safe_max_batch_floors_at_one() -> None:
+    # A single matrix wider than the whole budget is still attempted (returns 1, never 0).
+    assert memory_safe_max_batch(4000, "fp64", budget_bytes=1) == 1
 
 
 def test_propagate_rejects_bad_method() -> None:
