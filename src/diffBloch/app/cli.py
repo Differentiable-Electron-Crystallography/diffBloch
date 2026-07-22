@@ -55,6 +55,15 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         "to 1 (OMP_NUM_THREADS/MKL_NUM_THREADS/TORCH_NUM_THREADS, or torch.set_num_threads(1)) or "
         "the node-sized BLAS/torch pools oversubscribe the cores",
     )
+    parser.add_argument(
+        "--max-batch",
+        metavar="N",
+        type=int,
+        default=None,
+        help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
+        "unbounded solve to machine precision); default derives a memory-safe block per beam "
+        "count. Raise to fill a larger GPU, e.g. 1024 on an 80 GB A100",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
                 refresh=args.refresh,
                 device=args.device,
                 workers=args.workers,
+                max_batch=args.max_batch,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:
@@ -137,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                 refresh=args.refresh,
                 device=args.device,
                 workers=args.workers,
+                max_batch=args.max_batch,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:
@@ -158,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
                 refresh=args.refresh,
                 device=args.device,
                 workers=args.workers,
+                max_batch=args.max_batch,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

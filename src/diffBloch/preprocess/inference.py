@@ -88,6 +88,7 @@ def run_inference(
     prepare: PlanStep = identity,
     method: Method = "bloch_eigen",
     device: Device | None = None,
+    max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
@@ -110,10 +111,14 @@ def run_inference(
     at the use site (:meth:`RefinableParams.to`), so the whole eigensolve runs on-device. The
     scoring tail (``align`` / ``optimal_scale``) is device-safe (observed data is co-located there),
     so the returned ``R_obs`` is identical (to solver tolerance) across devices.
+
+    ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block on the terminal solve;
+    ``None`` lets the engine pick a memory-safe block per beam count. Execution-only (memory), like
+    ``device``; inert for the ``bloch_eigen`` default. See :func:`~diffBloch.engine.build_engine`.
     """
     plan = prepare(plan)
     params = refinement.params if device is None else refinement.params.to(device)
-    engine = build_engine(plan, refinement, method=method)
+    engine = build_engine(plan, refinement, method=method, max_batch=max_batch)
     with torch.no_grad():
         solutions = engine.simulate(params)
     rows = tuple(
