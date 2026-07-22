@@ -19,7 +19,6 @@ sample:
   thicknesses: [820.0] # crystal thickness (Angstrom); fit_thickness refines around this seed
 
 numerics:
-  g_max: 4.5 # structure-factor grid radius (1/Angstrom)
   g_max_refine: 1.6 # seed beam-pool radius / scoring-resolution cap (1/Angstrom)
   rocking_curve_sampling: 42 # tilt samples per rocking curve
   dsg: 0.0015 # Klar beam-selection excitation-error cutoff

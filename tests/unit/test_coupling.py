@@ -33,7 +33,9 @@ ROTATIONS = (13, 27, 60, 61, 64)
 def _grid_and_tilts() -> tuple[ScatteringGrid, np.ndarray]:
     cfg, _ = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=cfg.numerics.g_max)
+    grid = ScatteringGrid.from_cell_for_solve_cutoff(
+        structure.unit_cell, cfg.preprocess.coupling.g_max
+    )
     tilts = np.load(REPLAY_ROOT / "tilts.npz")["tilts"]
     return grid, tilts
 

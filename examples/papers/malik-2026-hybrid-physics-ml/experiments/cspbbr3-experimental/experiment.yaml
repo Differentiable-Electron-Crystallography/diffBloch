@@ -15,7 +15,6 @@ sample:
 
 numerics:
   # From the Malik cspbbr3_experimental Hydra config.
-  g_max: 5.0
   g_max_refine: 1.0
   rocking_curve_sampling: 60
   dsg: 0.0015

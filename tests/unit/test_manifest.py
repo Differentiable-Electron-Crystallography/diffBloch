@@ -144,7 +144,11 @@ def test_config_digest_is_stable_and_value_sensitive() -> None:
     assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
     # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
     bumped = cfg.model_copy(
-        update={"numerics": cfg.numerics.model_copy(update={"g_max": cfg.numerics.g_max + 1.0})}
+        update={
+            "numerics": cfg.numerics.model_copy(
+                update={"g_max_refine": cfg.numerics.g_max_refine + 1.0}
+            )
+        }
     )
     assert config_digest(bumped) != config_digest(cfg)
 
@@ -245,7 +249,11 @@ def test_config_change_is_stale(tmp_path: Path) -> None:
     args = _args(cfg, recipe, npz, tmp_path)
     args["config_digest"] = config_digest(
         cfg.model_copy(
-            update={"numerics": cfg.numerics.model_copy(update={"g_max": cfg.numerics.g_max + 1.0})}
+            update={
+                "numerics": cfg.numerics.model_copy(
+                    update={"g_max_refine": cfg.numerics.g_max_refine + 1.0}
+                )
+            }
         )
     )
     assert preprocess_lock_status(lock, **args) == "stale"

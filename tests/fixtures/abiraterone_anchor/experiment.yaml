@@ -14,7 +14,6 @@ numerics:
   # structure-factor grid g_max 3, scoring/seed-pool g_max_refine 1, and the rocking-curve
   # integration geometry (dsg/rsg/sampling/semiangle). The numerical quadrature (sampling, dsg) is
   # converged by sampling>=60 (R_obs flat 60->120); 30 is the private's value, kept for parity.
-  g_max: 3.0
   g_max_refine: 1.0
   rocking_curve_sampling: 30
   dsg: 0.0025

@@ -156,23 +156,30 @@ def from_experiment(
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
 
     The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
-    ``Plan`` yet). The shared grid is sized from the ideal CIF cell and ``numerics.g_max``; the beam
-    energy is derived from the PETS wavelength; one :class:`CandidatePlan` per rotation carries
-    its crystal orientation matrix (native PETS derivation, no side-car file) and the observed
-    pattern for that zone axis. Rotations split into ``train`` / ``validation`` plans sharing it.
+    ``Plan`` yet). The shared structure-factor grid is *derived* from the solve cutoff rather than
+    hand-declared: :func:`~diffBloch.engine.plan.ScatteringGrid.from_cell_for_solve_cutoff` sizes it
+    to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The solve cutoff is the
+    ``preprocess.coupling`` radius when the run couples, else the seed pool ``g_max_refine`` (a
+    tilt-independent run solves only the seed set). The beam energy is derived from the PETS
+    wavelength; one :class:`CandidatePlan` per rotation carries its crystal orientation matrix
+    (native PETS derivation, no side-car file) and the observed pattern for that zone axis.
+    Rotations split into ``train`` / ``validation`` plans sharing the grid.
 
     Each orientation is seeded with the orientation-independent, difference-safe beam set
-    ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the
-    ``g_max`` grid and the 000 transmitted beam is always present). The faithful per-orientation
-    ``sg_max`` / rsg-dsg pruning is the later ``select_beams`` step.
+    ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the derived
+    grid and the 000 transmitted beam is present). The faithful per-orientation ``sg_max`` / rsg-dsg
+    pruning is the later ``select_beams`` step.
 
     This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
     single documented public boundary of the preprocess pipeline (records + config -> setup), and it
     returns a *composite* of two products rather than constructing one domain object. The per-object
-    constructors it delegates to follow the classmethod idiom (``ScatteringGrid.from_cell``,
-    ``CandidatePlan.seed``, ``RefinementSetup.from_structure``).
+    constructors it delegates to follow the classmethod idiom
+    (``ScatteringGrid.from_cell_for_solve_cutoff``, ``CandidatePlan.seed``,
+    ``RefinementSetup.from_structure``).
     """
-    grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=config.numerics.g_max)
+    coupling = config.preprocess.coupling
+    solve_cutoff = coupling.g_max if coupling is not None else config.numerics.g_max_refine
+    grid = ScatteringGrid.from_cell_for_solve_cutoff(structure.unit_cell, solve_cutoff)
     energy = wavelength2energy(observations.wavelength)
     beam_hkl = seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
     orientations = orientation_matrices(

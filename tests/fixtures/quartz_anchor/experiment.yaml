@@ -8,7 +8,6 @@ inputs:
 sample:
   thicknesses: [820.0]
 numerics:
-  g_max: 4.5
   g_max_refine: 1.6
   rocking_curve_sampling: 42
   dsg: 0.0015

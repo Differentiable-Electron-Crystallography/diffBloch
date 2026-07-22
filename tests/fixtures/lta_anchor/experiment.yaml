@@ -9,7 +9,6 @@ sample:
 numerics:
   # g_max >= 2 * (coupling cap 2.05) so the structure-factor grid spans the coupled beam-difference
   # support (as quartz's 4.5); g_max_refine is the full data resolution / seed-pool radius.
-  g_max: 4.5
   g_max_refine: 1.4
   rocking_curve_sampling: 42
   dsg: 0.0015
