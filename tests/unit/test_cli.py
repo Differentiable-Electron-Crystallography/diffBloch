@@ -8,6 +8,7 @@ import torch
 from pydantic import ValidationError
 
 from diffBloch.app.cli import main
+from diffBloch.app.loggers import ConsoleLogger
 from diffBloch.observability import MultiLogger, NullLogger
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
@@ -104,7 +105,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
+    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     assert captured["checkpoint"] is True  # checkpoint on by default
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
@@ -156,13 +157,35 @@ def test_run_infer_builds_console_and_csv_sinks(
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
     csv_path = tmp_path / "observations.csv"
-    rc = main(["run", "infer", "x", "--console", "--csv", str(csv_path)])
+    rc = main(["run", "infer", "x", "--csv", str(csv_path)])
 
     assert rc == 0
     logger = seen["logger"]
     assert isinstance(logger, MultiLogger)
     assert len(logger.loggers) == 2  # console + csv fanned out
     assert csv_path.is_file()  # CSVLogger writes its header at construction
+
+
+def test_run_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--quiet`` opts out of the default console stream -> the null sink (no observations)."""
+    seen: dict[str, object] = {}
+
+    def fake_run_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        checkpoint: bool = True,
+        refresh: bool = False,
+        device: object = None,
+        workers: int = 1,
+        max_batch: object = None,
+    ) -> InferenceResult:
+        seen["logger"] = logger
+        return InferenceResult(per_rotation=())
+
+    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
+    assert main(["run", "infer", "x", "--quiet"]) == 0
+    assert isinstance(seen["logger"], NullLogger)
 
 
 def test_run_infer_missing_experiment_reports_concise_error(
@@ -214,7 +237,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], NullLogger)  # no --console/--csv => null sink
+    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     assert captured["checkpoint"] is True and captured["refresh"] is False
     assert captured["workers"] == 1 and captured["device"] is None
     out = capsys.readouterr().out
@@ -307,7 +330,7 @@ def test_run_refine_delegates_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], NullLogger)
+    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     out = capsys.readouterr().out
     assert "refined 2 steps" in out
     assert "objective 2.000000 -> 1.000000 (best at step 1)" in out
