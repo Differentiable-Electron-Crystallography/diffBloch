@@ -108,11 +108,20 @@ class ScatteringGrid:
 
         A beam set bounded by ``|g| <= solve_g_max`` produces dynamical-matrix terms
         ``F(g_j - g_i)`` whose differences reach ``|g_j - g_i| <= 2 * solve_g_max`` (triangle
-        inequality), so the structure-factor support must cover ``2 * solve_g_max``. This derives
-        that support rather than making the caller pass the doubled radius to :meth:`from_cell` (the
-        error-prone convention the ``diffBloch_private`` #154 fix removed). ``solve_g_max`` is the
-        beam/coupling cutoff, distinct from the scoring-resolution cutoff (``g_max_refine``), which
-        selects reflections for the objective, not the solve.
+        inequality), so the structure-factor support must cover ``2 * solve_g_max``.
+
+        The ``2x`` is **fundamental**, not an implementation artifact: any coupled Bloch solve that
+        gathers ``F(g - h)`` from a tabulated grid needs the table out to twice the beam cutoff, so
+        the factor cannot be designed away. ``diffBloch_private`` #154 did **not** remove it -- it
+        removed the *bookkeeping* of it. The old convention made the caller declare the doubled
+        radius and then halved it internally (``self.g_max = sf_g_max / 2``), an error-prone
+        double-entry; #154 flipped it so the caller declares the beam cutoff and the ``2x`` support
+        is *derived* (private's ``StructureFactorNet`` builds its g-h grid at ``2 * self.g_max``).
+        This method is the public port of that derivation: pass the physical solve cutoff, get the
+        ``2x`` support -- the hand-doubled ``from_cell`` radius is what #154 made unnecessary, not
+        the ``2x`` itself. ``solve_g_max`` is the beam/coupling cutoff, distinct from the
+        scoring-resolution cutoff (``g_max_refine``), which selects reflections for the objective,
+        not the solve.
 
         The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN`` -- ``diffBloch_private``'s
         ``2 * g_max + 0.5`` prefilter shell. The half-Angstrom headroom reconciles the coupling
