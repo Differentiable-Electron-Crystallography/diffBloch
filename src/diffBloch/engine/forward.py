@@ -35,7 +35,13 @@ from diffBloch.core.products import (
     reduce_tilts,
 )
 from diffBloch.core.scattering import structure_factors
-from diffBloch.core.solver import FloatFormat, Method, precision_dtypes, propagate
+from diffBloch.core.solver import (
+    FloatFormat,
+    Method,
+    memory_safe_max_batch,
+    precision_dtypes,
+    propagate,
+)
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
 from diffBloch.engine.plan import (
@@ -100,6 +106,19 @@ class RefinementEngine:
     # fits build; the terminal estimators (objective/refine here, run_inference via build_engine)
     # never enable it, so the reproducible pinned result stays fp64. See core.solver.propagate.
     precision: FloatFormat = "fp64"
+    # matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a
+    # rounding-level ~1 ulp shift, never accuracy). None (default) lets each
+    # solve pick a memory-safe block from its beam count (memory_safe_max_batch), which bounds the
+    # (B, T, N, N) propagator that a wide coupled segment x a thickness grid would otherwise
+    # materialize all at once (the adaptive-union fit_thickness OOM). A positive int pins the block
+    # for a specific device budget. Execution-only, like precision/method.
+    max_batch: int | None = None
+
+    def _max_batch_for(self, n_beams: int) -> int:
+        """The matrix_exp block cap for a solve over ``n_beams`` beams (explicit pin, else safe)."""
+        if self.max_batch is not None:
+            return self.max_batch
+        return memory_safe_max_batch(n_beams, self.precision)
 
     def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
         """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
@@ -311,6 +330,7 @@ class RefinementEngine:
                 thicknesses,
                 method=self.method,
                 precision=self.precision,
+                max_batch=self._max_batch_for(beam_hkl.shape[0]),
             )
             return BlochSolution.from_propagation(amplitudes, beam_hkl, thicknesses)
         # Rocking-curve integration: the tilts share this orientation's beam set, so ONE batched
@@ -323,6 +343,7 @@ class RefinementEngine:
             thicknesses,
             method=self.method,
             precision=self.precision,
+            max_batch=self._max_batch_for(beam_hkl.shape[0]),
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
             amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
@@ -355,6 +376,7 @@ class RefinementEngine:
                 thicknesses,
                 method=self.method,
                 precision=self.precision,
+                max_batch=self._max_batch_for(segment.union_index.shape[0]),
             )  # (C, T, n_seg)
             cover = segment.cover.to(device)
             union_index = segment.union_index.to(device)
