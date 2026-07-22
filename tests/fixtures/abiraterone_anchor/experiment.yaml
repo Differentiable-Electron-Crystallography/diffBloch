@@ -27,8 +27,8 @@ solver:
 preprocess:
   # The forward-parity coupling the anchor test composes explicitly (the public app path wires
   # couple_beams only inside the fit steps). Declared here so from_experiment derives the SF grid
-  # (2 * 1.5 = 3.0) the coupled forward needs. g_max is the private post-#154 solve cutoff (its
-  # structure_factor.g_max 1.5, no cap margin); n_splits from the private union_splits=4.
+  # (2 * 1.5 + 0.5 = 3.5) the coupled forward needs. g_max is the private post-#154 solve cutoff
+  # (its structure_factor.g_max 1.5, no cap margin); n_splits from the private union_splits=4.
   coupling:
     n_splits: 4
     g_max: 1.5

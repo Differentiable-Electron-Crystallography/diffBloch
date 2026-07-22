@@ -43,6 +43,12 @@ __all__ = [
     "mean_plan_thickness",
 ]
 
+# Half-Angstrom shell added to the derived structure-factor support radius (the private's
+# ``2 * g_max + 0.5`` prefilter). Headroom for beams the coupling filter admits slightly past the
+# solve cutoff under a non-orthonormal orientation metric; see
+# ScatteringGrid.from_cell_for_solve_cutoff.
+_SUPPORT_MARGIN = 0.5
+
 
 @dataclass(frozen=True)
 class ScatteringGrid:
@@ -103,10 +109,18 @@ class ScatteringGrid:
         error-prone convention the ``diffBloch_private`` #154 fix removed). ``solve_g_max`` is the
         beam/coupling cutoff, distinct from the scoring-resolution cutoff (``g_max_refine``), which
         selects reflections for the objective, not the solve.
+
+        The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN`` -- ``diffBloch_private``'s
+        ``2 * g_max + 0.5`` prefilter shell. The half-Angstrom headroom absorbs beams that the
+        coupling filter (which measures ``|g|`` in the crystal *orientation* metric) admits slightly
+        past ``solve_g_max`` when that orientation is not perfectly orthonormal (a PETS/UB matrix
+        carries a ~1% scale), so a beam difference can exceed a bare ``2 * solve_g_max`` grid. The
+        extra shell only enlarges the (unused-at-the-margin) SF table; it changes neither the
+        coupled beam set nor the scored set.
         """
         if solve_g_max <= 0.0:
             raise ValueError("solve_g_max must be positive")
-        return cls.from_cell(cell, g_max=2.0 * solve_g_max)
+        return cls.from_cell(cell, g_max=2.0 * solve_g_max + _SUPPORT_MARGIN)
 
 
 @dataclass(frozen=True)
