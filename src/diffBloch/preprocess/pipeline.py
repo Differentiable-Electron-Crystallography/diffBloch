@@ -22,7 +22,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
 from typing import TYPE_CHECKING, Any
 
-from diffBloch.preprocess.plan import Plan
+from diffBloch.observability import NULL_LOGGER, Logger, PlanStepCompleted
+from diffBloch.preprocess.plan import Plan, summarize_plan
 
 if TYPE_CHECKING:
     # Annotation-only (``from __future__ import annotations``): ScatteringGrid is never touched at
@@ -144,19 +145,35 @@ def _identity(plan: Plan) -> Plan:
 identity: Step = Step(record=StepRecord(name="identity"), run=_identity)
 
 
-def pipeline(steps: Sequence[PlanStep]) -> PlanStep:
+def pipeline(steps: Sequence[PlanStep], *, logger: Logger = NULL_LOGGER) -> PlanStep:
     """Compose ``steps`` left to right, stamping each step's record onto the plan's ``provenance``.
 
     After applying each step, appends its :class:`StepRecord` (or :data:`OPAQUE` for a bare closure)
     to the plan's ``provenance``, so the composed result records the ordered recipe. An empty list
     yields the identity (provenance unchanged).
+
+    ``logger`` (default the null sink) receives a
+    :class:`~diffBloch.observability.PlanStepCompleted` after each step -- the step's name as the
+    event channel, its ordinal as the step, and :func:`~diffBloch.preprocess.plan.summarize_plan`
+    of the resulting plan -- so a fresh preprocess run streams the plan's shape as it evolves.
+    Reusing a checkpoint bypasses this runner, so those fire only on a fresh run (the boundary
+    :class:`~diffBloch.observability.CouplingSummary` covers the reuse case). Emission is alongside
+    the provenance ``tell``; the null default keeps the pure composition path unchanged.
     """
 
     def run(plan: Plan) -> Plan:
-        for step in steps:
+        for index, step in enumerate(steps):
             result = step(plan)
             result = replace(result, provenance=(*plan.provenance, _record_of(step)))
             plan = result
+            if logger is not NULL_LOGGER:  # skip summarize_plan on the null path (stay pure/cheap)
+                logger.report(
+                    PlanStepCompleted(
+                        channel=_record_of(step).name,
+                        index=index,
+                        measurements=summarize_plan(plan),
+                    )
+                )
         return plan
 
     return run

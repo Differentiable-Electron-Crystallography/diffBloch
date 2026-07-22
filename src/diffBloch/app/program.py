@@ -60,6 +60,7 @@ from diffBloch.preprocess import (
     mosaicity,
     pipeline,
     read_plan,
+    report_coupling,
     resolve_recipe,
     run_inference,
     select_beams,
@@ -306,7 +307,12 @@ def _preprocess(
         cfg=cfg,
         checkpoint=checkpoint,
         refresh=refresh,
+        logger=logger,
     )
+    # Report the settled plan's coupling geometry at the consumer boundary: fires on every run
+    # (including a checkpoint-reuse refine, which ran no pipeline steps), so the coupling the loop
+    # is about to consume is logged before the first step.
+    report_coupling(logger)(prepared)
     return setup.refinement, prepared
 
 
@@ -417,8 +423,13 @@ def _prepare(
     cfg: ExperimentConfig,
     checkpoint: bool,
     refresh: bool,
+    logger: Logger = NULL_LOGGER,
 ) -> Plan:
-    """Run the preprocess ``steps`` on ``base``, reusing/resuming a valid checkpoint if present."""
+    """Run the preprocess ``steps`` on ``base``, reusing/resuming a valid checkpoint if present.
+
+    ``logger`` streams a per-step plan summary as the recipe runs (see :func:`pipeline`); it fires
+    only when steps actually execute (a fresh or resumed run, not a full-reuse load).
+    """
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
     # lock keys on is a flat, fork-free step list -- the fork is Applicative by construction, so its
     # branch is fixed here, before running (see design/decisions/combinators-and-recipe-identity).
@@ -451,11 +462,11 @@ def _prepare(
                 k,
                 [r.name for r in records[k:]],
             )
-            result = pipeline(steps[k:])(snapshot)
+            result = pipeline(steps[k:], logger=logger)(snapshot)
             _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
             return result
 
-    result = pipeline(steps)(base)
+    result = pipeline(steps, logger=logger)(base)
     if can_checkpoint:
         _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
     return result

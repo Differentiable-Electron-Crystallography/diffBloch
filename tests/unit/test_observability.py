@@ -19,15 +19,18 @@ from diffBloch.app.loggers import ConsoleLogger, CSVLogger, EarlyAbortLogger, Fi
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
+    CouplingSummary,
     Event,
     InferenceCompleted,
     Logger,
     MultiLogger,
     NullLogger,
     OrientationFitted,
+    PlanStepCompleted,
     RecordingLogger,
     RefinementCompleted,
     RefinementStep,
+    RotationCoupling,
     RotationScored,
     ThicknessFitted,
 )
@@ -56,6 +59,30 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert thickness.channel == "fit_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
+
+    coupled = RotationCoupling(
+        index=2, n_segments=8, n_tilts=42, cover_max=15, beams_union=700, beams_seg_max=641
+    )
+    assert coupled.channel == "coupling"
+    assert coupled.step == 2
+    assert coupled.measurements == {
+        "n_segments": 8.0,
+        "n_tilts": 42.0,
+        "cover_max": 15.0,
+        "beams_union": 700.0,
+        "beams_seg_max": 641.0,
+    }
+
+    coupling_summary = CouplingSummary(measurements={"n_orientations": 55.0, "g_max": 5.0})
+    assert coupling_summary.channel == "coupling"
+    assert coupling_summary.step is None  # a run-level aggregate shares the channel, step None
+    assert coupling_summary.measurements == {"n_orientations": 55.0, "g_max": 5.0}
+
+    # PlanStepCompleted carries the step NAME as a per-instance channel (not a class constant).
+    plan_step = PlanStepCompleted(channel="fit_orientation", index=4, measurements={"beams": 641.0})
+    assert plan_step.channel == "fit_orientation"
+    assert plan_step.step == 4
+    assert plan_step.measurements == {"beams": 641.0}
 
     refinement = RefinementStep(iteration=4, loss=1.5)
     assert refinement.channel == "refinement"

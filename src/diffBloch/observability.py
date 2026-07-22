@@ -28,15 +28,18 @@ from typing import ClassVar, Protocol, runtime_checkable
 
 __all__ = [
     "NULL_LOGGER",
+    "CouplingSummary",
     "Event",
     "InferenceCompleted",
     "Logger",
     "MultiLogger",
     "NullLogger",
     "OrientationFitted",
+    "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
     "RefinementStep",
+    "RotationCoupling",
     "RotationScored",
     "ThicknessFitted",
 ]
@@ -46,13 +49,15 @@ __all__ = [
 class Event(Protocol):
     """A named domain observation carrying numeric measurements.
 
-    ``channel`` is the event's stable name (a class constant); ``measurements`` maps metric name to
-    value; ``step`` is the optional position on the run's x-axis (a rotation index, later a
-    refinement iteration) or ``None`` for a run-level aggregate. Together they let a generic logger
-    record and *place* any event with no per-type knowledge.
+    ``channel`` is the event's stable name -- usually a class constant, but read as a plain
+    attribute so an event may set it per instance (e.g. :class:`PlanStepCompleted` uses the pipeline
+    step's name). ``measurements`` maps metric name to value; ``step`` is the optional position on
+    the run's x-axis (a rotation index, later a refinement iteration) or ``None`` for a run-level
+    aggregate. Together they let a generic logger record and *place* any event, no per-type view.
     """
 
-    channel: ClassVar[str]
+    @property
+    def channel(self) -> str: ...
 
     @property
     def step(self) -> int | None: ...
@@ -154,6 +159,80 @@ class ThicknessFitted:
     @property
     def measurements(self) -> Mapping[str, float]:
         return {"wr2": self.wr2, "thickness": self.thickness}
+
+
+@dataclass(frozen=True)
+class PlanStepCompleted:
+    """The Plan produced by one preprocess pipeline step, summarised as the recipe runs.
+
+    Unlike the other events its ``channel`` is the *step name* (``select_beams``,
+    ``fit_orientation``, ...), set per instance rather than a class constant -- so the console reads
+    ``fit_orientation[4] n_orientations=55 beams_seg_max=641 ...``, carrying the categorical step
+    identity a fixed channel cannot. ``index`` is the step's ordinal in the recipe (its ``step`` on
+    the run's x-axis); ``measurements`` is :func:`diffBloch.preprocess.plan.summarize_plan` of the
+    resulting plan. Emitted only on a *fresh* preprocess run -- a reused checkpoint runs no steps
+    (see :class:`CouplingSummary` for the boundary summary that fires on reuse).
+    """
+
+    channel: str
+    index: int
+    measurements: Mapping[str, float]
+
+    @property
+    def step(self) -> int | None:
+        return self.index
+
+
+@dataclass(frozen=True)
+class RotationCoupling:
+    """One rotation's coupled solve geometry, emitted per rotation at the consumer boundary.
+
+    The shape the refinement loop repeats every step: ``n_segments`` coupled unions over ``n_tilts``
+    rocking-curve tilts, the widest union spanning ``cover_max`` tilts, the deduped union carrying
+    ``beams_union`` beams, and the largest single segment ``beams_seg_max`` beams -- the ``N`` of
+    the dominant per-segment eigensolve. Fires on every run (fresh or checkpoint-reuse), so the
+    coupling a long refine is about to chew on is legible before the first step.
+    """
+
+    channel: ClassVar[str] = "coupling"
+    index: int
+    n_segments: int
+    n_tilts: int
+    cover_max: int
+    beams_union: int
+    beams_seg_max: int
+
+    @property
+    def step(self) -> int | None:
+        return self.index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_segments": float(self.n_segments),
+            "n_tilts": float(self.n_tilts),
+            "cover_max": float(self.cover_max),
+            "beams_union": float(self.beams_union),
+            "beams_seg_max": float(self.beams_seg_max),
+        }
+
+
+@dataclass(frozen=True)
+class CouplingSummary:
+    """Run-level summary of the plan the refinement/inference consumes (on the coupling channel).
+
+    The aggregate companion to the per-rotation :class:`RotationCoupling` (``step`` ``None`` vs a
+    rotation index separates the two on one channel): ``measurements`` is
+    :func:`diffBloch.preprocess.plan.summarize_plan` -- the structure-factor support size/radius
+    plus the coupling aggregates across rotations. Emitted once at the consumer boundary.
+    """
+
+    channel: ClassVar[str] = "coupling"
+    measurements: Mapping[str, float]
+
+    @property
+    def step(self) -> int | None:
+        return None
 
 
 @dataclass(frozen=True)

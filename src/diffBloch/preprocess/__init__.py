@@ -80,6 +80,7 @@ from diffBloch.preprocess.steps.fit_orientation import fit_orientation
 from diffBloch.preprocess.steps.fit_thickness import fit_thickness
 from diffBloch.preprocess.steps.frames import select_finite_loss_frames, select_frames
 from diffBloch.preprocess.steps.mosaicity import mosaicity
+from diffBloch.preprocess.steps.report_coupling import report_coupling
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     BeamSelection,
@@ -142,6 +143,7 @@ __all__ = [
     "orientation_matrices",
     "pipeline",
     "plan_coverage",
+    "report_coupling",
     "read_plan",
     "require_built_plans",
     "require_candidate_plans",
