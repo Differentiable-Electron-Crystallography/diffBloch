@@ -284,9 +284,13 @@ class CouplingConfig(_StrictConfig):
     keeps its own defaults for programmatic pipeline authors -- only the config edge is explicit.
     """
 
-    n_splits: int  # contiguous tilt chunks
+    n_splits: int  # contiguous tilt chunks (fixed mode)
     g_max: float  # coupling radius (1/Angstrom): a beam couples when |g| < g_max
     sg_max: float  # excitation-error cutoff
+    # Adaptive segmentation is a mode toggle with a faithful-fixed default, so (unlike the four
+    # physics fields) it may be omitted -- an absent block runs the current even-split behaviour.
+    union_adaptive: bool = False  # recursive-bisection chunk boundaries instead of even splits
+    union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
     def to_policy(self) -> TiltSegmentUnion:
         """Parse into the validated value-type the coupled ``fit_orientation`` consumes."""
@@ -294,6 +298,8 @@ class CouplingConfig(_StrictConfig):
             n_splits=self.n_splits,
             g_max=self.g_max,
             sg_max=self.sg_max,
+            union_adaptive=self.union_adaptive,
+            union_max_new_beams_pct=self.union_max_new_beams_pct,
         )
 
     @model_validator(mode="after")

@@ -308,23 +308,32 @@ class TiltSegmentUnion:
     ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max`` (the private's post-#154
     mask, which dropped the earlier ``- 0.2`` margin so the cutoff is the physical solve radius).
     ``sg_max`` is the excitation-error cutoff. The mean-inner-potential ``u0`` and beam energy are
-    experiment quantities threaded in at build time, not policy knobs. The ``union_adaptive``
-    recursive-bisection variant is deferred (only the fixed even-split ``union_adaptive = False``
-    path is ported).
+    experiment quantities threaded in at build time, not policy knobs.
+
+    ``union_adaptive`` chooses how the chunk boundaries are placed. ``False`` (default) uses
+    ``n_splits`` fixed even-sized chunks. ``True`` places boundaries by recursive bisection: a tilt
+    range is split further only while its midpoint adds more than ``union_max_new_beams_pct`` of the
+    boundary union's beams (else the range is frozen as one chunk), so segments are dense where the
+    excited set drifts and sparse where it is stable. In the adaptive mode ``n_splits`` is ignored.
 
     Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
-    ``self.g_max = 2.25``, ``self.sg_max = 0.01``).
+    ``self.g_max = 2.25``, ``self.sg_max = 0.01``, ``union_adaptive = False``,
+    ``union_max_new_beams_pct = 0.01``).
     """
 
-    n_splits: int = 12  # contiguous tilt chunks; each gets its own boundary-union beam set
+    n_splits: int = 12  # contiguous tilt chunks (fixed mode); each gets its boundary-union beam set
     g_max: float = 2.25  # coupling radius: a beam couples at a tilt when |g| < g_max
     sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
+    union_adaptive: bool = False  # place chunk boundaries by recursive bisection, not even splits
+    union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
     def __post_init__(self) -> None:
         if self.n_splits < 1:
             raise ValueError("n_splits must be >= 1")
         if self.g_max <= 0.0 or self.sg_max <= 0.0:
             raise ValueError("g_max and sg_max must be positive")
+        if not 0.0 < self.union_max_new_beams_pct <= 1.0:
+            raise ValueError("union_max_new_beams_pct must be in (0, 1]")
 
 
 def assert_grid_covers_coupling(policy: TiltSegmentUnion, grid_g_max: float) -> None:

@@ -13,6 +13,7 @@ regenerated post-#154 private replay -- a private-reference comparison tracked i
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -100,6 +101,81 @@ def test_split_boundaries_match_private() -> None:
 def test_policy_rejects_nonpositive_g_max() -> None:
     with pytest.raises(ValueError, match="g_max and sg_max must be positive"):
         TiltSegmentUnion(g_max=0.0)
+
+
+# --- adaptive tilt-segment union (recursive bisection) --------------------------------------------
+
+
+def test_policy_rejects_out_of_range_union_pct() -> None:
+    with pytest.raises(ValueError, match="union_max_new_beams_pct"):
+        TiltSegmentUnion(union_max_new_beams_pct=0.0)
+    with pytest.raises(ValueError, match="union_max_new_beams_pct"):
+        TiltSegmentUnion(union_max_new_beams_pct=1.5)
+
+
+def _drifting_mask(n_beams: int) -> Callable[[int], np.ndarray]:
+    """A mask where tilt ``i`` excites the transmitted beam (0) plus a unique beam ``i + 1``."""
+
+    def mask_of(i: int) -> np.ndarray:
+        m = np.zeros(n_beams, dtype=bool)
+        m[0] = True
+        m[i + 1] = True
+        return m
+
+    return mask_of
+
+
+def test_adaptive_collapses_when_excited_set_is_constant() -> None:
+    from diffBloch.preprocess.coupling import _adaptive_segment_ranges
+
+    constant = lambda _i: np.ones(6, dtype=bool)  # noqa: E731 -- terse test stub
+    # A midpoint that adds no new beams never triggers a split: the whole range is one segment.
+    ranges = _adaptive_segment_ranges(8, constant, max_new_pct=0.01)
+    assert ranges == [(0, 7)]
+
+
+def test_adaptive_splits_where_the_excited_set_drifts_and_covers_tile() -> None:
+    from diffBloch.preprocess.coupling import _adaptive_segment_ranges
+
+    mask_of = _drifting_mask(n_beams=6)
+    # (0,3): mid=1 adds beam 2 (1 new / |{0,1,4}|=3 = 33% > 1%) -> split into (0,1) and (2,3).
+    low = _adaptive_segment_ranges(4, mask_of, max_new_pct=0.01)
+    assert low == [(0, 1), (2, 3)]
+    # A permissive threshold never splits: one segment.
+    high = _adaptive_segment_ranges(4, mask_of, max_new_pct=1.0)
+    assert high == [(0, 3)]
+    # Covers always tile 0..B-1 exactly once, disjoint and contiguous.
+    covered = [t for a, b in low for t in range(a, b + 1)]
+    assert covered == list(range(4))
+
+
+def test_adaptive_single_tilt_is_one_segment() -> None:
+    from diffBloch.preprocess.coupling import _adaptive_segment_ranges
+
+    assert _adaptive_segment_ranges(1, lambda _i: np.ones(3, dtype=bool), max_new_pct=0.01) == [
+        (0, 0)
+    ]
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_adaptive_coupling_tiles_tilts_and_keeps_transmitted_beam(rotation: int) -> None:
+    grid, tilts = _grid_and_tilts()
+    d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
+    segments = tilt_segment_coupling(
+        TiltSegmentUnion(union_adaptive=True),
+        np.asarray(grid.grid_hkl),
+        cell=np.asarray(grid.cell),
+        orientation=d["orientation"],
+        tilts=tilts,
+        energy=ENERGY_EV,
+        u0=float(d["u0"]),
+    )
+    # Adaptive still partitions every tilt exactly once, contiguous and disjoint.
+    covered = [t for segment in segments for t in segment.cover]
+    assert covered == list(range(42))
+    # Every segment couples the always-excited transmitted beam.
+    for segment in segments:
+        assert (0, 0, 0) in _as_set(segment.beam_hkl)
 
 
 # --- coverage guard (the O(1) invariant that makes validate=False sound on the coupled path) ------
