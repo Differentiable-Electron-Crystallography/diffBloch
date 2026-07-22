@@ -243,6 +243,28 @@ def test_coupling_policy_override_parses() -> None:
     )
 
 
+def test_coupling_adaptive_fields_default_off_and_thread_through() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    fixed = {"n_splits": 4, "g_max": 1.5, "sg_max": 0.02}
+    # Omitted -> the faithful fixed even-split (adaptive off), unchanged from the current behaviour.
+    default = ExperimentConfig.model_validate({**base, "preprocess": {"coupling": fixed}})
+    assert default.preprocess.coupling is not None
+    assert default.preprocess.coupling.to_policy().union_adaptive is False
+    # Declared -> threaded into the value-type the coupled fit consumes.
+    adaptive = ExperimentConfig.model_validate(
+        {
+            **base,
+            "preprocess": {
+                "coupling": {**fixed, "union_adaptive": True, "union_max_new_beams_pct": 0.02}
+            },
+        }
+    )
+    assert adaptive.preprocess.coupling is not None
+    policy = adaptive.preprocess.coupling.to_policy()
+    assert policy.union_adaptive is True
+    assert policy.union_max_new_beams_pct == 0.02
+
+
 def test_coupling_policy_bounds_are_validated() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
 
