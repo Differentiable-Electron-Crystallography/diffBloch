@@ -7,6 +7,7 @@ name: abiraterone-anchor
 inputs:
   structure: abiraterone.cif
   observations: abiraterone_exp_data.cif_pets
+  load_hydrogens: true # light-atom organic: the 33 H contribute to F_gb (load-bearing for parity)
 sample:
   thicknesses: [1460.0]
 numerics:

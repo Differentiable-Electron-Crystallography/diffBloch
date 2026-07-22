@@ -1,11 +1,14 @@
 """Unit tests for :mod:`diffBloch.preprocess.coupling` against the vendored private segments.
 
 The parity fixture (``tests/fixtures/quartz_anchor/parity_replay/``) carries the
-``diffBloch_private`` reference's *exact* per-rotation coupling: the split boundaries and, per
-segment, the union beam set (``seg{k}_hkl``) and covered tilt indices (``seg{k}_cover``), dumped
-straight from ``BlochNet.forward``. These tests recompute that coupling from the
-:class:`~diffBloch.specs.TiltSegmentUnion` policy alone and assert it matches -- proving the port of
-the private's per-tilt excitation mask + boundary-union partition, independent of any solver.
+``diffBloch_private`` reference's per-rotation coupling: the split boundaries and, per segment, the
+union beam set (``seg{k}_hkl``) and covered tilt indices (``seg{k}_cover``), dumped straight from
+``BlochNet.forward``. These fixtures are **pre-#154** (coupling cap ``|g| < g_max - 0.2 = 2.05``).
+These tests recompute the coupling from the :class:`~diffBloch.specs.TiltSegmentUnion` policy alone:
+the split boundaries and covers still match exactly, but the post-#154 policy (cap ``|g| < g_max``,
+the ``- 0.2`` margin dropped) widens each segment's beam set, so the beam-set test asserts
+**containment** (post-#154 ⊇ pre-#154, no beam dropped), not equality. Restoring equality needs a
+regenerated post-#154 private replay -- a private-reference comparison tracked in KNOWN_ISSUES.
 """
 
 from __future__ import annotations

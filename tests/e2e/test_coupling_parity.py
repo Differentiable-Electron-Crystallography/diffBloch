@@ -120,7 +120,9 @@ def _replay_r_obs(
 def test_quartz_coupling_parity() -> None:
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = ScatteringGrid.from_cell(structure.unit_cell, g_max=cfg.numerics.g_max)
+    grid = ScatteringGrid.from_cell_for_solve_cutoff(
+        structure.unit_cell, cfg.preprocess.coupling.g_max
+    )
     refinement = RefinementSetup.from_structure(structure)
     tilts = np.load(REPLAY_ROOT / "tilts.npz")["tilts"]
     reference = _reference_r_obs()
