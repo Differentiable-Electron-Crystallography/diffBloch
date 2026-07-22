@@ -48,11 +48,21 @@ __all__ = [
 class ScatteringGrid:
     """The shared ``Fgb`` support grid, owned once and reused by structure factors and beam plans.
 
+    Three reciprocal-space radii are easy to conflate; they are distinct concerns:
+
+    - **solve cutoff** -- the beams that couple in one Bloch solve (``|g| <= solve_g_max``; the
+      coupled fit's ``coupling_cap``).
+    - **structure-factor support** -- the ``Fgb`` grid this class holds. It must cover every beam
+      difference ``g_j - g_i``, which reaches ``2 * solve_g_max``, so the support radius is
+      ``~2x`` the solve cutoff. :meth:`from_cell_for_solve_cutoff` derives it from the solve cutoff.
+    - **scored cutoff** -- ``g_max_refine``, the reflections compared in the objective. It selects
+      what enters the loss, not what solves, and is a separate (typically smaller) radius.
+
     ``grid_hkl`` ``(G, 3)`` are the Miller indices ``Fgb`` is tabulated on (``|g| <= g_max``);
     ``cell`` ``(3, 3)`` is the real-space basis and ``reciprocal_basis`` ``(3, 3)`` /
     ``cell_volume`` the metric it derives (kept together; only :meth:`from_cell` constructs them, so
-    they cannot desync). ``gpts`` is the ravel box. ``g_max`` must span the beam difference support
-    (~2x the beam ``g_max``) or beam-plan construction raises.
+    they cannot desync). ``gpts`` is the ravel box. ``g_max`` is the structure-factor support radius
+    and must span the beam difference support or beam-plan construction raises.
     """
 
     grid_hkl: Tensor
