@@ -89,6 +89,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> InferenceResult:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -123,6 +124,7 @@ def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPat
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> InferenceResult:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
@@ -147,6 +149,7 @@ def test_run_infer_builds_console_and_csv_sinks(
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())
@@ -196,6 +199,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> _FakePlan:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -230,20 +234,37 @@ def test_run_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) ->
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> _FakePlan:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
         seen["device"] = device
         seen["workers"] = workers
+        seen["max_batch"] = max_batch
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
     rc = main(
         ["run", "preprocess", "x"]
-        + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
+        + [
+            "--no-checkpoint",
+            "--refresh",
+            "--device",
+            "cuda",
+            "--workers",
+            "4",
+            "--max-batch",
+            "1024",
+        ]
     )
     assert rc == 0
-    assert seen == {"checkpoint": False, "refresh": True, "device": "cuda", "workers": 4}
+    assert seen == {
+        "checkpoint": False,
+        "refresh": True,
+        "device": "cuda",
+        "workers": 4,
+        "max_batch": 1024,
+    }
 
 
 def test_run_preprocess_missing_experiment_reports_concise_error(
@@ -274,6 +295,7 @@ def test_run_refine_delegates_and_reports(
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> SimpleNamespace:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -302,6 +324,7 @@ def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
         refresh: bool = False,
         device: object = None,
         workers: int = 1,
+        max_batch: object = None,
     ) -> SimpleNamespace:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh

@@ -103,6 +103,7 @@ def preprocess_experiment(
     refresh: bool = False,
     device: Device | None = None,
     workers: int = 1,
+    max_batch: int | None = None,
 ) -> Plan:
     """Load and preprocess the experiment at ``experiment_dir``, returning the settled ``Plan``.
 
@@ -143,6 +144,12 @@ def preprocess_experiment(
     in a pod torch/BLAS size their pools from the *node* core count, not the cgroup limit, so an
     uncapped run oversubscribes the cores the workers need (measured: capping alone cut the LTA
     per-trial ~1.4 s -> ~0.2 s, before any parallelism).
+
+    ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block for the coupled fits.
+    ``None`` lets each solve derive a memory-safe block from its beam count; raise it to fill a
+    larger accelerator (e.g. ``1024`` on an 80 GB A100). Execution-only (memory, bit-for-bit to
+    machine precision), out of the checkpoint lock like ``device``/``workers``. See
+    :func:`~diffBloch.engine.build_engine`.
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -154,6 +161,7 @@ def preprocess_experiment(
         refresh=refresh,
         device=device,
         workers=workers,
+        max_batch=max_batch,
     )
     return prepared
 
@@ -166,6 +174,7 @@ def run_experiment(
     refresh: bool = False,
     device: Device | None = None,
     workers: int = 1,
+    max_batch: int | None = None,
 ) -> InferenceResult:
     """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
 
@@ -187,9 +196,15 @@ def run_experiment(
         refresh=refresh,
         device=device,
         workers=workers,
+        max_batch=max_batch,
     )
     return run_inference(
-        prepared, refinement, method=cfg.solver.inference, device=device, logger=logger
+        prepared,
+        refinement,
+        method=cfg.solver.inference,
+        device=device,
+        max_batch=max_batch,
+        logger=logger,
     )
 
 
@@ -201,6 +216,7 @@ def refine_experiment(
     refresh: bool = False,
     device: Device | None = None,
     workers: int = 1,
+    max_batch: int | None = None,
 ) -> ModelRefinementResult:
     """Settle the coupled ``Plan`` and gradient-refine the structure against the observed data.
 
@@ -233,9 +249,14 @@ def refine_experiment(
         refresh=refresh,
         device=device,
         workers=workers,
+        max_batch=max_batch,
     )
     engine = build_engine(
-        prepared, refinement, loss=cfg.refinement.objective.to_loss(), method=cfg.solver.refine
+        prepared,
+        refinement,
+        loss=cfg.refinement.objective.to_loss(),
+        method=cfg.solver.refine,
+        max_batch=max_batch,
     )
     initial = refinement.params if device is None else refinement.params.to(device)
     model = build_refinement_model(initial=initial)
@@ -261,6 +282,7 @@ def _preprocess(
     refresh: bool,
     device: Device | None,
     workers: int,
+    max_batch: int | None,
 ) -> tuple[RefinementSetup, Plan]:
     """Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.
 
@@ -274,7 +296,9 @@ def _preprocess(
     )
     observations = read_observations(root / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
-    steps = _recipe_steps(cfg, setup.refinement, logger, device=device, workers=workers)
+    steps = _recipe_steps(
+        cfg, setup.refinement, logger, device=device, workers=workers, max_batch=max_batch
+    )
     prepared = _prepare(
         setup.plans.combined,
         steps,
@@ -293,6 +317,7 @@ def _recipe_steps(
     *,
     device: Device | None = None,
     workers: int = 1,
+    max_batch: int | None = None,
 ) -> list[PlanStep]:
     """The faithful default recipe as an inspectable step list (its provenance keys the lock).
 
@@ -311,6 +336,9 @@ def _recipe_steps(
     Both ``device`` and ``workers`` are execution-only -- neither alters the recipe identity.
     ``device`` is threaded to *both* fits (so the coupled eigensolve runs on the same accelerator as
     the terminal); ``workers`` fans only the orientation search (the run's long phase) over threads.
+    ``max_batch`` (also execution-only) is threaded to both fits: it caps the ``matrix_exp``
+    propagator block so a wide coupled segment x the thickness grid can't materialize the whole
+    propagator at once (the adaptive-union fit_thickness OOM); ``None`` picks a memory-safe block.
     """
     search = cfg.preprocess.orientation.to_search()
     thickness_grid = cfg.preprocess.thickness.to_grid()
@@ -325,13 +353,19 @@ def _recipe_steps(
             precision=precision,
             validate=validate,
             device=device,
+            max_batch=max_batch,
             workers=workers,
             logger=logger,  # per-rotation fit progress (the run's long phase)
         )
 
     def thickness_fit(*, precision: FloatFormat) -> PlanStep:
         return fit_thickness(
-            refinement, thickness_grid, method=cfg.solver.refine, precision=precision, device=device
+            refinement,
+            thickness_grid,
+            method=cfg.solver.refine,
+            precision=precision,
+            device=device,
+            max_batch=max_batch,
         )
 
     return [
