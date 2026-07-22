@@ -109,14 +109,21 @@ def tilt_segment_coupling(
     n_tilts = tilts.shape[0]
     boundaries = _split_boundaries(n_tilts, policy.n_splits)
 
-    # ``|g|`` is invariant under the orientation/tilt rotation (an orthogonal transform preserves
-    # the vector norm), so the coupling cut ``|g| < g_max`` selects the SAME candidate subset at
-    # every tilt. Apply it once up front to shrink the pool each per-tilt excitation mask scans:
-    # ``candidate_hkl`` is the full structure-factor grid (radius ``2 * g_max``, sized to span the
-    # g - h differences), but only the ``|g| < g_max`` core (~(1/2)^3 of the sphere) can ever
-    # couple. Scanning the whole grid at every boundary tilt was the dominant per-trial cost of the
-    # coupled fit; being orientation-invariant, one pass replaces the redundant full-grid scans.
-    g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # any orientation: |g| invar.
+    # The per-tilt matrices are pure rotations (norm-preserving) and the orientation is constant
+    # across the curve, so ``|g|`` is identical at every tilt -- the ``|g| < g_max`` cut selects the
+    # SAME candidate subset at every tilt (verified: spread across tilts ~1e-15). Apply it once up
+    # front to shrink the pool each per-tilt excitation mask scans: ``candidate_hkl`` is the full
+    # structure-factor grid, but only the ``|g| < g_max`` core can ever couple. Scanning the whole
+    # grid at every boundary tilt was the dominant per-trial cost; one pass replaces it.
+    #
+    # NOTE the ``|g|`` here is in the *orientation* metric -- ``orientation`` folds the experimental
+    # cell correction (``u_matrix``: ``U = UB @ B^-1``, deliberately non-orthonormal), so this |g|
+    # differs from the ideal-cell ``reciprocal_cell`` metric the grid is tabulated on by the
+    # cell-correction magnitude (~1% on quartz). The grid's ``2 * g_max + _SUPPORT_MARGIN`` shell
+    # (:meth:`ScatteringGrid.from_cell_for_solve_cutoff`) covers that difference; it is NOT a
+    # per-tilt variation and NOT an orthonormality bug -- coupling in the experimental-cell metric
+    # is the physically correct cut.
+    g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # constant across tilts
     pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < policy.g_max]
 
     def excited_mask(tilt_index: int) -> NDArray[np.bool_]:
