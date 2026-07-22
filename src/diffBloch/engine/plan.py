@@ -44,8 +44,12 @@ __all__ = [
 ]
 
 # Half-Angstrom shell added to the derived structure-factor support radius (the private's
-# ``2 * g_max + 0.5`` prefilter). Headroom for beams the coupling filter admits slightly past the
-# solve cutoff under a non-orthonormal orientation metric; see
+# ``2 * g_max + 0.5`` prefilter). It reconciles the two metrics in play: the coupling filter cuts
+# ``|g| < g_max`` in the *orientation* metric (which folds the experimental cell correction --
+# ``u_matrix`` is deliberately non-orthonormal), while the grid is tabulated on the ideal-cell
+# ``reciprocal_cell`` metric. The two differ by the cell-correction magnitude (~1% on quartz), so a
+# coupled beam difference can be up to that fraction past a bare ``2 * g_max`` in the grid metric.
+# This is a private-compatibility shell, not a tunable scientific knob. See
 # ScatteringGrid.from_cell_for_solve_cutoff.
 _SUPPORT_MARGIN = 0.5
 
@@ -111,12 +115,12 @@ class ScatteringGrid:
         selects reflections for the objective, not the solve.
 
         The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN`` -- ``diffBloch_private``'s
-        ``2 * g_max + 0.5`` prefilter shell. The half-Angstrom headroom absorbs beams that the
-        coupling filter (which measures ``|g|`` in the crystal *orientation* metric) admits slightly
-        past ``solve_g_max`` when that orientation is not perfectly orthonormal (a PETS/UB matrix
-        carries a ~1% scale), so a beam difference can exceed a bare ``2 * solve_g_max`` grid. The
-        extra shell only enlarges the (unused-at-the-margin) SF table; it changes neither the
-        coupled beam set nor the scored set.
+        ``2 * g_max + 0.5`` prefilter shell. The half-Angstrom headroom reconciles the coupling
+        filter's *orientation* metric (which folds the experimental cell correction -- ``u_matrix``
+        is deliberately non-orthonormal, ~1% on quartz) with this ideal-cell ``reciprocal_cell``
+        metric, so a coupled beam difference near ``2 * solve_g_max`` in the former still lands
+        inside the grid in the latter. The shell only enlarges the (unused-at-the-margin) SF table;
+        it changes neither the coupled beam set nor the scored set.
         """
         if solve_g_max <= 0.0:
             raise ValueError("solve_g_max must be positive")
