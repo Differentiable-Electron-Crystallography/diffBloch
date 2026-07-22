@@ -27,6 +27,7 @@ from diffBloch.specs import (
     RockingCurve,
     ThicknessGrid,
     TiltSegmentUnion,
+    assert_grid_covers_coupling,
 )
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
@@ -360,14 +361,11 @@ class ExperimentConfig(_StrictConfig):
         pairwise ``g - h`` differences reach ``2 * coupling_cap``. When that exceeds the grid the
         gather addresses reflections the SF table never tabulated (a silent zero under
         ``validate=False``, or a deep runtime error otherwise). The same check runs at fit setup
-        (:func:`~diffBloch.preprocess.coupling.assert_grid_covers_coupling`, which also guards
-        programmatic callers that bypass config); lifting it here fails before any data is read.
-        Reuses that one rule home rather than restating ``2 * cap`` -- imported lazily to break the
-        config <-> preprocess import cycle (``preprocess.experiment`` imports this module).
+        (``assert_grid_covers_coupling`` also guards programmatic callers that bypass config);
+        lifting it here fails before any data is read. Reuses that one rule home
+        (:mod:`diffBloch.specs`, alongside the ``TiltSegmentUnion`` value-type) not restating it.
         """
         if self.preprocess.coupling is not None:
-            from diffBloch.preprocess.coupling import assert_grid_covers_coupling
-
             assert_grid_covers_coupling(self.preprocess.coupling.to_policy(), self.numerics.g_max)
         return self
 

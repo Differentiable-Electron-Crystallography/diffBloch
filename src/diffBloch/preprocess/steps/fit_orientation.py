@@ -61,14 +61,14 @@ from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
 from diffBloch.params import Device
-from diffBloch.preprocess.coupling import assert_grid_covers_coupling, tilt_segment_coupling
+from diffBloch.preprocess.coupling import tilt_segment_coupling
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
-from diffBloch.specs import HexagonalSearch, TrialCoupling
+from diffBloch.specs import HexagonalSearch, TrialCoupling, assert_grid_covers_coupling
 
 __all__ = ["fit_orientation"]
 

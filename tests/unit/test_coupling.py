@@ -20,11 +20,9 @@ from diffBloch.engine import ScatteringGrid
 from diffBloch.io import read_structure
 from diffBloch.preprocess.coupling import (
     Segment,
-    assert_grid_covers_coupling,
-    coupling_cap,
     tilt_segment_coupling,
 )
-from diffBloch.specs import TiltSegmentUnion
+from diffBloch.specs import TiltSegmentUnion, assert_grid_covers_coupling, coupling_cap
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 REPLAY_ROOT = FIXTURE_ROOT / "parity_replay"
