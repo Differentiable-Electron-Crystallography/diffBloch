@@ -37,12 +37,11 @@ solver:
 
 preprocess:
   # Abiraterone's per-trial SOLVE-union coupling -- experiment-specific, distinct from quartz's
-  # faithful defaults. Effective coupling cap = g_max - cap_margin = 1.3, spanned by the g_max 3.0
-  # grid (>= 2 * cap). Declared explicitly because coupling has no config default.
+  # faithful defaults. Coupling radius g_max = 1.5; the SF grid is derived as 2 * g_max = 3.0 to
+  # span the beam-difference support. Declared explicitly because coupling has no config default.
   coupling:
     n_splits: 4
     g_max: 1.5
-    cap_margin: 0.2
     sg_max: 0.02
 
 refinement:

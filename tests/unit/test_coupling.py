@@ -22,7 +22,7 @@ from diffBloch.preprocess.coupling import (
     Segment,
     tilt_segment_coupling,
 )
-from diffBloch.specs import TiltSegmentUnion, assert_grid_covers_coupling, coupling_cap
+from diffBloch.specs import TiltSegmentUnion, assert_grid_covers_coupling
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 REPLAY_ROOT = FIXTURE_ROOT / "parity_replay"
@@ -71,11 +71,16 @@ def test_segment_count_and_covers_match_private(rotation: int) -> None:
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
-def test_segment_beam_sets_match_private(rotation: int) -> None:
+def test_segment_beam_sets_contain_private(rotation: int) -> None:
+    # The replay goldens are the private's PRE-#154 segment beam sets, coupled at |g| < g_max - 0.2
+    # (cap 2.05). Post-#154 drops that margin, so the coupling cap is the physical g_max (2.25) and
+    # each segment admits MORE beams -- a strict superset of the private set, dropping none. We
+    # assert containment (no private beam lost) rather than equality; the exact post-#154 set is a
+    # private-reference comparison pending a private post-#154 replay.
     segments, d = _compute(rotation)
     for k, segment in enumerate(segments):
         # Beam ordering is eigensolver-invariant, so the coupling is the beam *set* per segment.
-        assert _as_set(segment.beam_hkl) == _as_set(d[f"seg{k}_hkl"]), f"segment {k} beam set"
+        assert _as_set(segment.beam_hkl) >= _as_set(d[f"seg{k}_hkl"]), f"segment {k} beam set"
     # (0,0,0) is always excited, so it is in every segment's union.
     for segment in segments:
         assert (0, 0, 0) in _as_set(segment.beam_hkl)
@@ -89,33 +94,28 @@ def test_split_boundaries_match_private() -> None:
     assert list(boundaries) == [int(b) for b in d["split_idx"]]
 
 
-def test_policy_rejects_degenerate_cap() -> None:
-    with pytest.raises(ValueError, match="cap"):
-        TiltSegmentUnion(g_max=0.2, cap_margin=0.2)
+def test_policy_rejects_nonpositive_g_max() -> None:
+    with pytest.raises(ValueError, match="g_max and sg_max must be positive"):
+        TiltSegmentUnion(g_max=0.0)
 
 
 # --- coverage guard (the O(1) invariant that makes validate=False sound on the coupled path) ------
 
 
-def test_coupling_cap_is_gmax_minus_margin() -> None:
-    """The single cap source: the faithful private value (4.5/2 - 0.2 = 2.05)."""
-    assert coupling_cap(TiltSegmentUnion()) == pytest.approx(2.05)
-
-
 def test_coverage_guard_passes_for_the_faithful_recipe() -> None:
-    """Faithful LTA/quartz numerics (grid g_max 4.5, coupling cap 2.05): 2*2.05 = 4.1 <= 4.5."""
+    """Faithful quartz coupling (g_max 2.25) needs a grid >= 4.5, which the derived grid is."""
     assert_grid_covers_coupling(TiltSegmentUnion(), grid_g_max=4.5)  # does not raise
 
 
 def test_coverage_guard_accepts_the_exact_boundary() -> None:
-    """2*cap == grid_g_max is sufficient (differences are strictly < 2*cap), so equality passes."""
+    """2*g_max == grid_g_max is sufficient (differences are strictly < 2*g_max), so equality ok."""
     policy = TiltSegmentUnion()
-    assert_grid_covers_coupling(policy, grid_g_max=2.0 * coupling_cap(policy))  # does not raise
+    assert_grid_covers_coupling(policy, grid_g_max=2.0 * policy.g_max)  # does not raise
 
 
 def test_coverage_guard_raises_when_the_grid_is_too_small() -> None:
-    """A grid g_max below 2*cap would let a coupled difference fall outside the sphere -> silent
+    """A grid g_max below 2*g_max would let a coupled difference fall outside the sphere -> silent
     zero under validate=False. The guard turns that into a loud, actionable error at setup."""
-    policy = TiltSegmentUnion()  # cap 2.05 -> needs grid g_max >= 4.1
-    with pytest.raises(ValueError, match=r"grid g_max.*4\.1|silently gather zeros"):
+    policy = TiltSegmentUnion()  # g_max 2.25 -> needs grid g_max >= 4.5
+    with pytest.raises(ValueError, match=r"grid g_max.*4\.5|silently gather zeros"):
         assert_grid_covers_coupling(policy, grid_g_max=4.0)

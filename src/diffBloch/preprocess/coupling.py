@@ -10,7 +10,7 @@ This module is the pure geometry of that partition: given a
 :class:`~diffBloch.specs.TiltSegmentUnion`
 policy and the rotation's tilt geometry, it returns the ordered :class:`Segment` list (each a beam
 set + the disjoint tilt indices it covers). It computes the same excitation mask
-(``|Sg| < sg_max`` and ``|g| < g_max - cap_margin``) the private's ``BlochNet.forward`` builds its
+(``|Sg| < sg_max`` and ``|g| < g_max``) the private's ``BlochNet.forward`` builds its
 union sets from, reusing :func:`~diffBloch.core.dynamical.excitation_errors` and
 :func:`~diffBloch.core.crystal.orientation_basis`. It does not build or solve anything -- an engine
 step turns the segments into per-chunk plans and reassembles their curves before reduction.
@@ -25,7 +25,7 @@ from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
-from diffBloch.specs import TiltSegmentUnion, coupling_cap
+from diffBloch.specs import TiltSegmentUnion
 
 __all__ = [
     "Segment",
@@ -86,14 +86,15 @@ def tilt_segment_coupling(
     """Partition the rocking curve into boundary-union coupled segments (pure geometry).
 
     ``candidate_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
-    :class:`~diffBloch.engine.plan.ScatteringGrid` ``grid_hkl`` -- it spans the coupling cap, so the
-    ``|g| < cap`` mask filters it to each tilt's excited set). ``cell`` ``(3, 3)`` is the real-space
-    basis, ``orientation`` ``(3, 3)`` the rotation's crystal orientation, ``tilts`` ``(B, 3, 3)``
+    :class:`~diffBloch.engine.plan.ScatteringGrid` ``grid_hkl`` -- radius ``2 * g_max``, so the
+    ``|g| < g_max`` mask filters it to each tilt's excited set). ``cell`` ``(3, 3)`` is the
+    real-space basis, ``orientation`` ``(3, 3)`` the rotation's crystal orientation, ``tilts``
+    ``(B, 3, 3)``
     the
     rocking-curve tilt matrices (each left-multiplying ``orientation``). ``energy`` (eV) and ``u0``
     (mean-inner-potential correction) set the Ewald geometry.
 
-    Each boundary tilt's excited mask is ``|Sg| < sg_max`` and ``|g| < g_max - cap_margin`` with
+    Each boundary tilt's excited mask is ``|Sg| < sg_max`` and ``|g| < g_max`` with
     ``g = candidate_hkl @ orientation_basis(cell, tilt @ orientation)`` (identical to the private's
     ``hkl @ reciprocal_cell(unit_cell @ (R_tilt @ orientation).T)``). Segment ``i`` couples the
     union of the masks at boundary tilts ``i`` and ``i + 1`` and covers the half-open tilt range
@@ -106,23 +107,22 @@ def tilt_segment_coupling(
     if tilts.ndim != 3 or tilts.shape[1:] != (3, 3):
         raise ValueError(f"tilts must have shape (B, 3, 3), got {tilts.shape}")
     n_tilts = tilts.shape[0]
-    cap = coupling_cap(policy)
     boundaries = _split_boundaries(n_tilts, policy.n_splits)
 
     # ``|g|`` is invariant under the orientation/tilt rotation (an orthogonal transform preserves
-    # the vector norm), so the coupling-radius cut ``|g| < cap`` selects the SAME candidate subset
-    # at every tilt. Apply it once up front to shrink the pool each per-tilt excitation mask scans:
-    # ``candidate_hkl`` is the full ``|g| <= g_max`` grid, but only the ``|g| < cap`` core (a
-    # ~(cap/g_max)^3 fraction of the sphere) can ever couple. Scanning the whole grid at every
-    # boundary tilt was the dominant per-trial cost of the coupled fit; being orientation-invariant,
-    # one pass replaces the redundant per-boundary full-grid scans.
+    # the vector norm), so the coupling cut ``|g| < g_max`` selects the SAME candidate subset at
+    # every tilt. Apply it once up front to shrink the pool each per-tilt excitation mask scans:
+    # ``candidate_hkl`` is the full structure-factor grid (radius ``2 * g_max``, sized to span the
+    # g - h differences), but only the ``|g| < g_max`` core (~(1/2)^3 of the sphere) can ever
+    # couple. Scanning the whole grid at every boundary tilt was the dominant per-trial cost of the
+    # coupled fit; being orientation-invariant, one pass replaces the redundant full-grid scans.
     g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # any orientation: |g| invar.
-    pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < cap]
+    pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < policy.g_max]
 
     def excited_mask(tilt_index: int) -> NDArray[np.bool_]:
         basis = orientation_basis(cell, tilts[tilt_index] @ orientation)
         sg = excitation_errors(pool @ basis, energy, u0=u0)
-        return np.abs(sg) < policy.sg_max  # |g| < cap already guaranteed by the pool
+        return np.abs(sg) < policy.sg_max  # |g| < g_max already guaranteed by the pool
 
     masks = {int(b): excited_mask(int(b)) for b in boundaries}
     segments = []

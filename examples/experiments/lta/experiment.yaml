@@ -22,7 +22,6 @@ preprocess:
   coupling:
     n_splits: 12
     g_max: 2.25
-    cap_margin: 0.2
     sg_max: 0.01
 refinement:
   split:
