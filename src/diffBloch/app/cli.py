@@ -25,7 +25,10 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``run infer`` and ``run preprocess`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
     parser.add_argument(
-        "--console", action="store_true", help="stream per-rotation observations to stderr"
+        "--quiet",
+        action="store_true",
+        help="silence the per-step / per-rotation observation stream (console logging is on by "
+        "default; the run summary line still prints)",
     )
     parser.add_argument(
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
@@ -116,14 +119,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "infer":
-        if args.console:
+        if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=args.console, csv=args.csv),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -139,14 +142,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "preprocess":
-        if args.console:
+        if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
             plan = preprocess_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=args.console, csv=args.csv),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -163,14 +166,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "refine":
-        if args.console:
+        if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
             refined = refine_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=args.console, csv=args.csv),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
