@@ -31,7 +31,8 @@ solver:
 
 preprocess:
   # Public explicit coupling analog for the original private/default TiltSegmentUnion with
-  # g_max_sf=5.0: coupling radius g_max=2.5 and cap=2.3 after the private 0.2 margin.
+  # g_max_sf=5.0 SF grid): coupling radius g_max=2.5 (cap = g_max, no margin post-#154);
+  # SF grid derived as 2 * g_max + 0.5.
   coupling:
     n_splits: 12
     g_max: 2.5

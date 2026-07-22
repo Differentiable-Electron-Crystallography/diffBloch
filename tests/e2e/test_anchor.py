@@ -347,7 +347,10 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     assert cfg.numerics.g_max_refine == 1.0
     assert cfg.sample.thicknesses == (1460.0,)
 
-    structure = read_structure(ABIRATERONE_ROOT / cfg.inputs.structure, load_hydrogens=True)
+    assert cfg.inputs.load_hydrogens is True  # config-driven; load-bearing for the forward parity
+    structure = read_structure(
+        ABIRATERONE_ROOT / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
+    )
     observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.observations)
     assert structure.n_atoms == 62  # 29 non-H + 33 H (load_hydrogens is load-bearing for parity)
     assert observations.n_rotations == 55

@@ -23,23 +23,32 @@ do not redistribute this dataset outside the project until its redistribution is
 
 ## Reproducing forward parity — two non-obvious requirements
 
-1. **Hydrogens.** The structure has 33 H (a light-atom organic); `read_structure(..., load_hydrogens=True)` is required. The app/config path does not yet express `load_hydrogens`, so the parity test loads it directly (see below).
-2. **Explicit solve-set coupling.** A forward-only pipeline (no fit) under-couples: the public wires `couple_beams` only *inside* the fit steps. The parity test composes it explicitly — `TiltSegmentUnion(n_splits=4, g_max=1.5, cap_margin=0.2, sg_max=0.02)` (cap 1.3), matching the private's dynamical-matrix beam mask (`|Sg| < 0.02 ∩ |g| < g_max_sf/2 − 0.2`). Without it, rot-0 `R_obs` sits at ~0.137 instead of 0.098.
+Both are now expressed in `experiment.yaml`, so the parity test reads them from config rather than
+hardcoding them:
+
+1. **Hydrogens.** The structure has 33 H (a light-atom organic); it needs
+   `read_structure(..., load_hydrogens=True)`. `inputs.load_hydrogens: true` is set in the config and
+   the test reads it from there.
+2. **Explicit solve-set coupling.** A forward-only pipeline (no fit) under-couples: the public wires
+   `couple_beams` only *inside* the fit steps. The config declares a `preprocess.coupling` block —
+   `TiltSegmentUnion(n_splits=4, g_max=1.5, sg_max=0.02)` — and the test composes `couple_beams` from
+   it. Post-#154 the dynamical-matrix beam mask is `|Sg| < 0.02 ∩ |g| < g_max` (the `-0.2` cap margin
+   was dropped), so the coupling radius is the physical `g_max = 1.5`. Without the coupling, rot-0
+   `R_obs` sits at ~0.137 instead of ~0.098.
 
 ## Why this is a fixture, not a canonical `examples/` experiment
 
-Reproducing the private forward requires **loading hydrogens** and **explicit solve-set coupling**,
-neither of which the public **app/config** path expresses yet (`load_hydrogens` is not a config
-field; the coupling policy is hardcoded to the quartz/LTA `TiltSegmentUnion` defaults). Adding those
-config fields would restale the committed quartz checkpoint (`config_digest`), so it is deferred.
-Until they are config-driven (and redistribution is cleared), abiraterone stays a `tests/fixtures`
-asset and is **not** promoted to `examples/experiments/`.
+`load_hydrogens` and `preprocess.coupling` are now both config fields, so the API gap that used to
+justify fixture status is gone. What keeps abiraterone here is its **private-lineage data**: the repo
+is public, so the dataset must not be redistributed until that is cleared (see *Source & lineage*).
+Until then it stays a `tests/fixtures` asset and is **not** promoted to `examples/experiments/`.
 
 ## Config notes (parity with the private)
 
-`experiment.yaml` sets the matchable private-abiraterone knobs exactly (from
-`diffbloch_private/.../abiraterone_acetate/config.yml`): `numerics.g_max = 3`, `g_max_refine = 1`,
+`experiment.yaml` sets the matchable private-abiraterone knobs (from
+`diffbloch_private/.../abiraterone_acetate/config.yml`): `g_max_refine = 1`,
 `sample.thicknesses = [1460]`, and the rocking-curve integration geometry `dsg = 0.0025`,
-`rsg = 0.6`, `rocking_curve_sampling = 30`, `integration.semiangle = 1.422`. Energy (200 keV) is read
-from the `.cif_pets` wavelength (0.0251 Å). Lobato scattering and the no-absorption path are
-hardcoded and already match. The coupling policy is supplied by the test (not the yaml).
+`rsg = 0.6`, `rocking_curve_sampling = 30`, `integration.semiangle = 1.422`. The structure-factor
+support grid is **derived** from the coupling radius (`2 * 1.5 + 0.5 = 3.5`), not declared. Energy
+(200 keV) is read from the `.cif_pets` wavelength (0.0251 Å). Lobato scattering and the no-absorption
+path are hardcoded and already match. The coupling policy lives in `preprocess.coupling`.
