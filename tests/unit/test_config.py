@@ -260,6 +260,38 @@ def test_coupling_policy_bounds_are_validated() -> None:
         ExperimentConfig.model_validate(coupling(g_max=0.2, cap_margin=0.2))
 
 
+def test_coupling_support_must_fit_the_grid_at_load() -> None:
+    # A coupled solve union reaches |g| < coupling_cap, so its g - h differences reach 2 * cap. When
+    # that exceeds numerics.g_max the SF grid cannot tabulate every difference -- caught at config
+    # load (before any data is read), not as a silent zero or a deep runtime error during the fit.
+    base = {"name": "csp", "inputs": {"structure": "c.cif", "observations": "c.cif_pets"}}
+
+    def experiment(*, grid_g_max: float, coupling_g_max: float, cap_margin: float) -> dict:
+        return {
+            **base,
+            "numerics": {"g_max": grid_g_max},
+            "preprocess": {
+                "coupling": {
+                    "n_splits": 12,
+                    "g_max": coupling_g_max,
+                    "cap_margin": cap_margin,
+                    "sg_max": 0.01,
+                }
+            },
+        }
+
+    # cap = 2.5, 2 * cap = 5.0 > grid 4.5 -> raises.
+    with pytest.raises(ValidationError, match="span the beam-difference support"):
+        ExperimentConfig.model_validate(
+            experiment(grid_g_max=4.5, coupling_g_max=2.5, cap_margin=0.0)
+        )
+    # cap = 2.05, 2 * cap = 4.1 <= grid 4.5 -> parses (the quartz relation).
+    cfg = ExperimentConfig.model_validate(
+        experiment(grid_g_max=4.5, coupling_g_max=2.25, cap_margin=0.2)
+    )
+    assert cfg.preprocess.coupling is not None
+
+
 def test_load_hydrogens_defaults_off_and_parses() -> None:
     base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
     assert ExperimentConfig.model_validate(base).inputs.load_hydrogens is False
