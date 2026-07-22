@@ -234,14 +234,12 @@ def test_coupling_policy_override_parses() -> None:
     cfg = ExperimentConfig.model_validate(
         {
             **base,
-            "preprocess": {
-                "coupling": {"n_splits": 4, "g_max": 1.5, "cap_margin": 0.2, "sg_max": 0.02}
-            },
+            "preprocess": {"coupling": {"n_splits": 4, "g_max": 1.5, "sg_max": 0.02}},
         }
     )
     assert cfg.preprocess.coupling is not None
     assert cfg.preprocess.coupling.to_policy() == TiltSegmentUnion(
-        n_splits=4, g_max=1.5, cap_margin=0.2, sg_max=0.02
+        n_splits=4, g_max=1.5, sg_max=0.02
     )
 
 
@@ -249,15 +247,15 @@ def test_coupling_policy_bounds_are_validated() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
 
     def coupling(**overrides: float) -> dict:
-        policy = {"n_splits": 12, "g_max": 2.25, "cap_margin": 0.2, "sg_max": 0.01, **overrides}
+        policy = {"n_splits": 12, "g_max": 2.25, "sg_max": 0.01, **overrides}
         return {**base, "preprocess": {"coupling": policy}}
 
     with pytest.raises(ValidationError, match="n_splits must be >= 1"):
         ExperimentConfig.model_validate(coupling(n_splits=0))
     with pytest.raises(ValidationError, match="g_max and sg_max must be positive"):
         ExperimentConfig.model_validate(coupling(sg_max=0.0))
-    with pytest.raises(ValidationError, match="coupling cap"):
-        ExperimentConfig.model_validate(coupling(g_max=0.2, cap_margin=0.2))
+    with pytest.raises(ValidationError, match="g_max and sg_max must be positive"):
+        ExperimentConfig.model_validate(coupling(g_max=0.0))
 
 
 def test_load_hydrogens_defaults_off_and_parses() -> None:

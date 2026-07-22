@@ -75,7 +75,6 @@ from diffBloch.preprocess import (
     select_beams,
     step_records,
 )
-from diffBloch.specs import TiltSegmentUnion
 
 pytestmark = pytest.mark.e2e
 
@@ -327,11 +326,6 @@ PRIVATE_ABIRATERONE_R_OBS = 0.09697  # documentation/context only (private linea
 EXPECTED_PUBLIC_ABIRATERONE_R_OBS = 0.0978
 ABIRATERONE_R_OBS_TOL = 5e-4
 
-# The private's abiraterone dynamical-matrix beam mask is |Sg| < 0.02 and |g| < g_max_sf/2 - 0.2 =
-# 1.5 - 0.2 = 1.3. The public analog is a TiltSegmentUnion with those knobs (n_splits from the
-# private's union_splits=4). Its coverage stays inside the g_max=3 grid (2 * 1.3 = 2.6 <= 3).
-_ABIRATERONE_COUPLING = TiltSegmentUnion(n_splits=4, g_max=1.5, cap_margin=0.2, sg_max=0.02)
-
 
 def test_abiraterone_forward_parity_private_rotation0() -> None:
     """Public forward reproduces the private reference's rotation-0 R_obs on the same real data.
@@ -368,7 +362,9 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
             build_orientation_plans(),
             integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
             mosaicity(cfg.numerics.mosaicity),
-            couple_beams(_ABIRATERONE_COUPLING),  # expand SOLVE set; scored set stays Klar-pinned
+            # expand SOLVE set (post-#154 |g| < g_max = 1.5, no cap margin); scored set stays
+            # Klar-pinned. Read from config so the grid derivation and coupling share one source.
+            couple_beams(cfg.preprocess.coupling.to_policy()),
         ]
     )
     result = run_inference(plan, setup.refinement, prepare=prepare, method=cfg.solver.inference)

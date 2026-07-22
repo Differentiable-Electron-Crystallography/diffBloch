@@ -15,8 +15,9 @@ sample:
   thicknesses: [820.0]
 
 numerics:
-  # From the Malik cspbbr3_synthetic Hydra config: g_max_sf=5.0, g_max_refine=1.0,
-  # integration_semiangle=1.5, rocking_curve_sampling=60, dsg=0.0015, rsg=0.66.
+  # From the Malik cspbbr3_synthetic Hydra config (g_max_sf=5.0 was the SF grid; the beam/coupling
+  # cutoff is 2.5 and the grid is derived as 2x it): g_max_refine=1.0, integration_semiangle=1.5,
+  # rocking_curve_sampling=60, dsg=0.0015, rsg=0.66.
   g_max_refine: 1.0
   rocking_curve_sampling: 60
   dsg: 0.0015
@@ -34,7 +35,6 @@ preprocess:
   coupling:
     n_splits: 12
     g_max: 2.5
-    cap_margin: 0.2
     sg_max: 0.01
 
 refinement:

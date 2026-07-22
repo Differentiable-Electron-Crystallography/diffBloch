@@ -37,7 +37,6 @@ __all__ = [
     "TiltSegmentUnion",
     "TrialCoupling",
     "assert_grid_covers_coupling",
-    "coupling_cap",
 ]
 
 
@@ -298,30 +297,27 @@ class TiltSegmentUnion:
     The ``diffBloch_private`` coupling policy for rocking-curve integration. It partitions the
     ``B`` tilts into ``n_splits`` contiguous, disjoint chunks and gives each chunk its own coupled
     beam set: the **union** of the excited-beam masks at the chunk's two boundary tilts. A beam is
-    excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max - cap_margin`` (a hard
-    excitation-error + coupling-radius cutoff, distinct from the Klar relative filter of
-    :class:`BeamSelection`). Because a sharp reflection drifts through the Ewald sphere as the
-    crystal rocks, the excited set genuinely differs across the curve; one tilt-independent set
-    either over-couples (slow) or drops beams a later tilt needs. The per-chunk union is the
-    private's compromise. Each reflection's full rocking curve is later reassembled across chunks
-    before the mosaicity reduction (the window spans more tilts than one chunk holds).
+    excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max`` (a hard excitation-error +
+    coupling-radius cutoff, distinct from the Klar relative filter of :class:`BeamSelection`).
+    Because a sharp reflection drifts through the Ewald sphere as the crystal rocks, the excited set
+    genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
+    beams a later tilt needs. The per-chunk union is the private's compromise. Each reflection's
+    full rocking curve is later reassembled across chunks before the mosaicity reduction (the window
+    spans more tilts than one chunk holds).
 
-    ``g_max`` is the coupling radius (the private's ``g_max_sf / 2 = 4.5 / 2``) and ``cap_margin``
-    the safety margin subtracted from it (the private's hardcoded ``0.2``), so the effective cap is
-    ``g_max - cap_margin = 2.05``. ``sg_max`` is the excitation-error cutoff. The mean-inner-
-    potential ``u0`` and beam energy are experiment quantities threaded in at build time, not policy
-    knobs. The ``union_adaptive`` recursive-bisection variant is deferred (only the fixed even-split
-    ``union_adaptive = False`` path is ported).
+    ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max`` (the private's post-#154
+    mask, which dropped the earlier ``- 0.2`` margin so the cutoff is the physical solve radius).
+    ``sg_max`` is the excitation-error cutoff. The mean-inner-potential ``u0`` and beam energy are
+    experiment quantities threaded in at build time, not policy knobs. The ``union_adaptive``
+    recursive-bisection variant is deferred (only the fixed even-split ``union_adaptive = False``
+    path is ported).
 
     Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
-    ``self.g_max = 4.5 / 2``, cap margin ``0.2``, ``self.sg_max = 0.01``).
+    ``self.g_max = 2.25``, ``self.sg_max = 0.01``).
     """
 
     n_splits: int = 12  # contiguous tilt chunks; each gets its own boundary-union beam set
-    g_max: float = (
-        2.25  # coupling radius (private g_max_sf / 2); effective cap = g_max - cap_margin
-    )
-    cap_margin: float = 0.2  # subtracted from g_max for the coupling cap (private hardcoded 0.2)
+    g_max: float = 2.25  # coupling radius: a beam couples at a tilt when |g| < g_max
     sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
 
     def __post_init__(self) -> None:
@@ -329,42 +325,28 @@ class TiltSegmentUnion:
             raise ValueError("n_splits must be >= 1")
         if self.g_max <= 0.0 or self.sg_max <= 0.0:
             raise ValueError("g_max and sg_max must be positive")
-        if self.g_max - self.cap_margin <= 0.0:
-            raise ValueError("coupling cap g_max - cap_margin must be positive")
-
-
-def coupling_cap(policy: TiltSegmentUnion) -> float:
-    """The coupling radius cap: a beam enters a solve union only when ``|g| < cap``.
-
-    ``g_max - cap_margin`` (the private's ``4.5 / 2 - 0.2 = 2.05``). The single source of the cap,
-    shared by the excitation mask (:func:`~diffBloch.preprocess.coupling.tilt_segment_coupling`) and
-    the coverage guard (:func:`assert_grid_covers_coupling`), so the two cannot disagree about what
-    the union contains. Pure over the policy value-type, so it lives here with ``TiltSegmentUnion``
-    -- both the config edge and the preprocess step depend on it downward.
-    """
-    return policy.g_max - policy.cap_margin
 
 
 def assert_grid_covers_coupling(policy: TiltSegmentUnion, grid_g_max: float) -> None:
     """Guarantee the ``|g| <= grid_g_max`` grid sphere spans every coupled beam difference (O(1)).
 
-    A coupled solve union admits only beams with ``|g| < cap`` (:func:`coupling_cap`), so any
-    pairwise difference is ``|g_j - g_i| < 2 * cap`` (triangle inequality). When ``2 * cap <=
-    grid_g_max`` the dense integer ``grid_hkl`` sphere therefore contains every difference, so the
-    per-segment gathers cannot address a reflection outside it -- exactly the condition that makes
+    A coupled solve union admits only beams with ``|g| < g_max``, so any pairwise difference is
+    ``|g_j - g_i| < 2 * g_max`` (triangle inequality). When ``2 * g_max <= grid_g_max`` the dense
+    integer ``grid_hkl`` sphere therefore contains every difference, so the per-segment gathers
+    cannot address a reflection outside it -- exactly the condition that makes
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather` ``validate=False`` sound on the
     coupled fit path (it closes the silent-zero coverage gap the O(N^2) integrity checks otherwise
-    catch). The cap is orientation-independent, so this one scalar comparison covers every trial of
-    every rotation -- checked at config load and again at fit setup, failing loudly before any solve
-    rather than silently gathering zeros deep in the search.
+    catch). The radius is orientation-independent, so this one scalar comparison covers every trial
+    of every rotation -- checked at fit setup, failing loudly before any solve rather than silently
+    gathering zeros deep in the search. The default recipe derives the grid as ``2 * g_max``, so it
+    only bites a programmatic caller that hand-builds a grid smaller than its coupling radius needs.
     """
-    cap = coupling_cap(policy)
-    if 2.0 * cap > grid_g_max:
+    if 2.0 * policy.g_max > grid_g_max:
         raise ValueError(
-            f"coupling cap {cap:.4g} (g_max {policy.g_max} - cap_margin {policy.cap_margin}) needs "
-            f"a structure-factor grid g_max >= {2.0 * cap:.4g} to span the beam-difference "
-            f"support, but the grid g_max is {grid_g_max}. Enlarge numerics.g_max or shrink the "
-            "coupling radius; else a coupled gather silently gathers zeros under validate=False."
+            f"coupling radius g_max {policy.g_max:.4g} needs a structure-factor grid "
+            f"g_max >= {2.0 * policy.g_max:.4g} to span the beam-difference support, but the grid "
+            f"g_max is {grid_g_max}. Widen the grid or shrink the coupling radius; else a coupled "
+            "gather silently gathers zeros under validate=False."
         )
 
 

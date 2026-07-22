@@ -278,15 +278,14 @@ class CouplingConfig(_StrictConfig):
 
     Unlike the numerical preprocess blocks, coupling carries **no defaults**: it determines the
     physics (the per-trial SOLVE union) and is experiment-specific, so a silent faithful-default
-    would let a forgotten policy pass as a deliberate one. All four fields are required when the
+    would let a forgotten policy pass as a deliberate one. All three fields are required when the
     block is present, and the block itself is optional only for experiments that never run the
     coupled fit (see :class:`PreprocessConfig`); composing the fit without it raises. The value-type
     keeps its own defaults for programmatic pipeline authors -- only the config edge is explicit.
     """
 
     n_splits: int  # contiguous tilt chunks
-    g_max: float  # coupling radius (1/Angstrom)
-    cap_margin: float  # subtracted from g_max for the coupling cap
+    g_max: float  # coupling radius (1/Angstrom): a beam couples when |g| < g_max
     sg_max: float  # excitation-error cutoff
 
     def to_policy(self) -> TiltSegmentUnion:
@@ -294,7 +293,6 @@ class CouplingConfig(_StrictConfig):
         return TiltSegmentUnion(
             n_splits=self.n_splits,
             g_max=self.g_max,
-            cap_margin=self.cap_margin,
             sg_max=self.sg_max,
         )
 
