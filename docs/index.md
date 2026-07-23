@@ -1,3 +1,7 @@
+---
+title: diffBloch
+---
+
 # diffBloch
 
 Differentiable Bloch-wave electron-diffraction structure refinement.
@@ -20,7 +24,8 @@ end-to-end by the opt-in quartz anchor e2e tests.
 
 ```bash
 diffbloch validate experiment.yaml     # validate an experiment config
-diffbloch run infer <experiment_dir>   # score every rotation (add --console / --csv PATH)
+diffbloch run infer <experiment_dir>   # score every rotation (console log on; --quiet to silence, --csv PATH for a CSV sink)
+diffbloch run refine <experiment_dir>  # gradient-refine the structure against the data (reuses the checkpoint)
 diffbloch run pack <run_dir>           # export a run directory (zip/tar/BagIt/RO-Crate)
 ```
 
