@@ -3,12 +3,11 @@
 ``run_inference`` is the eval-only member of the preprocess pipeline's terminal family (the other is
 ``engine.refine``, which optimizes structure): it runs one forward Bloch pass per orientation under
 ``no_grad`` and reports a per-rotation :class:`RotationInference` (the Bragg R-factor ``R_obs`` and
-two diagnostics). It is the 2.0 analog of the private ``evaluate_over_rotations`` and the terminal
-the executable quartz anchor calls.
+two diagnostics).
 
 Built entirely from the public forward spine -- ``engine.simulate`` + :func:`core.products.align` +
-:func:`core.losses.rbragg`/:func:`core.losses.optimal_scale` -- so callers (and the anchor test)
-never reach into engine internals. Preprocess is composed in optionally via the ``preprocess``
+:func:`core.losses.rbragg`/:func:`core.losses.optimal_scale` -- so callers never reach into engine
+internals. Preprocess is composed in optionally via the ``preprocess``
 ``PlanStep``; the solver is swappable via ``method``.
 """
 
@@ -70,10 +69,10 @@ class InferenceResult:
 
     @property
     def mean_r_obs(self) -> float:
-        """Mean ``R_obs`` over the finite rotations (the private aggregate convention).
+        """Mean ``R_obs`` over the finite rotations.
 
-        ``nan`` when no rotation has a finite ``r_obs``. The private reference summary averages the
-        per-rotation ``R_obs`` (rotations with no reflections are skipped), so this mirrors it.
+        ``nan`` when no rotation has a finite ``r_obs``. The per-rotation ``R_obs`` values are
+        averaged, skipping rotations with no reflections.
         """
         finite = [row.r_obs for row in self.per_rotation if math.isfinite(row.r_obs)]
         if not finite:

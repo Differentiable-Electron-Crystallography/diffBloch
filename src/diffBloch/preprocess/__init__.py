@@ -1,15 +1,15 @@
 """The preprocess pipeline: fit the experiment's nuisances + numerics, emit the invariant ``Plan``.
 
-Stage 11 builds this as a composable ``Plan -> Plan`` pipeline (a scikit-learn-style sequence of
+This is a composable ``Plan -> Plan`` pipeline (a scikit-learn-style sequence of
 transformers) producing the geometry the differentiable refinement is conditioned on:
 ``preprocess -> Plan -> refine``. ``refine`` is the terminal estimator (``Plan -> Result``) and
 never re-enters here. The dependency points ``preprocess -> engine``; the engine never imports
 preprocess.
 
-This first slice lays the spine: the :class:`~diffBloch.preprocess.plan.Plan` value object and the
+The core pieces are the :class:`~diffBloch.preprocess.plan.Plan` value object, the
 :mod:`diffBloch.preprocess.pipeline` combinators (``pipeline`` sequencing + ``iterate_until``
-fixpoint). The real steps (``converge_numerics`` / ``fit_orientation`` / ``fit_thickness``) and
-``from_experiment`` construction land in later slices.
+fixpoint), the steps (``converge_numerics`` / ``fit_orientation`` / ``fit_thickness`` and the rest),
+and ``from_experiment`` construction from typed records.
 """
 
 from diffBloch.preprocess.driver import converge_numerics

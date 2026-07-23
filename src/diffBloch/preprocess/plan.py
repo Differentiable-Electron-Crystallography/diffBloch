@@ -141,9 +141,9 @@ def require_built_plans(plan: Plan) -> tuple[OrientationPlanLike, ...]:
     across ``read_plan``, which reconstructs a ``Plan`` from ``.npz`` bytes). This is the parse that
     re-establishes the phase at that erased boundary -- *parse, don't validate*: it returns the
     narrowed type once, and the terminals (inference, the fits, ``couple_beams``, checkpoint
-    serialize) then hold built geometry without re-checking. See
-    ``design/decisions/candidate-vs-built-plan.md`` for why the phase-indexed alternative does not
-    survive contact with Python (no phase-changing composition; ``disallow_any_generics``).
+    serialize) then hold built geometry without re-checking. The phase-indexed alternative
+    (``Plan[P]``) does not survive contact with Python -- there is no phase-changing composition over
+    a homogeneous step list, and ``disallow_any_generics`` rejects the erased reconstruction.
 
     A :class:`CandidatePlan` has no ``beam_plans`` and is unsolvable, so this raises unless
     ``build_orientation_plans`` has run (the default recipe runs it right after ``select_beams``).

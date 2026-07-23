@@ -1,17 +1,17 @@
-"""Tilt-segment-union beam coupling: the per-tilt-chunk beam sets of the private rocking curve.
+"""Tilt-segment-union beam coupling: per-tilt-chunk beam sets across a rocking curve.
 
 Rocking-curve integration solves the crystal at many slightly-tilted sub-orientations. A single
 beam set for the whole curve either over-couples (every beam any tilt needs, slow) or drops beams a
-tilt needs (a reflection drifts through the Ewald sphere as the crystal rocks). The
-``diffBloch_private`` policy instead partitions the tilts into contiguous chunks and couples, within
-each chunk, the **union** of the excited-beam sets at the chunk's two boundary tilts.
+tilt needs (a reflection drifts through the Ewald sphere as the crystal rocks). This coupling policy
+instead partitions the tilts into contiguous chunks and couples, within each chunk, the **union** of
+the excited-beam sets at the chunk's two boundary tilts.
 
 This module is the pure geometry of that partition: given a
 :class:`~diffBloch.specs.SegmentedUnionCoupling`
 policy and the rotation's tilt geometry, it returns the ordered :class:`Segment` list (each a beam
-set + the disjoint tilt indices it covers). It computes the same excitation mask
-(``|Sg| < sg_max`` and ``|g| < g_max``) the private's ``BlochNet.forward`` builds its
-union sets from, reusing :func:`~diffBloch.core.dynamical.excitation_errors` and
+set + the disjoint tilt indices it covers). It computes the excitation mask
+(``|Sg| < sg_max`` and ``|g| < g_max``) from which the union sets are built,
+reusing :func:`~diffBloch.core.dynamical.excitation_errors` and
 :func:`~diffBloch.core.crystal.orientation_basis`. It does not build or solve anything -- an engine
 step turns the segments into per-chunk plans and reassembles their curves before reduction.
 """
@@ -51,9 +51,9 @@ class Segment:
 
 
 def _fixed_segment_ranges(n_tilts: int, fixed_n_segments: int) -> NDArray[np.int64]:
-    """The private's contiguous split boundaries into ``fixed_n_segments`` chunks over ``n_tilts``.
+    """Contiguous split boundaries into ``fixed_n_segments`` chunks over ``n_tilts``.
 
-    Ported verbatim from ``BlochNet.forward`` (``union_adaptive = False`` path): evenly sized chunks
+    The ``union_adaptive = False`` path: evenly sized chunks
     with the remainder front-loaded, boundaries clamped so the last index is ``n_tilts - 1``, then
     de-duplicated. Returns the strictly increasing boundary indices (length ``fixed_n_segments + 1``
     before de-duplication), so ``fixed_n_segments`` segments span ``boundaries[i] .. boundaries[i +
@@ -81,9 +81,9 @@ def _adaptive_segment_ranges(
     excited_mask: Callable[[int], NDArray[np.bool_]],
     max_new_pct: float,
 ) -> list[tuple[int, int]]:
-    """Adaptive chunk boundaries by recursive bisection (the private's ``union_adaptive`` path).
+    """Adaptive chunk boundaries by recursive bisection (the ``union_adaptive`` path).
 
-    Ported from ``BlochNet.forward``: a range ``(a, b)`` is split at its midpoint only while the
+    A range ``(a, b)`` is split at its midpoint only while the
     midpoint's excited set adds more than ``max_new_pct`` *new* beams beyond the boundary union
     ``mask(a) | mask(b)`` (else the range freezes as one chunk). Returns the ordered, inclusive
     ``(a, b)`` segment ranges partitioning ``0 .. n_tilts - 1`` (disjoint, covering each tilt once);
@@ -125,8 +125,6 @@ def build_coupling_segments(
 ) -> tuple[Segment, ...]:
     """Partition the rocking curve into boundary-union coupled segments (pure geometry).
 
-    v1 analog: the union-split block in ``BlochNet.forward``.
-
     ``candidate_beam_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
     :class:`~diffBloch.engine.plan.StructureFactorGrid` ``structure_factor_hkl`` -- radius
     ``2 * g_max``, so the
@@ -138,8 +136,7 @@ def build_coupling_segments(
     (mean-inner-potential correction) set the Ewald geometry.
 
     Each boundary tilt's excited mask is ``|Sg| < sg_max`` and ``|g| < g_max`` with
-    ``g = candidate_beam_hkl @ orientation_basis(cell, tilt @ orientation)`` (identical to the private's
-    ``hkl @ reciprocal_cell(unit_cell @ (R_tilt @ orientation).T)``). Segment ``i`` couples the
+    ``g = candidate_beam_hkl @ orientation_basis(cell, tilt @ orientation)``. Segment ``i`` couples the
     union of the masks at boundary tilts ``i`` and ``i + 1`` and covers the half-open tilt range
     between them; the final segment includes the end, so the covers tile ``0 .. B - 1`` exactly.
     """
