@@ -5,17 +5,17 @@ discriminated union rather than a boolean toggle:
 
 - :class:`~diffBloch.specs.TiltIndependent` -- the default: one beam set (the ``select_beams``
   active set) shared across every tilt. A no-op here (the shared set is already on the plan).
-- :class:`~diffBloch.specs.SegmentedUnionCoupling` -- the ``diffBloch_private`` policy: partition
-  the tilts into contiguous chunks and give each its own boundary-union beam set
+- :class:`~diffBloch.specs.SegmentedUnionCoupling` -- a policy that partitions
+  the tilts into contiguous chunks and gives each its own boundary-union beam set
   (:func:`~diffBloch.preprocess.coupling.build_coupling_segments`), replacing each
   :class:`~diffBloch.engine.plan.OrientationPlan` with a
   :class:`~diffBloch.engine.plan.CoupledOrientationPlan` the engine reassembles + reduces.
 
-It is the tilt-dependent generalization of ``select_beams``, and it appears **twice** in the
-faithful recipe: once after ``mosaicity`` -- so ``fit_orientation`` / ``fit_thickness`` fit *under*
-the coupling (the frozen-union fit: the seed-orientation segments re-solved at each trial) -- and
-once after the fits, re-coupling at the fitted orientation for evaluation. It is only meaningful
-once ``select_beams`` has established the Klar-selected scored set (before it, an orientation's
+It is the tilt-dependent generalization of ``select_beams``. The default app recipe does not use
+this step -- it couples *per trial* inside ``fit_orientation`` (``coupling=...``); ``couple_beams``
+is the explicit composable step when a caller wants to settle a coupled ``Plan`` directly. It is
+only meaningful once ``select_beams`` has established the Klar-selected scored set (before it, an
+orientation's
 ``alignment`` is the seed-pool intersection, too wide). It accepts either a plain
 :class:`~diffBloch.engine.plan.OrientationPlan` (the first application) or an already-coupled
 :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (the re-couple), re-deriving each
@@ -28,9 +28,8 @@ fewer than two tilts. The upstream ``tilt_reduction`` (e.g. a ``mosaicity`` broa
 through unchanged.
 
 Crucially it decouples the two reflection sets the plan otherwise conflates: the *solve* set
-expands to the excitation coupling union (``|g| < 2.05``), while the *scored* set stays pinned to
-the pre-couple ``select_beams`` selection (``op.alignment.hkl``), intersected with the union. See
-``design/decisions/solve-set-vs-scored-set.md``.
+expands to the excitation coupling union, while the *scored* set stays pinned to
+the pre-couple ``select_beams`` selection (``op.alignment.hkl``), intersected with the union.
 """
 
 from __future__ import annotations
@@ -59,8 +58,8 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
     """
     match policy:
         case TiltIndependent():
-            # A no-op on the plan, but recorded as couple_beams(TiltIndependent) so provenance shows
-            # the coupling decision faithfully (distinct from a plain unrecorded identity).
+            # A no-op on the plan, but recorded as couple_beams(TiltIndependent) so provenance
+            # records the coupling decision (distinct from a plain unrecorded identity).
             return as_step("couple_beams", policy, identity.run)
         case SegmentedUnionCoupling():
 

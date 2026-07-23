@@ -9,21 +9,18 @@ no new match -- the minimal beam set that still covers the data.
 
 - :func:`plan_coverage` -- the objective: ``sum over orientations |beam_hkl & observed hkl|``.
   It is a *pure function of the Plan* (no engine, no structure factors): a "match" is set
-  membership, exactly the private's ``match == "yes"`` (an experimental hkl present in the filtered
-  simulated beam set, with no intensity gate).
+  membership (an experimental hkl present in the filtered simulated beam set, with no intensity
+  gate).
 - :func:`maximize_scalar` -- the parameter-agnostic driver: click a scalar knob upward, keep the
   build while the objective strictly increases, return the last build at the first non-increase, or
-  raise at a hard cap. Mirrors :func:`~diffBloch.preprocess.steps.convergence.converge_scalar` for
-  the
-  match-count objective.
+  raise at a hard cap. The match-count analogue of
+  :func:`~diffBloch.preprocess.steps.convergence.converge_scalar`.
 - :func:`cover_beams` / :func:`cover_pool` -- the ``Plan -> Plan`` adapters for the two beam levers
   (Klar window ``integration_semiangle`` and seed pool ``g_max_refine``).
 
-Faithful to ``diffBloch_private`` ``convergence_testing._run_initial_minimum_param_sweep`` (branch
-``pattern-vis-convergence-testing``): sequential per-knob sweeps accepting a candidate only when
-``_count_unique_matches`` increases, ``for ... else`` raising at ``MAX_SWEEP_ITERATIONS``. Two
-operations are two kinds of objective: coverage maximises *observed matches*, self-stability
-(``convergence.py``) settles *simulations*.
+The two convergence operations are two kinds of objective: coverage maximises *observed matches*
+(sequential per-knob sweeps, accepting a candidate only while the match count increases, capped),
+while self-stability (``convergence.py``) settles *simulations*.
 """
 
 from __future__ import annotations
@@ -54,8 +51,8 @@ def plan_coverage(plan: Plan) -> int:
     """Count matched reflections: ``sum over orientations |beam_hkl intersect observed hkl|``.
 
     A pure, engine-free measure of how much of the observed data the current beam set covers. A
-    "match" is an observed reflection whose hkl is present in that orientation's active beam set --
-    the 2.0 analog of the private's ``match == "yes"`` (set membership, no intensity threshold).
+    "match" is an observed reflection whose hkl is present in that orientation's active beam set
+    (set membership, no intensity threshold).
     """
     total = 0
     for op in plan.orientations:
@@ -81,9 +78,9 @@ def maximize_scalar[T](
     rebuilds the object at a knob value; ``objective(obj)`` is the score to maximise (for coverage,
     :func:`plan_coverage`). Starting from ``start`` and clicking by ``step``, it keeps a candidate
     while its score is strictly greater than the best so far and returns the best at the first step
-    that does not improve it -- the private's ``if candidate > best: accept; else: break``. Raises
+    that does not improve it (accept while ``candidate > best``, else stop). Raises
     ``RuntimeError`` if ``max_iterations`` steps pass while the score is still increasing (the score
-    never plateaus), matching the private's ``for ... else`` cap. ``max_iterations`` must be >= 1.
+    never plateaus). ``max_iterations`` must be >= 1.
     """
     if max_iterations < 1:
         raise ValueError("max_iterations must be >= 1")

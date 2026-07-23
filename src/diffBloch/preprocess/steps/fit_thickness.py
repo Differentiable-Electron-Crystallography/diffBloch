@@ -14,7 +14,7 @@ only the cheap propagation tail, so scoring 100 thicknesses costs barely more th
 The captured ``refinement`` is read-only context the step never mutates; the simulation inside is
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
-Faithful to ``diffBloch_private``'s ``thickness_optim``: an evenly-spaced (``np.linspace``) grid of
+The search is an evenly-spaced (``np.linspace``) grid of
 candidate thicknesses, per-candidate wR2 via the scaling factor, then the per-rotation minimum.
 
 Plan-agnostic: ``replace(op, thickness=...)`` swaps the thickness on either an

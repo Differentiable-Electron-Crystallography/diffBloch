@@ -3,7 +3,7 @@
 A ``Plan -> Plan`` step that re-picks every :class:`~diffBloch.engine.plan.OrientationPlan`'s active
 ``beam_hkl`` using the relative-/minimum-excitation-error criterion of the SI of Klar et al. (2023),
 then rebuilds its ``BeamPlan`` + ``AlignmentPlan`` against the shared grid (``pattern`` unchanged).
-This is the faithful per-orientation selection that replaces the orientation-independent
+This is the per-orientation selection that replaces the orientation-independent
 ``g_max_refine`` seed laid down by ``from_experiment``.
 
 ``sg_max`` is the excitation-error span a reflection sweeps *during the actual integration*, so its
@@ -13,8 +13,8 @@ about the goniometer axis (``x`` in the PETS frame; ``rocking_curve_tilts`` buil
 swept excitation error has amplitude ``|(g_y, g_z)|`` -- the distance from the rock axis -- and a
 reflection *on* that axis (``g_y = g_z = 0``) never sweeps and is correctly dropped. For
 ``precession`` (an isotropic cone about the ``-z`` beam) the lever arm is instead ``|(g_x, g_y)|``,
-the distance from the beam. This matches ``diffBloch_private`` ``filter_hkls`` (``norm(k[:, 1:])``
-for its continuous-rotation data), whose beam is ``-z`` and rock axis ``x`` (same frame as ours).
+the distance from the beam. The frame convention has the beam along ``-z`` and the rock axis along
+``x``.
 """
 
 from __future__ import annotations
