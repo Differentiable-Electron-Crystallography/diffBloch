@@ -7,9 +7,6 @@ and the caller's parameters, clones the *target* fields into fresh ``requires_gr
 rest become detached constants), steps a chosen backend, and returns a new detached
 :class:`RefinementResult`.
 The caller's parameters are never touched. ``core/`` stays free of ``torch.optim`` entirely.
-
-Deliberately deferred surface: per-group learning rates, ``least_squares``, component ``activate``,
-and ``OptimizerState``/history threading.
 """
 
 from __future__ import annotations
@@ -61,8 +58,8 @@ _TRAINABLE_FIELDS: dict[str, tuple[str, ...]] = {
 class AtomSelection:
     """A coarse atom/parameter selection for one trainable group.
 
-    Phase 5 only distinguishes whole-group ``all`` vs ``none``. Later phases can extend this value
-    with element or index filters without reintroducing stringly-typed refinement targets.
+    The current modes distinguish whole-group ``all`` vs ``none``. The value can be extended with
+    element or index filters without reintroducing stringly-typed refinement targets.
     """
 
     mode: Literal["all", "none"]
@@ -135,7 +132,7 @@ class TrainableSpec:
 
     @classmethod
     def positions_and_adp(cls) -> TrainableSpec:
-        """The historical default: refine positions and ADPs when present."""
+        """The default: refine positions and ADPs when present."""
         return cls(positions=AtomSelection.all(), adp=AtomSelection.all())
 
 
@@ -403,8 +400,8 @@ class _TrainableParams:
     """Frozen parameter context plus the trainable leaves that override it.
 
     This keeps optimizer leaves explicit and reconstructs a full :class:`RefinableParams` value for
-    each objective evaluation. With today's whole-group selections the overrides are full tensors;
-    later per-atom selections can reconstruct full fields from smaller selected leaves here.
+    each objective evaluation. Under whole-group selections the overrides are full tensors;
+    per-atom selections would reconstruct full fields from smaller selected leaves here.
     """
 
     frozen: RefinableParams
@@ -435,8 +432,8 @@ def _to_trainable_params(
             row_mask = trainable_fields[param_field.name]
             leaf_value = value[row_mask.to(device=value.device)] if row_mask is not None else value
             leaf = leaf_value.detach().clone().requires_grad_(True)
-            # Keep the detached full-field baseline even when this whole field is overridden today:
-            # future per-atom leaves will reconstruct by scattering selected rows onto it.
+            # Keep the detached full-field baseline even when this whole field is overridden:
+            # per-atom leaves reconstruct by scattering selected rows onto it.
             frozen_values[param_field.name] = value.detach().clone()
             overrides[param_field.name] = _FieldOverride(leaf=leaf, row_mask=row_mask)
             leaves.append(leaf)

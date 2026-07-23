@@ -70,8 +70,8 @@ class HydrogenRiding:
 
     Limitations (the model deliberately kept simple; upgrades slot into this same transform):
     the fixed offset does not re-point H when the parent's local frame *rotates* (only translation
-    is followed); the ``uij_star`` scale is exact for an isotropic parent (abiraterone is all-Uiso)
-    and approximate for an anisotropic one.
+    is followed); the ``uij_star`` scale is exact for an isotropic parent (all-Uiso) and approximate
+    for an anisotropic one.
     """
 
     name: str

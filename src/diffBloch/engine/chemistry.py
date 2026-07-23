@@ -2,7 +2,7 @@
 
 Both the soft bond penalties and the hard hydrogen-riding constraint perceive likely connectivity
 from covalent radii, so the table and lookup live here rather than in one of them -- neither should
-import the other's private helper.
+import an internal helper of the other.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import numpy as np
 __all__ = ["COVALENT_RADII_ANGSTROM", "covalent_radius"]
 
 # Pyykko/Atsumi-style single-bond covalent radii, rounded, for common organic elements (Angstrom).
-# A perception heuristic only; explicit/Mogul connectivity can replace it later.
+# A perception heuristic only; an explicit connectivity table can replace it.
 COVALENT_RADII_ANGSTROM: dict[int, float] = {
     1: 0.31,  # H
     6: 0.76,  # C
