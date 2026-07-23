@@ -1,10 +1,10 @@
-"""Symmetry-constraint setup seam.
+"""Symmetry-constraint setup: extract special-position constraints at the io boundary.
 
-Extracts special-position constraints from a validated :class:`StructureRecord` at the io boundary,
+Extracts special-position constraints from a validated :class:`StructureRecord`,
 as plain-value arrays the torch-only :func:`diffBloch.params.constrain` then applies. The position
 constraint is the **site-symmetry projector** built natively from the record's symmetry operators
-(no diffpy on the position path); the diffpy-backed ADP (``Uij``) constraints land with the ADP
-stage behind this same seam.
+(no diffpy on the position path); the diffpy-backed ADP (``Uij``) equality constraints are extracted
+at this same boundary.
 """
 
 from __future__ import annotations
