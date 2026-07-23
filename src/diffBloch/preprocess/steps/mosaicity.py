@@ -3,20 +3,20 @@
 A ``Plan -> Plan`` step that switches each rotation's tilt-axis reduction from a plain incoherent
 sum (:class:`~diffBloch.core.products.PlainSum`) to a moving-average-broadened sum
 (:class:`~diffBloch.core.products.MosaicSmoothed`). Crystal mosaicity smears each reflection's
-rocking curve; the private models it as a ``window``-wide moving average of the per-tilt intensities
-before the sum-over-tilts integration (``diffBloch_private`` ``DiffractionDataset.moving_average``).
+rocking curve; it is modelled as a ``window``-wide moving average of the per-tilt intensities
+before the sum-over-tilts integration.
 
 It is a **modifier on top of** ``integrate_rocking_curve``
 (:func:`~diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve`):
 it only has meaning once the tilt set exists (a moving average over a single tilt is degenerate), so
 it is ordered *after* that step and *before* the fits (fitting under the same integrated model used
-at evaluation -- the fit/eval consistency invariant). Off by default: no ``mosaicity`` step = the
-plain-sum reduction = today's behaviour, byte-identical.
+at evaluation -- the fit/eval consistency invariant). Off by default: no ``mosaicity`` step keeps
+the plain-sum reduction.
 
 Pure and geometry-preserving: the reduction is a per-orientation attribute, so this only
 ``dataclasses.replace``\\ s the reduction descriptor -- no beam plans are rebuilt (mirrors
-``fit_thickness`` swapping only the thickness). Faithful to the private, which passes the mosaicity
-setting into both the orientation fit and the final evaluation.
+``fit_thickness`` swapping only the thickness). The mosaicity setting feeds both the orientation fit
+and the final evaluation.
 """
 
 from __future__ import annotations

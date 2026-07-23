@@ -26,12 +26,9 @@ before and orthogonally to the accuracy fit. This module has three layers:
 :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
 :func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint.
 
-Faithful to ``diffBloch_private`` ``convergence_testing`` (branch
-``pattern-vis-convergence-testing``): ``_run_hyperparams_optimization``'s nested ``optimize_gmax`` /
-``optimize_sgmax`` / ``optimize_tilt_steps`` sweeps, each stopping the first time the
-per-orientation
-``rbragg_abs`` (``_compute_step_rfactor``) drops below ``r_factor_threshold``. 2.0 keeps that exact
-stopping rule (no patience, no skip-null) and consolidates the private's knobs.
+The convergence sweep grows each numeric knob (beam-pool radius, excitation window, tilt count) and
+stops the first time the per-orientation Bragg R-factor between consecutive simulations drops below
+``r_factor_threshold`` -- a deliberately simple stopping rule (no patience, no skip-null).
 """
 
 from __future__ import annotations
@@ -72,7 +69,7 @@ type SimulationRfactor = Callable[[Plan, Plan], float]
 
 # The R-factor compares two simulations, not simulation-vs-data, so there is no measurement noise to
 # weight by; a near-zero sigma makes ``rbragg`` effectively unweighted while keeping its
-# ``I > 3*sigma`` mask inclusive (the private uses sigmas = 1e-10 for the same reason).
+# ``I > 3*sigma`` mask inclusive.
 _UNWEIGHTED_SIGMA = 1e-10
 
 
@@ -147,9 +144,9 @@ def converge_scalar[T](
     ``build(value)`` rebuilds the object at a knob value; ``measure(previous, candidate)`` is the
     consecutive-output R-factor (0 when identical). Starting from ``start`` and clicking by ``step``
     each iteration, it returns the first candidate whose R-factor against the previous build is
-    below ``tolerance.r_factor_threshold``. This is the private's exact stopping rule -- the first
+    below ``tolerance.r_factor_threshold``. The stopping rule is deliberately simple -- the first
     dip stops the sweep, and an unchanged build (R = 0) counts as converged -- with no patience and
-    no null-step handling (a faithful port). Raises
+    no null-step handling. Raises
     ``RuntimeError`` if ``tolerance.max_iterations`` steps pass without a dip below threshold
     (silent non-convergence is never returned, matching
     :func:`~diffBloch.preprocess.pipeline.iterate_until`).

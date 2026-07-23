@@ -10,7 +10,7 @@ convergence operations), :mod:`~diffBloch.preprocess.steps.fit_orientation` /
 
 Steps depend only on the parent *spine* (``plan``, ``pipeline``, ``experiment``, ``scoring``,
 ``orientation``); the parent *orchestrators* (``pipeline`` composition, ``driver``) compose steps.
-The public names are re-exported flat at :mod:`diffBloch.preprocess`. See ``README.md``.
+The public names are re-exported flat at :mod:`diffBloch.preprocess`.
 """
 
 from __future__ import annotations

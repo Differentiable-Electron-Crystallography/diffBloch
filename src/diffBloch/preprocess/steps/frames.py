@@ -1,9 +1,8 @@
 """``select_frames``: drop whole rotations whose observed pattern is too sparse to inform the fit.
 
 The whole-frame sibling of :mod:`~diffBloch.preprocess.steps.beams`: ``select_beams`` prunes the
-*reflections within* each frame, whereas ``select_frames`` drops *entire frames/orientations*. It is
-the public analog to ``diffBloch_private``'s per-dataset ``ignore_orientations`` -- for the
-beam-damaged tail of a rotation scan, where late frames carry almost no measurable signal.
+*reflections within* each frame, whereas ``select_frames`` drops *entire frames/orientations* -- for
+the beam-damaged tail of a rotation scan, where late frames carry almost no measurable signal.
 
 The drop criterion is **model-independent**: it counts each frame's *observed* strong reflections
 (``intensity > 3 * sigma``) from the stored ``pattern`` and never the calculated fit, so it cannot
