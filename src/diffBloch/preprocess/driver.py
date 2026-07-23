@@ -1,4 +1,4 @@
-"""The preprocess convergence driver: the ``runState`` runner for the coupled beam-knob sweeps.
+"""The preprocess convergence driver: threads state through the coupled beam-knob sweeps.
 
 The individual convergence levers (``converge_beams`` / ``converge_pool`` / ``converge_sampling``)
 and the coverage levers (``cover_beams`` / ``cover_pool``) are pure ``Plan -> Plan`` steps, each
@@ -7,13 +7,12 @@ settled knobs to self-stability (the ``both`` operation) -- needs state the ``Pl
 does not carry: the live scalars ``g_max_refine`` / ``integration_semiangle`` / ``rocking_curve_sampling``.
 This module is the **driver** that owns that state.
 
-In State-monad terms: :class:`ConvergenceState`
-is the state ``s``; a *phase* (:func:`run_coverage_phase`, :func:`run_stability_phase`) is a
-``(Plan, ConvergenceState) -> (Plan, ConvergenceState)`` computation; the driver plays
-``runState``, threading ``s`` between phases and, at its outer boundary, returning just the
-converged ``Plan`` (``evalState``). "Driver" is the runner's role name, not a monad.
+:class:`ConvergenceState` holds that state; a *phase* (:func:`run_coverage_phase`,
+:func:`run_stability_phase`) is a ``(Plan, ConvergenceState) -> (Plan, ConvergenceState)``
+computation; the driver threads the state between phases and, at its outer boundary, returns just
+the converged ``Plan``.
 
-Obstruction 1 (the cross-lever fixpoint): each candidate must re-select the window from
+The cross-lever fixpoint: each candidate must re-select the window from
 the **un-pruned pool**, not from a previous lever's pruned ``Plan``. The driver re-derives that pool
 as ``seed_beam_hkl(grid, g_max_refine)`` -- so the pool is *derived* from the grid + the live
 ``g_max_refine`` scalar, never stored.
@@ -43,7 +42,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class ConvergenceState:
-    """The driver's coordinate-descent state -- the live beam scalars (the State monad's ``s``).
+    """The driver's coordinate-descent state -- the live beam scalars threaded between phases.
 
     ``g_max_refine`` is the candidate-pool radius; ``integration_semiangle`` is the Klar window;
     ``rocking_curve_sampling`` is the rocking-curve tilt count. The un-pruned pool is *not* a field: it is
@@ -69,15 +68,14 @@ def converge_numerics(
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step running the selected convergence operation (the driver entry).
 
-    The driver's outer ``evalState`` boundary: it seeds the initial :class:`ConvergenceState` (pool
+    The driver's outer boundary: it seeds the initial :class:`ConvergenceState` (pool
     from ``test.start_g_max_refine``, window from ``selection.integration.semiangle``, tilt from
     ``rocking.sampling``), runs the ``test.operation`` phase(s), and returns just the converged
     ``Plan`` -- the settled scalars are dropped, so downstream steps never see driver state and this
     nests as one *optional* ordinary step in the preprocess pipeline (convergence stays entirely
     opt-in by construction). ``both`` runs :func:`run_coverage_phase` first and seeds
-    :func:`run_stability_phase` from its settled state (the private's ``initial_*`` handoff); the
-    single-phase operations run one and discard the state. Faithful to the private
-    ``convergence_testing`` dispatch on ``convergence_test.operation``.
+    :func:`run_stability_phase` from its settled state; the single-phase operations run one and
+    discard the state. Dispatches on ``convergence_test.operation``.
     """
 
     def run(plan: Plan) -> Plan:
@@ -111,7 +109,7 @@ def converge_numerics(
                 method=method,
             )
             return converged
-        # "both": coverage's settled scalars seed self-stability (the private's initial_* handoff).
+        # "both": coverage's settled scalars seed self-stability.
         covered, settled = run_coverage_phase(
             plan,
             start,
@@ -149,16 +147,15 @@ def run_coverage_phase(
 ) -> tuple[Plan, ConvergenceState]:
     """Grow the pool then the window to the minimum that maximises coverage; thread the scalars.
 
-    The coverage phase (``State ConvergenceState Plan``): a single ordered pass -- pool
+    The coverage phase: a single ordered pass -- pool
     (``g_max_refine``) then window (``integration_semiangle``) -- each swept by
     :func:`maximize_scalar`
     to the smallest value that still strictly increases :func:`plan_coverage` (matched observed
-    reflections). Faithful to the private ``_run_initial_minimum_param_sweep``, minus the tilt knob:
-    2.0 coverage is pure geometric membership, so the tilt count cannot move it;
+    reflections). Coverage is pure geometric membership, so the tilt count cannot move it;
     tilts are tuned in the self-stability phase instead.
 
     Each candidate is built from the **un-pruned pool** re-derived at the current ``g_max_refine``
-    (obstruction 1), so widening the window can recover beams a narrower pool clipped. ``selection``
+    (the cross-lever fixpoint), so widening the window can recover beams a narrower pool clipped. ``selection``
     supplies the fixed ``rsg`` / ``dsg`` / ``geometry``; its ``integration.semiangle`` is ignored --
     the live window comes from ``state``. Returns the coverage-maximising ``Plan`` and the settled
     :class:`ConvergenceState` (for the ``both`` handoff to self-stability). ``g_max_refine_step`` /
@@ -214,8 +211,8 @@ def run_stability_phase(
     (``rocking_curve_sampling``) knobs, each driven by :func:`converge_scalar` to the first knob value whose
     *consecutive-simulation* R-factor drops below ``tolerance.r_factor_threshold`` (a numerical
     resolution study, not an accuracy fit -- so it needs ``refinement``, unlike the pure-geometry
-    coverage phase). Faithful to the private ``_run_hyperparams_optimization``: pass 1 sweeps
-    pool -> tilt -> window; pass 2+ sweeps tilt -> pool -> window (the private's per-pass
+    coverage phase). Pass 1 sweeps
+    pool -> tilt -> window; pass 2+ sweeps tilt -> pool -> window (a per-pass
     order-swap, revisiting each knob after the others moved). Each settled scalar threads into the
     next sweep
     and the next pass via the running ``(g_max_refine, integration_semiangle, rocking_curve_sampling)``.
@@ -305,10 +302,8 @@ def _stability_build(
 
     Pool + window via :func:`_windowed_pool` (which fixes the beam SET), then rocking-curve tilt
     integration at ``rocking_curve_sampling`` on that set. Order matters: the pool/window decide *which*
-    beams, the tilt count integrates the rocking curve over them. Mirrors the private
-    ``_run_simulation``
-    (a fresh build from ``g_max`` / ``sg_max`` / ``tilt_steps``), never an incrementally-mutated
-    Plan.
+    beams, the tilt count integrates the rocking curve over them. Each candidate is a fresh build
+    from ``g_max`` / ``sg_max`` / ``tilt_steps``, never an incrementally-mutated Plan.
     """
     pooled = _windowed_pool(plan, g_max_refine, integration_semiangle, selection)
     tilts = replace(rocking, sampling=int(round(rocking_curve_sampling)))

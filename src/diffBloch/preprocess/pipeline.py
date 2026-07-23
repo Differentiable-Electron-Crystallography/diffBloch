@@ -10,7 +10,7 @@ steps is itself a step. ``refine`` is deliberately *not* expressible here: it is
 **Provenance.** A step is self-describing: it carries a :class:`StepRecord` (its name + serialized
 params). As :func:`pipeline` applies each step it *stamps* that record onto the resulting
 :class:`~diffBloch.preprocess.plan.Plan`'s ``provenance`` tuple, so the final Plan records the
-ordered recipe that produced it -- the Writer-monad pattern (each step ``tell``\\ s its record).
+ordered recipe that produced it -- each step appends its record as it runs.
 This is what lets a checkpoint bind its identity to the recipe, not just the inputs. A step with no
 record (a bare closure, a nested composite) stamps :data:`OPAQUE` -- a plan whose provenance
 contains it can never be reused (safe: a miss, never a false hit).
@@ -141,7 +141,7 @@ def _identity(plan: Plan) -> Plan:
     return plan
 
 
-# The no-op step (pipeline identity element); records "identity" so it is a faithful, comparable
+# The no-op step (pipeline identity element); records "identity" so it is a comparable
 # provenance entry rather than an opaque miss.
 identity: Step = Step(record=StepRecord(name="identity"), run=_identity)
 
@@ -189,9 +189,8 @@ def iterate_until(step: PlanStep, *, until: ConvergenceCheck, max_iterations: in
     silent non-convergence is never returned. ``max_iterations`` must be >= 1.
 
     Provenance: the fixpoint stamps a single :data:`OPAQUE` record -- the number of iterations is
-    input-dependent, so a faithful per-iteration log would not be a stable recipe identity. A plan
-    produced through ``iterate_until`` is therefore not checkpoint-reusable yet (a safe miss); a
-    stable record is deferred with the convergence-driver checkpointing work.
+    input-dependent, so a per-iteration log would not be a stable recipe identity. A plan
+    produced through ``iterate_until`` is therefore not checkpoint-reusable (a safe miss).
     """
     if max_iterations < 1:
         raise ValueError("max_iterations must be >= 1")
@@ -212,16 +211,14 @@ def iterate_until(step: PlanStep, *, until: ConvergenceCheck, max_iterations: in
 class Fork:
     """The *choice* combinator: run one of two step lists, chosen by a predicate on the grid.
 
-    The recipe's fourth composition shape (see ``design/decisions/plan-composition-shapes.md``).
     The one rule that makes it checkpointable: **the predicate reads only the
     :class:`~diffBloch.engine.plan.StructureFactorGrid`, invariant across every preprocess step**
     (steps ``replace`` orientations; nothing resizes the grid). So the branch is a deterministic
     function of the experiment's fixed inputs -- knowable *before* running -- rather than of the
-    mutating ``Plan``. That keeps the fork *Applicative* (its shape is static), so
+    mutating ``Plan``. That keeps the fork's shape *static*, so
     :func:`resolve_recipe` can splice the chosen branch inline into a flat, fork-free recipe before
-    the checkpoint lock ever looks at it. A predicate over the ``Plan`` would be Monadic (its shape
-    would depend on intermediate results) and is deliberately unrepresentable here. See
-    ``design/decisions/combinators-and-recipe-identity.md``.
+    the checkpoint lock ever looks at it. A predicate over the ``Plan`` would make the shape depend
+    on intermediate results and is deliberately unrepresentable here.
 
     Branches are step *lists*, not pre-composed ``pipeline([...])`` closures, so each branch step's
     :class:`StepRecord` survives into the resolved recipe (a composed closure would collapse to one
@@ -270,7 +267,7 @@ def resolve_recipe(steps: Sequence[PlanStep], grid: StructureFactorGrid) -> tupl
     Splices each fork's chosen branch inline (recursively, so nested forks flatten too). Because the
     grid is invariant across the pipeline, resolving against the *base* grid here yields exactly the
     recipe that will run -- which is what lets the checkpoint lock key on a flat ``step_records``
-    list with no knowledge of forks (see ``design/decisions/combinators-and-recipe-identity.md``).
+    list with no knowledge of forks.
     """
     out: list[PlanStep] = []
     for step in steps:

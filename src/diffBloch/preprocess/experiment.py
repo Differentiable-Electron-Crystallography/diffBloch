@@ -4,7 +4,7 @@ This is the *initial total construction* of the preprocess pipeline (it is not `
 there is no ``Plan`` yet). It assembles two separable products from the same records/config:
 
 - a :class:`~diffBloch.preprocess.plan.Plan` pair (``train`` / ``validation``) -- the invariant
-  geometry the preprocess steps then sharpen and ``refine`` consumes (added in the next slice);
+  geometry the preprocess steps then sharpen and ``refine`` consumes;
 - a :class:`RefinementSetup` -- the structure-side static + refinable inputs the
   :class:`~diffBloch.engine.forward.RefinementEngine` needs (ASU expansion, constraint spec, initial
   parameters, atomic numbers).
@@ -52,13 +52,12 @@ class PlanSplit:
     rotation by default); both reference the *same* grid object, so the shared ``Fgb`` support
     cannot diverge.
 
-    The split is currently **dormant machinery**: nothing downstream distinguishes ``train`` from
-    ``validation`` yet (inference and the engine take a single :class:`Plan`), and whole-experiment
+    The split is currently **dormant**: nothing downstream distinguishes ``train`` from
+    ``validation`` (inference and the engine take a single :class:`Plan`), and whole-experiment
     work uses :attr:`combined` (all rotations). A whole-*rotation* holdout is a weak
     cross-validation guard for over-determined physics refinement anyway -- the principled analog
-    holds out *reflections* (R_free), not orientations. The split is kept because it becomes
-    genuinely informative for the future learned modes (a learned ``theta -> thickness`` can overfit
-    per rotation).
+    holds out *reflections* (R_free), not orientations. It is retained because it becomes
+    informative for learned modes, where a learned ``theta -> thickness`` can overfit per rotation.
     """
 
     train: Plan
@@ -168,7 +167,7 @@ def from_experiment(
 
     Each orientation is seeded with the orientation-independent, difference-safe beam set
     ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the derived
-    grid and the 000 transmitted beam is present). The faithful per-orientation ``sg_max`` / rsg-dsg
+    grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
     pruning is the later ``select_beams`` step.
 
     This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
@@ -231,7 +230,7 @@ def seed_beam_hkl(grid: StructureFactorGrid, *, g_max_refine: float) -> NDArray[
 def _validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool_]:
     """Boolean per-rotation validation mask from the split policy.
 
-    Only the Stage-1 policies are implemented: ``train='all_except_validation'`` with
+    The implemented policies are ``train='all_except_validation'`` with
     ``validation='every_10th_rotation'`` (every 10th rotation by 1-based count -> 0-based indices
     where ``(i + 1) % 10 == 0``). Other selector strings are rejected rather than silently ignored.
     """

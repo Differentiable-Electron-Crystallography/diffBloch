@@ -6,17 +6,16 @@ orientation file. The orientations are first-class inputs to the ``Plan``; ``fit
 refines them in-Plan -- it must not re-orthonormalise them: they fold a ~1% measured-vs-ideal cell
 correction, so a polar/SVD projection would silently drop it.
 
-Convention, pinned against ``diffBloch_private/diffBloch/rotation_dataset.py``::
+Convention::
 
     orientation = R_z(omega) . R_x(alpha) . R_y(beta) @ U,    U = UB @ B^-1
 
 where ``B`` is the Busing-Levy reciprocal matrix built from the cell parameters and the goniometer
 rotations are active, in degrees. Geometry then uses :func:`orientation_basis` =
 ``reciprocal_cell(cell @ orientation.T)`` (NOT ``reciprocal_basis @ orientation.T``), because the
-orientation matrices are generally non-orthonormal -- see ``tests/unit/test_orientation_oracle.py``.
+orientation matrices are generally non-orthonormal.
 
-References: W. R. Busing & H. A. Levy, *Acta Cryst.* **22**, 457 (1967) (the UB-matrix formalism);
-diffBloch_private's ``rotation_dataset.py`` for the specific rotation ordering and B convention.
+Reference: W. R. Busing & H. A. Levy, *Acta Cryst.* **22**, 457 (1967) (the UB-matrix formalism).
 """
 
 from __future__ import annotations
@@ -94,8 +93,8 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     rotation (``det = 1``) it preserves the non-orthonormal ``U`` measured-cell correction exactly,
     so the re-orthonormalisation trap is dodged by construction.
 
-    Faithful to ``diffBloch_private``'s ``generate_new_tilt``. Reference: L. Palatinus et al.,
-    *Acta Cryst.* **A69**, 171-188 (2013), the hexagonal modified-simplex search.
+    Reference: L. Palatinus et al., *Acta Cryst.* **A69**, 171-188 (2013), the hexagonal
+    modified-simplex search.
     """
     phi, theta = np.deg2rad([azimuth, polar])
     rz = np.array(
@@ -118,16 +117,12 @@ def rocking_curve_tilts(
     left-multiply the already-PETS-rotated orientation (``R_tilt @ orientation``). ``sampling = 1``
     is special-cased to a single tilt at angle 0 (the identity), so composing the integration with a
     unit sampling is a no-op -- ``np.linspace`` would otherwise return the *start* ``-semiangle``
-    for ``num = 1``; the private only ever runs the ``sampling >= 2`` symmetric-endpoint case, so
-    this
-    edge-case centering diverges from nothing it exercises.
+    for ``num = 1``, off-centre from the nominal orientation.
 
     Continuous-rotation geometry only; ``precession`` (a cone) is a later discriminated mode and
     raises ``NotImplementedError`` here. Callers unpack a validated
     :class:`~diffBloch.specs.RockingCurve` into these raw arguments (the value-type owns the
     invariants), matching :func:`hexagonal_tilt`'s raw-float style.
-
-    Faithful to ``diffBloch_private``'s ``generate_integration_rotation_matrices``.
     """
     if geometry != "continuous_rotation":
         raise NotImplementedError(f"rocking-curve geometry {geometry!r} is not implemented")
