@@ -37,6 +37,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.refinement.objective.data_term == "weighted_r"
+    assert cfg.refinement.precision == "fp64"
     assert cfg.refinement.split.validation == "every_10th_rotation"
 
 
@@ -150,6 +151,14 @@ def test_refinement_trainable_replaces_string_targets() -> None:
         ExperimentConfig.model_validate({**base, "refinement": {"targets": ["positions"]}})
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "refinement": {"trainable": {"thickness": "all"}}})
+
+
+def test_refinement_precision_parses_and_rejects_unknown_values() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    cfg = ExperimentConfig.model_validate({**base, "refinement": {"precision": "fp32"}})
+    assert cfg.refinement.precision == "fp32"
+    with pytest.raises(ValidationError, match="Input should be"):
+        ExperimentConfig.model_validate({**base, "refinement": {"precision": "bf16"}})
 
 
 def test_optimizer_and_objective_values_are_enumerated() -> None:

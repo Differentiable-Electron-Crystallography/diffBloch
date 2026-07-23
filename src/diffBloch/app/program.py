@@ -225,9 +225,9 @@ def refine_experiment(
     recipe and ``checkpoint``/``refresh``/``device``/``workers`` semantics), then run the
     **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs
     path: the data term (:meth:`~diffBloch.config.schema.ObjectiveConfig.to_loss`), the trainable
-    selection
-    (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and the optimizer/step budget all
-    come from ``experiment.yaml``. It composes no hard constraints or penalties -- scientific
+    selection (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), the solve precision, and
+    the optimizer/step budget all come from ``experiment.yaml``. It composes no hard constraints or
+    penalties -- scientific
     composition (hydrogen riding, freeze-H, penalties, multi-stage) is a Python/API concern, built
     with :func:`~diffBloch.engine.build_refinement_model`,
     :func:`~diffBloch.engine.build_refinement_problem`, and
@@ -257,6 +257,7 @@ def refine_experiment(
         refinement,
         loss=cfg.refinement.objective.to_loss(),
         method=cfg.solver.refine,
+        precision=cfg.refinement.precision,
         max_batch=max_batch,
     )
     initial = refinement.params if device is None else refinement.params.to(device)

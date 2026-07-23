@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
 from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
@@ -203,13 +203,16 @@ class RefinementConfig(_StrictConfig):
     :func:`~diffBloch.engine.build_refinement_model`,
     :func:`~diffBloch.engine.build_refinement_problem`, and
     :func:`~diffBloch.engine.with_hydrogen_riding` -- and is promoted to config only once the
-    default recipe commits to it as stable public behaviour.
+    default recipe commits to it as stable public behaviour. ``precision`` selects the refinement
+    solve's numeric field: ``"fp64"`` keeps the complex128 default; ``"fp32"`` runs the Bloch solve
+    in complex64 for faster/lower-memory refines at reduced decimal precision.
     """
 
     steps: int = 500
     trainable: TrainableConfig = Field(default_factory=TrainableConfig)
     optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
+    precision: FloatFormat = "fp64"
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)
 
 
