@@ -56,7 +56,7 @@ from diffBloch.core.dynamical import (
     grid_source_indices,
 )
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
-from diffBloch.core.solver import FloatFormat, Method
+from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
@@ -77,7 +77,7 @@ def fit_orientation(
     refinement: RefinementSetup,
     search: HexagonalSearch,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
     precision: FloatFormat = "fp64",
     coupling: TrialCoupling | None = None,
     validate: bool = True,

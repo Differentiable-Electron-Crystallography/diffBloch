@@ -42,7 +42,7 @@ def test_minimal_config_validates_with_defaults() -> None:
 
 
 def test_solver_method_must_be_a_known_method() -> None:
-    # The solver fields are typed as the core Method literal, so an unknown method fails fast at
+    # The solver fields are typed as the core SolverMethod literal, so an unknown method fails fast at
     # config load rather than deep in the forward model.
     base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):

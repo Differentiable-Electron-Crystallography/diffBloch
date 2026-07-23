@@ -21,7 +21,7 @@ import torch
 
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution, align
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
     NULL_LOGGER,
@@ -86,7 +86,7 @@ def run_inference(
     refinement: RefinementSetup,
     *,
     prepare: PlanStep = identity,
-    method: Method = "bloch_eigen",
+    method: SolverMethod = "bloch_eigen",
     device: Device | None = None,
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
