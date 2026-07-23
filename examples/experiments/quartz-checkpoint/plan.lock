@@ -1,7 +1,7 @@
 {
   "experiment_lock_sha256": "2deafd82f138abfe3ce944b1afd92fd7f443a89f56241b4e7997df5a0d58a146",
-  "config_digest": "31ec15c0e9a066de0e90cb9c658f2bc31fa0d5cdc086342de74e720d787459e4",
-  "code_version": "0.2.0+ga7995d0.dirty",
+  "config_digest": "d22e308b7464c59b8e2977075a8ca8d6503bc07b7f5a16336d1eda46e6a8545f",
+  "code_version": "0.2.0+g82a942e.dirty",
   "recipe": [
     {
       "name": "select_beams",
@@ -55,7 +55,9 @@
             "__type__": "TiltSegmentUnion",
             "n_splits": 12,
             "g_max": 2.25,
-            "sg_max": 0.01
+            "sg_max": 0.01,
+            "union_adaptive": false,
+            "union_max_new_beams_pct": 0.01
           },
           "scored": {
             "__type__": "ScoredSelection",
@@ -86,8 +88,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "a713f232ae372fde5b9106bca8b039b66817b79260bd51bc9682a1ade82fb708",
-    "bytes": 1030128,
+    "sha256": "ff3a2df1d7514f698da470d188e5c1a5420eff20c75e7d6f1b4b341b01f7dd0b",
+    "bytes": 1030169,
     "media_type": "application/octet-stream"
   }
 }
