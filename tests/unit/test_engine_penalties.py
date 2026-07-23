@@ -70,13 +70,13 @@ def _bond(
 def test_bond_penalty_is_zero_at_target_distance() -> None:
     penalty, state = _bond(distance_fractional=0.2)  # 0.2 * 10 A = 2 A
 
-    assert torch.equal(penalty.loss(state), torch.zeros((), dtype=torch.float64))
+    assert torch.equal(penalty.value(state), torch.zeros((), dtype=torch.float64))
 
 
 def test_bond_penalty_penalizes_stretched_bond_with_mse_default() -> None:
     penalty, state = _bond(distance_fractional=0.3)  # 3 A vs target 2 A, sigma 0.1 A
 
-    assert torch.equal(penalty.loss(state), torch.tensor(100.0, dtype=torch.float64))
+    assert torch.equal(penalty.value(state), torch.tensor(100.0, dtype=torch.float64))
 
 
 def test_bond_penalty_flat_bottom_l1_is_zero_inside_tolerance() -> None:
@@ -89,7 +89,7 @@ def test_bond_penalty_flat_bottom_l1_is_zero_inside_tolerance() -> None:
         criterion="flat_bottom_l1",
     )
 
-    assert torch.equal(penalty.loss(state), torch.zeros((), dtype=torch.float64))
+    assert torch.equal(penalty.value(state), torch.zeros((), dtype=torch.float64))
 
 
 def test_bond_penalty_flat_bottom_l1_is_linear_outside_tolerance() -> None:
@@ -102,14 +102,14 @@ def test_bond_penalty_flat_bottom_l1_is_linear_outside_tolerance() -> None:
         criterion="flat_bottom_l1",
     )
 
-    assert torch.equal(penalty.loss(state), torch.tensor(0.9, dtype=torch.float64))
+    assert torch.equal(penalty.value(state), torch.tensor(0.9, dtype=torch.float64))
 
 
 def test_bond_penalty_gradient_pulls_stretched_bond_shorter() -> None:
     penalty, state = _bond(distance_fractional=0.3)
     positions = state.positions.detach().clone().requires_grad_(True)
 
-    loss = penalty.loss(_state(positions))
+    loss = penalty.value(_state(positions))
     loss.backward()  # type: ignore[no-untyped-call]
 
     assert positions.grad is not None
@@ -121,7 +121,7 @@ def test_bond_penalty_is_translation_invariant() -> None:
     penalty, state = _bond(distance_fractional=0.3)
     translated = _state(state.positions + torch.tensor([0.1, 0.2, 0.3], dtype=torch.float64))
 
-    assert torch.equal(penalty.loss(translated), penalty.loss(state))
+    assert torch.equal(penalty.value(translated), penalty.value(state))
 
 
 def test_perceive_bond_length_penalty_uses_current_heavy_atom_distances_as_targets() -> None:
