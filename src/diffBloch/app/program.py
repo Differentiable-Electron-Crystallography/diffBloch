@@ -1,9 +1,9 @@
 """The default experiment runner the ``run infer`` CLI exposes.
 
-:func:`run_experiment` encodes the faithful default recipe as one ordered ``Plan -> Plan`` pipeline:
+:func:`run_experiment` encodes the default recipe as one ordered ``Plan -> Plan`` pipeline:
 plan-shaping (``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) followed by
 parameter fitting (``fit_orientation`` -> ``fit_thickness``), then ``run_inference`` evaluates it --
-so a caller with an experiment directory gets the faithful result in one call. It is a
+so a caller with an experiment directory gets a full result in one call. It is a
 *convenience*, not the only path: every step is ordinary public API, so a Python user who wants a
 different composition composes their own ``pipeline([...])`` with ``from_experiment`` +
 ``run_inference`` directly. The CLI stays thin by delegating here and holds no science.
@@ -81,18 +81,17 @@ _PLAN_LOCK = "plan.lock"
 
 # Above this unit-cell volume the coupled orientation search runs its coarse pass in fp32 with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
-# exact fp64 path, byte-identical to the pre-fork recipe. The eigensolve is O(N^3) in the beam count
-# and N grows with cell volume, so the fp32 ~1.75x throughput win only pays off for large cells; a
+# exact fp64 path. The eigensolve is O(N^3) in the beam count
+# and N grows with cell volume, so the fp32 throughput win only pays off for large cells; a
 # small cell (quartz ~113 A^3) fits in seconds at fp64 and gains nothing from the coarser search.
-# A deliberately wide heuristic gap separates the known regimes -- quartz ~113 vs LTA/zeolites
+# A deliberately wide heuristic gap separates the known regimes -- quartz ~113 vs zeolites
 # ~1861 A^3 -- so classification is unambiguous; it is not a sharp physical boundary. Kept a code
 # constant, NOT a config field: a config field would enter config_digest and restale the committed
 # quartz checkpoint. It only selects which precision the *search* uses, and the fp64 terminal always
 # re-scores the found orientation, so the threshold never affects the reported score's fidelity.
 # It is NOT free of accuracy consequence, though: the coarse fp32 search can converge to a different
-# -- possibly worse -- basin than fp64 would on the bumpy coupled landscape, and the large branch
-# has no fp64 oracle in its own regime (LTA fp64 is ~hours CPU, CUDA-deferred), so that basin parity
-# is unverified until the A100 fp32-vs-fp64 check. A search-robustness trade, not a scoring one.
+# -- possibly worse -- basin than fp64 would on the bumpy coupled landscape. A search-robustness
+# trade, not a scoring one.
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
@@ -110,15 +109,15 @@ def preprocess_experiment(
 
     The preprocess half of :func:`run_experiment` with the terminal scoring stripped off: it loads
     ``experiment.yaml`` (verifying the input lock), reads the structure + observations, builds the
-    geometry via ``from_experiment``, and runs the faithful integrated recipe -- returning the
+    geometry via ``from_experiment``, and runs the default integrated recipe -- returning the
     settled coupled :class:`~diffBloch.preprocess.plan.Plan` (fitted orientations, tilt-segment
     couplings, pinned scored sets). This is the entry point for callers who want *only* the
     calibrated Plan (to checkpoint it, or to drive their own downstream refinement) without paying
     for the terminal inference pass.
 
-    The recipe is the private's faithful pipeline, **per-trial beam coupling included** (the fit
-    re-derives the SOLVE union + SCORED set at every trial orientation -- the private's exact
-    objective). Its coupling policy, orientation-search bounds, thickness grid, and whether
+    The recipe includes **per-trial beam coupling** (the fit
+    re-derives the SOLVE union + SCORED set at every trial orientation). Its coupling policy,
+    orientation-search bounds, thickness grid, and whether
     hydrogens are loaded all come from config (``preprocess.coupling`` / ``preprocess.orientation``
     / ``preprocess.thickness`` / ``inputs.load_hydrogens``). A caller wanting a different
     composition (e.g. the cheaper tilt-independent fit) composes their own ``pipeline([...])`` with
@@ -137,18 +136,18 @@ def preprocess_experiment(
 
     ``workers`` (default 1, sequential) fans the per-rotation orientation search over a thread pool
     (rotations are independent). On a GPU run the per-trial cost is host-bound around a small
-    eigensolve, so overlapping rotations across cores is the main wall-clock lever (measured best
-    ~4 on the A100; gains flatten past that as the solves serialise on one CUDA stream). Like
+    eigensolve, so overlapping rotations across cores is the main wall-clock lever (a small worker
+    count is usually the sweet spot; gains flatten as the solves serialise on one GPU stream). Like
     ``device`` it is execution-only -- the results are identical to a sequential run and it does not
     enter the checkpoint lock. **Cap host threads to 1 when using it** --
     ``OMP_NUM_THREADS``/``MKL_NUM_THREADS``/``TORCH_NUM_THREADS`` (or ``torch.set_num_threads(1)``);
     in a pod torch/BLAS size their pools from the *node* core count, not the cgroup limit, so an
-    uncapped run oversubscribes the cores the workers need (measured: capping alone cut the LTA
-    per-trial ~1.4 s -> ~0.2 s, before any parallelism).
+    uncapped run oversubscribes the cores the workers need (capping alone can dominate the speedup,
+    before any parallelism).
 
     ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block for the coupled fits.
     ``None`` lets each solve derive a memory-safe block from its beam count; raise it to fill a
-    larger accelerator (e.g. ``1024`` on an 80 GB A100). Execution-only (memory, bit-for-bit to
+    larger accelerator's memory budget. Execution-only (memory, bit-for-bit to
     machine precision), out of the checkpoint lock like ``device``/``workers``. See
     :func:`~diffBloch.engine.build_engine`.
     """
@@ -326,26 +325,26 @@ def _recipe_steps(
     workers: int = 1,
     max_batch: int | None = None,
 ) -> list[PlanStep]:
-    """The faithful default recipe as an inspectable step list (its provenance keys the lock).
+    """The default recipe as an inspectable step list (its provenance keys the lock).
 
-    The orientation fit runs under the private's per-trial coupling (:func:`_trial_coupling`) -- the
-    faithful objective. The tilt-independent fit is not offered here; compose it directly if needed.
+    The orientation fit runs under per-trial coupling (:func:`_trial_coupling`). The tilt-independent
+    fit is not offered here; compose it directly if needed.
 
     The fit tail is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large cell**
     (> ``_LARGE_CELL_THRESHOLD_A3``) takes the coarse fp32 search with the gather integrity checks
     skipped (``validate=False``, made sound by ``fit_orientation``'s coupled coverage guard); a
-    **small cell** takes the exact fp64 path, byte-identical to the pre-fork recipe. The predicate
+    **small cell** takes the exact fp64 path. The predicate
     reads only the pipeline-invariant grid, so :func:`~diffBloch.preprocess.resolve_recipe` compiles
     the fork to a flat branch before the lock sees it (the branch is fixed per experiment). fp32 /
     ``validate`` are execution-only and stay out of the step identity, so the resolved small-cell
-    branch keys identically to today -- the committed quartz checkpoint is untouched.
+    branch keys the same either way -- the committed quartz checkpoint is untouched.
 
     Both ``device`` and ``workers`` are execution-only -- neither alters the recipe identity.
     ``device`` is threaded to *both* fits (so the coupled eigensolve runs on the same accelerator as
     the terminal); ``workers`` fans only the orientation search (the run's long phase) over threads.
     ``max_batch`` (also execution-only) is threaded to both fits: it caps the ``matrix_exp``
     propagator block so a wide coupled segment x the thickness grid can't materialize the whole
-    propagator at once (the adaptive-union fit_thickness OOM); ``None`` picks a memory-safe block.
+    propagator at once; ``None`` picks a memory-safe block.
     """
     search = cfg.preprocess.orientation.to_search()
     thickness_grid = cfg.preprocess.thickness.to_grid()
@@ -387,7 +386,7 @@ def _recipe_steps(
                 orientation_fit(precision="fp32", validate=False),
                 thickness_fit(precision="fp32"),
             ],
-            when_false=[  # small cell: exact fp64, byte-identical to the pre-fork recipe
+            when_false=[  # small cell: exact fp64 path
                 orientation_fit(precision="fp64", validate=True),
                 thickness_fit(precision="fp64"),
             ],
@@ -398,7 +397,7 @@ def _recipe_steps(
 def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
     """Assemble the per-trial coupling from config; raise if the coupled fit has no policy.
 
-    Coupling is the faithful objective and carries no default (it determines the physics), so a
+    Coupling carries no default (it determines the physics), so a
     config that runs the coupled orientation fit must declare ``preprocess.coupling``. The SCORED
     set reuses the *same* Klar window as ``select_beams`` (so the two filters cannot disagree) and
     the config's ``g_max_refine`` as the scoring-resolution cap.
@@ -432,8 +431,8 @@ def _prepare(
     only when steps actually execute (a fresh or resumed run, not a full-reuse load).
     """
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
-    # lock keys on is a flat, fork-free step list -- the fork is Applicative by construction, so its
-    # branch is fixed here, before running (see design/decisions/combinators-and-recipe-identity).
+    # lock keys on is a flat, fork-free step list -- the fork's shape is static by construction, so
+    # its branch is fixed here, before running.
     steps = list(resolve_recipe(steps, base.structure_factor_grid))
     records = step_records(steps)
     # A recipe with an unrecorded (opaque) step cannot be safely identified -> never checkpoint it.

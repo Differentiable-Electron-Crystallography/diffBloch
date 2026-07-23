@@ -1,1 +1,1 @@
-"""Application entry points (CLI; sweep + orchestration adapters land later)."""
+"""Application entry points (the CLI and the default experiment runner)."""

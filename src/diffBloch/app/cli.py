@@ -1,7 +1,8 @@
 """Thin command-line entry point.
 
-This is the orchestration / SLURM boundary (synthesis §18): a Dagster/Prefect op shells out to it,
-or a SLURM job runs it. Kept deliberately thin — it delegates to the library and holds no science.
+This is the orchestration / SLURM boundary: a workflow engine (e.g. Dagster or Prefect) shells out
+to it, or a SLURM job runs it. Kept deliberately thin — it delegates to the library and holds no
+science.
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
-        "count. Raise to fill a larger GPU, e.g. 1024 on an 80 GB A100",
+        "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
     )
 
 
