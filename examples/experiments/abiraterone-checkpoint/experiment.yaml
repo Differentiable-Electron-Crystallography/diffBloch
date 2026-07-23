@@ -45,6 +45,7 @@ preprocess:
     sg_max: 0.02
 
 refinement:
+  precision: fp32
   # Stable execution knobs for the DEFAULT `diffbloch run refine` path: refine positions + ADPs
   # against the observed intensities, Adam at the private abiraterone learning rate. This is the
   # boring config-knobs default; it composes no hard constraints. Hydrogen *riding* (deriving each H

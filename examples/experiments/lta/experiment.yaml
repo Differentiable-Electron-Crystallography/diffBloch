@@ -24,6 +24,7 @@ preprocess:
     g_max: 2.25
     sg_max: 0.01
 refinement:
+  precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation
