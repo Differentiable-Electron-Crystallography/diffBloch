@@ -11,8 +11,7 @@ Two first-class methods, selected by a ``SolverMethod`` *value* (strategy-as-val
 Both are first-class and swappable off the *same* ``BlochSystem`` (no geometry/energy/hkl needed --
 the system is the closed problem). They differ in *what* they return -- symmetrised vs physical
 amplitudes -- coinciding only at ``Mii == 1``; that distinction is a feature to experiment with, not
-a bug. Ports the no-absorption path of ``diffBloch_private``
-``dynamical.py::calculate_dynamical_scattering_batched`` (here single-system).
+a bug. The no-absorption path assumes ``A`` is Hermitian.
 """
 
 from __future__ import annotations
@@ -74,22 +73,22 @@ def propagate(
     single system (``a`` ``(N, N)``) returns ``(T, N)``; a batched system (``a`` ``(B, N, N)``, e.g.
     an orientation's rocking-curve tilts stacked by :func:`core.dynamical.build_bloch_systems`)
     returns ``(B, T, N)`` -- one batched ``eigh`` / ``matrix_exp`` over all tilts. The single-system
-    path is byte-identical to the un-batched computation (the batch axis is simply absent).
+    path is exactly the un-batched computation (the batch axis is simply absent).
     Differentiable in ``A`` (hence in ``Fgb``). ``method`` picks the propagator: ``matrix_exp``
     (refine default, stable autograd) or ``bloch_eigen`` (eval-only). The no-absorption path
     assumes ``A`` is Hermitian.
 
     ``precision`` selects the numeric field of the eigensolve/matrix-exponential -- orthogonal to
-    ``method``. ``"fp64"`` (the default) runs the whole propagation in complex128/float64 and is a
-    pure identity on today's path (byte-identical). ``"fp32"`` downcasts the operator to complex64
+    ``method``. ``"fp64"`` (the default) runs the whole propagation in complex128/float64.
+    ``"fp32"`` downcasts the operator to complex64
     and builds ``thicknesses`` at float32, roughly halving the O(N^3) solve's time and memory. It is
     used automatically only by the preprocess fits' coarse search path; terminal inference keeps the
     fp64 default, while refinement may opt into fp32 explicitly when speed matters more than decimal
-    places. Ports ``diffBloch_private`` ``dynamical.py``'s complex64 eigensolve (#127/#133).
+    places.
 
     ``max_batch`` (``matrix_exp`` only) caps how many ``(N, N)`` operators are exponentiated in one
     ``torch.matrix_exp`` call. ``None`` (the default) builds the whole ``(..., T, N, N)`` transfer
-    at once (byte-identical to before). A positive integer instead streams the flattened
+    at once. A positive integer instead streams the flattened
     ``(B*T, N, N)`` operator stack in row-blocks, so that transfer is never materialized -- the peak
     drops from ``~K*B*T*N**2`` to ``~K*max_batch*N**2``. ``torch.matrix_exp`` shares one
     scaling-and-squaring count across a batch (from its max norm), so regrouping shifts rounding by
@@ -168,8 +167,7 @@ def _propagate_matrix_exp(
     # `max_batch`, applying psi0 per block, so the full (..., T, N, N) transfer is never
     # materialized. Matches the unbounded solve to machine precision (torch.matrix_exp shares one
     # squaring count per batch, so regrouping shifts rounding by ~1 ulp, never accuracy); this
-    # generalizes diffBloch_private's single-thickness cover-batch chunk (dynamical.py
-    # calculate_dynamical_scattering_batched, max_chunk=8) to the multi-thickness grid.
+    # generalizes a single-thickness cover-batch chunk to the multi-thickness grid.
     n = a.shape[-1]
     a_flat = a.reshape(-1, n, n)  # (B, N, N); B == 1 for a single (N, N) system
     n_batch, n_thick = a_flat.shape[0], scalars.shape[0]

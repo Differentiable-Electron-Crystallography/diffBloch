@@ -40,10 +40,9 @@ def cif_adp_to_star(uij_cif: Tensor, reciprocal_lengths: Tensor) -> Tensor:
     """Convert CIF-frame anisotropic ADPs ``Uij_cif`` to the reciprocal ``U*`` frame.
 
     ``U*_ij = d*_i d*_j Uij_cif`` with ``d* = (|a*|, |b*|, |c*|)`` (``reciprocal_lengths``, shape
-    ``(3,)``). This is the private CIF->Cartesian->star chain (``diffBloch_private`` ``Uij_layer``,
-    atoms.py:169-171) with the orthogonalization matrix ``A`` cancelled algebraically
-    (``A^-1 A D* U D* A^T A^-T = D* U D*``), so it depends only on ``reciprocal_cell`` and is
-    exactly faithful to the private result. Differentiable in ``uij_cif``; supports a batch axis.
+    ``(3,)``). This is the CIF->Cartesian->star transform with the orthogonalization matrix ``A``
+    cancelled algebraically (``A^-1 A D* U D* A^T A^-T = D* U D*``), so it depends only on
+    ``reciprocal_cell``. Differentiable in ``uij_cif``; supports a batch axis.
     """
     _require_trailing_matrix(uij_cif, name="uij_cif")
     if reciprocal_lengths.shape != (3,):
@@ -57,11 +56,11 @@ def cartesian_adp_to_star(uij_cart: Tensor, reciprocal_basis: Tensor) -> Tensor:
 
     ``U* = B Uij_cart B^T`` with ``B = reciprocal_cell`` (rows ``a*, b*, c*``). For an isotropic
     Cartesian displacement ``Uij_cart = Uiso I`` this reduces to the textbook ``U* = Uiso G*``
-    (``G* = B B^T`` the reciprocal metric), so ``DWF = exp(-2 pi^2 Uiso |g|^2)``. This replaces the
-    private ``Uij_layer`` ``A^-1 (Uiso I) A^-T`` path, whose ``A`` (Trueblood eq. 50) is built from
-    a ``c_star`` using ``cross(c, b) = |a*|`` rather than ``cross(a, b) = |c*|`` -- a private bug
-    that mislabels ``|a*|`` as ``c*`` and only affects anisotropic cells (see REFERENCES.md).
-    Differentiable in ``uij_cart``; supports a leading batch axis.
+    (``G* = B B^T`` the reciprocal metric), so ``DWF = exp(-2 pi^2 Uiso |g|^2)``. Building ``U*``
+    directly from ``B`` avoids the ``A^-1 (Uiso I) A^-T`` route (``A`` per Trueblood et al. 1996,
+    eq. 50), where a ``c*`` formed from ``cross(c, b) = |a*|`` rather than ``cross(a, b) = |c*|``
+    mislabels ``|a*|`` as ``|c*|`` and corrupts anisotropic cells. Differentiable in ``uij_cart``;
+    supports a leading batch axis.
     """
     _require_trailing_matrix(uij_cart, name="uij_cart")
     if reciprocal_basis.shape != (3, 3):

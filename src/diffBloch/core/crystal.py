@@ -48,8 +48,7 @@ def cell_matrix_from_parameters(parameters: FloatArray) -> FloatArray:
 def reciprocal_cell(cell: FloatArray) -> FloatArray:
     """Return reciprocal lattice vectors as rows in Angstrom^-1.
 
-    This matches the private helper's ASE-compatible convention:
-    ``reciprocal_cell = pinv(cell).T``.
+    Uses the ASE-compatible convention ``reciprocal_cell = pinv(cell).T``.
     """
     matrix = _cell_array(cell)
     return np.linalg.pinv(matrix).T

@@ -1,17 +1,15 @@
 """Electron structure factors (Lobato parametrization), vectorised.
 
-Pure port of the elastic path in ``diffBloch_private/diffBloch/dynamical.py``:
-``StructureFactorNet.calculate_scattering_factors`` / ``calculate_dwf_factor`` / ``forward``. The
-private per-atom Python loops are vectorised here over unique-Z groups and a single batched phase
-sum.
+The elastic structure-factor path -- form factors, Debye-Waller factors, and the phase sum --
+vectorised over unique-Z groups into a single batched phase sum.
 
-Form factors use the native Lobato–Van Dyck (2014) parametrization (coefficients vendored in
-``core/data/lobato.json``; see ``REFERENCES.md``), so abTEM is not a runtime dependency. The form
-factor is a setup constant — only ``positions``, ``uij_star`` and ``occupancies`` carry gradients.
+Form factors use the Lobato–Van Dyck (2014) parametrization (coefficients vendored in
+``core/data/lobato.json``), so no external scattering library is needed at runtime. The form factor
+is a setup constant — only ``positions``, ``uij_star`` and ``occupancies`` carry gradients.
 
-Absorption (the imaginary ``U0'`` path) is intentionally deferred; the quartz anchor runs with
-``absorption: false``. ``structure_factors`` consumes ADPs already in the U* (reciprocal) frame; the
-Cartesian→U* conversion belongs to the ADP/spec layer that wires this into the engine.
+Absorption (the imaginary ``U0'`` path) is intentionally deferred (runs set ``absorption: false``).
+``structure_factors`` consumes ADPs already in the U* (reciprocal) frame; the Cartesian→U*
+conversion belongs to the ADP/spec layer that wires this into the engine.
 """
 
 from __future__ import annotations
@@ -96,13 +94,13 @@ def debye_waller_factor(hkl: Tensor, uij_star: Tensor) -> Tensor:
 def structure_factor_cutoff(
     g: Tensor, g_max: float, *, mode: StructureFactorCutoff = "hard"
 ) -> Tensor:
-    """Reflection resolution cutoff: a hard ``|g| <= g_max`` mask or the private taper window."""
+    """Reflection resolution cutoff: a hard ``|g| <= g_max`` mask or a logistic taper window."""
     if g_max <= 0.0:
         raise ValueError("g_max must be positive")
     if mode == "hard":
         return (g <= g_max).to(g.dtype)
     if mode == "taper":
-        # Logistic taper (the private "taper" window): roll-off centred at TAPER_ALPHA * g_max with
+        # Logistic taper window: roll-off centred at TAPER_ALPHA * g_max with
         # logistic width TAPER_WIDTH. TAPER_ALPHA = 1 - 0.05 starts the roll-off ~5% below g_max.
         taper_width, taper_alpha = 0.005, 1.0 - 0.05
         return 1.0 / (1.0 + torch.exp((g / g_max - taper_alpha) / taper_width))
@@ -124,11 +122,10 @@ def structure_factors(
 ) -> Tensor:
     """Vectorised electron structure factors ``Fgb`` (elastic).
 
-    ``Fgb(h) = (1/V) sum_atoms f_e * DWF * occ * cutoff * exp(2 pi i r . h)``, ported from
-    ``StructureFactorNet.forward``. ``|g|`` is derived internally from ``hkl`` and
-    ``reciprocal_basis`` (no separate ``g`` argument to keep in sync). Differentiable in
-    ``positions``, ``uij_star``, ``occupancies``; ``f_e`` is a constant form factor. Components
-    below ``extinction_threshold`` are zeroed to match the private symmetry-extinction cleanup.
+    ``Fgb(h) = (1/V) sum_atoms f_e * DWF * occ * cutoff * exp(2 pi i r . h)``. ``|g|`` is derived
+    internally from ``hkl`` and ``reciprocal_basis`` (no separate ``g`` argument to keep in sync).
+    Differentiable in ``positions``, ``uij_star``, ``occupancies``; ``f_e`` is a constant form
+    factor. Components below ``extinction_threshold`` are zeroed as a symmetry-extinction cleanup.
     Returns a complex ``(M,)`` tensor.
     """
     n_atoms = positions.shape[0]

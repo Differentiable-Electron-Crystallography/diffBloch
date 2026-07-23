@@ -1,14 +1,14 @@
 """Differentiable structure-matrix assembly (the Bloch ``A`` path).
 
 Combines a geometry-only plan (precomputed, NumPy) with the refined structure factors ``Fgb``
-(torch, differentiable). Stage 8 builds this bottom-up: the gather maps ``Fgb`` onto the ``(N, N)``
+(torch, differentiable). It is built bottom-up: the gather maps ``Fgb`` onto the ``(N, N)``
 off-diagonal positions ``F(g_j - g_i)``, then :func:`structure_matrix` scales it
 (``prefactor * Mii_i * Mii_j``) and fills the diagonal (``2 * k_n * Sg * Mii``). The full
 ``build_bloch_system`` (psi0, mask, propagators) follows, drawing its constants from the sibling
 ``core.dynamical.primitives`` module.
 
 This is the torch half of ``core.dynamical``; ``primitives`` is the NumPy half. The split mirrors
-the codebase's ``core.reciprocal`` (geometry) vs ``core.scattering`` (differentiable) seam.
+the codebase's ``core.reciprocal`` (geometry) vs ``core.scattering`` (differentiable) boundary.
 """
 
 from __future__ import annotations
@@ -35,8 +35,7 @@ type FloatArray = NDArray[np.float64]
 # The off-diagonal of the Bloch structure matrix is ``A[i,j] = scale * F(g_j - g_i)`` — a gather of
 # the structure factors ``Fgb`` onto every pair of beams. ``F`` is the only refined (differentiable)
 # input; the gather *indices* are pure geometry, so they are precomputed once into a frozen plan.
-# Ports the gather half of ``diffBloch_private`` ``calculate_structure_matrix`` /
-# ``raveled_hkl_to_hkl_torch``, preserving its ``gmh = hkl[None] - hkl[:, None]`` ordering
+# The gather uses the ``gmh = hkl[None] - hkl[:, None]`` ordering
 # (so ``gmh[i,j] = hkl_j - hkl_i`` and ``A[i,j] = F(g_j - g_i)``).
 
 
@@ -202,8 +201,8 @@ def _beam_index_array(hkl: IntArray, *, name: str) -> IntArray:
 # ---------------------------------------------------------------------------
 # Structure-matrix assembly: A = scale(geometry) ⊙ gather(F), diagonal replaced
 # ---------------------------------------------------------------------------
-# Adds the geometry-only scale and diagonal to the slice-1 gather, completing the Bloch structure
-# matrix A. Ports the no-absorption path of ``diffBloch_private`` ``calculate_structure_matrix``:
+# Adds the geometry-only scale and diagonal to the gather, completing the Bloch structure matrix A
+# (no-absorption path):
 #   off-diagonal  A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)
 #   diagonal      A[i,i] = 2 * k_n * Sg_i * Mii_i      (replaces, not adds)
 # Every constant is a native primitive (structure_matrix_prefactor, mii_factors, excitation_errors,
@@ -215,7 +214,7 @@ class BeamPlan:
     """Geometry/numerics-only plan for a beam set (immutable across refinement).
 
     Everything fixed by geometry and beam energy, with no dependence on the refined ``Fgb``: the
-    slice-1 ``gather`` of structure factors onto beam pairs, the symmetrisation factors ``mii``
+    ``gather`` of structure factors onto beam pairs, the symmetrisation factors ``mii``
     (``(N,)``), the scalar off-diagonal ``prefactor``, the precomputed real structure-matrix
     ``diagonal`` (``(N,)`` = ``2 * k_n * Sg * Mii``), the propagation constant ``k_n``, the incident
     wavefunction ``psi0`` (``(N,)``, 1 at the 000 beam), and the active-beam ``mask`` (``(N,)``).
@@ -246,20 +245,19 @@ def build_beam_plan(
     """Precompute the geometry/numerics for a beam set.
 
     ``beam_hkl`` ``(N, 3)`` selects the beams; ``structure_factor_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``
-    support grid (slice-1 gather); ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @
+    support grid; ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @
     reciprocal_basis``. ``energy`` (eV) and ``u0`` (mean-inner-potential) set the wavevector.
-    Composes the native primitives into the off-diagonal scale, the structure-matrix diagonal, and
-    the propagation pieces (``k_n``, ``psi0``, ``mask``) -- mirroring ``diffBloch_private``
-    ``calculate_structure_matrix`` (no-absorption path) and the ``psi0 = (hkl == 000)``
-    convention of its dynamical-scattering propagator. ``mask`` is all-True here: the beams are the
-    pre-selected active set (per-orientation ``sg_max`` selection is deferred).
+    Composes the native primitives into the off-diagonal scale (the no-absorption structure-matrix),
+    the structure-matrix diagonal, and the propagation pieces (``k_n``, ``psi0``, ``mask``), with
+    ``psi0`` the ``(hkl == 000)`` incident-beam convention. ``mask`` is all-True here: the beams are
+    the pre-selected active set (per-orientation ``sg_max`` selection is deferred).
 
     ``gather`` may be a precomputed :class:`StructureFactorGather` for this exact ``(structure_factor_hkl,
     beam_hkl, gpts)`` -- the F-gather is basis-independent, so callers rebuilding many plans over a
     single beam set (rocking-curve tilts, orientation-search trials) build it once and pass it in,
-    skipping the per-call index-map construction and its validation (the dominant cost; ports the
-    private's precomputed HKL->index map, ``diffBloch_private`` 6bb3031). When ``None`` it is built
-    here. A cheap shape guard rejects a gather that does not match this beam set / box.
+    skipping the per-call index-map construction and its validation (the dominant cost). When
+    ``None`` it is built here. A cheap shape guard rejects a gather that does not match this beam
+    set / box.
 
     ``validate`` is forwarded to :func:`build_structure_factor_gather` when building the gather here
     (default ``True``); pass ``False`` on a hot rebuild loop whose grid coverage is guaranteed by an
@@ -293,7 +291,7 @@ def build_beam_plan(
 def structure_matrix(plan: BeamPlan, structure_factors: Tensor) -> Tensor:
     """Assemble the Bloch structure matrix ``A`` from a plan and structure factors ``Fgb``.
 
-    Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (slice-1 gather, then
+    Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (gathered, then
     broadcast-scaled); the diagonal is replaced by the precomputed ``2 * k_n * Sg_i * Mii_i``.
     Differentiable in ``structure_factors`` (the diagonal is a geometry constant). Returns a complex
     ``(N, N)`` tensor in the dtype of ``structure_factors``.
@@ -309,8 +307,7 @@ def _fill_diagonal(matrix: Tensor, diagonal: Tensor) -> Tensor:
 
     Gradient flows through the off-diagonal copy; the diagonal positions are overwritten. Rank-
     polymorphic: ``matrix`` is ``(..., N, N)`` with any leading batch dims and ``diagonal`` is
-    ``(..., N)`` -- for a bare ``(N, N)`` this is exactly the single-matrix fill (byte-identical).
-    Mirrors ``diffBloch_private`` ``utils.py::fill_diagonal_torch``.
+    ``(..., N)`` -- for a bare ``(N, N)`` this is exactly the single-matrix fill.
     """
     if matrix.ndim < 2 or matrix.shape[-1] != matrix.shape[-2]:
         raise ValueError("matrix must be square (..., N, N)")
