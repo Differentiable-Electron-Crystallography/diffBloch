@@ -4,6 +4,9 @@ site_url: https://differentiable-electron-crystallography.github.io/diffBloch/
 
 theme:
   name: shadcn
+  # Local template overrides (shadow the theme by matching path); see overrides/templates/footer.html
+  # which drops the upstream "shadcn theme provided by @asiffer" footer credit.
+  custom_dir: overrides
 
 # shadcn renders Pygments-tokenized code (it ships the stylesheets) and adds copy buttons natively,
 # but the highlighting extensions must be enabled explicitly (Material bundled them).

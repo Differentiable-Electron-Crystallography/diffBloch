@@ -7,6 +7,8 @@ diffraction intensities agree.
 > **2.0 rewrite in progress.** This package is being built from scratch, porting from the research
 > codebase stepwise — one discrete, tested commit per stage.
 
+📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (mkdocstrings), rendered from the source on every green `main`.
+
 ## Quickstart
 
 ```bash
