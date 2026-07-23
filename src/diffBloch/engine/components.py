@@ -56,7 +56,7 @@ class PerOrientationThickness:
     """One trainable positive thickness vector per orientation.
 
     This is the simplest concrete component: it seeds params tensors from the prepared Plan's fixed
-    orientation thicknesses and supplies ``positive(params[orientation_index])`` during the forward
+    orientation thicknesses and supplies ``positive(params[rotation_index])`` during the forward
     solve. It is an ablation/proof component before adding the apparent-thickness neural network.
     """
 
@@ -82,7 +82,7 @@ class PerOrientationThickness:
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
         _ = orientation
@@ -93,9 +93,9 @@ class PerOrientationThickness:
         values = params["unconstrained"]
         if values.ndim != 2:
             raise ValueError("per-orientation thickness params tensor must have shape (O, T)")
-        if orientation_index < 0 or orientation_index >= values.shape[0]:
-            raise ValueError("orientation_index is outside the per-orientation thickness tensor")
-        return ForwardContext(thickness=positive(values[orientation_index]))
+        if rotation_index < 0 or rotation_index >= values.shape[0]:
+            raise ValueError("rotation_index is outside the per-orientation thickness tensor")
+        return ForwardContext(thickness=positive(values[rotation_index]))
 
 
 @dataclass(frozen=True)
@@ -127,10 +127,10 @@ class QuadraticThicknessProfile:
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
-        _ = orientation_index
+        _ = rotation_index
         if "coefficients" not in params:
             raise ValueError("quadratic thickness component requires a 'coefficients' tensor")
         coefficients = params["coefficients"]
@@ -226,10 +226,10 @@ class ApparentThicknessNN:
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
-        _ = orientation_index
+        _ = rotation_index
         required = (
             "layer0.weight",
             "layer0.bias",
