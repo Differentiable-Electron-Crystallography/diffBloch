@@ -54,7 +54,7 @@ class _ProbeX:
     name: str = "probe"
     weight: float = 1.0
 
-    def loss(self, state: PhysicalState) -> torch.Tensor:
+    def value(self, state: PhysicalState) -> torch.Tensor:
         return state.positions[:, 0].sum()
 
 

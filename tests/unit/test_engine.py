@@ -246,7 +246,7 @@ class _DummyPenalty:
     name: str = "dummy_penalty"
     weight: float = 0.25
 
-    def loss(self, state: PhysicalState) -> torch.Tensor:
+    def value(self, state: PhysicalState) -> torch.Tensor:
         return state.positions[:, 0].sum() + 2.0
 
 

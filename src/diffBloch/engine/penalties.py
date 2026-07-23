@@ -52,7 +52,7 @@ class BondLengthPenalty:
         if self.criterion not in {"mse", "flat_bottom_l1"}:
             raise ValueError("bond penalty criterion must be 'mse' or 'flat_bottom_l1'")
 
-    def loss(self, state: PhysicalState) -> Tensor:
+    def value(self, state: PhysicalState) -> Tensor:
         """Return the raw mean squared normalized bond-distance residual."""
         device = state.positions.device
         dtype = state.positions.dtype

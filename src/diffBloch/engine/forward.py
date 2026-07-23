@@ -273,7 +273,7 @@ class RefinementEngine:
             if penalty.name in components:
                 raise ValueError(f"duplicate objective component name {penalty.name!r}")
             components[penalty.name] = ObjectiveComponent(
-                raw=penalty.loss(state), weight=penalty.weight
+                raw=penalty.value(state), weight=penalty.weight
             )
         return ObjectiveValue(components)
 

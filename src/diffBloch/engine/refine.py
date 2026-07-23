@@ -199,7 +199,7 @@ class PenaltyTerm(Protocol):
     name: str
     weight: float
 
-    def loss(self, state: PhysicalState) -> Tensor:
+    def value(self, state: PhysicalState) -> Tensor:
         """Return this penalty's raw scalar loss for the current physical state."""
         ...
 
