@@ -44,63 +44,65 @@ type FloatArray = NDArray[np.float64]
 class StructureFactorGather:
     """Precomputed indices mapping structure factors onto the ``(N, N)`` off-diagonal grid.
 
-    Geometry-only plan: ``source_indices`` ravel the ``Fgb`` support grid and
-    ``destination_indices`` ravel the pairwise beam differences ``hkl_j - hkl_i``, both with the
+    Geometry-only plan: ``structure_factor_indices`` ravel the ``Fgb`` support grid and
+    ``beam_difference_indices`` ravel the pairwise beam differences ``hkl_j - hkl_i``, both with the
     same ``gpts`` box (the shared-grid contract — one ``gpts`` keeps the two from drifting).
     Consumed by :func:`gather_structure_factors`, which scatters ``Fgb`` into a flat buffer and
     indexes it, preserving gradients.
     """
 
-    source_indices: Tensor
-    destination_indices: Tensor
+    structure_factor_indices: Tensor
+    beam_difference_indices: Tensor
     n_beams: int
     buffer_size: int
     gpts: tuple[int, int, int]
 
 
-def grid_source_indices(grid_hkl: IntArray, gpts: tuple[int, int, int]) -> IntArray:
-    """The raveled ``grid_hkl`` source offsets -- the grid-constant half of every gather index map.
+def grid_source_indices(structure_factor_hkl: IntArray, gpts: tuple[int, int, int]) -> IntArray:
+    """The raveled ``structure_factor_hkl`` source offsets -- the grid-constant half of every gather index map.
 
     ``build_structure_factor_gather`` ravels the support grid to these offsets on every call, but
-    they depend only on ``(grid_hkl, gpts)`` -- invariant across beam sets, orientations, and
-    trials. Precompute once and pass via ``source_indices=`` to skip re-raveling the (potentially
+    they depend only on ``(structure_factor_hkl, gpts)`` -- invariant across beam sets, orientations, and
+    trials. Precompute once and pass via ``structure_factor_indices=`` to skip re-raveling the
+    (potentially
     large) support grid on every per-trial coupled rebuild. Same values
     ``build_structure_factor_gather`` would compute internally.
     """
-    return ravel_hkl(_beam_index_array(grid_hkl, name="grid_hkl"), gpts)
+    return ravel_hkl(_beam_index_array(structure_factor_hkl, name="structure_factor_hkl"), gpts)
 
 
 def build_structure_factor_gather(
-    grid_hkl: IntArray,
+    structure_factor_hkl: IntArray,
     beam_hkl: IntArray,
     gpts: tuple[int, int, int],
     *,
     validate: bool = True,
-    source_indices: IntArray | None = None,
+    structure_factor_indices: IntArray | None = None,
 ) -> StructureFactorGather:
     """Precompute the structure-factor gather for a beam set against an ``Fgb`` support grid.
 
-    ``grid_hkl`` ``(G, 3)`` are the Miller indices the structure factors are tabulated on;
+    ``structure_factor_hkl`` ``(G, 3)`` are the Miller indices the structure factors are tabulated on;
     ``beam_hkl`` ``(N, 3)`` are the selected beams. The pairwise differences ``hkl_j - hkl_i`` range
-    to ~2x the beam ``g_max``, so ``grid_hkl`` must cover them (the difference-support constraint) —
+    to ~2x the beam ``g_max``, so ``structure_factor_hkl`` must cover them (the difference-support constraint) —
     validated here rather than silently gathering zeros. Both sets ravel through the same ``gpts``
     box (:func:`diffBloch.core.reciprocal.ravel_hkl`, which rejects indices outside the box).
 
     ``validate`` (default ``True``) runs three O(N^2 / N^2 log G) integrity checks: no duplicate
-    ``grid_hkl``, every beam difference in-box, and ``grid_hkl`` covers every difference. They are
+    ``structure_factor_hkl``, every beam difference in-box, and ``structure_factor_hkl`` covers every difference. They are
     the dominant cost when rebuilding a gather per trial over a large beam union, and are *pure
     checks* -- when they pass, the returned indices are identical to skipping them.
 
     ``validate=False`` skips them for a hot loop whose grid coverage is guaranteed **upstream** (a
     ``g_max`` guard). It is *not* self-guarding: the two skipped classes fail differently. A
     genuinely out-of-box difference still raises (``ravel_hkl``, numpy's terser message). But
-    ``grid_hkl`` is the ``|g| <= g_max`` sphere -- a subset of the rectangular box -- so an in-box
+    ``structure_factor_hkl`` is the ``|g| <= g_max`` sphere -- a subset of the rectangular box -- so an in-box
     difference *outside that sphere* is absent from it yet ravels to a valid box index the scatter
     never wrote: :func:`gather_structure_factors` reads a **silent zero**, with no runtime backstop.
     So ``validate=False`` is sound *only* under the upstream coverage guarantee; that guard (not the
     ``ravel_hkl`` check) is what keeps a mis-sized grid from silently gathering zeros.
 
-    ``source_indices`` optionally supplies the precomputed grid ravel (:func:`grid_source_indices`)
+    ``structure_factor_indices`` optionally supplies the precomputed grid ravel
+    (:func:`grid_source_indices`)
     so a hot rebuild loop skips re-raveling the (large) support grid every call -- it is
     grid-constant, so one precompute serves every beam set. When ``None`` it is raveled here (also
     validating ``gpts`` + the grid box, which a supplied one is trusted to have satisfied).
@@ -110,13 +112,13 @@ def build_structure_factor_gather(
     # Private ordering: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
     gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
 
-    if source_indices is None:
-        grid = _beam_index_array(grid_hkl, name="grid_hkl")
+    if structure_factor_indices is None:
+        grid = _beam_index_array(structure_factor_hkl, name="structure_factor_hkl")
         source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
         if validate and np.unique(source).size != source.size:
-            raise ValueError("grid_hkl must not contain duplicate Miller indices")
+            raise ValueError("structure_factor_hkl must not contain duplicate Miller indices")
     else:
-        source = np.asarray(source_indices, dtype=np.int64)
+        source = np.asarray(structure_factor_indices, dtype=np.int64)
 
     if validate:
         # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to
@@ -140,14 +142,14 @@ def build_structure_factor_gather(
         if uncovered.any():
             missing = gmh[uncovered][0]
             raise ValueError(
-                "grid_hkl must cover every beam difference hkl_j - hkl_i; "
+                "structure_factor_hkl must cover every beam difference hkl_j - hkl_i; "
                 f"missing {tuple(int(component) for component in missing)} "
                 "(the grid must span the difference support, ~2x the beam g_max)"
             )
 
     return StructureFactorGather(
-        source_indices=torch.tensor(source, dtype=torch.long),
-        destination_indices=torch.tensor(destination, dtype=torch.long),
+        structure_factor_indices=torch.tensor(source, dtype=torch.long),
+        beam_difference_indices=torch.tensor(destination, dtype=torch.long),
         n_beams=int(beams.shape[0]),
         buffer_size=int(np.prod(gpts)),
         gpts=(int(gpts[0]), int(gpts[1]), int(gpts[2])),
@@ -160,16 +162,19 @@ def gather_structure_factors(
 ) -> Tensor:
     """Gather structure factors onto the ``(N, N)`` off-diagonal grid, preserving gradients.
 
-    ``structure_factors`` ``(G,)`` is the ``Fgb`` tensor aligned with the plan's ``grid_hkl`` order.
+    ``structure_factors`` ``(G,)`` is the ``Fgb`` tensor aligned with the plan's ``structure_factor_hkl`` order.
     Scatters it into a flat reciprocal buffer (out-of-place ``index_add``) and indexes the buffer at
     the beam differences, so ``out[i, j] = F(beam_j - beam_i)``. Differentiable in
     ``structure_factors``.
     """
-    if structure_factors.ndim != 1 or structure_factors.shape[0] != gather.source_indices.shape[0]:
+    if (
+        structure_factors.ndim != 1
+        or structure_factors.shape[0] != gather.structure_factor_indices.shape[0]
+    ):
         raise ValueError("structure_factors must have shape (G,) matching the gather grid")
 
-    source = gather.source_indices.to(device=structure_factors.device)
-    destination = gather.destination_indices.to(device=structure_factors.device)
+    source = gather.structure_factor_indices.to(device=structure_factors.device)
+    destination = gather.beam_difference_indices.to(device=structure_factors.device)
     buffer = torch.zeros(
         gather.buffer_size, dtype=structure_factors.dtype, device=structure_factors.device
     )
@@ -229,7 +234,7 @@ class BeamPlan:
 
 def build_beam_plan(
     beam_hkl: IntArray,
-    grid_hkl: IntArray,
+    structure_factor_hkl: IntArray,
     reciprocal_basis: FloatArray,
     *,
     energy: float,
@@ -240,7 +245,7 @@ def build_beam_plan(
 ) -> BeamPlan:
     """Precompute the geometry/numerics for a beam set.
 
-    ``beam_hkl`` ``(N, 3)`` selects the beams; ``grid_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``
+    ``beam_hkl`` ``(N, 3)`` selects the beams; ``structure_factor_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``
     support grid (slice-1 gather); ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @
     reciprocal_basis``. ``energy`` (eV) and ``u0`` (mean-inner-potential) set the wavevector.
     Composes the native primitives into the off-diagonal scale, the structure-matrix diagonal, and
@@ -249,7 +254,7 @@ def build_beam_plan(
     convention of its dynamical-scattering propagator. ``mask`` is all-True here: the beams are the
     pre-selected active set (per-orientation ``sg_max`` selection is deferred).
 
-    ``gather`` may be a precomputed :class:`StructureFactorGather` for this exact ``(grid_hkl,
+    ``gather`` may be a precomputed :class:`StructureFactorGather` for this exact ``(structure_factor_hkl,
     beam_hkl, gpts)`` -- the F-gather is basis-independent, so callers rebuilding many plans over a
     single beam set (rocking-curve tilts, orientation-search trials) build it once and pass it in,
     skipping the per-call index-map construction and its validation (the dominant cost; ports the
@@ -261,7 +266,9 @@ def build_beam_plan(
     upstream ``g_max`` guard. Ignored when a precomputed ``gather`` is supplied.
     """
     if gather is None:
-        gather = build_structure_factor_gather(grid_hkl, beam_hkl, gpts, validate=validate)
+        gather = build_structure_factor_gather(
+            structure_factor_hkl, beam_hkl, gpts, validate=validate
+        )
     elif gather.n_beams != len(beam_hkl) or gather.gpts != tuple(int(p) for p in gpts):
         raise ValueError("precomputed gather does not match this beam_hkl / gpts")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
@@ -400,8 +407,10 @@ def stack_beam_plans(plans: Sequence[BeamPlan]) -> BeamPlanBatch:
     first = plans[0]
     for plan in plans[1:]:
         shares_beams = torch.equal(
-            plan.gather.destination_indices, first.gather.destination_indices
-        ) and torch.equal(plan.gather.source_indices, first.gather.source_indices)
+            plan.gather.beam_difference_indices, first.gather.beam_difference_indices
+        ) and torch.equal(
+            plan.gather.structure_factor_indices, first.gather.structure_factor_indices
+        )
         if not shares_beams:
             raise ValueError("stack_beam_plans requires plans sharing one beam set (gather)")
         if plan.prefactor != first.prefactor or plan.k_n != first.k_n:

@@ -28,7 +28,7 @@ from diffBloch.core.dynamical import wavelength2energy
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
-from diffBloch.engine.plan import ScatteringGrid
+from diffBloch.engine.plan import StructureFactorGrid
 from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
 from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams
@@ -46,7 +46,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PlanSplit:
-    """A ``train`` / ``validation`` :class:`Plan` pair sharing one :class:`ScatteringGrid`.
+    """A ``train`` / ``validation`` :class:`Plan` pair sharing one :class:`StructureFactorGrid`.
 
     ``from_experiment`` splits the rotations into the two plans (``validation`` = every 10th
     rotation by default); both reference the *same* grid object, so the shared ``Fgb`` support
@@ -72,7 +72,7 @@ class PlanSplit:
         split is irrelevant. ``train`` orientations come first, then ``validation``.
         """
         return Plan(
-            grid=self.train.grid,
+            structure_factor_grid=self.train.structure_factor_grid,
             orientations=self.train.orientations + self.validation.orientations,
         )
 
@@ -157,7 +157,8 @@ def from_experiment(
 
     The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
     ``Plan`` yet). The shared structure-factor grid is *derived* from the solve cutoff rather than
-    hand-declared: :func:`~diffBloch.engine.plan.ScatteringGrid.from_cell_for_solve_cutoff` sizes it
+    hand-declared: :func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff`
+    sizes it
     to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The solve cutoff is the
     ``preprocess.coupling`` radius when the run couples, else the seed pool ``g_max_refine`` (a
     tilt-independent run solves only the seed set). The beam energy is derived from the PETS
@@ -174,12 +175,12 @@ def from_experiment(
     single documented public boundary of the preprocess pipeline (records + config -> setup), and it
     returns a *composite* of two products rather than constructing one domain object. The per-object
     constructors it delegates to follow the classmethod idiom
-    (``ScatteringGrid.from_cell_for_solve_cutoff``, ``CandidatePlan.seed``,
+    (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
     ``RefinementSetup.from_structure``).
     """
     coupling = config.preprocess.coupling
     solve_cutoff = coupling.g_max if coupling is not None else config.numerics.g_max_refine
-    grid = ScatteringGrid.from_cell_for_solve_cutoff(structure.unit_cell, solve_cutoff)
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
     energy = wavelength2energy(observations.wavelength)
     beam_hkl = seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
     orientations = orientation_matrices(
@@ -205,14 +206,14 @@ def from_experiment(
     val_orientations = tuple(p for p, v in zip(plans, validation, strict=True) if v)
     return ExperimentSetup(
         plans=PlanSplit(
-            train=Plan(grid=grid, orientations=train_orientations),
-            validation=Plan(grid=grid, orientations=val_orientations),
+            train=Plan(structure_factor_grid=grid, orientations=train_orientations),
+            validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
         refinement=RefinementSetup.from_structure(structure),
     )
 
 
-def seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.int64]:
+def seed_beam_hkl(grid: StructureFactorGrid, *, g_max_refine: float) -> NDArray[np.int64]:
     """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000).
 
     The orientation-independent candidate pool ``{hkl in grid : |g| <= g_max_refine}`` that
@@ -220,9 +221,9 @@ def seed_beam_hkl(grid: ScatteringGrid, *, g_max_refine: float) -> NDArray[np.in
     at a wider radius. Selecting from the shared ``grid`` keeps every beam difference inside the
     ``Fgb`` support as long as ``2 * g_max_refine <= grid.g_max`` (the caller's responsibility).
     """
-    grid_hkl = np.asarray(grid.grid_hkl)
-    beams: NDArray[np.int64] = grid_hkl[
-        gmax_mask(grid_hkl, np.asarray(grid.reciprocal_basis), g_max_refine)
+    structure_factor_hkl = np.asarray(grid.structure_factor_hkl)
+    beams: NDArray[np.int64] = structure_factor_hkl[
+        gmax_mask(structure_factor_hkl, np.asarray(grid.reciprocal_basis), g_max_refine)
     ]
     return beams
 

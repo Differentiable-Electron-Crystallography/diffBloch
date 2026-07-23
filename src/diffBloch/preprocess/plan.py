@@ -1,7 +1,7 @@
 """The ``Plan``: the invariant geometry the differentiable refinement is conditioned on.
 
 ``Plan`` is the *spine* of the preprocess pipeline -- one immutable value bundling the shared
-:class:`~diffBloch.engine.plan.ScatteringGrid` and the per-rotation
+:class:`~diffBloch.engine.plan.StructureFactorGrid` and the per-rotation
 :class:`~diffBloch.engine.plan.OrientationPlan`\\ s. Each ``Plan -> Plan`` step returns a sharpened
 copy (via :func:`dataclasses.replace`); ``refine`` consumes the final ``Plan``. The dependency
 points ``preprocess -> engine`` (this module imports the engine's geometry plans), never the
@@ -23,7 +23,7 @@ from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
-    ScatteringGrid,
+    StructureFactorGrid,
 )
 
 if TYPE_CHECKING:
@@ -86,10 +86,10 @@ class CandidatePlan:
 
 @dataclass(frozen=True)
 class Plan:
-    """The shared scattering ``grid`` plus the per-rotation ``orientations`` (the refinement spine).
+    """Shared ``structure_factor_grid`` plus per-rotation ``orientations`` (the refinement spine).
 
-    ``grid`` fixes the ``Fgb`` support and metric; ``orientations`` is one
-    :class:`~diffBloch.engine.plan.OrientationPlan` per rotation (each already coupled to ``grid``
+    ``structure_factor_grid`` fixes the ``Fgb`` support and metric; ``orientations`` is one
+    :class:`~diffBloch.engine.plan.OrientationPlan` per rotation (each already coupled to the grid
     at build time). Immutable: preprocess steps return :func:`dataclasses.replace` copies rather
     than mutating in place.
 
@@ -100,7 +100,7 @@ class Plan:
     preserves it); the combinator owns it.
     """
 
-    grid: ScatteringGrid
+    structure_factor_grid: StructureFactorGrid
     orientations: tuple[CandidatePlan | OrientationPlanLike, ...]
     provenance: tuple[StepRecord, ...] = field(default_factory=tuple)
 
@@ -233,8 +233,8 @@ def summarize_plan(plan: Plan) -> dict[str, float]:
     stats = [coupling_stats(op) for op in plan.orientations]
     return {
         "n_orientations": float(len(stats)),
-        "n_grid_hkl": float(plan.grid.grid_hkl.shape[0]),
-        "g_max": float(plan.grid.g_max),
+        "n_grid_hkl": float(plan.structure_factor_grid.structure_factor_hkl.shape[0]),
+        "g_max": float(plan.structure_factor_grid.g_max),
         "n_coupling_segments_total": float(sum(s["n_coupling_segments"] for s in stats)),
         "max_tilts_per_segment": float(max((s["max_tilts_per_segment"] for s in stats), default=0)),
         "max_beams_per_segment": float(max((s["max_beams_per_segment"] for s in stats), default=0)),

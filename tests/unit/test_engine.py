@@ -23,7 +23,7 @@ from diffBloch.engine import (
     RefinementEngine,
     RefinementProblem,
     RefinementResult,
-    ScatteringGrid,
+    StructureFactorGrid,
     TrainableSpec,
     build_refinement_model,
     mse_loss,
@@ -50,7 +50,9 @@ def _engine(
     asu_positions: np.ndarray | None = None,
     numbers: torch.Tensor | None = None,
 ) -> RefinementEngine:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)  # spans the beam differences (h up to +-2)
+    grid = StructureFactorGrid.from_cell(
+        _CELL, g_max=0.45
+    )  # spans the beam differences (h up to +-2)
     if asu_positions is None:
         asu_positions = np.zeros((1, 3))
     asu_plan = build_asu_expansion_plan(
@@ -316,7 +318,7 @@ def test_objective_is_differentiable_through_the_whole_chain() -> None:
 
 
 def test_objective_co_locates_invariants_on_the_param_device() -> None:
-    # On CPU this is a no-op, but it pins the contract: engine-owned invariants (numbers, grid_hkl,
+    # On CPU this is a no-op, but it pins the contract: engine-owned invariants (numbers, structure_factor_hkl,
     # reciprocal_basis, beam_hkl) and each orientation's thickness are moved to the params device at
     # the use site, so a simulated solution lands on the same device as the parameter-derived
     # tensors.
@@ -351,7 +353,7 @@ def test_objective_rejects_non_scalar_loss() -> None:
 
 
 def test_scattering_grid_from_cell_spans_difference_support() -> None:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     # building beam plans validates the grid covers hkl_j - hkl_i; too-small g_max must raise.
     pattern = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
@@ -360,7 +362,7 @@ def test_scattering_grid_from_cell_spans_difference_support() -> None:
     )
     OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))  # ok
 
-    tiny = ScatteringGrid.from_cell(_CELL, g_max=0.15)  # |g|<=0.15 -> only h=0, no differences
+    tiny = StructureFactorGrid.from_cell(_CELL, g_max=0.15)  # |g|<=0.15 -> only h=0, no differences
     with pytest.raises(ValueError, match="difference support|gpts is too small"):
         OrientationPlan.build(tiny, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 

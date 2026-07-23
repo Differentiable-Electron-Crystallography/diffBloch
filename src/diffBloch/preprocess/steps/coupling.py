@@ -21,7 +21,8 @@ once ``select_beams`` has established the Klar-selected scored set (before it, a
 :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (the re-couple), re-deriving each
 rotation's segments from its current source fields (``orientation`` / ``tilts`` / ``energy`` /
 ``u0``). The
-candidate pool is the shared grid (``plan.grid.grid_hkl``, which spans the coupling cap), and the
+candidate pool is the shared grid (``plan.structure_factor_grid.structure_factor_hkl``, which spans
+the coupling cap), and the
 tilt set is the one ``integrate_rocking_curve`` already baked, so this raises if a rotation has
 fewer than two tilts. The upstream ``tilt_reduction`` (e.g. a ``mosaicity`` broadening) is carried
 through unchanged.
@@ -38,7 +39,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, ScatteringGrid
+from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.pipeline import PlanStep, as_step, identity
 from diffBloch.preprocess.plan import Plan, require_built_plans
@@ -65,7 +66,8 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
             def run(plan: Plan) -> Plan:
                 orientations = tuple(
-                    _couple_one(plan.grid, op, policy) for op in require_built_plans(plan)
+                    _couple_one(plan.structure_factor_grid, op, policy)
+                    for op in require_built_plans(plan)
                 )
                 return replace(plan, orientations=orientations)
 
@@ -73,7 +75,7 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
 
 def _couple_one(
-    grid: ScatteringGrid, op: OrientationPlanLike, policy: SegmentedUnionCoupling
+    grid: StructureFactorGrid, op: OrientationPlanLike, policy: SegmentedUnionCoupling
 ) -> CoupledOrientationPlan:
     """Partition one rotation's rocking curve into boundary-union segments at its orientation.
 
@@ -91,7 +93,7 @@ def _couple_one(
         )
     segments = build_coupling_segments(
         policy,
-        np.asarray(grid.grid_hkl, dtype=np.int64),
+        np.asarray(grid.structure_factor_hkl, dtype=np.int64),
         cell=np.asarray(grid.cell, dtype=np.float64),
         orientation=np.asarray(op.orientation, dtype=np.float64),
         tilts=tilts,

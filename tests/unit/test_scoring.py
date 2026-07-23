@@ -20,7 +20,7 @@ from diffBloch.engine import (
     CoupledOrientationPlan,
     OrientationPlan,
     RefinementEngine,
-    ScatteringGrid,
+    StructureFactorGrid,
     scaled_w_rbragg_loss,
     w_rbragg_loss,
 )
@@ -69,8 +69,8 @@ def test_optimal_scale_returns_the_grid_minimum() -> None:
 # --- score_orientation + seam (synthetic silicon) -------------------------------------------------
 
 
-def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
@@ -85,7 +85,7 @@ def _params() -> RefinableParams:
 
 
 def _engine(
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     asu_plan: object,
     spec: ConstraintSpec,
     numbers: torch.Tensor,
@@ -102,7 +102,7 @@ def _engine(
 
 
 def _self_consistent_orientation(
-    grid: ScatteringGrid, asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor
+    grid: StructureFactorGrid, asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor
 ) -> tuple[OrientationPlan, torch.Tensor]:
     """An orientation whose observed pattern is what the engine simulates at ``_params()``."""
     dummy = PatternBatch(
@@ -156,7 +156,7 @@ def test_score_orientation_penalises_a_mismatched_pattern() -> None:
 def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     orientation, _ = _self_consistent_orientation(grid, asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(orientation,))
+    plan = Plan(structure_factor_grid=grid, orientations=(orientation,))
     refinement = RefinementSetup(
         asu_plan=asu_plan,  # type: ignore[arg-type]
         spec=spec,
@@ -165,7 +165,7 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     )
 
     engine = build_engine(plan, refinement)
-    assert engine.grid is plan.grid
+    assert engine.grid is plan.structure_factor_grid
     assert engine.orientations is plan.orientations
     assert engine.spec is refinement.spec
     assert engine.asu_plan is refinement.asu_plan
@@ -182,7 +182,7 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
 def _silicon_plan() -> tuple[Plan, RefinementSetup]:
     grid, asu_plan, spec, numbers = _silicon()
     orientation, _ = _self_consistent_orientation(grid, asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(orientation,))
+    plan = Plan(structure_factor_grid=grid, orientations=(orientation,))
     refinement = RefinementSetup(
         asu_plan=asu_plan,  # type: ignore[arg-type]
         spec=spec,

@@ -26,10 +26,11 @@ from diffBloch.observability import NULL_LOGGER, Logger, PlanStepCompleted
 from diffBloch.preprocess.plan import Plan, summarize_plan
 
 if TYPE_CHECKING:
-    # Annotation-only (``from __future__ import annotations``): ScatteringGrid is never touched at
+    # Annotation-only (``from __future__ import annotations``): StructureFactorGrid is never
+    # touched at
     # runtime here, so keep it a type-only import -- pipeline stays free of a runtime edge up into
     # ``engine`` (no cycle today; this keeps it that way).
-    from diffBloch.engine.plan import ScatteringGrid
+    from diffBloch.engine.plan import StructureFactorGrid
 
 __all__ = [
     "OPAQUE",
@@ -213,7 +214,7 @@ class Fork:
 
     The recipe's fourth composition shape (see ``design/decisions/plan-composition-shapes.md``).
     The one rule that makes it checkpointable: **the predicate reads only the
-    :class:`~diffBloch.engine.plan.ScatteringGrid`, invariant across every preprocess step**
+    :class:`~diffBloch.engine.plan.StructureFactorGrid`, invariant across every preprocess step**
     (steps ``replace`` orientations; nothing resizes the grid). So the branch is a deterministic
     function of the experiment's fixed inputs -- knowable *before* running -- rather than of the
     mutating ``Plan``. That keeps the fork *Applicative* (its shape is static), so
@@ -229,28 +230,28 @@ class Fork:
     a safe miss; checkpointable identity comes *only* from :func:`resolve_recipe`.
     """
 
-    predicate: Callable[[ScatteringGrid], bool]
+    predicate: Callable[[StructureFactorGrid], bool]
     when_true: tuple[PlanStep, ...]
     when_false: tuple[PlanStep, ...]
 
-    def resolve(self, grid: ScatteringGrid) -> tuple[PlanStep, ...]:
+    def resolve(self, grid: StructureFactorGrid) -> tuple[PlanStep, ...]:
         """The branch this fork takes for ``grid`` (the invariant discriminant)."""
         return self.when_true if self.predicate(grid) else self.when_false
 
     def __call__(self, plan: Plan) -> Plan:
         """Run the chosen branch (ad-hoc use inside a raw ``pipeline``; records ``OPAQUE``)."""
-        return pipeline(self.resolve(plan.grid))(plan)
+        return pipeline(self.resolve(plan.structure_factor_grid))(plan)
 
 
 def fork(
-    predicate: Callable[[ScatteringGrid], bool],
+    predicate: Callable[[StructureFactorGrid], bool],
     *,
     when_true: Sequence[PlanStep],
     when_false: Sequence[PlanStep],
 ) -> Fork:
     """Build a :class:`Fork` choosing between two step lists by a predicate on the grid.
 
-    ``predicate`` receives the shared :class:`~diffBloch.engine.plan.ScatteringGrid` (e.g. a
+    ``predicate`` receives the shared :class:`~diffBloch.engine.plan.StructureFactorGrid` (e.g. a
     cell-volume / grid-size test routing a large cell to a coarse-precision branch); ``when_true`` /
     ``when_false`` are the branch step lists (kept as lists so their records survive resolution).
 
@@ -263,7 +264,7 @@ def fork(
     return Fork(predicate=predicate, when_true=tuple(when_true), when_false=tuple(when_false))
 
 
-def resolve_recipe(steps: Sequence[PlanStep], grid: ScatteringGrid) -> tuple[PlanStep, ...]:
+def resolve_recipe(steps: Sequence[PlanStep], grid: StructureFactorGrid) -> tuple[PlanStep, ...]:
     """Compile every :class:`Fork` away against ``grid`` -> a flat, fork-free step list.
 
     Splices each fork's chosen branch inline (recursively, so nested forks flatten too). Because the

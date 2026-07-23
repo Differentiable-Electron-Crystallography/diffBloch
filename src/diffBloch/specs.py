@@ -347,7 +347,8 @@ def assert_grid_covers_coupling(policy: SegmentedUnionCoupling, grid_g_max: floa
 
     A coupled solve union admits only beams with ``|g| < g_max``, so any pairwise difference is
     ``|g_j - g_i| < 2 * g_max`` (triangle inequality). When ``2 * g_max <= grid_g_max`` the dense
-    integer ``grid_hkl`` sphere therefore contains every difference, so the per-segment gathers
+    integer ``structure_factor_hkl`` sphere therefore contains every difference, so the per-segment
+    gathers
     cannot address a reflection outside it -- exactly the condition that makes
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather` ``validate=False`` sound on the
     coupled fit path (it closes the silent-zero coverage gap the O(N^2) integrity checks otherwise

@@ -85,8 +85,12 @@ def test_with_orientation_reuses_the_gather_and_matches_a_fresh_build() -> None:
 
     assert all(bp.gather is seed.beam_plans[0].gather for bp in rebuilt.beam_plans)  # reused
     assert np.array_equal(rebuilt.orientation.numpy(), target)
-    eng_rebuilt = build_engine(Plan(grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD)
-    eng_fresh = build_engine(Plan(grid=grid, orientations=(fresh,)), refinement, method=_METHOD)
+    eng_rebuilt = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD
+    )
+    eng_fresh = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(fresh,)), refinement, method=_METHOD
+    )
     torch.testing.assert_close(
         eng_rebuilt.simulate(refinement.params)[0].intensities,
         eng_fresh.simulate(refinement.params)[0].intensities,
@@ -108,8 +112,12 @@ def test_with_orientation_identity_reproduces_the_plan() -> None:
     )
     same = seed.with_orientation(grid, seed.orientation)
 
-    eng_seed = build_engine(Plan(grid=grid, orientations=(seed,)), refinement, method=_METHOD)
-    eng_same = build_engine(Plan(grid=grid, orientations=(same,)), refinement, method=_METHOD)
+    eng_seed = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(seed,)), refinement, method=_METHOD
+    )
+    eng_same = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(same,)), refinement, method=_METHOD
+    )
     torch.testing.assert_close(
         eng_seed.simulate(refinement.params)[0].intensities,
         eng_same.simulate(refinement.params)[0].intensities,
@@ -138,8 +146,12 @@ def test_segmented_with_orientation_reuses_gathers_and_preserves_scored_set() ->
     for reb_seg, seed_seg in zip(rebuilt.segments, seed.segments, strict=True):
         assert reb_seg.plan.beam_plans[0].gather is seed_seg.plan.beam_plans[0].gather  # reused
     assert rebuilt.alignment.hkl.tolist() == seed.alignment.hkl.tolist()  # scored set idempotent
-    eng_reb = build_engine(Plan(grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD)
-    eng_fresh = build_engine(Plan(grid=grid, orientations=(fresh,)), refinement, method=_METHOD)
+    eng_reb = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(rebuilt,)), refinement, method=_METHOD
+    )
+    eng_fresh = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(fresh,)), refinement, method=_METHOD
+    )
     torch.testing.assert_close(
         eng_reb.simulate(refinement.params)[0].intensities,
         eng_fresh.simulate(refinement.params)[0].intensities,
@@ -150,7 +162,7 @@ def test_couple_beams_tilt_independent_is_the_identity() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
 
     coupled = couple_beams(TiltIndependent())(plan)
 
@@ -163,7 +175,7 @@ def test_couple_beams_requires_a_rocking_curve_tilt_set() -> None:
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
     with pytest.raises(ValueError, match="requires a rocking-curve tilt set"):
-        couple_beams(SegmentedUnionCoupling())(Plan(grid=grid, orientations=(op,)))
+        couple_beams(SegmentedUnionCoupling())(Plan(structure_factor_grid=grid, orientations=(op,)))
 
 
 def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
@@ -217,10 +229,12 @@ def test_segmented_solve_equals_plain_integration_for_a_trivial_partition() -> N
         tilts=_TILTS,
     )
 
-    engine = build_engine(Plan(grid=grid, orientations=(plain,)), refinement, method=_METHOD)
+    engine = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(plain,)), refinement, method=_METHOD
+    )
     plain_solution = engine.simulate(refinement.params)[0]
     seg_engine = build_engine(
-        Plan(grid=grid, orientations=(segmented,)), refinement, method=_METHOD
+        Plan(structure_factor_grid=grid, orientations=(segmented,)), refinement, method=_METHOD
     )
     seg_solution = seg_engine.simulate(refinement.params)[0]
 
@@ -245,7 +259,9 @@ def test_run_inference_scores_a_segmented_plan() -> None:
         tilts=_TILTS,
     )
 
-    result = run_inference(Plan(grid=grid, orientations=(segmented,)), refinement, method=_METHOD)
+    result = run_inference(
+        Plan(structure_factor_grid=grid, orientations=(segmented,)), refinement, method=_METHOD
+    )
 
     assert len(result.per_rotation) == 1
     assert result.per_rotation[0].r_obs < 1e-6  # self-consistent pattern
@@ -261,14 +277,16 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
     seed = CoupledOrientationPlan.build(
         grid, segments, _pattern(torch.zeros(len(_BEAM_HKL))), orientation=np.eye(3), **build_kwargs
     )
-    engine = build_engine(Plan(grid=grid, orientations=(seed,)), refinement, method=_METHOD)
+    engine = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(seed,)), refinement, method=_METHOD
+    )
     observed = _pattern(engine.simulate(refinement.params)[0].intensities[0])
     matched = CoupledOrientationPlan.build(
         grid, segments, observed, orientation=np.eye(3), **build_kwargs
     )
 
     (refined,) = fit_orientation(refinement, HexagonalSearch(), method=_METHOD)(
-        Plan(grid=grid, orientations=(matched,))
+        Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
     assert isinstance(refined, CoupledOrientationPlan)  # segmented type preserved through the fit
     assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2  # stayed optimal
@@ -277,7 +295,7 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
         refinement,
         ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
         method=_METHOD,
-    )(Plan(grid=grid, orientations=(refined,))).orientations
+    )(Plan(structure_factor_grid=grid, orientations=(refined,))).orientations
     assert isinstance(thick, CoupledOrientationPlan)
     assert thick.thickness.shape == (1,)  # baked the grid-search winner
 
@@ -291,14 +309,14 @@ def _quartz_rot13() -> tuple[object, OrientationPlan, object]:
     from pathlib import Path
 
     from diffBloch.config import load_experiment
-    from diffBloch.engine import ScatteringGrid
+    from diffBloch.engine import StructureFactorGrid
     from diffBloch.io import read_structure
     from diffBloch.preprocess.experiment import RefinementSetup
 
     root = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
     cfg, _lock = load_experiment(root)
     structure = read_structure(root / cfg.inputs.structure)
-    grid = ScatteringGrid.from_cell_for_solve_cutoff(
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
         structure.unit_cell, cfg.preprocess.coupling.g_max
     )
     tilts = np.load(root / "parity_replay" / "tilts.npz")["tilts"]
@@ -330,7 +348,7 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     """
     grid, op, _refinement_unused = _quartz_rot13()
     policy = SegmentedUnionCoupling()
-    once = couple_beams(policy)(Plan(grid=grid, orientations=(op,)))
+    once = couple_beams(policy)(Plan(structure_factor_grid=grid, orientations=(op,)))
 
     twice = couple_beams(policy)(once)  # re-couple a segmented plan (previously a TypeError)
 
@@ -364,7 +382,7 @@ def test_fit_orientation_couples_and_reselects_per_trial() -> None:
 
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
     (fitted,) = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(
-        Plan(grid=grid, orientations=(op,))
+        Plan(structure_factor_grid=grid, orientations=(op,))
     ).orientations
     assert isinstance(fitted, CoupledOrientationPlan)  # seed rebuilt through the coupled builder
 
@@ -403,7 +421,7 @@ def test_fit_orientation_workers_match_sequential() -> None:
     grid, op, refinement = _quartz_rot13()
     coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredSelection(g_max=1.6))
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
-    plan = Plan(grid=grid, orientations=(op, op))
+    plan = Plan(structure_factor_grid=grid, orientations=(op, op))
 
     sequential = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(plan)
     threaded = fit_orientation(refinement, search, method=_METHOD, coupling=coupling, workers=2)(
@@ -430,7 +448,7 @@ def test_fit_orientation_emits_progress_events() -> None:
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
 
     fit_orientation(refinement, search, method=_METHOD, coupling=coupling, logger=recorder)(
-        Plan(grid=grid, orientations=(op, op))
+        Plan(structure_factor_grid=grid, orientations=(op, op))
     )
 
     fits = [e for e in recorder.events if isinstance(e, OrientationFitted)]
@@ -467,6 +485,8 @@ def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
     # union is the full 3-beam set, but the scored axis is only the pinned reflection.
     assert segmented.beam_hkl.shape[0] == len(_BEAM_HKL)
     assert segmented.alignment.hkl.tolist() == [[0, 0, 0]]
-    engine = build_engine(Plan(grid=grid, orientations=(segmented,)), refinement, method=_METHOD)
+    engine = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(segmented,)), refinement, method=_METHOD
+    )
     aligned = align(engine.simulate(refinement.params)[0], segmented.pattern, segmented.alignment)
     assert aligned.calculated.shape[-1] == 1  # scored on 1 reflection, not the 3-beam union

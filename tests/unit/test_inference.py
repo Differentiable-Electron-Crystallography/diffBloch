@@ -17,7 +17,7 @@ from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
+from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, run_inference
 from diffBloch.preprocess.plan import Plan
@@ -28,8 +28,8 @@ _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _METHOD = "matrix_exp"  # observed patterns below use this; keep run_inference matched to it
 
 
-def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
@@ -53,7 +53,7 @@ def _refinement(asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor) -
 
 
 def _simulated_intensities(
-    grid: ScatteringGrid, asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor
+    grid: StructureFactorGrid, asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor
 ) -> torch.Tensor:
     """The intensities the engine simulates at ``_params()`` (the self-consistent target)."""
     dummy = PatternBatch(
@@ -75,7 +75,9 @@ def _simulated_intensities(
     return solution.intensities[0].detach()
 
 
-def _orientation(grid: ScatteringGrid, intensities: torch.Tensor, sigma: float) -> OrientationPlan:
+def _orientation(
+    grid: StructureFactorGrid, intensities: torch.Tensor, sigma: float
+) -> OrientationPlan:
     pattern = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=intensities,
@@ -87,7 +89,7 @@ def _orientation(grid: ScatteringGrid, intensities: torch.Tensor, sigma: float) 
 def test_run_inference_reports_low_r_obs_at_a_self_consistent_pattern() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(_orientation(grid, intensities, 0.01),))
+    plan = Plan(structure_factor_grid=grid, orientations=(_orientation(grid, intensities, 0.01),))
 
     result = run_inference(plan, _refinement(asu_plan, spec, numbers), method=_METHOD)
 
@@ -105,7 +107,7 @@ def test_run_inference_penalises_a_mismatched_pattern() -> None:
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     matched = _orientation(grid, intensities, 0.01)
     mismatched = _orientation(grid, intensities.flip(0) + 0.05, 0.01)
-    plan = Plan(grid=grid, orientations=(matched, mismatched))
+    plan = Plan(structure_factor_grid=grid, orientations=(matched, mismatched))
 
     result = run_inference(plan, _refinement(asu_plan, spec, numbers), method=_METHOD)
 
@@ -116,12 +118,14 @@ def test_run_inference_applies_the_prepare_step() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     plan = Plan(
-        grid=grid,
+        structure_factor_grid=grid,
         orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
     )
 
     # A prepare step that keeps only the first orientation must shrink the reported rotations.
-    keep_first = lambda p: Plan(grid=p.grid, orientations=p.orientations[:1])  # noqa: E731
+    def keep_first(p: Plan) -> Plan:
+        return Plan(structure_factor_grid=p.structure_factor_grid, orientations=p.orientations[:1])
+
     result = run_inference(
         plan,
         _refinement(asu_plan, spec, numbers),
@@ -138,7 +142,7 @@ def test_inference_result_aggregates_only_finite_rotations() -> None:
     observed = _orientation(grid, intensities, 0.01)
     # A huge sigma leaves no reflection above I > 3*sigma, so this rotation's r_obs is nan.
     unobserved = _orientation(grid, intensities, 1e6)
-    plan = Plan(grid=grid, orientations=(observed, unobserved))
+    plan = Plan(structure_factor_grid=grid, orientations=(observed, unobserved))
 
     result = run_inference(plan, _refinement(asu_plan, spec, numbers), method=_METHOD)
 
@@ -154,7 +158,7 @@ def test_run_inference_emits_events_to_the_logger() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     plan = Plan(
-        grid=grid,
+        structure_factor_grid=grid,
         orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
     )
     logger = RecordingLogger()

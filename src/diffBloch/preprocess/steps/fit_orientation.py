@@ -58,7 +58,7 @@ from diffBloch.core.dynamical import (
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
 from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
-from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, ScatteringGrid
+from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
 from diffBloch.params import Device
 from diffBloch.preprocess.coupling import build_coupling_segments
@@ -165,7 +165,7 @@ def fit_orientation(
         # for running those gathers validate=False (their silent-zero gap has no runtime backstop).
         # O(1), orientation-independent, always on -- fails at setup, not deep in the search.
         if coupling is not None:
-            assert_grid_covers_coupling(coupling.policy, plan.grid.g_max)
+            assert_grid_covers_coupling(coupling.policy, plan.structure_factor_grid.g_max)
         engine = build_engine(
             plan, refinement, method=method, precision=precision, max_batch=max_batch
         )
@@ -249,7 +249,7 @@ def _refine_one(
     :func:`_coupled_trial`, which re-couples the solve union and re-selects the scored set at that
     orientation -- the deliberately non-stationary faithful objective (see the module docstring).
     """
-    grid = plan.grid
+    grid = plan.structure_factor_grid
     n_trials = 0
     # One rotation's search revisits the same excitation unions across many nearby trials, so the
     # orientation-free per-segment F-gathers are memoized by beam set for the search's duration
@@ -300,7 +300,7 @@ def _refine_one(
 
 
 def _coupled_trial(
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     op: OrientationPlanLike,
     orientation: NDArray[np.float64],
     coupling: TrialCoupling,
@@ -331,7 +331,7 @@ def _coupled_trial(
     tilts = np.asarray(op.tilts, dtype=np.float64)
     segments = build_coupling_segments(
         coupling.policy,
-        np.asarray(grid.grid_hkl, dtype=np.int64),
+        np.asarray(grid.structure_factor_hkl, dtype=np.int64),
         cell=cell,
         orientation=orientation,
         tilts=tilts,
@@ -354,8 +354,9 @@ def _coupled_trial(
     keep &= gmax_mask(union, np.asarray(grid.reciprocal_basis), scored.g_max)  # resolution cap
     gathers = None
     if gather_cache is not None:
-        grid_hkl = np.asarray(grid.grid_hkl)
-        # The gather's grid-side ravel is identical for every segment (same grid_hkl/gpts), so build
+        structure_factor_hkl = np.asarray(grid.structure_factor_hkl)
+        # The gather's grid-side ravel is identical for every segment (same
+        # structure_factor_hkl/gpts), so build
         # it once here and reuse across this trial's segment builds -- re-raveling the support grid
         # per segment was the residual per-trial cost after the |g|<cap pre-filter. Lazy: only paid
         # when a segment actually misses the cache (an unchanged union rebuilds nothing).
@@ -366,9 +367,13 @@ def _coupled_trial(
             gather = gather_cache.get(key)
             if gather is None:
                 if source is None:
-                    source = grid_source_indices(grid_hkl, grid.gpts)
+                    source = grid_source_indices(structure_factor_hkl, grid.gpts)
                 gather = build_structure_factor_gather(
-                    grid_hkl, segment.union_hkl, grid.gpts, validate=validate, source_indices=source
+                    structure_factor_hkl,
+                    segment.union_hkl,
+                    grid.gpts,
+                    validate=validate,
+                    structure_factor_indices=source,
                 )
                 gather_cache[key] = gather
             gathers.append(gather)

@@ -76,7 +76,7 @@ def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
     pruned = step(plan)
 
     # Plan -> Plan: the shared grid object is preserved; a new Plan is returned.
-    assert pruned.grid is plan.grid
+    assert pruned.structure_factor_grid is plan.structure_factor_grid
     assert pruned is not plan
     assert len(pruned.orientations) == len(plan.orientations)
 

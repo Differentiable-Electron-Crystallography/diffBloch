@@ -56,7 +56,7 @@ def select_beams(selection: BeamSelection) -> PlanStep:
     """
 
     def run(plan: Plan) -> Plan:
-        cell = np.asarray(plan.grid.cell)
+        cell = np.asarray(plan.structure_factor_grid.cell)
         candidates = tuple(_reselect(cell, cp, selection) for cp in require_candidate_plans(plan))
         return replace(plan, orientations=candidates)
 
@@ -78,7 +78,7 @@ def build_orientation_plans() -> PlanStep:
     def run(plan: Plan) -> Plan:
         built = tuple(
             OrientationPlan.build(
-                plan.grid,
+                plan.structure_factor_grid,
                 np.asarray(cp.beam_hkl),
                 cp.pattern,
                 energy=cp.energy,
@@ -110,12 +110,13 @@ def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) ->
     ``2 * g_max_refine <= grid.g_max``; a candidate past that raises rather than silently truncating
     (dependent grid resizing is unimplemented).
     """
-    if 2.0 * g_max_refine > seed.grid.g_max:
+    if 2.0 * g_max_refine > seed.structure_factor_grid.g_max:
         raise ValueError(
             f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
-            f"(g_max={seed.grid.g_max:.4g}); dependent grid resizing is not implemented"
+            f"(g_max={seed.structure_factor_grid.g_max:.4g}); "
+            "dependent grid resizing is not implemented"
         )
-    beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
+    beam_hkl = seed_beam_hkl(seed.structure_factor_grid, g_max_refine=g_max_refine)
     candidates = tuple(
         CandidatePlan.seed(
             beam_hkl,

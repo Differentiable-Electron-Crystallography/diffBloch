@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from diffBloch.core.products import PatternBatch
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess import Plan, integrate_rocking_curve
 from diffBloch.specs import IntegrationGeometry, RockingCurve
 
@@ -22,7 +22,7 @@ _BEAM_HKL = np.array([[0, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int64)  # off 
 
 
 def _plan() -> Plan:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     hkl = torch.tensor(_BEAM_HKL, dtype=torch.int64)
     pattern = PatternBatch(
         hkl=hkl,
@@ -30,7 +30,7 @@ def _plan() -> Plan:
         sigmas=torch.ones(3, dtype=torch.float64),
     )
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
-    return Plan(grid=grid, orientations=(op,))
+    return Plan(structure_factor_grid=grid, orientations=(op,))
 
 
 def test_integrate_bakes_the_tilt_set_into_every_orientation() -> None:
@@ -48,7 +48,7 @@ def test_integrate_bakes_the_tilt_set_into_every_orientation() -> None:
     # Source/compiled preserved: the beam set, thickness, and shared grid are untouched.
     assert torch.equal(op.beam_hkl, plan.orientations[0].beam_hkl)
     assert torch.equal(op.thickness, plan.orientations[0].thickness)
-    assert integrated.grid is plan.grid
+    assert integrated.structure_factor_grid is plan.structure_factor_grid
 
 
 def test_integrate_unit_sampling_is_the_identity() -> None:

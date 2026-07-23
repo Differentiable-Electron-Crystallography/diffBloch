@@ -104,7 +104,7 @@ def test_no_checkpoint_neither_reads_nor_writes(tmp_path: Path) -> None:
 
 
 def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path) -> None:
-    # _prepare compiles a fork away against base.grid before locking, so a forked recipe checkpoints
+    # _prepare compiles a fork away against base.structure_factor_grid before locking, so a forked recipe checkpoints
     # through the ordinary flat-recipe lock: same branch -> reuse; a flipped branch -> stale.
     exp = _experiment(tmp_path)
     _, base = built_seed_system()

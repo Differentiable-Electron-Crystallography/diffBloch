@@ -14,7 +14,7 @@ from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
+from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
 from diffBloch.observability import RecordingLogger, ThicknessFitted
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_thickness
@@ -27,8 +27,8 @@ _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _TRUE_THICKNESS = 300.0
 
 
-def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
@@ -43,7 +43,7 @@ def _params() -> RefinableParams:
 
 
 def _engine(
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     asu_plan: object,
     spec: ConstraintSpec,
     numbers: torch.Tensor,
@@ -69,7 +69,7 @@ def _refinement(asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor) -
 
 
 def _observed_at(
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     asu_plan: object,
     spec: ConstraintSpec,
     numbers: torch.Tensor,
@@ -95,7 +95,7 @@ def test_fit_thickness_recovers_the_simulated_thickness() -> None:
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     # Seed the orientation at a deliberately wrong thickness: the fit must overwrite it.
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
 
     # grid = [200, 250, 300, 350, 400] includes the true 300 A.
     fitted = fit_thickness(
@@ -112,14 +112,14 @@ def test_fit_thickness_leaves_geometry_untouched() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
 
     fitted = fit_thickness(
         _refinement(asu_plan, spec, numbers),
         ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
     )(plan)
 
-    assert fitted.grid is plan.grid
+    assert fitted.structure_factor_grid is plan.structure_factor_grid
     assert len(fitted.orientations) == 1
     fop = fitted.orientations[0]
     # Only thickness changed: orientation / energy / beam set / observed pattern are preserved.
@@ -134,7 +134,7 @@ def test_fit_thickness_single_step_bakes_the_lower_bound() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
 
     # n_steps == 1 -> the only candidate is min_thickness.
     fitted = fit_thickness(
@@ -149,7 +149,7 @@ def test_fit_thickness_emits_one_thicknessfitted_per_rotation() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op, op))  # two rotations -> indices 0, 1
+    plan = Plan(structure_factor_grid=grid, orientations=(op, op))  # two rotations -> indices 0, 1
 
     log = RecordingLogger()
     fitted = fit_thickness(
@@ -173,7 +173,7 @@ def test_fit_thickness_device_cpu_is_a_no_op() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
     thickness_grid = ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5)
 
     base = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid)(plan)
@@ -196,7 +196,7 @@ def test_fit_thickness_cuda_matches_cpu() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
-    plan = Plan(grid=grid, orientations=(op,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
     thickness_grid = ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5)
 
     cpu = fit_thickness(_refinement(asu_plan, spec, numbers), thickness_grid, device="cpu")(plan)

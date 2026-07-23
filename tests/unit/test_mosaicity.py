@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, PlainSum
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess import Plan, integrate_rocking_curve, mosaicity
 from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve
 
@@ -24,7 +24,7 @@ _BEAM_HKL = np.array([[0, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int64)
 
 
 def _plan() -> Plan:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     hkl = torch.tensor(_BEAM_HKL, dtype=torch.int64)
     pattern = PatternBatch(
         hkl=hkl,
@@ -32,7 +32,7 @@ def _plan() -> Plan:
         sigmas=torch.ones(3, dtype=torch.float64),
     )
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
-    return Plan(grid=grid, orientations=(op,))
+    return Plan(structure_factor_grid=grid, orientations=(op,))
 
 
 def _integrated(sampling: int) -> Plan:

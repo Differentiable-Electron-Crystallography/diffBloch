@@ -38,7 +38,7 @@ def _load(npz: Path):
     data = np.load(npz)
     plan = build_beam_plan(
         data["beam_hkl"],
-        data["grid_hkl"],
+        data["structure_factor_hkl"],
         data["reciprocal_basis"],
         energy=float(data["energy"]),
         gpts=tuple(int(point) for point in data["gpts"]),

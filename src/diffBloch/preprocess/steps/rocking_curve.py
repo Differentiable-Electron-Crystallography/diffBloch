@@ -63,7 +63,7 @@ def integrate_rocking_curve(rocking: RockingCurve) -> PlanStep:
 def _integrate_one(plan: Plan, op: OrientationPlan, tilts: np.ndarray) -> OrientationPlan:
     """Rebuild one orientation with the tilt set baked in, reusing its beam set and thickness."""
     return OrientationPlan.build(
-        plan.grid,
+        plan.structure_factor_grid,
         np.asarray(op.beam_hkl, dtype=np.int64),
         op.pattern,
         energy=op.energy,

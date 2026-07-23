@@ -47,7 +47,7 @@ from diffBloch.engine.constraints import ConstraintTransform
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlanLike,
-    ScatteringGrid,
+    StructureFactorGrid,
 )
 from diffBloch.engine.refine import (
     ObjectiveComponent,
@@ -97,7 +97,7 @@ class RefinementEngine:
     spec: ConstraintSpec
     asu_plan: AsuExpansionPlan
     numbers: Tensor
-    grid: ScatteringGrid
+    grid: StructureFactorGrid
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: Method = "matrix_exp"
@@ -316,7 +316,7 @@ class RefinementEngine:
             expanded.numbers,
             expanded.occupancies,
             expanded.uij,
-            hkl=self.grid.grid_hkl.to(device),
+            hkl=self.grid.structure_factor_hkl.to(device),
             reciprocal_basis=self.grid.reciprocal_basis.to(device),
             cell_volume=self.grid.cell_volume,
             g_max=self.grid.g_max,

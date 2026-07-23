@@ -28,7 +28,7 @@ def test_from_experiment_builds_grid_sharing_train_val_split() -> None:
     val = setup.plans.validation
 
     # Both plans reference the SAME grid object -> shared Fgb support cannot diverge.
-    assert train.grid is val.grid
+    assert train.structure_factor_grid is val.structure_factor_grid
     # Every rotation lands in exactly one plan; validation is every 10th (99 -> 9 val, 90 train).
     assert len(train.orientations) + len(val.orientations) == observations.n_rotations
     assert len(val.orientations) == 9
@@ -52,7 +52,9 @@ def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
     # Seed beams include the 000 transmitted beam and stay within g_max_refine (difference-safe).
     beam_hkl = first.beam_hkl
     assert (beam_hkl == 0).all(axis=1).any()
-    g = beam_hkl.astype(np.float64) @ np.asarray(setup.plans.train.grid.reciprocal_basis)
+    g = beam_hkl.astype(np.float64) @ np.asarray(
+        setup.plans.train.structure_factor_grid.reciprocal_basis
+    )
     assert np.all(np.linalg.norm(g, axis=1) <= config.numerics.g_max_refine + 1e-9)
 
 

@@ -128,7 +128,8 @@ def build_coupling_segments(
     v1 analog: the union-split block in ``BlochNet.forward``.
 
     ``candidate_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
-    :class:`~diffBloch.engine.plan.ScatteringGrid` ``grid_hkl`` -- radius ``2 * g_max``, so the
+    :class:`~diffBloch.engine.plan.StructureFactorGrid` ``structure_factor_hkl`` -- radius
+    ``2 * g_max``, so the
     ``|g| < g_max`` mask filters it to each tilt's excited set). ``cell`` ``(3, 3)`` is the
     real-space basis, ``orientation`` ``(3, 3)`` the rotation's crystal orientation, ``tilts``
     ``(B, 3, 3)``
@@ -161,7 +162,7 @@ def build_coupling_segments(
     # cell correction (``u_matrix``: ``U = UB @ B^-1``, deliberately non-orthonormal), so this |g|
     # differs from the ideal-cell ``reciprocal_cell`` metric the grid is tabulated on by the
     # cell-correction magnitude (~1% on quartz). The grid's ``2 * g_max + _SUPPORT_MARGIN`` shell
-    # (:meth:`ScatteringGrid.from_cell_for_solve_cutoff`) covers that difference; it is NOT a
+    # (:meth:`StructureFactorGrid.from_cell_for_beam_cutoff`) covers that difference; it is NOT a
     # per-tilt variation and NOT an orthonormality bug -- coupling in the experimental-cell metric
     # is the physically correct cut.
     g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # constant across tilts

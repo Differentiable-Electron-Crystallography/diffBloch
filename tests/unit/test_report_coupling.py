@@ -81,7 +81,7 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     tilt_independent = OrientationPlan.build(
         grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
     )
-    plan = Plan(grid=grid, orientations=(segmented, tilt_independent))
+    plan = Plan(structure_factor_grid=grid, orientations=(segmented, tilt_independent))
 
     log = RecordingLogger()
     out = report_coupling(log)(plan)
@@ -97,12 +97,12 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
     assert summaries[0].measurements["n_coupling_segments_total"] == 3.0  # 2 + 1
-    assert summaries[0].measurements["n_grid_hkl"] == float(grid.grid_hkl.shape[0])
+    assert summaries[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
 
 
 def test_summarize_plan_aggregates_the_widest_and_largest() -> None:
     grid, *_ = _silicon()
-    plan = Plan(grid=grid, orientations=(_segmented(grid),))
+    plan = Plan(structure_factor_grid=grid, orientations=(_segmented(grid),))
     summary = summarize_plan(plan)
     assert summary["n_orientations"] == 1.0
     assert summary["max_tilts_per_segment"] == 2.0

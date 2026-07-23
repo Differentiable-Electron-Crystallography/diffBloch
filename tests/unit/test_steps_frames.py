@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from diffBloch.core.products import PatternBatch
-from diffBloch.engine.plan import ScatteringGrid
+from diffBloch.engine.plan import StructureFactorGrid
 from diffBloch.preprocess import (
     FrameSelection,
     Plan,
@@ -37,7 +37,9 @@ def _frame(intensities: list[float], sigmas: list[float] | None = None) -> Candi
 
 
 def _plan(*frames: CandidatePlan) -> Plan:
-    return Plan(grid=ScatteringGrid.from_cell(_CELL, g_max=2.0), orientations=frames)
+    return Plan(
+        structure_factor_grid=StructureFactorGrid.from_cell(_CELL, g_max=2.0), orientations=frames
+    )
 
 
 def _strong(n: int) -> CandidatePlan:
@@ -78,7 +80,7 @@ def test_dropping_every_frame_raises() -> None:
 def test_grid_is_preserved() -> None:
     plan = _plan(_strong(50), _strong(1))
     kept = select_frames(FrameSelection(min_observed=5))(plan)
-    assert kept.grid is plan.grid
+    assert kept.structure_factor_grid is plan.structure_factor_grid
 
 
 def test_select_finite_loss_frames_drops_nonfinite_initial_objectives(

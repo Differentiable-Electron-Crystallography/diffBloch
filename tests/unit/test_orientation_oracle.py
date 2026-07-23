@@ -20,7 +20,7 @@ import torch
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.core.dynamical import excitation_errors
 from diffBloch.core.products import PatternBatch
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import OrientationPlan, StructureFactorGrid
 
 _ORACLE = Path(__file__).parent.parent / "fixtures" / "quartz_anchor" / "orientation_oracle.npz"
 
@@ -53,8 +53,8 @@ def test_wrong_transpose_convention_is_observably_off() -> None:
     assert not np.allclose(sg_wrong, o["sg"][0], atol=1e-3)
 
 
-def _grid(o: dict[str, np.ndarray]) -> ScatteringGrid:
-    return ScatteringGrid.from_cell(cell_matrix_from_parameters(o["cellpar"]), g_max=4.5)
+def _grid(o: dict[str, np.ndarray]) -> StructureFactorGrid:
+    return StructureFactorGrid.from_cell(cell_matrix_from_parameters(o["cellpar"]), g_max=4.5)
 
 
 def _pattern(beam_hkl: np.ndarray) -> PatternBatch:

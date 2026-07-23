@@ -62,7 +62,7 @@ def build_engine(
         spec=refinement.spec,
         asu_plan=refinement.asu_plan,
         numbers=refinement.numbers,
-        grid=plan.grid,
+        grid=plan.structure_factor_grid,
         orientations=require_built_plans(plan),
         loss=loss,
         method=method,
