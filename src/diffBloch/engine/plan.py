@@ -43,22 +43,19 @@ __all__ = [
     "mean_plan_thickness",
 ]
 
-# Half-Angstrom shell added to the derived structure-factor support radius (the private's
-# ``2 * g_max + 0.5`` prefilter). It reconciles the two metrics in play: the coupling filter cuts
-# ``|g| < g_max`` in the *orientation* metric (which folds the experimental cell correction --
-# ``u_matrix`` is deliberately non-orthonormal), while the grid is tabulated on the ideal-cell
-# ``reciprocal_cell`` metric. The two differ by the cell-correction magnitude (~1% on quartz), so a
-# coupled beam difference can be up to that fraction past a bare ``2 * g_max`` in the grid metric.
-# This is a private-compatibility shell, not a tunable scientific knob. See
-# StructureFactorGrid.from_cell_for_beam_cutoff.
+# Half-Angstrom shell added to the derived structure-factor support radius. It reconciles the two
+# metrics in play: the coupling filter cuts ``|g| < g_max`` in the *orientation* metric (which folds
+# the experimental cell correction -- ``u_matrix`` is deliberately non-orthonormal), while the grid
+# is tabulated on the ideal-cell ``reciprocal_cell`` metric. The two differ by the cell-correction
+# magnitude (~1% on quartz), so a coupled beam difference can be up to that fraction past a bare
+# ``2 * g_max`` in the grid metric. This is a numerical safety shell, not a tunable scientific knob.
+# See StructureFactorGrid.from_cell_for_beam_cutoff.
 _SUPPORT_MARGIN = 0.5
 
 
 @dataclass(frozen=True)
 class StructureFactorGrid:
     """The shared ``Fgb`` support grid, owned once and reused by structure factors and beam plans.
-
-    v1 analog: the ``g-h`` grid of ``StructureFactorNet``.
 
     Three reciprocal-space radii are easy to conflate; they are distinct concerns:
 
@@ -115,24 +112,19 @@ class StructureFactorGrid:
 
         The ``2x`` is **fundamental**, not an implementation artifact: any coupled Bloch solve that
         gathers ``F(g - h)`` from a tabulated grid needs the table out to twice the beam cutoff, so
-        the factor cannot be designed away. ``diffBloch_private`` #154 did **not** remove it -- it
-        removed the *bookkeeping* of it. The old convention made the caller declare the doubled
-        radius and then halved it internally (``self.g_max = sf_g_max / 2``), an error-prone
-        double-entry; #154 flipped it so the caller declares the beam cutoff and the ``2x`` support
-        is *derived* (private's ``StructureFactorNet`` builds its g-h grid at ``2 * self.g_max``).
-        This method is the public port of that derivation: pass the physical solve cutoff, get the
-        ``2x`` support -- the hand-doubled ``from_cell`` radius is what #154 made unnecessary, not
-        the ``2x`` itself. ``solve_g_max`` is the beam/coupling cutoff, distinct from the
+        the factor cannot be designed away. The API is arranged so the caller declares the *physical
+        solve cutoff* and the ``2x`` support is *derived* here, rather than declaring the doubled
+        radius and halving it internally (``self.g_max = sf_g_max / 2``) -- an error-prone
+        double-entry. ``solve_g_max`` is the beam/coupling cutoff, distinct from the
         scoring-resolution cutoff (``g_max_refine``), which selects reflections for the objective,
         not the solve.
 
-        The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN`` -- ``diffBloch_private``'s
-        ``2 * g_max + 0.5`` prefilter shell. The half-Angstrom headroom reconciles the coupling
-        filter's *orientation* metric (which folds the experimental cell correction -- ``u_matrix``
-        is deliberately non-orthonormal, ~1% on quartz) with this ideal-cell ``reciprocal_cell``
-        metric, so a coupled beam difference near ``2 * solve_g_max`` in the former still lands
-        inside the grid in the latter. The shell only enlarges the (unused-at-the-margin) SF table;
-        it changes neither the coupled beam set nor the scored set.
+        The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN``. The half-Angstrom headroom
+        reconciles the coupling filter's *orientation* metric (which folds the experimental cell
+        correction -- ``u_matrix`` is deliberately non-orthonormal, ~1% on quartz) with this
+        ideal-cell ``reciprocal_cell`` metric, so a coupled beam difference near ``2 * solve_g_max``
+        in the former still lands inside the grid in the latter. The shell only enlarges the
+        (unused-at-the-margin) SF table; it changes neither the coupled beam set nor the scored set.
         """
         if solve_g_max <= 0.0:
             raise ValueError("solve_g_max must be positive")
@@ -151,7 +143,7 @@ class OrientationPlan:
     the lab-frame basis is derived from it, never stored. ``tilts`` ``(N, 3, 3)`` is the
     rocking-curve integration tilt set (source): N goniometer sub-orientations, each built into
     the matching entry of ``beam_plans`` (``N = len(beam_plans)``). The default is a single identity
-    tilt ``(1, 3, 3)`` -- one static solve, byte-identical to the pre-integration plan; a longer set
+    tilt ``(1, 3, 3)`` -- one static solve; a longer set
     is baked by ``integrate_rocking_curve`` and summed as ``|psi|^2`` over the tilts by the engine.
     ``thickness`` ``(T,)`` is the specimen's
     thickness for this rotation (its beam path length at this tilt), held fixed during refinement.
@@ -195,7 +187,7 @@ class OrientationPlan:
         ``orientation_basis(grid.cell, orientation) = reciprocal_cell(cell @ orientation.T)`` and
         drives ``g`` -> ``Sg`` / ``Mii`` only. When ``None`` the orientation is the identity and the
         shared ``grid.reciprocal_basis`` is used directly (the untilted / single-orientation case),
-        making that path byte-identical to the unoriented build. The rotation convention (and the
+        making that path identical to the unoriented build. The rotation convention (and the
         measured-cell correction folded into ``orientation``) is derived upstream in ``preprocess``;
         the ``Fgb`` gather is keyed on ``grid.structure_factor_hkl`` and is unaffected.
 
@@ -210,8 +202,8 @@ class OrientationPlan:
         ``tilts`` ``(N, 3, 3)`` is the optional rocking-curve integration set: N goniometer
         rotations, each left-multiplying ``orientation`` (``R_tilt @ orientation``) into its own
         built ``beam_plan``, sharing this orientation's one beam set. ``None`` (the default) is a
-        single identity tilt, so ``beam_plans`` has length 1 and the untilted path is byte-identical
-        to before; ``integrate_rocking_curve`` passes the tilt matrices from
+        single identity tilt, so ``beam_plans`` has length 1 and the untilted path is the plain
+        static solve; ``integrate_rocking_curve`` passes the tilt matrices from
         :func:`~diffBloch.preprocess.orientation.rocking_curve_tilts`.
 
         ``tilt_reduction`` selects how the engine reduces the tilt sub-solutions over the rocking
@@ -224,8 +216,7 @@ class OrientationPlan:
         tilts here share one, and a caller rebuilding this plan over a fixed beam set (rocking
         integration, orientation-search trials) passes the seed plan's gather
         (``op.beam_plans[0].gather``) to skip re-deriving it on every rebuild -- the dominant
-        preprocess cost (the fix the private applied in its 6bb3031). When ``None`` it is built once
-        here and shared across the tilts.
+        preprocess cost. When ``None`` it is built once here and shared across the tilts.
 
         ``validate`` (default ``True``) is forwarded to
         :func:`~diffBloch.core.dynamical.build_structure_factor_gather` when it builds the gather
@@ -248,7 +239,7 @@ class OrientationPlan:
             nominal_basis = orientation_basis(np.asarray(grid.cell), rotation)
         if tilts is None:
             tilt_mats = np.eye(3, dtype=np.float64)[None]
-            # No tilts: reuse the nominal basis exactly, keeping the untilted build byte-identical.
+            # No tilts: reuse the nominal basis exactly for the untilted build.
             bases = [nominal_basis]
         else:
             tilt_mats = np.asarray(tilts, dtype=np.float64)
@@ -330,9 +321,7 @@ class SegmentPlan:
 
 @dataclass(frozen=True)
 class CoupledOrientationPlan:
-    """A rotation whose rocking curve couples a *different* beam set per tilt chunk (the private).
-
-    v1 analog: the ``A_batches`` / ``cell_chunks`` reassembly in ``BlochNet.forward``.
+    """A rotation whose rocking curve couples a *different* beam set per tilt chunk.
 
     The tilt-dependent generalization of :class:`OrientationPlan`: instead of one beam set shared
     across all tilts, the curve is partitioned into :class:`SegmentPlan` chunks, each solving its

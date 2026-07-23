@@ -57,7 +57,7 @@ class PerOrientationThickness:
 
     This is the simplest concrete component: it seeds params tensors from the prepared Plan's fixed
     orientation thicknesses and supplies ``positive(params[rotation_index])`` during the forward
-    solve. It is an ablation/proof component before adding the apparent-thickness neural network.
+    solve. Each orientation carries its own free thickness, with no sharing across orientations.
     """
 
     key: str = "per_orientation_thickness"
@@ -103,8 +103,9 @@ class QuadraticThicknessProfile:
     """Bounded low-dimensional thickness profile over orientation angle.
 
     The component evaluates ``a0 + a1*x + a2*x^2`` where ``x`` is the rotation angle from identity
-    normalized by pi, then applies :class:`ThicknessBounds`. It is an interpretable bridge between
-    per-orientation free thicknesses and a neural apparent-thickness model.
+    normalized by pi, then applies :class:`ThicknessBounds`. It ties thickness to orientation with
+    three shared coefficients rather than one free value per orientation, an interpretable
+    middle ground between free per-orientation thicknesses and a learned apparent-thickness model.
     """
 
     bounds: ThicknessBounds
@@ -163,11 +164,11 @@ def _orientation_angle_fraction(orientation: Tensor) -> Tensor:
 
 @dataclass(frozen=True)
 class ApparentThicknessNN:
-    """Paper-style bounded apparent-thickness neural network component.
+    """Bounded apparent-thickness neural-network component.
 
-    The network maps orientation angle to two outputs ``(mu, sigma_raw)`` using the paper MLP
-    architecture. The first implementation consumes only ``mu`` and rejects stochastic thickness
-    sampling until the sigma likelihood/sampling path is wired.
+    The network maps orientation angle to two outputs ``(mu, sigma_raw)`` through a small MLP, then
+    applies :class:`ThicknessBounds` to the mean. Only ``mu`` is consumed for the forward thickness;
+    the ``sigma`` output is not used, so the thickness is deterministic (no stochastic sampling).
     """
 
     bounds: ThicknessBounds
