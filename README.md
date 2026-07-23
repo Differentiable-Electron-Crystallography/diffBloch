@@ -17,9 +17,17 @@ just check        # lint + typecheck + unit tests
 just docs-serve   # live API docs
 just anchor       # the quartz physics anchors (opt-in e2e)
 
-# Score the worked quartz example (faithful coupled recipe, mean R_obs = 0.0506):
-diffbloch run infer examples/experiments/quartz-checkpoint   # instant — ships a frozen checkpoint
-diffbloch run infer examples/experiments/quartz              # ~6–16 min — fits from scratch
+# Validate a config before launching a longer job:
+diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+
+# Simulate and score without changing parameters:
+diffbloch run infer examples/experiments/quartz-checkpoint
+
+# Run the optimizer and update trainable structural parameters:
+diffbloch run refine examples/experiments/quartz
+
+# Start refinement faster from the bundled quartz preprocessing checkpoint:
+diffbloch run refine examples/experiments/quartz-checkpoint
 ```
 
 See `examples/experiments/quartz/README.md` for the worked example and its expected residual.

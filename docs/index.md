@@ -102,46 +102,35 @@ objects you care about.
 
 ### CLI and examples
 
-For day-to-day use, diffBloch ships with a [CLI](api/app.md) that has sane defaults for both
-preprocessing and the refinement loop, and can be run out of the box against bundled compounds such
-as quartz, abiraterone, LTA, and CsPbBr3. To run the small quartz example end to end — including
-preprocessing and refinement — point the CLI at the ordinary quartz experiment directory:
-
-```bash
-diffbloch run refine examples/experiments/quartz
-```
-
-For a quicker first run, use a checkpointed example such as `quartz-checkpoint`, which already
-includes `plan.npz` and `plan.lock`, so the CLI can skip preprocessing and start from the reusable
-`Plan`:
-
-```bash
-diffbloch run refine examples/experiments/quartz-checkpoint
-```
-
-For a larger compound, run on an accelerator when available:
-
-```bash
-diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
-```
+For day-to-day use, diffBloch ships with a [CLI](api/app.md) that has sane defaults for
+preprocessing, inference, and refinement. The bundled `examples/experiments` directories are baked-in
+demonstration runs; [`examples/papers`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/papers)
+shows more advanced composition patterns for research workflows.
 
 The examples choose `refinement.precision: fp32` for faster iteration; switch that field to `fp64`
 for the conservative highest-precision refinement path.
 
-It also supports scientific research workflows for power users who need to compose their own
-pipelines, constraints, penalties, or model components. To get started with those patterns, review
-[`examples/papers`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/papers),
-which shows more advanced usage than the default CLI path.
-
 ## Quickstart
 
-Run the small quartz example end to end:
+Validate a config before launching a longer job:
+
+```bash
+diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+```
+
+Simulate and score the settled quartz checkpoint without changing parameters:
+
+```bash
+diffbloch run infer examples/experiments/quartz-checkpoint
+```
+
+Run the small quartz example end to end, including preprocessing and refinement:
 
 ```bash
 diffbloch run refine examples/experiments/quartz
 ```
 
-Start faster from the bundled quartz preprocessing checkpoint:
+Start refinement faster from the bundled quartz preprocessing checkpoint:
 
 ```bash
 diffbloch run refine examples/experiments/quartz-checkpoint
@@ -153,13 +142,12 @@ Run a larger checkpointed compound on CUDA:
 diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
 ```
 
-Use `infer` when you want to simulate and score a settled plan without changing parameters. Use
-`refine` when you want to run the optimization loop and update the structural parameters. Run
-`diffbloch validate <experiment.yaml>` to check an experiment config before launching a longer job.
+Use `infer` to run the forward simulation and scoring pass over a settled `Plan`; it does not update
+structural parameters. Use `refine` to run the optimization loop, repeatedly simulating, scoring,
+and updating the selected trainable structural parameters.
 
 Python users can compose preprocessing steps, constraints, penalties, and refinement problems
-directly with the public API; the CLI is the friendly default runner, not the only path. See
-`examples/papers` for more advanced composition patterns.
+directly with the public API; the CLI is the friendly default runner, not the only path.
 
 ## API
 
