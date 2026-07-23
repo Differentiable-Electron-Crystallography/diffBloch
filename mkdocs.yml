@@ -37,6 +37,17 @@ plugins:
 
 nav:
   - Home: index.md
+  - Guides:
+      - Architecture: architecture.md
+      - Inputs: inputs.md
+      - Preprocessing: preprocessing.md
+      - Reproducibility: reproducibility.md
+      - Refinement: refinement.md
+      - Observability: observability-guide.md
+      - Examples: examples.md
+      - Model composition: model-composition.md
+      - Beams and scoring: beams-and-scoring.md
+      - Rocking curve and coupling: rocking-curve.md
   - API:
       - Config: api/config.md
       - IO: api/io.md
