@@ -10,7 +10,8 @@ dependency:
 - :class:`~diffBloch.app.loggers.wandb.WandbLogger` (``diffBloch.app.loggers.wandb``)
 - :class:`~diffBloch.app.loggers.comet.CometLogger` (``diffBloch.app.loggers.comet``)
 
-Writing your own backend is one method -- see the "extension" section of the logging tutorial.
+Writing your own backend is a single method: implement ``report(event)`` for the events you care
+about.
 """
 
 from __future__ import annotations
@@ -103,13 +104,13 @@ class FitAbortedError(RuntimeError):
 class EarlyAbortLogger:
     """Watch the per-rotation fit stream and abort a run that is not tracking the data.
 
-    A fit-quality guard for a long, oracle-less **from-scratch** fit -- e.g. LTA on the A100, where
-    no checkpoint is committed and there is no reference ``R_obs`` to pin against, so a mis-set-up
+    A fit-quality guard for a long, oracle-less **from-scratch** fit -- one with no committed
+    checkpoint and no reference ``R_obs`` to pin against, so a mis-set-up
     run (wrong energy / ``g_max``, bad data lineage) would otherwise burn its whole budget producing
     a bad answer. ``fit_orientation`` emits one :class:`~diffBloch.observability.OrientationFitted`
     per rotation as it finishes, carrying the scaling-optimised ``wr2`` at the fitted orientation. A
-    healthy run reaches a low ``wr2`` on essentially every rotation (measured quartz coupled ``wr2``
-    ~0.03-0.06); a fundamentally broken one stays high on all of them. This guard gives the run
+    healthy run reaches a low ``wr2`` on essentially every rotation; a fundamentally broken one stays
+    high on all of them. This guard gives the run
     ``patience`` rotations to show *at least one* orientation reaching ``wr2 <= wr2_ceiling``; if
     none does, it raises :class:`FitAbortedError`, unwinding the fit before the remaining rotations
     run. Pick ``wr2_ceiling`` generously (well above a healthy fit, well below a garbage one) so a
