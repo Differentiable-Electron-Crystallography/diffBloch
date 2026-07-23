@@ -253,11 +253,11 @@ class RefinementEngine:
             state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
-        for orientation_index, orientation in enumerate(self.orientations):
+        for rotation_index, orientation in enumerate(self.orientations):
             context = (
                 ForwardContext()
                 if forward_context_for is None
-                else forward_context_for(orientation_index, orientation)
+                else forward_context_for(rotation_index, orientation)
             )
             thickness = context.thickness
             if thickness is None:
@@ -433,7 +433,7 @@ class ModelComponent(Protocol):
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
         """Return this component's values for one orientation."""
@@ -483,9 +483,9 @@ def _component_forward_context_for(
     model: RefinementModel,
 ) -> Callable[[int, OrientationPlanLike], ForwardContext]:
     def forward_context_for(
-        orientation_index: int, orientation: OrientationPlanLike
+        rotation_index: int, orientation: OrientationPlanLike
     ) -> ForwardContext:
-        return _forward_context(model, orientation_index=orientation_index, orientation=orientation)
+        return _forward_context(model, rotation_index=rotation_index, orientation=orientation)
 
     return forward_context_for
 
@@ -493,14 +493,14 @@ def _component_forward_context_for(
 def _forward_context(
     model: RefinementModel,
     *,
-    orientation_index: int,
+    rotation_index: int,
     orientation: OrientationPlanLike,
 ) -> ForwardContext:
     thickness: Tensor | None = None
     for component in model.components:
         params = model.component_params[component.key]
         context = component.forward_context(
-            params, orientation_index=orientation_index, orientation=orientation
+            params, rotation_index=rotation_index, orientation=orientation
         )
         if context.thickness is not None:
             if thickness is not None:

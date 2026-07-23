@@ -42,10 +42,10 @@ class _DummyComponent:
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
-        _ = orientation_index, orientation
+        _ = rotation_index, orientation
         return ForwardContext(thickness=params["value"].reshape(1))
 
 
@@ -66,10 +66,10 @@ class _NoopComponent:
         self,
         params: Mapping[str, Tensor],
         *,
-        orientation_index: int,
+        rotation_index: int,
         orientation: OrientationPlanLike,
     ) -> ForwardContext:
-        _ = params, orientation_index, orientation
+        _ = params, rotation_index, orientation
         return ForwardContext()
 
 
@@ -132,7 +132,7 @@ def test_apparent_thickness_nn_seeds_from_initial_thickness_and_is_differentiabl
     leaves = {name: value.detach().clone().requires_grad_(True) for name, value in params.items()}
 
     context = component.forward_context(
-        leaves, orientation_index=0, orientation=engine.orientations[0]
+        leaves, rotation_index=0, orientation=engine.orientations[0]
     )
     assert context.thickness is not None
     assert torch.allclose(context.thickness, engine.orientations[0].thickness)
@@ -223,7 +223,7 @@ def test_quadratic_thickness_profile_seeds_from_initial_thickness_and_is_differe
     coefficients = params["coefficients"].detach().clone().requires_grad_(True)
 
     context = component.forward_context(
-        {"coefficients": coefficients}, orientation_index=0, orientation=engine.orientations[0]
+        {"coefficients": coefficients}, rotation_index=0, orientation=engine.orientations[0]
     )
     assert context.thickness is not None
     assert torch.allclose(context.thickness, engine.orientations[0].thickness)
@@ -242,13 +242,13 @@ def test_bounded_thickness_components_can_seed_denovo_at_bounds_midpoint() -> No
     profile = QuadraticThicknessProfile(bounds=bounds)
     profile_params = profile.initial_params(dtype=torch.float64, device=torch.device("cpu"))
     profile_context = profile.forward_context(
-        profile_params, orientation_index=0, orientation=engine.orientations[0]
+        profile_params, rotation_index=0, orientation=engine.orientations[0]
     )
 
     thickness_nn = ApparentThicknessNN(bounds=bounds)
     nn_params = thickness_nn.initial_params(dtype=torch.float64, device=torch.device("cpu"))
     nn_context = thickness_nn.forward_context(
-        nn_params, orientation_index=0, orientation=engine.orientations[0]
+        nn_params, rotation_index=0, orientation=engine.orientations[0]
     )
 
     assert profile_context.thickness is not None and nn_context.thickness is not None
@@ -285,7 +285,7 @@ def test_per_orientation_thickness_seeds_from_plan() -> None:
     )
     context = component.forward_context(
         params,
-        orientation_index=0,
+        rotation_index=0,
         orientation=engine.orientations[0],
     )
 
