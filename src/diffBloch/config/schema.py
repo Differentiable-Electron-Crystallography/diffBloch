@@ -25,8 +25,8 @@ from diffBloch.specs import (
     IntegrationGeometry,
     Mosaicity,
     RockingCurve,
+    SegmentedUnionCoupling,
     ThicknessGrid,
-    TiltSegmentUnion,
 )
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
@@ -276,8 +276,8 @@ class CouplingConfig(_StrictConfig):
     """Per-trial beam coupling policy for ``fit_orientation`` (preprocess).
 
     The YAML edge: parses (via :meth:`to_policy`) into the validated
-    :class:`~diffBloch.specs.TiltSegmentUnion` value-type the coupled fit consumes, and delegates
-    all validation there (one rule home, no drift).
+    :class:`~diffBloch.specs.SegmentedUnionCoupling` value-type the coupled fit consumes, and
+    delegates all validation there (one rule home, no drift).
 
     Unlike the numerical preprocess blocks, coupling carries **no defaults**: it determines the
     physics (the per-trial SOLVE union) and is experiment-specific, so a silent faithful-default
@@ -287,7 +287,7 @@ class CouplingConfig(_StrictConfig):
     keeps its own defaults for programmatic pipeline authors -- only the config edge is explicit.
     """
 
-    n_splits: int  # contiguous tilt chunks (fixed mode)
+    fixed_n_segments: int  # contiguous tilt chunks (fixed mode)
     g_max: float  # coupling radius (1/Angstrom): a beam couples when |g| < g_max
     sg_max: float  # excitation-error cutoff
     # Adaptive segmentation is a mode toggle with a faithful-fixed default, so (unlike the four
@@ -295,10 +295,10 @@ class CouplingConfig(_StrictConfig):
     union_adaptive: bool = False  # recursive-bisection chunk boundaries instead of even splits
     union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
-    def to_policy(self) -> TiltSegmentUnion:
+    def to_policy(self) -> SegmentedUnionCoupling:
         """Parse into the validated value-type the coupled ``fit_orientation`` consumes."""
-        return TiltSegmentUnion(
-            n_splits=self.n_splits,
+        return SegmentedUnionCoupling(
+            fixed_n_segments=self.fixed_n_segments,
             g_max=self.g_max,
             sg_max=self.sg_max,
             union_adaptive=self.union_adaptive,
@@ -307,7 +307,7 @@ class CouplingConfig(_StrictConfig):
 
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> CouplingConfig:
-        self.to_policy()  # the rules live in TiltSegmentUnion; fail fast at config load
+        self.to_policy()  # the rules live in SegmentedUnionCoupling; fail fast at config load
         return self
 
 

@@ -13,7 +13,7 @@ Two things are reproduced together, because both were proven to be the private's
 - **Tilt reduction (mosaicity)** -- the private smooths each reflection's rocking curve with a
   window-5 moving average before summing (config ``mosaicity: true``;
   ``diffraction_dataset.get_integrated_intensities`` -> ``moving_average``). The engine's
-  :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` reassembles each matched reflection's
+  :class:`~diffBloch.engine.plan.CoupledOrientationPlan` reassembles each matched reflection's
   per-tilt intensity into its **full** rocking curve across all segments and *then* applies the
   window-5 reduction -- the reduction must see the whole curve (the window exceeds a single
   segment's 3-4 tilts). This replay builds that plan directly from the vendored private segments and
@@ -39,7 +39,7 @@ from diffBloch.config import load_experiment
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
 from diffBloch.core.solver import Method
-from diffBloch.engine import ScatteringGrid, SegmentedOrientationPlan
+from diffBloch.engine import CoupledOrientationPlan, ScatteringGrid
 from diffBloch.io import read_structure
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan
@@ -98,7 +98,7 @@ def _replay_r_obs(
         (d[f"seg{k}_hkl"], tuple(int(c) for c in d[f"seg{k}_cover"]))
         for k in range(int(d["n_segments"]))
     ]
-    plan = SegmentedOrientationPlan.build(
+    plan = CoupledOrientationPlan.build(
         grid,
         segments,
         pattern,

@@ -17,10 +17,10 @@ from diffBloch.core.losses import optimal_scale, w_rbragg
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
+    CoupledOrientationPlan,
     OrientationPlan,
     RefinementEngine,
     ScatteringGrid,
-    SegmentedOrientationPlan,
     scaled_w_rbragg_loss,
     w_rbragg_loss,
 )
@@ -285,11 +285,11 @@ def _rocking_orientation() -> OrientationPlan:
     )
 
 
-def _segmented_orientation() -> SegmentedOrientationPlan:
+def _segmented_orientation() -> CoupledOrientationPlan:
     """A 2-segment / 2-tilt coupled plan -> the segmented solve path (the one that shipped bad)."""
     grid, *_ = _silicon()
     tilts = rocking_curve_tilts(0.5, 2, geometry="continuous_rotation")  # (2, 3, 3)
-    return SegmentedOrientationPlan.build(
+    return CoupledOrientationPlan.build(
         grid,
         [(_BEAM_HKL, (0,)), (_BEAM_HKL, (1,))],  # two chunks, one tilt each, tiling 0..1
         _dummy_pattern(),
@@ -301,7 +301,7 @@ def _segmented_orientation() -> SegmentedOrientationPlan:
     )
 
 
-def _engine_over(orientation: OrientationPlan | SegmentedOrientationPlan, *, precision: str):
+def _engine_over(orientation: OrientationPlan | CoupledOrientationPlan, *, precision: str):
     grid, asu_plan, spec, numbers = _silicon()
     return RefinementEngine(
         spec=spec,

@@ -45,9 +45,9 @@ from diffBloch.core.solver import (
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
 from diffBloch.engine.plan import (
+    CoupledOrientationPlan,
     OrientationPlanLike,
     ScatteringGrid,
-    SegmentedOrientationPlan,
 )
 from diffBloch.engine.refine import (
     ObjectiveComponent,
@@ -325,7 +325,7 @@ class RefinementEngine:
     def _solve(
         self, orientation: OrientationPlanLike, fgb: Tensor, thicknesses: Tensor
     ) -> BlochSolution:
-        if isinstance(orientation, SegmentedOrientationPlan):
+        if isinstance(orientation, CoupledOrientationPlan):
             return self._solve_segmented(orientation, fgb, thicknesses)
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         real_dtype, _ = precision_dtypes(self.precision)
@@ -358,7 +358,7 @@ class RefinementEngine:
         )
 
     def _solve_segmented(
-        self, plan: SegmentedOrientationPlan, fgb: Tensor, thicknesses: Tensor
+        self, plan: CoupledOrientationPlan, fgb: Tensor, thicknesses: Tensor
     ) -> BlochSolution:
         """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
 
@@ -384,12 +384,12 @@ class RefinementEngine:
                 thicknesses,
                 method=self.method,
                 precision=self.precision,
-                max_batch=self._max_batch_for(segment.union_index.shape[0]),
+                max_batch=self._max_batch_for(segment.union_beam_index.shape[0]),
             )  # (C, T, n_seg)
             cover = segment.cover.to(device)
-            union_index = segment.union_index.to(device)
+            union_beam_index = segment.union_beam_index.to(device)
             block = curve[cover]  # (C, T, n_union) gathered copy
-            block[:, :, union_index] = intensities(amplitudes)
+            block[:, :, union_beam_index] = intensities(amplitudes)
             curve[cover] = block
         total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
         # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;

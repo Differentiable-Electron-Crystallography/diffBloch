@@ -39,8 +39,8 @@ from diffBloch.specs import (
     IntegrationGeometry,
     Mosaicity,
     RockingCurve,
+    SegmentedUnionCoupling,
     TiltIndependent,
-    TiltSegmentUnion,
 )
 
 
@@ -90,7 +90,7 @@ def test_spec_to_params_tags_nested_specs_and_union_arms() -> None:
     }
     # A fieldless union arm is distinguishable from any other empty spec by its type tag.
     assert spec_to_params(TiltIndependent()) == {"__type__": "TiltIndependent"}
-    assert spec_to_params(TiltSegmentUnion())["__type__"] == "TiltSegmentUnion"
+    assert spec_to_params(SegmentedUnionCoupling())["__type__"] == "SegmentedUnionCoupling"
     assert spec_to_params(None) is None
 
 

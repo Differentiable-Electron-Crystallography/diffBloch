@@ -5,11 +5,11 @@ discriminated union rather than a boolean toggle:
 
 - :class:`~diffBloch.specs.TiltIndependent` -- the default: one beam set (the ``select_beams``
   active set) shared across every tilt. A no-op here (the shared set is already on the plan).
-- :class:`~diffBloch.specs.TiltSegmentUnion` -- the ``diffBloch_private`` policy: partition the
-  tilts into contiguous chunks and give each its own boundary-union beam set
-  (:func:`~diffBloch.preprocess.coupling.tilt_segment_coupling`), replacing each
+- :class:`~diffBloch.specs.SegmentedUnionCoupling` -- the ``diffBloch_private`` policy: partition
+  the tilts into contiguous chunks and give each its own boundary-union beam set
+  (:func:`~diffBloch.preprocess.coupling.build_coupling_segments`), replacing each
   :class:`~diffBloch.engine.plan.OrientationPlan` with a
-  :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` the engine reassembles + reduces.
+  :class:`~diffBloch.engine.plan.CoupledOrientationPlan` the engine reassembles + reduces.
 
 It is the tilt-dependent generalization of ``select_beams``, and it appears **twice** in the
 faithful recipe: once after ``mosaicity`` -- so ``fit_orientation`` / ``fit_thickness`` fit *under*
@@ -18,7 +18,7 @@ once after the fits, re-coupling at the fitted orientation for evaluation. It is
 once ``select_beams`` has established the Klar-selected scored set (before it, an orientation's
 ``alignment`` is the seed-pool intersection, too wide). It accepts either a plain
 :class:`~diffBloch.engine.plan.OrientationPlan` (the first application) or an already-coupled
-:class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (the re-couple), re-deriving each
+:class:`~diffBloch.engine.plan.CoupledOrientationPlan` (the re-couple), re-deriving each
 rotation's segments from its current source fields (``orientation`` / ``tilts`` / ``energy`` /
 ``u0``). The
 candidate pool is the shared grid (``plan.grid.grid_hkl``, which spans the coupling cap), and the
@@ -38,11 +38,11 @@ from dataclasses import replace
 
 import numpy as np
 
-from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
-from diffBloch.preprocess.coupling import tilt_segment_coupling
+from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, ScatteringGrid
+from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.pipeline import PlanStep, as_step, identity
 from diffBloch.preprocess.plan import Plan, require_built_plans
-from diffBloch.specs import CouplingPolicy, TiltIndependent, TiltSegmentUnion
+from diffBloch.specs import CouplingPolicy, SegmentedUnionCoupling, TiltIndependent
 
 __all__ = ["couple_beams"]
 
@@ -52,8 +52,8 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
     ``policy`` is a :class:`~diffBloch.specs.CouplingPolicy` selected by construction:
     :class:`~diffBloch.specs.TiltIndependent` yields the identity (the shared beam set is kept), and
-    :class:`~diffBloch.specs.TiltSegmentUnion` replaces each rotation with its per-chunk
-    :class:`~diffBloch.engine.plan.SegmentedOrientationPlan`. Pre-validated, so this never
+    :class:`~diffBloch.specs.SegmentedUnionCoupling` replaces each rotation with its per-chunk
+    :class:`~diffBloch.engine.plan.CoupledOrientationPlan`. Pre-validated, so this never
     re-validates its bounds.
     """
     match policy:
@@ -61,7 +61,7 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
             # A no-op on the plan, but recorded as couple_beams(TiltIndependent) so provenance shows
             # the coupling decision faithfully (distinct from a plain unrecorded identity).
             return as_step("couple_beams", policy, identity.run)
-        case TiltSegmentUnion():
+        case SegmentedUnionCoupling():
 
             def run(plan: Plan) -> Plan:
                 orientations = tuple(
@@ -73,23 +73,23 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
 
 def _couple_one(
-    grid: ScatteringGrid, op: OrientationPlanLike, policy: TiltSegmentUnion
-) -> SegmentedOrientationPlan:
+    grid: ScatteringGrid, op: OrientationPlanLike, policy: SegmentedUnionCoupling
+) -> CoupledOrientationPlan:
     """Partition one rotation's rocking curve into boundary-union segments at its orientation.
 
     Accepts either plan type: the segments are re-derived at the plan's *current* ``orientation``
     from its source fields, so this serves both as the initial coupling (a plain
     :class:`OrientationPlan`) and as a re-couple at the fitted orientation (an already-coupled
-    :class:`SegmentedOrientationPlan`). Scoring stays pinned to ``op.alignment.hkl`` -- the
+    :class:`CoupledOrientationPlan`). Scoring stays pinned to ``op.alignment.hkl`` -- the
     ``select_beams`` set, which both plan types carry and which the fits preserve.
     """
     tilts = np.asarray(op.tilts, dtype=np.float64)
     if tilts.shape[0] < 2:
         raise ValueError(
-            "couple_beams(TiltSegmentUnion) requires a rocking-curve tilt set; compose "
+            "couple_beams(SegmentedUnionCoupling) requires a rocking-curve tilt set; compose "
             f"integrate_rocking_curve first (found {tilts.shape[0]} tilt)"
         )
-    segments = tilt_segment_coupling(
+    segments = build_coupling_segments(
         policy,
         np.asarray(grid.grid_hkl, dtype=np.int64),
         cell=np.asarray(grid.cell, dtype=np.float64),
@@ -98,9 +98,9 @@ def _couple_one(
         energy=op.energy,
         u0=op.u0,
     )
-    return SegmentedOrientationPlan.build(
+    return CoupledOrientationPlan.build(
         grid,
-        [(segment.beam_hkl, segment.cover) for segment in segments],
+        [(segment.union_hkl, segment.covered_tilt_indices) for segment in segments],
         op.pattern,
         energy=op.energy,
         thickness=op.thickness,

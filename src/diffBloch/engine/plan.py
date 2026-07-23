@@ -39,7 +39,7 @@ __all__ = [
     "OrientationPlanLike",
     "ScatteringGrid",
     "SegmentPlan",
-    "SegmentedOrientationPlan",
+    "CoupledOrientationPlan",
     "mean_plan_thickness",
 ]
 
@@ -61,7 +61,7 @@ class ScatteringGrid:
     Three reciprocal-space radii are easy to conflate; they are distinct concerns:
 
     - **solve cutoff** -- the beams that couple in one Bloch solve (``|g| <= solve_g_max``; the
-      coupled fit's ``TiltSegmentUnion.g_max``).
+      coupled fit's ``SegmentedUnionCoupling.g_max``).
     - **structure-factor support** -- the ``Fgb`` grid this class holds. It must cover every beam
       difference ``g_j - g_i``, which reaches ``2 * solve_g_max``, so the support radius is
       ``~2x`` the solve cutoff. :meth:`from_cell_for_solve_cutoff` derives it from the solve cutoff.
@@ -308,31 +308,33 @@ class OrientationPlan:
 
 @dataclass(frozen=True)
 class SegmentPlan:
-    """One coupled tilt-chunk of a :class:`SegmentedOrientationPlan`: a sub-plan + reassembly map.
+    """One coupled tilt-chunk of a :class:`CoupledOrientationPlan`: a sub-plan + reassembly map.
 
     ``plan`` is an ordinary :class:`OrientationPlan` over the segment's own (smaller) beam set,
     solved at just the tilts this chunk covers (``plan.tilts`` are the covered tilt matrices, so
     ``len(plan.beam_plans) == len(cover)``). ``cover`` ``(C,)`` are the segment's global
     rocking-curve tilt indices (contiguous; disjoint across a rotation's segments; tiling every tilt
-    once). ``union_index`` ``(n_seg,)`` maps each of the segment's beams to its column in the parent
-    plan's union beam set, so the segment's per-tilt intensities scatter onto the shared rocking
-    curve before the tilt reduction runs on the whole curve.
+    once). ``union_beam_index`` ``(n_seg,)`` maps each of the segment's beams to its column in the
+    parent plan's union beam set, so the segment's per-tilt intensities scatter onto the shared
+    rocking curve before the tilt reduction runs on the whole curve.
     """
 
     plan: OrientationPlan
     cover: Tensor
-    union_index: Tensor
+    union_beam_index: Tensor
 
 
 @dataclass(frozen=True)
-class SegmentedOrientationPlan:
+class CoupledOrientationPlan:
     """A rotation whose rocking curve couples a *different* beam set per tilt chunk (the private).
+
+    v1 analog: the ``A_batches`` / ``cell_chunks`` reassembly in ``BlochNet.forward``.
 
     The tilt-dependent generalization of :class:`OrientationPlan`: instead of one beam set shared
     across all tilts, the curve is partitioned into :class:`SegmentPlan` chunks, each solving its
     own boundary-union beam set over its covered tilts (see
-    :func:`diffBloch.preprocess.coupling.tilt_segment_coupling`). The engine solves each segment and
-    reassembles every reflection's per-tilt intensity onto the shared **union** beam axis before
+    :func:`diffBloch.preprocess.coupling.build_coupling_segments`). The engine solves each segment
+    and reassembles every reflection's per-tilt intensity onto the shared **union** beam axis before
     reducing over tilts (:meth:`diffBloch.engine.forward.RefinementEngine._solve`), returning an
     ordinary :class:`~diffBloch.core.products.BlochSolution` over that union -- so ``align`` /
     scoring stay identical to the tilt-independent path. Reassembling before the reduction is
@@ -373,7 +375,7 @@ class SegmentedOrientationPlan:
         scored_hkl: NDArray[np.int64] | None = None,
         gathers: Sequence[StructureFactorGather] | None = None,
         validate: bool = True,
-    ) -> SegmentedOrientationPlan:
+    ) -> CoupledOrientationPlan:
         """Assemble a segmented plan from ``(beam_hkl, cover)`` chunks against the shared grid.
 
         Each ``segments`` entry is one chunk's beam set ``(n_seg, 3)`` and the global tilt indices
@@ -436,14 +438,14 @@ class SegmentedOrientationPlan:
                 gather=None if gathers is None else gathers[seg_i],
                 validate=validate,
             )
-            union_index = torch.tensor(
+            union_beam_index = torch.tensor(
                 [union_pos[tuple(int(c) for c in row)] for row in beam_hkl], dtype=torch.int64
             )
             segment_plans.append(
                 SegmentPlan(
                     plan=sub,
                     cover=torch.tensor(cover_idx, dtype=torch.int64),
-                    union_index=union_index,
+                    union_beam_index=union_beam_index,
                 )
             )
 
@@ -470,7 +472,7 @@ class SegmentedOrientationPlan:
 
     def with_orientation(
         self, grid: ScatteringGrid, orientation: Tensor | NDArray[np.float64]
-    ) -> SegmentedOrientationPlan:
+    ) -> CoupledOrientationPlan:
         """Rebuild at a new ``orientation``, reusing the segments' beams, covers, and F-gathers.
 
         The segmented counterpart of :meth:`OrientationPlan.with_orientation`: the segment
@@ -481,7 +483,7 @@ class SegmentedOrientationPlan:
         already-coupled plan trial-by-trial at ~eigensolve cost (no re-gather, no re-coupling): the
         *frozen-union* fit. ``grid`` is threaded from the caller's ``Plan.grid``.
         """
-        return SegmentedOrientationPlan.build(
+        return CoupledOrientationPlan.build(
             grid,
             [
                 (np.asarray(seg.plan.beam_hkl), tuple(int(c) for c in seg.cover))
@@ -500,10 +502,10 @@ class SegmentedOrientationPlan:
 
 
 # A rotation's plan is either the tilt-independent :class:`OrientationPlan` (one shared beam set) or
-# the tilt-dependent :class:`SegmentedOrientationPlan` (per-chunk beam sets). The engine solves
+# the tilt-dependent :class:`CoupledOrientationPlan` (per-chunk beam sets). The engine solves
 # both;
 # only the terminal, post-fit ``couple_beams`` step produces the segmented variant.
-OrientationPlanLike = OrientationPlan | SegmentedOrientationPlan
+OrientationPlanLike = OrientationPlan | CoupledOrientationPlan
 
 
 def mean_plan_thickness(plan: Sequence[OrientationPlanLike]) -> Tensor:

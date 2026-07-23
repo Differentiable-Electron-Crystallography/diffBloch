@@ -63,16 +63,19 @@ def test_recipe_build_raises_when_coupling_is_unset() -> None:
 def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     """A ``preprocess.coupling`` override reaches the fit's recorded per-trial policy.
 
-    The recipe reads its coupling from config (not a hardcoded ``TiltSegmentUnion()``), so a config
-    that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the mechanism that
-    lets abiraterone's ``n_splits=4`` coupling be expressed through the standard config path.
+    The recipe reads its coupling from config (not a hardcoded ``SegmentedUnionCoupling()``), so a
+    config that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the
+    mechanism that lets abiraterone's ``fixed_n_segments=4`` coupling be expressed through the
+    standard config path.
     """
     root = FIXTURES / "quartz_anchor"
     cfg, _ = load_experiment(root)
     cfg = cfg.model_copy(
         update={
             "preprocess": cfg.preprocess.model_copy(
-                update={"coupling": cfg.preprocess.coupling.model_copy(update={"n_splits": 4})}
+                update={
+                    "coupling": cfg.preprocess.coupling.model_copy(update={"fixed_n_segments": 4})
+                }
             )
         }
     )
@@ -82,7 +85,7 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     steps = _recipe_steps(cfg, setup.refinement, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     fit = next(r for r in records if r.name == "fit_orientation")
-    assert fit.params["coupling"]["policy"]["n_splits"] == 4
+    assert fit.params["coupling"]["policy"]["fixed_n_segments"] == 4
 
 
 def test_fork_is_transparent_to_recipe_identity() -> None:

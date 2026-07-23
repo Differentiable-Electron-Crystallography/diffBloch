@@ -34,7 +34,7 @@ __all__ = [
     "ScoredSelection",
     "ThicknessGrid",
     "TiltIndependent",
-    "TiltSegmentUnion",
+    "SegmentedUnionCoupling",
     "TrialCoupling",
     "assert_grid_covers_coupling",
 ]
@@ -291,14 +291,17 @@ class Mosaicity:
 
 
 @dataclass(frozen=True)
-class TiltSegmentUnion:
+class SegmentedUnionCoupling:
     """Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.
 
+    v1 analog: the ``union_splits`` / ``union_adaptive`` policy.
+
     The ``diffBloch_private`` coupling policy for rocking-curve integration. It partitions the
-    ``B`` tilts into ``n_splits`` contiguous, disjoint chunks and gives each chunk its own coupled
-    beam set: the **union** of the excited-beam masks at the chunk's two boundary tilts. A beam is
-    excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max`` (a hard excitation-error +
-    coupling-radius cutoff, distinct from the Klar relative filter of :class:`BeamSelection`).
+    ``B`` tilts into ``fixed_n_segments`` contiguous, disjoint chunks and gives each chunk its own
+    coupled beam set: the **union** of the excited-beam masks at the chunk's two boundary tilts.
+    A beam is excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max`` (a hard
+    excitation-error + coupling-radius cutoff, distinct from the Klar relative filter of
+    :class:`BeamSelection`).
     Because a sharp reflection drifts through the Ewald sphere as the crystal rocks, the excited set
     genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
     beams a later tilt needs. The per-chunk union is the private's compromise. Each reflection's
@@ -311,32 +314,35 @@ class TiltSegmentUnion:
     experiment quantities threaded in at build time, not policy knobs.
 
     ``union_adaptive`` chooses how the chunk boundaries are placed. ``False`` (default) uses
-    ``n_splits`` fixed even-sized chunks. ``True`` places boundaries by recursive bisection: a tilt
-    range is split further only while its midpoint adds more than ``union_max_new_beams_pct`` of the
-    boundary union's beams (else the range is frozen as one chunk), so segments are dense where the
-    excited set drifts and sparse where it is stable. In the adaptive mode ``n_splits`` is ignored.
+    ``fixed_n_segments`` fixed even-sized chunks. ``True`` places boundaries by recursive bisection:
+    a tilt range is split further only while its midpoint adds more than ``union_max_new_beams_pct``
+    of the boundary union's beams (else the range is frozen as one chunk), so segments are dense
+    where the excited set drifts and sparse where it is stable. In the adaptive mode
+    ``fixed_n_segments`` is ignored.
 
     Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
     ``self.g_max = 2.25``, ``self.sg_max = 0.01``, ``union_adaptive = False``,
     ``union_max_new_beams_pct = 0.01``).
     """
 
-    n_splits: int = 12  # contiguous tilt chunks (fixed mode); each gets its boundary-union beam set
+    fixed_n_segments: int = (
+        12  # contiguous tilt chunks (fixed mode); each gets a boundary-union set
+    )
     g_max: float = 2.25  # coupling radius: a beam couples at a tilt when |g| < g_max
     sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
     union_adaptive: bool = False  # place chunk boundaries by recursive bisection, not even splits
     union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
     def __post_init__(self) -> None:
-        if self.n_splits < 1:
-            raise ValueError("n_splits must be >= 1")
+        if self.fixed_n_segments < 1:
+            raise ValueError("fixed_n_segments must be >= 1")
         if self.g_max <= 0.0 or self.sg_max <= 0.0:
             raise ValueError("g_max and sg_max must be positive")
         if not 0.0 < self.union_max_new_beams_pct <= 1.0:
             raise ValueError("union_max_new_beams_pct must be in (0, 1]")
 
 
-def assert_grid_covers_coupling(policy: TiltSegmentUnion, grid_g_max: float) -> None:
+def assert_grid_covers_coupling(policy: SegmentedUnionCoupling, grid_g_max: float) -> None:
     """Guarantee the ``|g| <= grid_g_max`` grid sphere spans every coupled beam difference (O(1)).
 
     A coupled solve union admits only beams with ``|g| < g_max``, so any pairwise difference is
@@ -374,11 +380,11 @@ class TiltIndependent:
 
 
 # How a rocking curve couples beams across its tilts: one shared set (:class:`TiltIndependent`) or
-# the private's per-tilt-chunk boundary unions (:class:`TiltSegmentUnion`). A discriminated union
-# the
+# the private's per-tilt-chunk boundary unions (:class:`SegmentedUnionCoupling`). A discriminated
+# union the
 # ``couple_beams`` step matches on, not a boolean toggle -- the faithful policy carries its own
 # parameters, the default carries none.
-CouplingPolicy = TiltIndependent | TiltSegmentUnion
+CouplingPolicy = TiltIndependent | SegmentedUnionCoupling
 
 
 @dataclass(frozen=True)
@@ -424,7 +430,7 @@ class TrialCoupling:
     unrepresentable, so the fit takes one optional parameter with no cross-parameter guard.
     """
 
-    policy: TiltSegmentUnion  # SOLVE: the per-tilt-segment excitation union
+    policy: SegmentedUnionCoupling  # SOLVE: the per-tilt-segment excitation union
     scored: ScoredSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
 
 

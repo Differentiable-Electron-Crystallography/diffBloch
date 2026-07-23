@@ -16,10 +16,10 @@ solver:
   inference: bloch_eigen
   refine: matrix_exp
 preprocess:
-  # The faithful diffBloch_private SOLVE-union coupling (TiltSegmentUnion defaults); declared
+  # The faithful diffBloch_private SOLVE-union coupling (SegmentedUnionCoupling defaults); declared
   # explicitly because coupling has no config default -- it determines the fit's physics.
   coupling:
-    n_splits: 12
+    fixed_n_segments: 12
     g_max: 2.25
     sg_max: 0.01
 refinement:

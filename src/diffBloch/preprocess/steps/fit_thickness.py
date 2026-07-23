@@ -18,7 +18,7 @@ Faithful to ``diffBloch_private``'s ``thickness_optim``: an evenly-spaced (``np.
 candidate thicknesses, per-candidate wR2 via the scaling factor, then the per-rotation minimum.
 
 Plan-agnostic: ``replace(op, thickness=...)`` swaps the thickness on either an
-:class:`OrientationPlan` or a :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (whose
+:class:`OrientationPlan` or a :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (whose
 ``_solve_segmented`` reads the top-level thickness, ignoring the stale sub-plan copies), so a
 coupled plan is fit unchanged.
 """

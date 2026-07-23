@@ -1,4 +1,4 @@
-"""Phase 2b: the ``couple_beams`` step + engine reassembly of a ``SegmentedOrientationPlan``.
+"""Phase 2b: the ``couple_beams`` step + engine reassembly of a ``CoupledOrientationPlan``.
 
 The tilt-segment coupling *geometry* is proven in :mod:`test_coupling` (segments match the private
 byte-for-byte) and the end-to-end forward parity in the ``test_coupling_parity`` e2e. Here we pin
@@ -25,7 +25,7 @@ from tests.unit.test_inference import (
 )
 
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
-from diffBloch.engine import SegmentedOrientationPlan
+from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess import (
     couple_beams,
@@ -39,9 +39,9 @@ from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     HexagonalSearch,
     ScoredSelection,
+    SegmentedUnionCoupling,
     ThicknessGrid,
     TiltIndependent,
-    TiltSegmentUnion,
     TrialCoupling,
 )
 
@@ -125,13 +125,13 @@ def test_segmented_with_orientation_reuses_gathers_and_preserves_scored_set() ->
     chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
     scored = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # 100 in union, -100 excluded
     build_kwargs = dict(energy=_ENERGY, thickness=(300.0,), u0=0.0, tilts=_TILTS, scored_hkl=scored)
-    seed = SegmentedOrientationPlan.build(
+    seed = CoupledOrientationPlan.build(
         grid, [(chunk_a, (0, 1)), (chunk_b, (2, 3))], pattern, orientation=np.eye(3), **build_kwargs
     )
     target = _rot_z(3.0)
 
     rebuilt = seed.with_orientation(grid, target)
-    fresh = SegmentedOrientationPlan.build(
+    fresh = CoupledOrientationPlan.build(
         grid, [(chunk_a, (0, 1)), (chunk_b, (2, 3))], pattern, orientation=target, **build_kwargs
     )
 
@@ -163,7 +163,7 @@ def test_couple_beams_requires_a_rocking_curve_tilt_set() -> None:
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
     with pytest.raises(ValueError, match="requires a rocking-curve tilt set"):
-        couple_beams(TiltSegmentUnion())(Plan(grid=grid, orientations=(op,)))
+        couple_beams(SegmentedUnionCoupling())(Plan(grid=grid, orientations=(op,)))
 
 
 def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
@@ -173,7 +173,7 @@ def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
     # survives. Covers partition the 4 tilts.
     chunk_a = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
     chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
-    sop = SegmentedOrientationPlan.build(
+    sop = CoupledOrientationPlan.build(
         grid,
         [(chunk_a, (0, 1)), (chunk_b, (2, 3))],
         pattern,
@@ -189,9 +189,9 @@ def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
     assert union == sorted(union)  # np.unique ordering
     assert [0, 0, 0] in union and [1, 0, 0] in union and [-1, 0, 0] in union
     assert sop.tilt_reduction == MosaicSmoothed(3)  # carried through from the coupled orientation
-    # union_index round-trips each chunk's beams to their union columns.
+    # union_beam_index round-trips each chunk's beams to their union columns.
     for segment, chunk in zip(sop.segments, (chunk_a, chunk_b), strict=True):
-        placed = sop.beam_hkl[segment.union_index].numpy()
+        placed = sop.beam_hkl[segment.union_beam_index].numpy()
         assert np.array_equal(placed, chunk)
 
 
@@ -206,7 +206,7 @@ def test_segmented_solve_equals_plain_integration_for_a_trivial_partition() -> N
     )
     # Same full beam set in both chunks; covers partition the tilts. Reassembling identical beam
     # sets and summing over all tilts is exactly the tilt-independent integrated solve.
-    segmented = SegmentedOrientationPlan.build(
+    segmented = CoupledOrientationPlan.build(
         grid,
         [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
         pattern,
@@ -234,7 +234,7 @@ def test_run_inference_scores_a_segmented_plan() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     refinement = _refinement(asu_plan, spec, numbers)
     pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
-    segmented = SegmentedOrientationPlan.build(
+    segmented = CoupledOrientationPlan.build(
         grid,
         [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
         pattern,
@@ -258,19 +258,19 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
     segments = [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))]  # trivial partition (full beam set/chunk)
     build_kwargs = dict(energy=_ENERGY, thickness=(300.0,), u0=0.0, tilts=_TILTS)
     # Observe the plan's own integrated intensities at identity, so the search should keep it there.
-    seed = SegmentedOrientationPlan.build(
+    seed = CoupledOrientationPlan.build(
         grid, segments, _pattern(torch.zeros(len(_BEAM_HKL))), orientation=np.eye(3), **build_kwargs
     )
     engine = build_engine(Plan(grid=grid, orientations=(seed,)), refinement, method=_METHOD)
     observed = _pattern(engine.simulate(refinement.params)[0].intensities[0])
-    matched = SegmentedOrientationPlan.build(
+    matched = CoupledOrientationPlan.build(
         grid, segments, observed, orientation=np.eye(3), **build_kwargs
     )
 
     (refined,) = fit_orientation(refinement, HexagonalSearch(), method=_METHOD)(
         Plan(grid=grid, orientations=(matched,))
     ).orientations
-    assert isinstance(refined, SegmentedOrientationPlan)  # segmented type preserved through the fit
+    assert isinstance(refined, CoupledOrientationPlan)  # segmented type preserved through the fit
     assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2  # stayed optimal
 
     (thick,) = fit_thickness(
@@ -278,7 +278,7 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
         ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
         method=_METHOD,
     )(Plan(grid=grid, orientations=(refined,))).orientations
-    assert isinstance(thick, SegmentedOrientationPlan)
+    assert isinstance(thick, CoupledOrientationPlan)
     assert thick.thickness.shape == (1,)  # baked the grid-search winner
 
 
@@ -329,13 +329,13 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     reproduce the union and the pinned scored set (``op.alignment.hkl``) of the first coupling.
     """
     grid, op, _refinement_unused = _quartz_rot13()
-    policy = TiltSegmentUnion()
+    policy = SegmentedUnionCoupling()
     once = couple_beams(policy)(Plan(grid=grid, orientations=(op,)))
 
     twice = couple_beams(policy)(once)  # re-couple a segmented plan (previously a TypeError)
 
     recoupled = twice.orientations[0]
-    assert isinstance(recoupled, SegmentedOrientationPlan)
+    assert isinstance(recoupled, CoupledOrientationPlan)
     assert recoupled.beam_hkl.tolist() == once.orientations[0].beam_hkl.tolist()  # idempotent union
     assert recoupled.alignment.hkl.tolist() == once.orientations[0].alignment.hkl.tolist()
 
@@ -352,12 +352,12 @@ def test_fit_orientation_couples_and_reselects_per_trial() -> None:
     from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
 
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredSelection(g_max=1.6))
 
     seed_o = np.asarray(op.orientation, dtype=np.float64)
     seed_trial = _coupled_trial(grid, op, seed_o, coupling)
     tilt_trial = _coupled_trial(grid, op, seed_o @ hexagonal_tilt(0.0, 3.0), coupling)
-    assert isinstance(seed_trial, SegmentedOrientationPlan)
+    assert isinstance(seed_trial, CoupledOrientationPlan)
     # union AND scored set are re-derived per trial (the non-stationary objective)
     assert seed_trial.beam_hkl.tolist() != tilt_trial.beam_hkl.tolist()
     assert seed_trial.alignment.hkl.tolist() != tilt_trial.alignment.hkl.tolist()
@@ -366,7 +366,7 @@ def test_fit_orientation_couples_and_reselects_per_trial() -> None:
     (fitted,) = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(
         Plan(grid=grid, orientations=(op,))
     ).orientations
-    assert isinstance(fitted, SegmentedOrientationPlan)  # seed rebuilt through the coupled builder
+    assert isinstance(fitted, CoupledOrientationPlan)  # seed rebuilt through the coupled builder
 
 
 def test_coupled_trial_gather_cache_reuses_identical_beam_sets() -> None:
@@ -379,7 +379,7 @@ def test_coupled_trial_gather_cache_reuses_identical_beam_sets() -> None:
     from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
 
     grid, op, _refinement_unused = _quartz_rot13()
-    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredSelection(g_max=1.6))
     seed_o = np.asarray(op.orientation, dtype=np.float64)
 
     cache: dict = {}
@@ -401,7 +401,7 @@ def test_fit_orientation_workers_match_sequential() -> None:
     (shared engine/fgb are read-only; the gather cache is per-rotation and thread-local).
     """
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredSelection(g_max=1.6))
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
     plan = Plan(grid=grid, orientations=(op, op))
 
@@ -425,7 +425,7 @@ def test_fit_orientation_emits_progress_events() -> None:
     from diffBloch.observability import OrientationFitted, RecordingLogger
 
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=TiltSegmentUnion(), scored=ScoredSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredSelection(g_max=1.6))
     recorder = RecordingLogger()
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
 
@@ -452,7 +452,7 @@ def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:
     pattern = _pattern(_simulated_intensities(grid, asu_plan, spec, numbers))
     # Solve union covers the full beam set (3 reflections incl. 000); pin scoring to just 000.
     scored = np.array([[0, 0, 0]], dtype=np.int64)
-    segmented = SegmentedOrientationPlan.build(
+    segmented = CoupledOrientationPlan.build(
         grid,
         [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
         pattern,

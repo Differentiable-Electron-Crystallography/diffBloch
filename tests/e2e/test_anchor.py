@@ -339,7 +339,7 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     HKL identity, so this asserts count, not set membership).
 
     ``couple_beams`` is intentionally last and after ``integrate_rocking_curve``: it consumes the
-    rocking-curve tilts (raising if absent) and emits a terminal ``SegmentedOrientationPlan`` no
+    rocking-curve tilts (raising if absent) and emits a terminal ``CoupledOrientationPlan`` no
     other ``Plan -> Plan`` step can consume.
     """
     cfg, lock = load_experiment(ABIRATERONE_ROOT)
