@@ -24,7 +24,7 @@ from typing import Literal
 import torch
 from torch import Tensor
 
-type Cutoff = Literal["hard", "taper"]
+type StructureFactorCutoff = Literal["hard", "taper"]
 
 
 def _g_vector_lengths(hkl: Tensor, reciprocal_basis: Tensor) -> Tensor:
@@ -93,7 +93,9 @@ def debye_waller_factor(hkl: Tensor, uij_star: Tensor) -> Tensor:
     return torch.exp(-2.0 * torch.pi**2 * quadratic)
 
 
-def resolution_cutoff(g: Tensor, g_max: float, *, mode: Cutoff = "hard") -> Tensor:
+def structure_factor_cutoff(
+    g: Tensor, g_max: float, *, mode: StructureFactorCutoff = "hard"
+) -> Tensor:
     """Reflection resolution cutoff: a hard ``|g| <= g_max`` mask or the private taper window."""
     if g_max <= 0.0:
         raise ValueError("g_max must be positive")
@@ -117,7 +119,7 @@ def structure_factors(
     cell_volume: float,
     *,
     g_max: float,
-    cutoff: Cutoff = "hard",
+    cutoff: StructureFactorCutoff = "hard",
     extinction_threshold: float = 1e-12,
 ) -> Tensor:
     """Vectorised electron structure factors ``Fgb`` (elastic).
@@ -142,7 +144,7 @@ def structure_factors(
     g = _g_vector_lengths(hkl, reciprocal_basis)
     form_factors = lobato_form_factors(numbers, g)
     dwf = debye_waller_factor(hkl, uij_star)
-    cutoff_window = resolution_cutoff(g, g_max, mode=cutoff)
+    cutoff_window = structure_factor_cutoff(g, g_max, mode=cutoff)
     per_atom = (form_factors * dwf * occupancies[:, None]) * cutoff_window[None, :]
 
     phase = torch.exp(2.0j * torch.pi * (positions @ hkl.to(positions.dtype).transpose(0, 1)))

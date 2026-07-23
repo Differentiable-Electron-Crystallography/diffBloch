@@ -36,7 +36,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
-    assert cfg.refinement.objective.data_term == "weighted_r"
+    assert cfg.refinement.objective.data_term == "scaled_weighted_r"
     assert cfg.refinement.precision == "fp64"
     assert cfg.refinement.split.validation == "every_10th_rotation"
 
@@ -110,7 +110,7 @@ def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
 
 
 def test_objective_data_term_parses_to_loss() -> None:
-    assert ObjectiveConfig(data_term="weighted_r").to_loss() is scaled_w_rbragg_loss
+    assert ObjectiveConfig(data_term="scaled_weighted_r").to_loss() is scaled_w_rbragg_loss
     assert ObjectiveConfig(data_term="least_squares").to_loss() is weighted_mse_loss
 
 

@@ -115,7 +115,7 @@ def _adaptive_segment_ranges(
 
 def build_coupling_segments(
     policy: SegmentedUnionCoupling,
-    candidate_hkl: NDArray[np.int64],
+    candidate_beam_hkl: NDArray[np.int64],
     *,
     cell: NDArray[np.float64],
     orientation: NDArray[np.float64],
@@ -127,7 +127,7 @@ def build_coupling_segments(
 
     v1 analog: the union-split block in ``BlochNet.forward``.
 
-    ``candidate_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
+    ``candidate_beam_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
     :class:`~diffBloch.engine.plan.StructureFactorGrid` ``structure_factor_hkl`` -- radius
     ``2 * g_max``, so the
     ``|g| < g_max`` mask filters it to each tilt's excited set). ``cell`` ``(3, 3)`` is the
@@ -138,12 +138,12 @@ def build_coupling_segments(
     (mean-inner-potential correction) set the Ewald geometry.
 
     Each boundary tilt's excited mask is ``|Sg| < sg_max`` and ``|g| < g_max`` with
-    ``g = candidate_hkl @ orientation_basis(cell, tilt @ orientation)`` (identical to the private's
+    ``g = candidate_beam_hkl @ orientation_basis(cell, tilt @ orientation)`` (identical to the private's
     ``hkl @ reciprocal_cell(unit_cell @ (R_tilt @ orientation).T)``). Segment ``i`` couples the
     union of the masks at boundary tilts ``i`` and ``i + 1`` and covers the half-open tilt range
     between them; the final segment includes the end, so the covers tile ``0 .. B - 1`` exactly.
     """
-    candidate_hkl = np.asarray(candidate_hkl, dtype=np.int64)
+    candidate_beam_hkl = np.asarray(candidate_beam_hkl, dtype=np.int64)
     cell = np.asarray(cell, dtype=np.float64)
     orientation = np.asarray(orientation, dtype=np.float64)
     tilts = np.asarray(tilts, dtype=np.float64)
@@ -154,7 +154,7 @@ def build_coupling_segments(
     # The per-tilt matrices are pure rotations (norm-preserving) and the orientation is constant
     # across the curve, so ``|g|`` is identical at every tilt -- the ``|g| < g_max`` cut selects the
     # SAME candidate subset at every tilt (verified: spread across tilts ~1e-15). Apply it once up
-    # front to shrink the pool each per-tilt excitation mask scans: ``candidate_hkl`` is the full
+    # front to shrink the pool each per-tilt excitation mask scans: ``candidate_beam_hkl`` is the full
     # structure-factor grid, but only the ``|g| < g_max`` core can ever couple. Scanning the whole
     # grid at every boundary tilt was the dominant per-trial cost; one pass replaces it.
     #
@@ -165,8 +165,8 @@ def build_coupling_segments(
     # (:meth:`StructureFactorGrid.from_cell_for_beam_cutoff`) covers that difference; it is NOT a
     # per-tilt variation and NOT an orthonormality bug -- coupling in the experimental-cell metric
     # is the physically correct cut.
-    g_nominal = candidate_hkl @ orientation_basis(cell, orientation)  # constant across tilts
-    pool = candidate_hkl[np.linalg.norm(g_nominal, axis=1) < policy.g_max]
+    g_nominal = candidate_beam_hkl @ orientation_basis(cell, orientation)  # constant across tilts
+    pool = candidate_beam_hkl[np.linalg.norm(g_nominal, axis=1) < policy.g_max]
 
     _mask_cache: dict[int, NDArray[np.bool_]] = {}
 

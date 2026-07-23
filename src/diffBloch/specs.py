@@ -31,7 +31,7 @@ __all__ = [
     "IntegrationGeometry",
     "Mosaicity",
     "RockingCurve",
-    "ScoredSelection",
+    "ScoredHklSelection",
     "ThicknessGrid",
     "TiltIndependent",
     "SegmentedUnionCoupling",
@@ -389,7 +389,7 @@ CouplingPolicy = TiltIndependent | SegmentedUnionCoupling
 
 
 @dataclass(frozen=True)
-class ScoredSelection:
+class ScoredHklSelection:
     """The SCORED selector: the Klar window intersected with a scoring-resolution cap.
 
     When a fit re-derives its reflection sets per trial under a coupling policy, the *scored* set is
@@ -432,7 +432,7 @@ class TrialCoupling:
     """
 
     policy: SegmentedUnionCoupling  # SOLVE: the per-tilt-segment excitation union
-    scored: ScoredSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
+    scored: ScoredHklSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
 
 
 @dataclass(frozen=True)

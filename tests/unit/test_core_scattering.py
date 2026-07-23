@@ -10,7 +10,7 @@ import torch
 from diffBloch.core.scattering import (
     debye_waller_factor,
     lobato_form_factors,
-    resolution_cutoff,
+    structure_factor_cutoff,
     structure_factors,
 )
 
@@ -51,9 +51,9 @@ def test_debye_waller_zero_adp_is_unity_and_decays() -> None:
 
 def test_resolution_cutoff_hard_and_taper() -> None:
     g = torch.tensor([0.0, 1.0, 1.6, 2.0], dtype=torch.float64)
-    hard = resolution_cutoff(g, 1.6, mode="hard")
+    hard = structure_factor_cutoff(g, 1.6, mode="hard")
     assert hard.tolist() == [1.0, 1.0, 1.0, 0.0]
-    taper = resolution_cutoff(g, 1.6, mode="taper")
+    taper = structure_factor_cutoff(g, 1.6, mode="taper")
     assert taper[0] > taper[-1]  # monotone falloff toward g_max
     assert (taper >= 0.0).all() and (taper <= 1.0).all()
 
