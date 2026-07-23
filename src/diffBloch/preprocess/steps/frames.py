@@ -19,7 +19,7 @@ from dataclasses import replace
 
 import torch
 
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.forward import LossFn
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.experiment import RefinementSetup
@@ -63,7 +63,7 @@ def select_finite_loss_frames(
     refinement: RefinementSetup,
     *,
     loss: LossFn,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step that keeps frames with finite initial objective loss.
 

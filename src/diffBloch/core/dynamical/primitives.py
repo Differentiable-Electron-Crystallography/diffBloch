@@ -127,7 +127,7 @@ def excitation_errors(g: FloatArray, energy: float, *, u0: float = 0.0) -> Float
     return (k_mag**2 - np.linalg.norm(k_vector + g_array, axis=1) ** 2) / (2.0 * k_mag)
 
 
-def m_factors(g: FloatArray, energy: float, *, u0: float = 0.0) -> FloatArray:
+def mii_factors(g: FloatArray, energy: float, *, u0: float = 0.0) -> FloatArray:
     """Diagonal ``Mii`` factors that symmetrise the Bloch structure matrix.
 
     ``Mii = 1 / sqrt(1 - g_z / K_n)`` with ``K_n = wavevector_magnitude(energy, u0=u0)``; port of

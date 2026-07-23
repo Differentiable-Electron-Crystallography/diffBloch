@@ -10,7 +10,7 @@ from diffBloch.core.dynamical import (
     build_beam_plan,
     build_bloch_system,
     build_bloch_systems,
-    m_factors,
+    mii_factors,
     stack_beam_plans,
 )
 from diffBloch.core.reciprocal import g_vectors
@@ -262,7 +262,7 @@ def test_propagate_matches_private_oracle_zone() -> None:
     # machine precision here, and matrix_exp conserves flux.
     system, data = _system_from(_ORACLE_ZONE)
     g = g_vectors(data["beam_hkl"], data["reciprocal_basis"])
-    assert np.allclose(m_factors(g, float(data["energy"]), u0=float(data["u0"])), 1.0)
+    assert np.allclose(mii_factors(g, float(data["energy"]), u0=float(data["u0"])), 1.0)
 
     thicknesses = torch.tensor(data["thicknesses"])
     psi_me = propagate(system, thicknesses, method="matrix_exp")
@@ -282,7 +282,7 @@ def test_propagate_matches_private_oracle_oblique() -> None:
     # difference this case exists to pin (see provenance.json propagator_note).
     system, data = _system_from(_ORACLE_OBLIQUE)
     g = g_vectors(data["beam_hkl"], data["reciprocal_basis"])
-    assert np.any(np.abs(m_factors(g, float(data["energy"]), u0=float(data["u0"])) - 1.0) > 1e-4)
+    assert np.any(np.abs(mii_factors(g, float(data["energy"]), u0=float(data["u0"])) - 1.0) > 1e-4)
 
     thicknesses = torch.tensor(data["thicknesses"])
     psi_me = propagate(system, thicknesses, method="matrix_exp")

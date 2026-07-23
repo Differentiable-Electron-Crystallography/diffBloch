@@ -37,7 +37,7 @@ from diffBloch.core.products import (
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import (
     FloatFormat,
-    Method,
+    SolverMethod,
     memory_safe_max_batch,
     precision_dtypes,
     propagate,
@@ -100,7 +100,7 @@ class RefinementEngine:
     grid: StructureFactorGrid
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
-    method: Method = "matrix_exp"
+    method: SolverMethod = "matrix_exp"
     # Solve numeric field. "fp64" everywhere by default (byte-identical to complex128). "fp32"
     # (complex64) is a speed/precision knob: preprocess uses it only for transient coarse-search
     # engines, and the default refine path stays fp64 unless config opts in. See

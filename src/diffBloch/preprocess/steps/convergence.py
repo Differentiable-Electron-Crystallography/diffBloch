@@ -45,7 +45,7 @@ from torch import Tensor
 
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import BlochSolution
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import SolverMethod
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
@@ -79,7 +79,7 @@ _UNWEIGHTED_SIGMA = 1e-10
 def simulation_rfactor(
     refinement: RefinementSetup,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> SimulationRfactor:
     """Return ``(previous, current) -> float``: the mean consecutive-simulation R-factor.
 
@@ -114,7 +114,7 @@ def simulation_converged(
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> ConvergenceCheck:
     """Return a ``(previous, current) -> bool`` check: have consecutive simulations stabilised?
 
@@ -172,7 +172,7 @@ def converge_beams(
     tolerance: ConvergenceTolerance,
     *,
     step: float,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step: widen ``integration_semiangle`` until the pattern stabilises.
 
@@ -211,7 +211,7 @@ def converge_pool(
     *,
     start_g_max_refine: float,
     step: float,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step: widen the ``g_max_refine`` pool until the pattern settles.
 
@@ -260,7 +260,7 @@ def converge_sampling(
     tolerance: ConvergenceTolerance,
     *,
     step: float,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step: refine the rocking-curve tilt count until the pattern stops.
 
@@ -294,7 +294,9 @@ def converge_sampling(
     return run
 
 
-def _simulate(plan: Plan, refinement: RefinementSetup, method: Method) -> tuple[BlochSolution, ...]:
+def _simulate(
+    plan: Plan, refinement: RefinementSetup, method: SolverMethod
+) -> tuple[BlochSolution, ...]:
     return build_engine(plan, refinement, method=method).simulate(refinement.params)
 
 

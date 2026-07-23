@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import SolverMethod
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
@@ -65,7 +65,7 @@ def converge_numerics(
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step running the selected convergence operation (the driver entry).
 
@@ -205,7 +205,7 @@ def run_stability_phase(
     window_step: float,
     tilt_step: float,
     num_passes: int = 2,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
 ) -> tuple[Plan, ConvergenceState]:
     """Grow all three knobs to self-stability over ``num_passes`` coordinated passes; thread them.
 

@@ -38,7 +38,7 @@ import torch
 from diffBloch.config import load_experiment
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
-from diffBloch.core.solver import Method
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import CoupledOrientationPlan, StructureFactorGrid
 from diffBloch.io import read_structure
 from diffBloch.preprocess.experiment import RefinementSetup
@@ -76,7 +76,7 @@ def _replay_r_obs(
     rotation: int,
     grid: StructureFactorGrid,
     refinement: RefinementSetup,
-    method: Method,
+    method: SolverMethod,
     tilts: np.ndarray,
 ) -> float:
     """Replay one rotation's private coupling + mosaicity through the engine; return Bragg R."""

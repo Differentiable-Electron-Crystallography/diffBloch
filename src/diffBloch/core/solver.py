@@ -1,6 +1,6 @@
 """Bloch-wave propagators: integrate a :class:`BlochSystem` to the exit wavefunction.
 
-Two first-class methods, selected by a ``Method`` *value* (strategy-as-value, not a stateful class):
+Two first-class methods, selected by a ``SolverMethod`` *value* (strategy-as-value, not a stateful class):
 
 - ``matrix_exp`` -- the refine default. ``psi(t) = matrix_exp(A * i pi t / k_n) @ psi0``; a single
   dense matrix exponential with stable autograd.
@@ -25,8 +25,8 @@ from torch import Tensor
 
 from diffBloch.core.dynamical.assembly import BlochSystem, _fill_diagonal
 
-type Method = Literal["matrix_exp", "bloch_eigen"]
-# The solve's numeric format, orthogonal to Method (the algorithm). "fp64" = float64 + complex128
+type SolverMethod = Literal["matrix_exp", "bloch_eigen"]
+# The solve's numeric format, orthogonal to SolverMethod (the algorithm). "fp64" = float64 + complex128
 # (the exact, reproducible field); "fp32" = float32 + complex64. It is deliberately a *coarse*
 # knob -- the coupled orientation fit's O(N^3) eigensolve scales with the beam count (~cell volume),
 # so on a large cell "fp32" ~halves that dominant cost, trading a basin-sensitive search
@@ -64,7 +64,7 @@ def propagate(
     system: BlochSystem,
     thicknesses: Thicknesses,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
     precision: FloatFormat = "fp64",
     max_batch: int | None = None,
 ) -> Tensor:

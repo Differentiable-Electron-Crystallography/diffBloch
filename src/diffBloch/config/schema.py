@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from diffBloch.core.solver import FloatFormat, Method
+from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
 from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
@@ -56,13 +56,13 @@ class _StrictConfig(BaseModel):
 class SolverConfig(_StrictConfig):
     """Which dynamical solver to use for each phase.
 
-    Both fields are typed as the solver's own :data:`~diffBloch.core.solver.Method` literal (the
+    Both fields are typed as the solver's own :data:`~diffBloch.core.solver.SolverMethod` literal (the
     single source of truth), so an unknown method fails fast at config load rather than deep in the
     forward model.
     """
 
-    refine: Method = "matrix_exp"  # gradient-safe default for the refinement (backprop) path
-    inference: Method = "bloch_eigen"  # pinned to match existing e2e references
+    refine: SolverMethod = "matrix_exp"  # gradient-safe default for the refinement (backprop) path
+    inference: SolverMethod = "bloch_eigen"  # pinned to match existing e2e references
 
 
 class NumericsConfig(_StrictConfig):

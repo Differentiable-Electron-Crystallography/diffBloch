@@ -23,7 +23,7 @@ from torch import Tensor
 
 from diffBloch.core.dynamical.primitives import (
     excitation_errors,
-    m_factors,
+    mii_factors,
     structure_matrix_prefactor,
     wavevector_magnitude,
 )
@@ -206,7 +206,7 @@ def _beam_index_array(hkl: IntArray, *, name: str) -> IntArray:
 # matrix A. Ports the no-absorption path of ``diffBloch_private`` ``calculate_structure_matrix``:
 #   off-diagonal  A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)
 #   diagonal      A[i,i] = 2 * k_n * Sg_i * Mii_i      (replaces, not adds)
-# Every constant is a native primitive (structure_matrix_prefactor, m_factors, excitation_errors,
+# Every constant is a native primitive (structure_matrix_prefactor, mii_factors, excitation_errors,
 # wavevector_magnitude); only F is refined, so all of it precomputes into a frozen plan.
 
 
@@ -273,7 +273,7 @@ def build_beam_plan(
         raise ValueError("precomputed gather does not match this beam_hkl / gpts")
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
     g = g_vectors(beams, reciprocal_basis)
-    mii = m_factors(g, energy, u0=u0)
+    mii = mii_factors(g, energy, u0=u0)
     sg = excitation_errors(g, energy, u0=u0)
     k_n = wavevector_magnitude(energy, u0=u0)
     prefactor = structure_matrix_prefactor(energy)

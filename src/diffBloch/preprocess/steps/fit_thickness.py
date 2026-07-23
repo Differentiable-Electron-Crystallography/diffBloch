@@ -30,7 +30,7 @@ from dataclasses import replace
 import torch
 from torch import Tensor
 
-from diffBloch.core.solver import FloatFormat, Method
+from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import NULL_LOGGER, Logger, ThicknessFitted
@@ -48,7 +48,7 @@ def fit_thickness(
     refinement: RefinementSetup,
     grid: ThicknessGrid,
     *,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
     precision: FloatFormat = "fp64",
     device: Device | None = None,
     max_batch: int | None = None,

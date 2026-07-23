@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from torch import Tensor
 
-from diffBloch.core.solver import FloatFormat, Method
+from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine import LossFn, RefinementEngine, scaled_w_rbragg_loss
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
@@ -31,7 +31,7 @@ def build_engine(
     refinement: RefinementSetup,
     *,
     loss: LossFn = scaled_w_rbragg_loss,
-    method: Method = "matrix_exp",
+    method: SolverMethod = "matrix_exp",
     precision: FloatFormat = "fp64",
     max_batch: int | None = None,
 ) -> RefinementEngine:
@@ -72,7 +72,7 @@ def build_engine(
 
 
 def score_orientations(
-    plan: Plan, refinement: RefinementSetup, *, method: Method = "matrix_exp"
+    plan: Plan, refinement: RefinementSetup, *, method: SolverMethod = "matrix_exp"
 ) -> tuple[Tensor, ...]:
     """Scaling-optimised wR2 for every orientation in ``plan`` at the seeded ``refinement.params``.
 

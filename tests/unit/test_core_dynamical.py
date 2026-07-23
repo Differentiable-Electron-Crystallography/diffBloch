@@ -21,7 +21,7 @@ from diffBloch.core.dynamical import (
     gather_structure_factors,
     grid_source_indices,
     kappa,
-    m_factors,
+    mii_factors,
     structure_matrix,
     structure_matrix_prefactor,
     wavelength2energy,
@@ -103,7 +103,7 @@ def test_m_factors_unity_at_origin_and_match_reference() -> None:
     energy, u0 = 200e3, 0.0
     k_n = wavevector_magnitude(energy, u0=u0)
     g = np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.05], [0.0, 0.2, -0.05]])
-    mii = m_factors(g, energy, u0=u0)
+    mii = mii_factors(g, energy, u0=u0)
     assert mii.shape == (3,)
     assert mii[0] == pytest.approx(1.0)  # g = 0 -> Mii = 1
     expected = 1.0 / np.sqrt(1.0 - g[:, 2] / k_n)
@@ -114,7 +114,7 @@ def test_m_factors_unity_at_origin_and_match_reference() -> None:
 
 def test_m_factors_rejects_bad_shape() -> None:
     with pytest.raises(ValueError, match="g must have shape"):
-        m_factors(np.zeros((3,)), 200e3)
+        mii_factors(np.zeros((3,)), 200e3)
 
 
 def test_structure_matrix_prefactor_composes_sigma_kappa_wavelength() -> None:
@@ -291,7 +291,7 @@ def test_structure_matrix_decomposes_into_scale_and_diagonal() -> None:
     assert a.shape == (3, 3)
 
     g = g_vectors(_BEAM_HKL, _RECIP_BASIS)
-    mii = m_factors(g, _ENERGY)
+    mii = mii_factors(g, _ENERGY)
     sg = excitation_errors(g, _ENERGY)
     k_n = wavevector_magnitude(_ENERGY)
     prefactor = structure_matrix_prefactor(_ENERGY)
