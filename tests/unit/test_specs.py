@@ -39,7 +39,11 @@ def test_convergence_test_defaults() -> None:
     assert test.operation == "both"  # the private's full operation
     assert test.num_passes == 2  # the e2e's fixed pass count
     assert test.start_g_max_refine == 0.5
-    assert (test.pool_step, test.window_step, test.tilt_step) == (0.1, 0.2, 2.0)
+    assert (
+        test.g_max_refine_step,
+        test.integration_semiangle_step,
+        test.rocking_curve_sampling_step,
+    ) == (0.1, 0.2, 2.0)
 
 
 def test_convergence_test_rejects_invalid_operation_and_bounds() -> None:
@@ -47,8 +51,11 @@ def test_convergence_test_rejects_invalid_operation_and_bounds() -> None:
         ConvergenceTest(operation="coverage_and_stability")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="start_g_max_refine must be positive"):
         ConvergenceTest(start_g_max_refine=0.0)
-    with pytest.raises(ValueError, match="pool_step, window_step and tilt_step must be positive"):
-        ConvergenceTest(window_step=0.0)
+    with pytest.raises(
+        ValueError,
+        match="g_max_refine_step, integration_semiangle_step and rocking_curve_sampling_step must be positive",
+    ):
+        ConvergenceTest(integration_semiangle_step=0.0)
     with pytest.raises(ValueError, match="num_passes must be >= 1"):
         ConvergenceTest(num_passes=0)
 

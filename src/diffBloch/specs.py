@@ -156,8 +156,8 @@ class ConvergenceTest:
     settled scalars (the private's ``initial_*`` handoff). ``start_g_max_refine`` is the pool
     sweep's start
     radius -- the window and tilt starts come from :class:`IntegrationGeometry.semiangle` and
-    :class:`RockingCurve.sampling`, so they are not duplicated here. ``pool_step`` / ``window_step``
-    / ``tilt_step`` are the per-knob increments; ``num_passes`` is the fixed self-stability
+    :class:`RockingCurve.sampling`, so they are not duplicated here. ``g_max_refine_step`` / ``integration_semiangle_step``
+    / ``rocking_curve_sampling_step`` are the per-knob increments; ``num_passes`` is the fixed self-stability
     coordinate-sweep count (each pass revisits every knob after the others moved). The R-factor
     stopping rule + runaway cap live on :class:`ConvergenceTolerance`, not here (single
     responsibility: this type is *what to sweep*, that one is *when to stop*).
@@ -171,9 +171,13 @@ class ConvergenceTest:
 
     operation: Literal["coverage", "self_stability", "both"] = "both"
     start_g_max_refine: float = 0.5  # pool sweep start radius (window/tilt starts from the specs)
-    pool_step: float = 0.1  # g_max_refine increment per sweep step
-    window_step: float = 0.2  # integration_semiangle increment per sweep step (degrees)
-    tilt_step: float = 2.0  # rocking_curve_sampling increment per sweep step (tilt count)
+    g_max_refine_step: float = 0.1  # g_max_refine increment per sweep step
+    integration_semiangle_step: float = (
+        0.2  # integration_semiangle increment per sweep step (degrees)
+    )
+    rocking_curve_sampling_step: float = (
+        2.0  # rocking_curve_sampling increment per sweep step (tilt count)
+    )
     num_passes: int = 2  # fixed self-stability coordinate-sweep passes (per-pass order-swap)
 
     def __post_init__(self) -> None:
@@ -181,8 +185,14 @@ class ConvergenceTest:
             raise ValueError("operation must be 'coverage', 'self_stability', or 'both'")
         if self.start_g_max_refine <= 0.0:
             raise ValueError("start_g_max_refine must be positive")
-        if self.pool_step <= 0.0 or self.window_step <= 0.0 or self.tilt_step <= 0.0:
-            raise ValueError("pool_step, window_step and tilt_step must be positive")
+        if (
+            self.g_max_refine_step <= 0.0
+            or self.integration_semiangle_step <= 0.0
+            or self.rocking_curve_sampling_step <= 0.0
+        ):
+            raise ValueError(
+                "g_max_refine_step, integration_semiangle_step and rocking_curve_sampling_step must be positive"
+            )
         if self.num_passes < 1:
             raise ValueError("num_passes must be >= 1")
 

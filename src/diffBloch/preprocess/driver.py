@@ -4,7 +4,7 @@ The individual convergence levers (``converge_beams`` / ``converge_pool`` / ``co
 and the coverage levers (``cover_beams`` / ``cover_pool``) are pure ``Plan -> Plan`` steps, each
 self-contained. But the *coupled* sweep -- pool and window tuned together, and coverage handing its
 settled knobs to self-stability (the ``both`` operation) -- needs state the ``Plan`` deliberately
-does not carry: the live scalars ``g_max_refine`` / ``integration_semiangle`` / ``tilt_sampling``.
+does not carry: the live scalars ``g_max_refine`` / ``integration_semiangle`` / ``rocking_curve_sampling``.
 This module is the **driver** that owns that state.
 
 In State-monad terms: :class:`ConvergenceState`
@@ -46,7 +46,7 @@ class ConvergenceState:
     """The driver's coordinate-descent state -- the live beam scalars (the State monad's ``s``).
 
     ``g_max_refine`` is the candidate-pool radius; ``integration_semiangle`` is the Klar window;
-    ``tilt_sampling`` is the rocking-curve tilt count. The un-pruned pool is *not* a field: it is
+    ``rocking_curve_sampling`` is the rocking-curve tilt count. The un-pruned pool is *not* a field: it is
     re-derived as ``seed_beam_hkl(grid, g_max_refine)`` from whichever ``Plan`` the driver is
     transforming, so there is no stored copy to desync. The coverage phase tunes the first two (the
     beam SET is tilt-independent under pure geometric membership); the
@@ -55,7 +55,7 @@ class ConvergenceState:
 
     g_max_refine: float
     integration_semiangle: float
-    tilt_sampling: int
+    rocking_curve_sampling: int
 
 
 def converge_numerics(
@@ -84,15 +84,15 @@ def converge_numerics(
         start = ConvergenceState(
             g_max_refine=test.start_g_max_refine,
             integration_semiangle=selection.integration.semiangle,
-            tilt_sampling=rocking.sampling,
+            rocking_curve_sampling=rocking.sampling,
         )
         if test.operation == "coverage":
             converged, _ = run_coverage_phase(
                 plan,
                 start,
                 selection,
-                pool_step=test.pool_step,
-                window_step=test.window_step,
+                g_max_refine_step=test.g_max_refine_step,
+                integration_semiangle_step=test.integration_semiangle_step,
                 max_iterations=tolerance.max_iterations,
             )
             return converged
@@ -104,9 +104,9 @@ def converge_numerics(
                 rocking,
                 refinement,
                 tolerance,
-                pool_step=test.pool_step,
-                window_step=test.window_step,
-                tilt_step=test.tilt_step,
+                g_max_refine_step=test.g_max_refine_step,
+                integration_semiangle_step=test.integration_semiangle_step,
+                rocking_curve_sampling_step=test.rocking_curve_sampling_step,
                 num_passes=test.num_passes,
                 method=method,
             )
@@ -116,8 +116,8 @@ def converge_numerics(
             plan,
             start,
             selection,
-            pool_step=test.pool_step,
-            window_step=test.window_step,
+            g_max_refine_step=test.g_max_refine_step,
+            integration_semiangle_step=test.integration_semiangle_step,
             max_iterations=tolerance.max_iterations,
         )
         converged, _ = run_stability_phase(
@@ -127,9 +127,9 @@ def converge_numerics(
             rocking,
             refinement,
             tolerance,
-            pool_step=test.pool_step,
-            window_step=test.window_step,
-            tilt_step=test.tilt_step,
+            g_max_refine_step=test.g_max_refine_step,
+            integration_semiangle_step=test.integration_semiangle_step,
+            rocking_curve_sampling_step=test.rocking_curve_sampling_step,
             num_passes=test.num_passes,
             method=method,
         )
@@ -143,8 +143,8 @@ def run_coverage_phase(
     state: ConvergenceState,
     selection: BeamSelection,
     *,
-    pool_step: float,
-    window_step: float,
+    g_max_refine_step: float,
+    integration_semiangle_step: float,
     max_iterations: int = 100,
 ) -> tuple[Plan, ConvergenceState]:
     """Grow the pool then the window to the minimum that maximises coverage; thread the scalars.
@@ -161,13 +161,13 @@ def run_coverage_phase(
     (obstruction 1), so widening the window can recover beams a narrower pool clipped. ``selection``
     supplies the fixed ``rsg`` / ``dsg`` / ``geometry``; its ``integration.semiangle`` is ignored --
     the live window comes from ``state``. Returns the coverage-maximising ``Plan`` and the settled
-    :class:`ConvergenceState` (for the ``both`` handoff to self-stability). ``pool_step`` /
-    ``window_step`` must be positive.
+    :class:`ConvergenceState` (for the ``both`` handoff to self-stability). ``g_max_refine_step`` /
+    ``integration_semiangle_step`` must be positive.
     """
-    if pool_step <= 0.0:
-        raise ValueError("pool_step must be positive")
-    if window_step <= 0.0:
-        raise ValueError("window_step must be positive")
+    if g_max_refine_step <= 0.0:
+        raise ValueError("g_max_refine_step must be positive")
+    if integration_semiangle_step <= 0.0:
+        raise ValueError("integration_semiangle_step must be positive")
 
     g_max_refine = maximize_scalar(
         lambda value: value,
@@ -175,20 +175,20 @@ def run_coverage_phase(
             _windowed_pool(plan, value, state.integration_semiangle, selection)
         ),
         start=state.g_max_refine,
-        step=pool_step,
+        step=g_max_refine_step,
         max_iterations=max_iterations,
     )
     integration_semiangle = maximize_scalar(
         lambda value: value,
         lambda value: plan_coverage(_windowed_pool(plan, g_max_refine, value, selection)),
         start=state.integration_semiangle,
-        step=window_step,
+        step=integration_semiangle_step,
         max_iterations=max_iterations,
     )
     settled = ConvergenceState(
         g_max_refine=g_max_refine,
         integration_semiangle=integration_semiangle,
-        tilt_sampling=state.tilt_sampling,
+        rocking_curve_sampling=state.rocking_curve_sampling,
     )
     return _windowed_pool(plan, g_max_refine, integration_semiangle, selection), settled
 
@@ -201,9 +201,9 @@ def run_stability_phase(
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
     *,
-    pool_step: float,
-    window_step: float,
-    tilt_step: float,
+    g_max_refine_step: float,
+    integration_semiangle_step: float,
+    rocking_curve_sampling_step: float,
     num_passes: int = 2,
     method: SolverMethod = "matrix_exp",
 ) -> tuple[Plan, ConvergenceState]:
@@ -211,14 +211,14 @@ def run_stability_phase(
 
     The self-stability phase (``State ConvergenceState Plan``): a fixed ``num_passes`` coordinate
     sweep over the pool (``g_max_refine``), window (``integration_semiangle``) and tilt
-    (``tilt_sampling``) knobs, each driven by :func:`converge_scalar` to the first knob value whose
+    (``rocking_curve_sampling``) knobs, each driven by :func:`converge_scalar` to the first knob value whose
     *consecutive-simulation* R-factor drops below ``tolerance.r_factor_threshold`` (a numerical
     resolution study, not an accuracy fit -- so it needs ``refinement``, unlike the pure-geometry
     coverage phase). Faithful to the private ``_run_hyperparams_optimization``: pass 1 sweeps
     pool -> tilt -> window; pass 2+ sweeps tilt -> pool -> window (the private's per-pass
     order-swap, revisiting each knob after the others moved). Each settled scalar threads into the
     next sweep
-    and the next pass via the running ``(g_max_refine, integration_semiangle, tilt_sampling)``.
+    and the next pass via the running ``(g_max_refine, integration_semiangle, rocking_curve_sampling)``.
 
     Every candidate is a full simulation Plan rebuilt from the three scalars
     (:func:`_stability_build` -- pool + window via :func:`_windowed_pool`, then rocking-curve tilt
@@ -226,20 +226,24 @@ def run_stability_phase(
     Plan. ``selection`` supplies the
     fixed ``rsg`` / ``dsg`` / ``geometry`` and ``rocking`` the fixed tilt span + geometry; their
     ``integration.semiangle`` / ``sampling`` are ignored -- the live values come from ``state``.
-    Returns the self-stable ``Plan`` and settled :class:`ConvergenceState`. ``pool_step`` /
-    ``window_step`` / ``tilt_step`` must be positive and ``num_passes`` at least 1.
+    Returns the self-stable ``Plan`` and settled :class:`ConvergenceState`. ``g_max_refine_step`` /
+    ``integration_semiangle_step`` / ``rocking_curve_sampling_step`` must be positive and ``num_passes`` at least 1.
     """
-    if pool_step <= 0.0:
-        raise ValueError("pool_step must be positive")
-    if window_step <= 0.0:
-        raise ValueError("window_step must be positive")
-    if tilt_step <= 0.0:
-        raise ValueError("tilt_step must be positive")
+    if g_max_refine_step <= 0.0:
+        raise ValueError("g_max_refine_step must be positive")
+    if integration_semiangle_step <= 0.0:
+        raise ValueError("integration_semiangle_step must be positive")
+    if rocking_curve_sampling_step <= 0.0:
+        raise ValueError("rocking_curve_sampling_step must be positive")
     if num_passes < 1:
         raise ValueError("num_passes must be at least 1")
 
     measure = simulation_rfactor(refinement, method=method)
-    steps = {"pool": pool_step, "window": window_step, "tilt": tilt_step}
+    steps = {
+        "pool": g_max_refine_step,
+        "window": integration_semiangle_step,
+        "tilt": rocking_curve_sampling_step,
+    }
 
     def sweep(
         g_max_refine: float, integration_semiangle: float, tilt: float, *, knob: str
@@ -265,7 +269,7 @@ def run_stability_phase(
 
     g_max_refine = state.g_max_refine
     integration_semiangle = state.integration_semiangle
-    tilt = float(state.tilt_sampling)
+    tilt = float(state.rocking_curve_sampling)
     for pass_idx in range(1, num_passes + 1):
         order = ("pool", "tilt", "window") if pass_idx == 1 else ("tilt", "pool", "window")
         for knob in order:
@@ -277,14 +281,14 @@ def run_stability_phase(
             else:
                 tilt = settled_value
 
-    tilt_sampling = int(round(tilt))
+    rocking_curve_sampling = int(round(tilt))
     settled = ConvergenceState(
         g_max_refine=g_max_refine,
         integration_semiangle=integration_semiangle,
-        tilt_sampling=tilt_sampling,
+        rocking_curve_sampling=rocking_curve_sampling,
     )
     final = _stability_build(
-        plan, g_max_refine, integration_semiangle, tilt_sampling, selection, rocking
+        plan, g_max_refine, integration_semiangle, rocking_curve_sampling, selection, rocking
     )
     return final, settled
 
@@ -293,21 +297,21 @@ def _stability_build(
     plan: Plan,
     g_max_refine: float,
     integration_semiangle: float,
-    tilt_sampling: float,
+    rocking_curve_sampling: float,
     selection: BeamSelection,
     rocking: RockingCurve,
 ) -> Plan:
     """The full simulation Plan as a pure function of the three self-stability knobs.
 
     Pool + window via :func:`_windowed_pool` (which fixes the beam SET), then rocking-curve tilt
-    integration at ``tilt_sampling`` on that set. Order matters: the pool/window decide *which*
+    integration at ``rocking_curve_sampling`` on that set. Order matters: the pool/window decide *which*
     beams, the tilt count integrates the rocking curve over them. Mirrors the private
     ``_run_simulation``
     (a fresh build from ``g_max`` / ``sg_max`` / ``tilt_steps``), never an incrementally-mutated
     Plan.
     """
     pooled = _windowed_pool(plan, g_max_refine, integration_semiangle, selection)
-    tilts = replace(rocking, sampling=int(round(tilt_sampling)))
+    tilts = replace(rocking, sampling=int(round(rocking_curve_sampling)))
     return integrate_rocking_curve(tilts)(pooled)
 
 
