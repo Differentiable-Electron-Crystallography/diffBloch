@@ -11,7 +11,7 @@ from torch import Tensor
 def cholesky_adp(raw_factor: Tensor) -> Tensor:
     """Map raw 3x3 factors to symmetric positive-semidefinite ADP matrices.
 
-    The private implementation stores anisotropic ADPs as Cholesky factors and expands them as
+    Anisotropic ADPs are stored as Cholesky factors and expanded as
     ``L @ L.T``. Only the lower triangle is used, giving the six degrees of freedom of a symmetric
     PSD matrix and avoiding gauge-redundant upper-triangular parameters.
     """
