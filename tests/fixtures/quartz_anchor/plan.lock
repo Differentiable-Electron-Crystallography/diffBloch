@@ -1,7 +1,7 @@
 {
   "experiment_lock_sha256": "798ba1b49d7511e116a5c682ccfa501232f64ba7ab108c2407dc5f10771c55cf",
-  "config_digest": "bbb269650cca515d47a33cd90a9603b17b6087a81bdf9ef914094eee70e5fcc7",
-  "code_version": "0.2.0+g2439ed0",
+  "config_digest": "9e57c9b5f7026226933195f1120f6fb1e3c57355599781b2af988b348cb4544c",
+  "code_version": "0.2.0+g82a942e.dirty",
   "recipe": [
     {
       "name": "select_beams",
@@ -55,7 +55,9 @@
             "__type__": "TiltSegmentUnion",
             "n_splits": 12,
             "g_max": 2.25,
-            "sg_max": 0.01
+            "sg_max": 0.01,
+            "union_adaptive": false,
+            "union_max_new_beams_pct": 0.01
           },
           "scored": {
             "__type__": "ScoredSelection",
@@ -86,8 +88,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "a713f232ae372fde5b9106bca8b039b66817b79260bd51bc9682a1ade82fb708",
-    "bytes": 1030128,
+    "sha256": "ff3a2df1d7514f698da470d188e5c1a5420eff20c75e7d6f1b4b341b01f7dd0b",
+    "bytes": 1030169,
     "media_type": "application/octet-stream"
   }
 }

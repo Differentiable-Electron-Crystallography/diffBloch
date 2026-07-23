@@ -1,6 +1,6 @@
 {
   "experiment_lock_sha256": "57bfc48b59ae1614ed850c719ece0cfb0639393e269ec9a556d43b23ac81b129",
-  "config_digest": "78366b9a25c472c83f3f29da121a536044ab0f39b1a61b5afab629851ffa1892",
+  "config_digest": "6e6a2c65c7864458b0967283cefe63807d4f05f032061304e37ec7c1cecd3d5f",
   "code_version": "0.2.0",
   "recipe": [
     {
@@ -55,7 +55,9 @@
             "__type__": "TiltSegmentUnion",
             "n_splits": 4,
             "g_max": 1.5,
-            "sg_max": 0.02
+            "sg_max": 0.02,
+            "union_adaptive": false,
+            "union_max_new_beams_pct": 0.01
           },
           "scored": {
             "__type__": "ScoredSelection",
@@ -86,8 +88,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "95bf466f912a523c16de4a16b1fab766b65a9d75b9f3df4fb21b6e412308897d",
-    "bytes": 752997,
+    "sha256": "73884d61637b565ca29e8455f9e4a9de58b1d43ee9a9b0b46fc8e0ee46ee7ad9",
+    "bytes": 753037,
     "media_type": "application/octet-stream"
   }
 }
