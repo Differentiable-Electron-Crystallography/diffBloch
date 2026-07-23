@@ -213,12 +213,13 @@ def test_fp32_scores_end_to_end_through_build_engine() -> None:
     assert score.shape == () and torch.isfinite(score)
 
 
-def test_terminal_stays_fp64_and_exposes_no_precision_knob() -> None:
-    """The safety-critical invariant: the terminal Plan->Result never runs fp32.
+def test_terminal_defaults_fp64_and_inference_exposes_no_precision_knob() -> None:
+    """The default terminal engine is fp64; inference exposes no coarse precision knob.
 
-    Two layers. (a) The default engine is fp64 -- the solve produces complex128 / float64, so the
-    pinned result is exact. (b) Structural: ``run_inference`` exposes no ``precision`` parameter, so
-    a coarse search cannot leak into the terminal by construction, not merely by callers omitting.
+    The default engine is fp64 -- the solve produces complex128 / float64, so existing callers keep
+    the exact path. ``run_inference`` exposes no ``precision`` parameter, so a coarse preprocess
+    search cannot leak into terminal inference by construction. App refinement has its own explicit
+    config opt-in, covered in the app-layer tests.
     """
     plan, refinement = _silicon_plan()
     engine = build_engine(plan, refinement)  # no precision -> fp64

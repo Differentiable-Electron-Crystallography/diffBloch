@@ -49,9 +49,9 @@ def build_engine(
     :meth:`RefinementEngine.score_orientation`, which apply their own scaling-optimised wR2.
 
     ``precision`` defaults to ``"fp64"`` (complex128 -- byte-identical to today). ``"fp32"``
-    (complex64) is a search-time knob only the preprocess fits set on their transient scoring
-    engines; the terminal callers here and in ``run_inference`` omit it, so scoring/refinement that
-    produce the pinned result stay fp64. See :func:`diffBloch.core.solver.propagate`.
+    (complex64) is a speed/precision knob: preprocess fits use it for transient coarse-search
+    engines, and the app refinement path may opt into it explicitly via config. Terminal inference
+    omits it and stays fp64. See :func:`diffBloch.core.solver.propagate`.
 
     ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block; ``None`` lets each
     solve pick a memory-safe block from its beam count, bounding peak memory while matching the

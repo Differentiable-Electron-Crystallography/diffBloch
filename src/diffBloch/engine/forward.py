@@ -102,9 +102,9 @@ class RefinementEngine:
     loss: LossFn
     method: Method = "matrix_exp"
     # Solve numeric field. "fp64" everywhere by default (byte-identical to complex128). "fp32"
-    # (complex64) is a search-time knob, set only on the transient scoring engines the preprocess
-    # fits build; the terminal estimators (objective/refine here, run_inference via build_engine)
-    # never enable it, so the reproducible pinned result stays fp64. See core.solver.propagate.
+    # (complex64) is a speed/precision knob: preprocess uses it only for transient coarse-search
+    # engines, and the default refine path stays fp64 unless config opts in. See
+    # core.solver.propagate.
     precision: FloatFormat = "fp64"
     # matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a
     # rounding-level ~1 ulp shift, never accuracy). None (default) lets each

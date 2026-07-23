@@ -30,11 +30,10 @@ type Method = Literal["matrix_exp", "bloch_eigen"]
 # (the exact, reproducible field); "fp32" = float32 + complex64. It is deliberately a *coarse*
 # knob -- the coupled orientation fit's O(N^3) eigensolve scales with the beam count (~cell volume),
 # so on a large cell "fp32" ~halves that dominant cost, trading a basin-sensitive search
-# (non-determinism across platforms) for speed. The terminal Plan->Result (run_inference scoring,
-# refine) stays "fp64": the fit is re-scored there, so the pinned result stays exact even when the
-# search was coarse (design/decisions/combinators-and-recipe-identity.md: precision==checkpoint
-# boundary). The selecting param stays named `precision` (the role); the type is FloatFormat so the
-# type and its members compose (FloatFormat/fp32), avoiding the redundant Precision.FP32.
+# (non-determinism across platforms) for speed. Terminal inference stays "fp64"; refine defaults to
+# "fp64" but can opt into "fp32" as an explicit speed/precision tradeoff. The selecting param stays
+# named `precision` (the role); the type is FloatFormat so the type and its members compose
+# (FloatFormat/fp32), avoiding the redundant Precision.FP32.
 type FloatFormat = Literal["fp32", "fp64"]
 type Thicknesses = float | Sequence[float] | Tensor
 
@@ -83,11 +82,10 @@ def propagate(
     ``precision`` selects the numeric field of the eigensolve/matrix-exponential -- orthogonal to
     ``method``. ``"fp64"`` (the default) runs the whole propagation in complex128/float64 and is a
     pure identity on today's path (byte-identical). ``"fp32"`` downcasts the operator to complex64
-    and builds ``thicknesses`` at float32, roughly halving the O(N^3) solve's time and memory -- a
-    *search-time* knob for the preprocess fits (the O(N^3) cost scales with the beam count, i.e. the
-    cell volume). The terminal estimators (``run_inference`` scoring, ``refine``) never enable it:
-    fp32 perturbs the fit's basin, so the reproducible pinned result stays fp64. Ports
-    ``diffBloch_private`` ``dynamical.py``'s complex64 eigensolve (#127/#133).
+    and builds ``thicknesses`` at float32, roughly halving the O(N^3) solve's time and memory. It is
+    used automatically only by the preprocess fits' coarse search path; terminal inference keeps the
+    fp64 default, while refinement may opt into fp32 explicitly when speed matters more than decimal
+    places. Ports ``diffBloch_private`` ``dynamical.py``'s complex64 eigensolve (#127/#133).
 
     ``max_batch`` (``matrix_exp`` only) caps how many ``(N, N)`` operators are exponentiated in one
     ``torch.matrix_exp`` call. ``None`` (the default) builds the whole ``(..., T, N, N)`` transfer
