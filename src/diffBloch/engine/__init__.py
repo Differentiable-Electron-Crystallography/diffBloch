@@ -47,7 +47,7 @@ from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
-    ScatteringGrid,
+    StructureFactorGrid,
     mean_plan_thickness,
 )
 from diffBloch.engine.refine import (
@@ -85,7 +85,7 @@ __all__ = [
     "RefinementProblem",
     "RefinementResult",
     "PenaltyTerm",
-    "ScatteringGrid",
+    "StructureFactorGrid",
     "CoupledOrientationPlan",
     "ThicknessBounds",
     "TrainableSpec",

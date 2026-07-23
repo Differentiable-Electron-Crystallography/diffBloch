@@ -9,7 +9,7 @@ import pytest
 import torch
 
 from diffBloch.core.products import PatternBatch
-from diffBloch.engine import OrientationPlan, ScatteringGrid
+from diffBloch.engine import OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess import Plan, identity, iterate_until, pipeline
 
 _ENERGY = 200e3
@@ -17,8 +17,8 @@ _CELL = np.eye(3, dtype=np.float64) * 5.0
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 
 
-def _orientation() -> tuple[ScatteringGrid, OrientationPlan]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+def _orientation() -> tuple[StructureFactorGrid, OrientationPlan]:
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     pattern = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=torch.zeros(3, dtype=torch.float64),
@@ -29,7 +29,7 @@ def _orientation() -> tuple[ScatteringGrid, OrientationPlan]:
 
 def _plan(n_orientations: int = 1) -> Plan:
     grid, orient = _orientation()
-    return Plan(grid=grid, orientations=(orient,) * n_orientations)
+    return Plan(structure_factor_grid=grid, orientations=(orient,) * n_orientations)
 
 
 # Synthetic steps using the orientation count as the observable: grow appends a copy of the first
@@ -44,8 +44,8 @@ def _truncate(plan: Plan) -> Plan:
 
 def test_plan_bundles_grid_and_orientations() -> None:
     grid, orient = _orientation()
-    plan = Plan(grid=grid, orientations=(orient,))
-    assert plan.grid is grid
+    plan = Plan(structure_factor_grid=grid, orientations=(orient,))
+    assert plan.structure_factor_grid is grid
     assert plan.orientations == (orient,)
 
 

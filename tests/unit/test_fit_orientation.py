@@ -22,7 +22,7 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.app.loggers import EarlyAbortLogger, FitAbortedError
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, ScatteringGrid, w_rbragg_loss
+from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, fit_orientation, hexagonal_tilt
 from diffBloch.preprocess.orientation import rocking_curve_tilts
@@ -65,8 +65,8 @@ def test_hexagonal_tilt_right_multiply_preserves_a_non_orthonormal_determinant()
 # --- fit_orientation (synthetic silicon) ----------------------------------------------------------
 
 
-def _silicon() -> tuple[ScatteringGrid, object, ConstraintSpec, torch.Tensor]:
-    grid = ScatteringGrid.from_cell(_CELL, g_max=0.45)
+def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
+    grid = StructureFactorGrid.from_cell(_CELL, g_max=0.45)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     numbers = torch.tensor([14], dtype=torch.int64)
@@ -90,7 +90,7 @@ def _refinement(asu_plan: object, spec: ConstraintSpec, numbers: torch.Tensor) -
 
 
 def _self_consistent(
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     asu_plan: object,
     spec: ConstraintSpec,
     numbers: torch.Tensor,
@@ -148,7 +148,7 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
     refinement = _refinement(asu_plan, spec, numbers)
 
     (refined,) = fit_orientation(refinement, HexagonalSearch())(
-        Plan(grid=grid, orientations=(matched,))
+        Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
 
     # Already optimal: the search must not wander it away from the seed.
@@ -167,7 +167,7 @@ def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() ->
     refinement = _refinement(asu_plan, spec, numbers)
 
     (refined,) = fit_orientation(refinement, HexagonalSearch())(
-        Plan(grid=grid, orientations=(matched,))
+        Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
 
     assert len(refined.tilts) == 3  # trials preserved the tilt set (not dropped to a static N=1)
@@ -182,7 +182,7 @@ def test_fit_orientation_device_cpu_is_a_no_op() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     refinement = _refinement(asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(matched,))
+    plan = Plan(structure_factor_grid=grid, orientations=(matched,))
 
     (base,) = fit_orientation(refinement, HexagonalSearch())(plan).orientations
     (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
@@ -206,7 +206,7 @@ def test_fit_orientation_cuda_matches_cpu_within_tolerance() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     refinement = _refinement(asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(matched,))
+    plan = Plan(structure_factor_grid=grid, orientations=(matched,))
 
     (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
     (cuda,) = fit_orientation(refinement, HexagonalSearch(), device="cuda")(plan).orientations
@@ -231,7 +231,7 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
     )
     with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
         fit_orientation(_refinement(asu_plan, spec, numbers), HexagonalSearch(), coupling=coupling)(
-            Plan(grid=grid, orientations=(matched,))
+            Plan(structure_factor_grid=grid, orientations=(matched,))
         )
 
 
@@ -245,7 +245,7 @@ def test_fit_orientation_workers_matches_sequential() -> None:
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     refinement = _refinement(asu_plan, spec, numbers)
-    plan = Plan(grid=grid, orientations=(matched,) * 5)
+    plan = Plan(structure_factor_grid=grid, orientations=(matched,) * 5)
 
     sequential = fit_orientation(refinement, HexagonalSearch())(plan).orientations
     threaded = fit_orientation(refinement, HexagonalSearch(), workers=3)(plan).orientations
@@ -276,7 +276,7 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     monkeypatch.setattr(fo, "_refine_one", stub)
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
-    plan = Plan(grid=grid, orientations=(matched,) * 40)
+    plan = Plan(structure_factor_grid=grid, orientations=(matched,) * 40)
     refinement = _refinement(asu_plan, spec, numbers)
     logger = EarlyAbortLogger(wr2_ceiling=-1.0, patience=1)  # aborts on the first fit event
 
@@ -309,7 +309,7 @@ def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
         thickness=(300.0,),
         orientation=np.eye(3, dtype=np.float64) @ hexagonal_tilt(60.0, 0.2),
     )
-    plan = Plan(grid=grid, orientations=(perturbed,))
+    plan = Plan(structure_factor_grid=grid, orientations=(perturbed,))
     refinement = _refinement(asu_plan, spec, numbers)
     with pytest.raises(RuntimeError, match="did not converge"):
         fit_orientation(refinement, HexagonalSearch(max_iterations=15))(plan)

@@ -214,7 +214,8 @@ def test_quartz_coupled_anchor(tmp_path: Path, caplog: pytest.LogCaptureFixture)
     observations = read_observations(exp / cfg.inputs.observations)
     setup = from_experiment(structure, observations, cfg)
     steps = resolve_recipe(
-        _recipe_steps(cfg, setup.refinement, NULL_LOGGER), setup.plans.combined.grid
+        _recipe_steps(cfg, setup.refinement, NULL_LOGGER),
+        setup.plans.combined.structure_factor_grid,
     )
     records = step_records(steps)
     status = preprocess_lock_status(

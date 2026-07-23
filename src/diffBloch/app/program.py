@@ -434,7 +434,7 @@ def _prepare(
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
     # lock keys on is a flat, fork-free step list -- the fork is Applicative by construction, so its
     # branch is fixed here, before running (see design/decisions/combinators-and-recipe-identity).
-    steps = list(resolve_recipe(steps, base.grid))
+    steps = list(resolve_recipe(steps, base.structure_factor_grid))
     records = step_records(steps)
     # A recipe with an unrecorded (opaque) step cannot be safely identified -> never checkpoint it.
     can_checkpoint = checkpoint and OPAQUE not in records

@@ -304,11 +304,11 @@ def friedel_symmetric_factors(grid, seed):
     return torch.tensor(factors, dtype=torch.complex128)
 
 
-def propagate_case(beam_hkl, grid_hkl, gpts, seed):
-    structure_factor = friedel_symmetric_factors(grid_hkl, seed)
+def propagate_case(beam_hkl, structure_factor_hkl, gpts, seed):
+    structure_factor = friedel_symmetric_factors(structure_factor_hkl, seed)
     A = calculate_structure_matrix(
         structure_factor,
-        grid_hkl,
+        structure_factor_hkl,
         beam_hkl,
         CELL,
         ENERGY,
@@ -333,7 +333,7 @@ def propagate_case(beam_hkl, grid_hkl, gpts, seed):
         psi_bloch_eigen=psi_bloch_eigen.numpy(),
         thicknesses=THICKNESSES,
         structure_factor=structure_factor.numpy(),
-        grid_hkl=grid_hkl,
+        structure_factor_hkl=structure_factor_hkl,
         beam_hkl=beam_hkl,
         reciprocal_basis=RECIPROCAL_BASIS,
         g=g,
@@ -350,7 +350,7 @@ _FIXTURE_KEYS = (
     "psi_bloch_eigen",
     "thicknesses",
     "structure_factor",
-    "grid_hkl",
+    "structure_factor_hkl",
     "beam_hkl",
     "reciprocal_basis",
     "g",
@@ -368,7 +368,7 @@ def cross_check(name, case):
     """
     plan = build_beam_plan(
         case["beam_hkl"],
-        case["grid_hkl"],
+        case["structure_factor_hkl"],
         case["reciprocal_basis"],
         energy=float(case["energy"]),
         gpts=tuple(int(x) for x in case["gpts"]),
@@ -392,10 +392,10 @@ def cross_check(name, case):
 def main() -> None:
     # Zone-axis case: in-plane beams (l = 0) -> g_z = 0 -> Mii == 1; A Hermitian (Friedel Fgb).
     beam_hkl = np.array([[h, k, 0] for h in (-1, 0, 1) for k in (-1, 0, 1)], dtype=np.int64)
-    grid_hkl = np.array(
+    structure_factor_hkl = np.array(
         [[h, k, 0] for h in (-2, -1, 0, 1, 2) for k in (-2, -1, 0, 1, 2)], dtype=np.int64
     )
-    zone = propagate_case(beam_hkl, grid_hkl, (5, 5, 1), seed=8)
+    zone = propagate_case(beam_hkl, structure_factor_hkl, (5, 5, 1), seed=8)
 
     # Oblique case: out-of-plane beams (l != 0) -> g_z != 0 -> Mii != 1, exercising the
     # symmetrisation/un-symmetrisation the zone-axis case leaves trivial. Still Friedel-Hermitian.
@@ -470,13 +470,13 @@ def main() -> None:
             "thicknesses_A": THICKNESSES.tolist(),
             "zone": {
                 "n_beams": int(len(zone["beam_hkl"])),
-                "n_grid": int(len(zone["grid_hkl"])),
+                "n_grid": int(len(zone["structure_factor_hkl"])),
                 "gpts": zone["gpts"].tolist(),
                 "seed": 8,
             },
             "oblique": {
                 "n_beams": int(len(oblique["beam_hkl"])),
-                "n_grid": int(len(oblique["grid_hkl"])),
+                "n_grid": int(len(oblique["structure_factor_hkl"])),
                 "gpts": oblique["gpts"].tolist(),
                 "seed": 9,
             },

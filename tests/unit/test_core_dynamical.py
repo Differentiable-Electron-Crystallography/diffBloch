@@ -138,10 +138,10 @@ _GRID_HKL = np.array(
 _GPTS = (3, 3, 1)
 
 
-def _encoded_factors(grid_hkl: np.ndarray) -> torch.Tensor:
+def _encoded_factors(structure_factor_hkl: np.ndarray) -> torch.Tensor:
     # Each grid cell gets a unique recoverable value F(h,k,l) = h + 1j*(10k + l).
-    real = grid_hkl[:, 0].astype(np.float64)
-    imag = 10.0 * grid_hkl[:, 1] + grid_hkl[:, 2]
+    real = structure_factor_hkl[:, 0].astype(np.float64)
+    imag = 10.0 * structure_factor_hkl[:, 1] + structure_factor_hkl[:, 2]
     return torch.tensor(real + 1j * imag, dtype=torch.complex128)
 
 
@@ -209,7 +209,7 @@ def test_build_gather_accepts_integer_valued_float_hkl() -> None:
         _GRID_HKL.astype(np.float64), _BEAM_HKL.astype(np.float64), _GPTS
     )
     from_int = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
-    assert torch.equal(from_float.destination_indices, from_int.destination_indices)
+    assert torch.equal(from_float.beam_difference_indices, from_int.beam_difference_indices)
 
 
 def test_build_gather_rejects_duplicate_grid_indices() -> None:
@@ -223,18 +223,20 @@ def test_build_gather_validate_false_produces_byte_identical_indices() -> None:
     # so skipping validation on a hot rebuild loop cannot change the gathered structure matrix.
     checked = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
     skipped = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS, validate=False)
-    assert torch.equal(checked.source_indices, skipped.source_indices)
-    assert torch.equal(checked.destination_indices, skipped.destination_indices)
+    assert torch.equal(checked.structure_factor_indices, skipped.structure_factor_indices)
+    assert torch.equal(checked.beam_difference_indices, skipped.beam_difference_indices)
 
 
 def test_build_gather_precomputed_source_matches_the_internal_ravel() -> None:
-    # grid_source_indices is the grid-constant half of the gather; passing it via source_indices=
+    # grid_source_indices is the grid-constant half of the gather; passing it via structure_factor_indices=
     # is a pure perf hoist (skip re-raveling the support grid), so the indices must be identical.
     internal = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS)
     source = grid_source_indices(_GRID_HKL, _GPTS)
-    hoisted = build_structure_factor_gather(_GRID_HKL, _BEAM_HKL, _GPTS, source_indices=source)
-    assert torch.equal(internal.source_indices, hoisted.source_indices)
-    assert torch.equal(internal.destination_indices, hoisted.destination_indices)
+    hoisted = build_structure_factor_gather(
+        _GRID_HKL, _BEAM_HKL, _GPTS, structure_factor_indices=source
+    )
+    assert torch.equal(internal.structure_factor_indices, hoisted.structure_factor_indices)
+    assert torch.equal(internal.beam_difference_indices, hoisted.beam_difference_indices)
 
 
 def test_build_gather_validate_false_skips_the_on2_integrity_checks() -> None:
@@ -258,7 +260,7 @@ def test_build_gather_validate_false_still_fails_loudly_on_out_of_box_difference
 
 
 def test_build_gather_rejects_bad_shapes() -> None:
-    with pytest.raises(ValueError, match="grid_hkl must have shape"):
+    with pytest.raises(ValueError, match="structure_factor_hkl must have shape"):
         build_structure_factor_gather(np.zeros(3, dtype=np.int64), _BEAM_HKL, _GPTS)
     with pytest.raises(ValueError, match="beam_hkl must have shape"):
         build_structure_factor_gather(_GRID_HKL, np.zeros((2, 2), dtype=np.int64), _GPTS)
@@ -364,7 +366,7 @@ def test_build_beam_plan_reuses_a_precomputed_gather_byte_identically() -> None:
     assert reused.gather is gather  # the exact object is threaded through, not rebuilt
     assert torch.equal(reused.diagonal, fresh.diagonal)
     assert torch.equal(reused.mii, fresh.mii)
-    assert torch.equal(reused.gather.destination_indices, fresh.gather.destination_indices)
+    assert torch.equal(reused.gather.beam_difference_indices, fresh.gather.beam_difference_indices)
 
 
 def test_build_beam_plan_rejects_a_mismatched_precomputed_gather() -> None:
@@ -413,7 +415,7 @@ def test_structure_matrix_matches_private_oracle() -> None:
     assert np.allclose(g_vectors(data["beam_hkl"], data["reciprocal_basis"]), data["g"])
     plan = build_beam_plan(
         data["beam_hkl"],
-        data["grid_hkl"],
+        data["structure_factor_hkl"],
         data["reciprocal_basis"],
         energy=float(data["energy"]),
         gpts=tuple(int(point) for point in data["gpts"]),

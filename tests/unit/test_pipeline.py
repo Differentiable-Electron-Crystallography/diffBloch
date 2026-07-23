@@ -13,7 +13,7 @@ from dataclasses import replace
 import numpy as np
 from tests.unit.synthetic import seed_system
 
-from diffBloch.engine import ScatteringGrid
+from diffBloch.engine import StructureFactorGrid
 from diffBloch.observability import PlanStepCompleted, RecordingLogger
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -46,7 +46,7 @@ from diffBloch.specs import (
 
 def _plan() -> Plan:
     # Provenance is grid/orientation-agnostic; a bare Plan with empty geometry exercises stamping.
-    return Plan(grid=None, orientations=())  # type: ignore[arg-type]
+    return Plan(structure_factor_grid=None, orientations=())  # type: ignore[arg-type]
 
 
 def _tag(name: str) -> Step:
@@ -56,8 +56,10 @@ def _tag(name: str) -> Step:
 
 def test_pipeline_emits_plan_step_completed_per_step_with_the_step_name() -> None:
     """With a real sink, each step emits a PlanStepCompleted whose channel is the step name."""
-    grid = ScatteringGrid.from_cell(np.eye(3) * 5.0, g_max=0.45)
-    plan = Plan(grid=grid, orientations=())  # summarize_plan needs a real grid (empty is fine)
+    grid = StructureFactorGrid.from_cell(np.eye(3) * 5.0, g_max=0.45)
+    plan = Plan(
+        structure_factor_grid=grid, orientations=()
+    )  # summarize_plan needs a real grid (empty is fine)
     rec = RecordingLogger()
 
     pipeline([_tag("select_beams"), _tag("fit_orientation")], logger=rec)(plan)
@@ -65,7 +67,7 @@ def test_pipeline_emits_plan_step_completed_per_step_with_the_step_name() -> Non
     events = [event for event in rec.events if isinstance(event, PlanStepCompleted)]
     assert [event.channel for event in events] == ["select_beams", "fit_orientation"]
     assert [event.step for event in events] == [0, 1]
-    assert events[0].measurements["n_grid_hkl"] == float(grid.grid_hkl.shape[0])
+    assert events[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
 
 
 def test_pipeline_default_logger_emits_nothing_and_skips_summary() -> None:
@@ -177,8 +179,8 @@ def test_raw_fork_in_pipeline_runs_the_branch_but_records_opaque() -> None:
 
 
 def test_grid_is_invariant_across_the_grid_shaping_steps() -> None:
-    # fork's checkpointability rests on plan.grid being the *same value* at every step, so resolving
-    # a fork against base.grid equals its branch at the fork's runtime position (see the fork
+    # fork's checkpointability rests on plan.structure_factor_grid being the *same value* at every step, so resolving
+    # a fork against base.structure_factor_grid equals its branch at the fork's runtime position (see the fork
     # docstring). Enforce it as a tripwire rather than a convention: the grid-shaping steps must
     # thread the same grid object through, never rebuild it. (couple_beams likewise only
     # replace(orientations=...)s -- omitted here because it needs g_max >= 2*coupling-cap.)
@@ -191,4 +193,4 @@ def test_grid_is_invariant_across_the_grid_shaping_steps() -> None:
             mosaicity(Mosaicity(window=2)),
         ]
     )(seed)
-    assert shaped.grid is seed.grid
+    assert shaped.structure_factor_grid is seed.structure_factor_grid

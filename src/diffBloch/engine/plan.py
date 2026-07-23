@@ -2,8 +2,8 @@
 
 These are the static (refinement-invariant) inputs the
 :class:`~diffBloch.engine.forward.RefinementEngine` composes. The grid is owned once by
-:class:`ScatteringGrid` and reused by both ``structure_factors`` and every ``BeamPlan``, so the two
-sides cannot silently disagree on the ``Fgb`` support (the difference-support constraint is
+:class:`StructureFactorGrid` and reused by both ``structure_factors`` and every ``BeamPlan``, so
+the two sides cannot silently disagree on the ``Fgb`` support (the difference-support constraint is
 validated when the beam plans are built).
 """
 
@@ -37,7 +37,7 @@ from diffBloch.core.reciprocal import make_hkl_grid, reciprocal_space_gpts
 __all__ = [
     "OrientationPlan",
     "OrientationPlanLike",
-    "ScatteringGrid",
+    "StructureFactorGrid",
     "SegmentPlan",
     "CoupledOrientationPlan",
     "mean_plan_thickness",
@@ -50,13 +50,15 @@ __all__ = [
 # ``reciprocal_cell`` metric. The two differ by the cell-correction magnitude (~1% on quartz), so a
 # coupled beam difference can be up to that fraction past a bare ``2 * g_max`` in the grid metric.
 # This is a private-compatibility shell, not a tunable scientific knob. See
-# ScatteringGrid.from_cell_for_solve_cutoff.
+# StructureFactorGrid.from_cell_for_beam_cutoff.
 _SUPPORT_MARGIN = 0.5
 
 
 @dataclass(frozen=True)
-class ScatteringGrid:
+class StructureFactorGrid:
     """The shared ``Fgb`` support grid, owned once and reused by structure factors and beam plans.
+
+    v1 analog: the ``g-h`` grid of ``StructureFactorNet``.
 
     Three reciprocal-space radii are easy to conflate; they are distinct concerns:
 
@@ -64,18 +66,19 @@ class ScatteringGrid:
       coupled fit's ``SegmentedUnionCoupling.g_max``).
     - **structure-factor support** -- the ``Fgb`` grid this class holds. It must cover every beam
       difference ``g_j - g_i``, which reaches ``2 * solve_g_max``, so the support radius is
-      ``~2x`` the solve cutoff. :meth:`from_cell_for_solve_cutoff` derives it from the solve cutoff.
+      ``~2x`` the solve cutoff. :meth:`from_cell_for_beam_cutoff` derives it from the solve cutoff.
     - **scored cutoff** -- ``g_max_refine``, the reflections compared in the objective. It selects
       what enters the loss, not what solves, and is a separate (typically smaller) radius.
 
-    ``grid_hkl`` ``(G, 3)`` are the Miller indices ``Fgb`` is tabulated on (``|g| <= g_max``);
+    ``structure_factor_hkl`` ``(G, 3)`` are the Miller indices ``Fgb`` is tabulated on
+    (``|g| <= g_max``);
     ``cell`` ``(3, 3)`` is the real-space basis and ``reciprocal_basis`` ``(3, 3)`` /
     ``cell_volume`` the metric it derives (kept together; only :meth:`from_cell` constructs them, so
     they cannot desync). ``gpts`` is the ravel box. ``g_max`` is the structure-factor support radius
     and must span the beam difference support or beam-plan construction raises.
     """
 
-    grid_hkl: Tensor
+    structure_factor_hkl: Tensor
     cell: Tensor
     reciprocal_basis: Tensor
     gpts: tuple[int, int, int]
@@ -83,16 +86,16 @@ class ScatteringGrid:
     g_max: float
 
     @classmethod
-    def from_cell(cls, cell: NDArray[np.float64], g_max: float) -> ScatteringGrid:
+    def from_cell(cls, cell: NDArray[np.float64], g_max: float) -> StructureFactorGrid:
         """Build the grid from a real-space cell ``(3, 3)`` and a structure-factor ``g_max``.
 
         ``g_max`` here is the *structure-factor support* radius -- the grid must already span the
         beam difference support. Callers who know their solve cutoff rather than the support radius
-        should use :meth:`from_cell_for_solve_cutoff`, which derives the support for them.
+        should use :meth:`from_cell_for_beam_cutoff`, which derives the support for them.
         """
         cell = np.asarray(cell, dtype=np.float64)
         return cls(
-            grid_hkl=torch.tensor(make_hkl_grid(cell, g_max), dtype=torch.int64),
+            structure_factor_hkl=torch.tensor(make_hkl_grid(cell, g_max), dtype=torch.int64),
             cell=torch.tensor(cell, dtype=torch.float64),
             reciprocal_basis=torch.tensor(reciprocal_cell(cell), dtype=torch.float64),
             gpts=reciprocal_space_gpts(cell, g_max),
@@ -101,9 +104,9 @@ class ScatteringGrid:
         )
 
     @classmethod
-    def from_cell_for_solve_cutoff(
+    def from_cell_for_beam_cutoff(
         cls, cell: NDArray[np.float64], solve_g_max: float
-    ) -> ScatteringGrid:
+    ) -> StructureFactorGrid:
         """Build the grid from the *solve cutoff* -- the radius of the beams in one Bloch solve.
 
         A beam set bounded by ``|g| <= solve_g_max`` produces dynamical-matrix terms
@@ -172,7 +175,7 @@ class OrientationPlan:
     @classmethod
     def build(
         cls,
-        grid: ScatteringGrid,
+        grid: StructureFactorGrid,
         beam_hkl: NDArray[np.int64],
         pattern: PatternBatch,
         *,
@@ -194,7 +197,7 @@ class OrientationPlan:
         shared ``grid.reciprocal_basis`` is used directly (the untilted / single-orientation case),
         making that path byte-identical to the unoriented build. The rotation convention (and the
         measured-cell correction folded into ``orientation``) is derived upstream in ``preprocess``;
-        the ``Fgb`` gather is keyed on ``grid.grid_hkl`` and is unaffected.
+        the ``Fgb`` gather is keyed on ``grid.structure_factor_hkl`` and is unaffected.
 
         ``orientation`` accepts either a NumPy array or a ``Tensor`` (e.g. a prior plan's stored
         ``orientation``), so a later ``Plan -> Plan`` rebuild can pass ``old_plan.orientation``
@@ -232,7 +235,7 @@ class OrientationPlan:
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         if gather is None:
             gather = build_structure_factor_gather(
-                np.asarray(grid.grid_hkl), beam_hkl, grid.gpts, validate=validate
+                np.asarray(grid.structure_factor_hkl), beam_hkl, grid.gpts, validate=validate
             )
         thickness_t = torch.as_tensor(
             np.atleast_1d(np.asarray(thickness, dtype=np.float64)), dtype=torch.float64
@@ -256,7 +259,7 @@ class OrientationPlan:
         beam_plans = tuple(
             build_beam_plan(
                 beam_hkl,
-                np.asarray(grid.grid_hkl),
+                np.asarray(grid.structure_factor_hkl),
                 basis,
                 energy=energy,
                 gpts=grid.gpts,
@@ -280,7 +283,7 @@ class OrientationPlan:
         )
 
     def with_orientation(
-        self, grid: ScatteringGrid, orientation: Tensor | NDArray[np.float64]
+        self, grid: StructureFactorGrid, orientation: Tensor | NDArray[np.float64]
     ) -> OrientationPlan:
         """Rebuild this plan at a new ``orientation``, reusing everything else (F-gather included).
 
@@ -289,7 +292,8 @@ class OrientationPlan:
         orientation-dependent beam bases are recomputed while the orientation-free
         :class:`~diffBloch.core.dynamical.StructureFactorGather` (shared across the tilts) is reused
         via ``gather=``. ``grid`` is required because the plan does not own the shared support the
-        bases derive from; the caller threads its ``Plan.grid``. This makes a hexagonal-search trial
+        bases derive from; the caller threads its ``Plan.structure_factor_grid``. This makes a
+        hexagonal-search trial
         one call and keeps the plan (not the fit) the source of truth for the beam set.
         """
         return OrientationPlan.build(
@@ -362,7 +366,7 @@ class CoupledOrientationPlan:
     @classmethod
     def build(
         cls,
-        grid: ScatteringGrid,
+        grid: StructureFactorGrid,
         segments: Sequence[tuple[NDArray[np.int64], Sequence[int]]],
         pattern: PatternBatch,
         *,
@@ -471,7 +475,7 @@ class CoupledOrientationPlan:
         )
 
     def with_orientation(
-        self, grid: ScatteringGrid, orientation: Tensor | NDArray[np.float64]
+        self, grid: StructureFactorGrid, orientation: Tensor | NDArray[np.float64]
     ) -> CoupledOrientationPlan:
         """Rebuild at a new ``orientation``, reusing the segments' beams, covers, and F-gathers.
 
@@ -481,7 +485,7 @@ class CoupledOrientationPlan:
         union), and every chunk's :class:`~diffBloch.core.dynamical.StructureFactorGather` are
         carried over; only the orientation-dependent bases recompute. This lets a fit tilt an
         already-coupled plan trial-by-trial at ~eigensolve cost (no re-gather, no re-coupling): the
-        *frozen-union* fit. ``grid`` is threaded from the caller's ``Plan.grid``.
+        *frozen-union* fit. ``grid`` is threaded from the caller's ``Plan.structure_factor_grid``.
         """
         return CoupledOrientationPlan.build(
             grid,

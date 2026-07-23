@@ -39,7 +39,7 @@ from diffBloch.config import load_experiment
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
 from diffBloch.core.solver import Method
-from diffBloch.engine import CoupledOrientationPlan, ScatteringGrid
+from diffBloch.engine import CoupledOrientationPlan, StructureFactorGrid
 from diffBloch.io import read_structure
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan
@@ -74,7 +74,7 @@ def _reference_r_obs() -> dict[int, float]:
 
 def _replay_r_obs(
     rotation: int,
-    grid: ScatteringGrid,
+    grid: StructureFactorGrid,
     refinement: RefinementSetup,
     method: Method,
     tilts: np.ndarray,
@@ -109,7 +109,9 @@ def _replay_r_obs(
         tilts=tilts,
         tilt_reduction=MosaicSmoothed(MOSAICITY_WINDOW),
     )
-    engine = build_engine(Plan(grid=grid, orientations=(plan,)), refinement, method=method)
+    engine = build_engine(
+        Plan(structure_factor_grid=grid, orientations=(plan,)), refinement, method=method
+    )
     with torch.no_grad():
         solution = engine.simulate(refinement.params)[0]
     aligned = align(solution, plan.pattern, plan.alignment)
@@ -120,7 +122,7 @@ def _replay_r_obs(
 def test_quartz_coupling_parity() -> None:
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = ScatteringGrid.from_cell_for_solve_cutoff(
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
         structure.unit_cell, cfg.preprocess.coupling.g_max
     )
     refinement = RefinementSetup.from_structure(structure)

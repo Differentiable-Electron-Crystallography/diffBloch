@@ -17,7 +17,7 @@ import torch
 from diffBloch.core.constraints import AdpConstraints
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import ScatteringGrid
+from diffBloch.engine import StructureFactorGrid
 from diffBloch.params import AdpKind, ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
@@ -85,7 +85,7 @@ def silicon_params() -> RefinableParams:
 
 
 def seed_system() -> tuple[RefinementSetup, Plan]:
-    grid = ScatteringGrid.from_cell(CELL, g_max=2.2)
+    grid = StructureFactorGrid.from_cell(CELL, g_max=2.2)
     asu_plan = build_asu_expansion_plan(np.zeros((1, 3)), np.eye(3)[None], np.zeros((1, 3)))
     spec = make_constraint_spec(reciprocal_basis=grid.reciprocal_basis)
     refinement = RefinementSetup(
@@ -100,7 +100,7 @@ def seed_system() -> tuple[RefinementSetup, Plan]:
         sigmas=torch.ones(len(SEED_BEAMS), dtype=torch.float64),
     )
     candidate = CandidatePlan.seed(SEED_BEAMS, pattern, energy=ENERGY, thickness=(THICKNESS,))
-    return refinement, Plan(grid=grid, orientations=(candidate,))
+    return refinement, Plan(structure_factor_grid=grid, orientations=(candidate,))
 
 
 def built_seed_system() -> tuple[RefinementSetup, Plan]:

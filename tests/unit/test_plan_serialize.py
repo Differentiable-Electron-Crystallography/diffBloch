@@ -63,7 +63,11 @@ def test_plain_plan_round_trips(tmp_path) -> None:
     op = OrientationPlan.build(
         grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
     )
-    plan = Plan(grid=grid, orientations=(op,), provenance=(StepRecord("select_beams", None),))
+    plan = Plan(
+        structure_factor_grid=grid,
+        orientations=(op,),
+        provenance=(StepRecord("select_beams", None),),
+    )
     _assert_round_trips(plan, tmp_path)
 
 
@@ -87,7 +91,7 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
         scored_hkl=scored,
     )
     plan = Plan(
-        grid=grid,
+        structure_factor_grid=grid,
         orientations=(op,),
         provenance=(StepRecord("couple_beams", {"__type__": "SegmentedUnionCoupling"}),),
     )
@@ -118,7 +122,7 @@ def test_mixed_plan_round_trips(tmp_path) -> None:
         orientation=np.eye(3),
         tilts=_TILTS,
     )
-    plan = Plan(grid=grid, orientations=(plain, segmented))
+    plan = Plan(structure_factor_grid=grid, orientations=(plain, segmented))
     loaded = _assert_round_trips(plan, tmp_path)
     assert isinstance(loaded.orientations[0], OrientationPlan)
     assert isinstance(loaded.orientations[1], CoupledOrientationPlan)

@@ -8,7 +8,7 @@ exploits the plan types' own design -- both :class:`~diffBloch.engine.plan.Orien
 ``tilt_reduction``, plus the segmented plan's per-chunk ``(union_hkl, covered_tilt_indices)`` and
 pinned scored set) from their **built geometry** (``beam_plans`` incl. the heavy
 ``StructureFactorGather``, ``alignment``, the union + ``union_beam_index``), and
-``ScatteringGrid.from_cell`` + ``.build`` rebuild
+``StructureFactorGrid.from_cell`` + ``.build`` rebuild
 the built parts from the source. So we persist only the source and rebuild the derived geometry
 on read -- a stored gather is a pure function of the beam set + grid and could only desync.
 
@@ -40,7 +40,7 @@ from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
-    ScatteringGrid,
+    StructureFactorGrid,
 )
 from diffBloch.preprocess.pipeline import StepRecord
 from diffBloch.preprocess.plan import Plan, require_built_plans
@@ -52,7 +52,7 @@ _FORMAT_VERSION = 3
 
 def write_plan(plan: Plan, path: str | Path) -> None:
     """Write ``plan`` to ``path`` as a portable ``.npz`` checkpoint (source arrays + JSON meta)."""
-    arrays: dict[str, np.ndarray] = {"cell": _numpy(plan.grid.cell)}
+    arrays: dict[str, np.ndarray] = {"cell": _numpy(plan.structure_factor_grid.cell)}
     per_rotation: list[dict[str, Any]] = []
     for i, op in enumerate(require_built_plans(plan)):
         arrays[f"orient_{i}"] = _numpy(op.orientation)
@@ -79,7 +79,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
         per_rotation.append(entry)
     meta = {
         "format_version": _FORMAT_VERSION,
-        "g_max": plan.grid.g_max,
+        "g_max": plan.structure_factor_grid.g_max,
         "n_orientations": len(plan.orientations),
         "orientations": per_rotation,
         "provenance": [{"name": r.name, "params": r.params} for r in plan.provenance],
@@ -100,18 +100,18 @@ def read_plan(path: str | Path) -> Plan:
                 f"unsupported plan checkpoint format {meta['format_version']!r}: "
                 f"expected {_FORMAT_VERSION}"
             )
-        grid = ScatteringGrid.from_cell(np.asarray(data["cell"]), g_max=float(meta["g_max"]))
+        grid = StructureFactorGrid.from_cell(np.asarray(data["cell"]), g_max=float(meta["g_max"]))
         orientations = tuple(
             _read_orientation(data, grid, i, entry) for i, entry in enumerate(meta["orientations"])
         )
         provenance = tuple(
             StepRecord(name=e["name"], params=e["params"]) for e in meta["provenance"]
         )
-    return Plan(grid=grid, orientations=orientations, provenance=provenance)
+    return Plan(structure_factor_grid=grid, orientations=orientations, provenance=provenance)
 
 
 def _read_orientation(
-    data: Any, grid: ScatteringGrid, i: int, entry: dict[str, Any]
+    data: Any, grid: StructureFactorGrid, i: int, entry: dict[str, Any]
 ) -> OrientationPlanLike:
     pattern = PatternBatch(
         hkl=torch.as_tensor(data[f"pat_hkl_{i}"]),

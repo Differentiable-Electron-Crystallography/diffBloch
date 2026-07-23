@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from diffBloch.config import load_experiment
-from diffBloch.engine import ScatteringGrid
+from diffBloch.engine import StructureFactorGrid
 from diffBloch.io import read_structure
 from diffBloch.preprocess.coupling import (
     Segment,
@@ -35,10 +35,10 @@ ENERGY_EV = 200_000.0  # the private's exact beam energy (see the parity fixture
 ROTATIONS = (13, 27, 60, 61, 64)
 
 
-def _grid_and_tilts() -> tuple[ScatteringGrid, np.ndarray]:
+def _grid_and_tilts() -> tuple[StructureFactorGrid, np.ndarray]:
     cfg, _ = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = ScatteringGrid.from_cell_for_solve_cutoff(
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
         structure.unit_cell, cfg.preprocess.coupling.g_max
     )
     tilts = np.load(REPLAY_ROOT / "tilts.npz")["tilts"]
@@ -50,7 +50,7 @@ def _compute(rotation: int) -> tuple[tuple[Segment, ...], np.lib.npyio.NpzFile]:
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     segments = build_coupling_segments(
         SegmentedUnionCoupling(),
-        np.asarray(grid.grid_hkl),
+        np.asarray(grid.structure_factor_hkl),
         cell=np.asarray(grid.cell),
         orientation=d["orientation"],
         tilts=tilts,
@@ -164,7 +164,7 @@ def test_adaptive_coupling_tiles_tilts_and_keeps_transmitted_beam(rotation: int)
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     segments = build_coupling_segments(
         SegmentedUnionCoupling(union_adaptive=True),
-        np.asarray(grid.grid_hkl),
+        np.asarray(grid.structure_factor_hkl),
         cell=np.asarray(grid.cell),
         orientation=d["orientation"],
         tilts=tilts,

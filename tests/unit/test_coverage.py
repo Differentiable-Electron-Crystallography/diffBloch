@@ -101,7 +101,7 @@ def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
     _, seed = seed_system()
 
     def reseed_coverage(g_max_refine: float) -> int:
-        beam_hkl = seed_beam_hkl(seed.grid, g_max_refine=g_max_refine)
+        beam_hkl = seed_beam_hkl(seed.structure_factor_grid, g_max_refine=g_max_refine)
         reseeded = tuple(
             CandidatePlan.seed(
                 beam_hkl,
