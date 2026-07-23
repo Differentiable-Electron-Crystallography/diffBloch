@@ -61,16 +61,21 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
 
     coupled = RotationCoupling(
-        index=2, n_segments=8, n_tilts=42, cover_max=15, beams_union=700, beams_seg_max=641
+        index=2,
+        n_coupling_segments=8,
+        n_tilts=42,
+        max_tilts_per_segment=15,
+        n_union_beams=700,
+        max_beams_per_segment=641,
     )
     assert coupled.channel == "coupling"
     assert coupled.step == 2
     assert coupled.measurements == {
-        "n_segments": 8.0,
+        "n_coupling_segments": 8.0,
         "n_tilts": 42.0,
-        "cover_max": 15.0,
-        "beams_union": 700.0,
-        "beams_seg_max": 641.0,
+        "max_tilts_per_segment": 15.0,
+        "n_union_beams": 700.0,
+        "max_beams_per_segment": 641.0,
     }
 
     coupling_summary = CouplingSummary(measurements={"n_orientations": 55.0, "g_max": 5.0})

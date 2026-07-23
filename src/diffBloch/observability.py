@@ -167,11 +167,12 @@ class PlanStepCompleted:
 
     Unlike the other events its ``channel`` is the *step name* (``select_beams``,
     ``fit_orientation``, ...), set per instance rather than a class constant -- so the console reads
-    ``fit_orientation[4] n_orientations=55 beams_seg_max=641 ...``, carrying the categorical step
-    identity a fixed channel cannot. ``index`` is the step's ordinal in the recipe (its ``step`` on
-    the run's x-axis); ``measurements`` is :func:`diffBloch.preprocess.plan.summarize_plan` of the
-    resulting plan. Emitted only on a *fresh* preprocess run -- a reused checkpoint runs no steps
-    (see :class:`CouplingSummary` for the boundary summary that fires on reuse).
+    ``fit_orientation[4] n_orientations=55 max_beams_per_segment=641 ...``, carrying the categorical
+    step identity a fixed channel cannot. ``index`` is the step's ordinal in the recipe (its
+    ``step`` on the run's x-axis); ``measurements`` is
+    :func:`diffBloch.preprocess.plan.summarize_plan` of the resulting plan. Emitted only on a
+    *fresh* preprocess run -- a reused checkpoint runs no steps (see :class:`CouplingSummary` for
+    the boundary summary that fires on reuse).
     """
 
     channel: str
@@ -187,20 +188,21 @@ class PlanStepCompleted:
 class RotationCoupling:
     """One rotation's coupled solve geometry, emitted per rotation at the consumer boundary.
 
-    The shape the refinement loop repeats every step: ``n_segments`` coupled unions over ``n_tilts``
-    rocking-curve tilts, the widest union spanning ``cover_max`` tilts, the deduped union carrying
-    ``beams_union`` beams, and the largest single segment ``beams_seg_max`` beams -- the ``N`` of
-    the dominant per-segment eigensolve. Fires on every run (fresh or checkpoint-reuse), so the
-    coupling a long refine is about to chew on is legible before the first step.
+    The shape the refinement loop repeats every step: ``n_coupling_segments`` coupled unions over
+    ``n_tilts`` rocking-curve tilts, the widest union spanning ``max_tilts_per_segment`` tilts, the
+    deduped union carrying ``n_union_beams`` beams, and the largest single segment
+    ``max_beams_per_segment`` beams -- the ``N`` of the dominant per-segment eigensolve. Fires on
+    every run (fresh or checkpoint-reuse), so the coupling a long refine is about to chew on is
+    legible before the first step.
     """
 
     channel: ClassVar[str] = "coupling"
     index: int
-    n_segments: int
+    n_coupling_segments: int
     n_tilts: int
-    cover_max: int
-    beams_union: int
-    beams_seg_max: int
+    max_tilts_per_segment: int
+    n_union_beams: int
+    max_beams_per_segment: int
 
     @property
     def step(self) -> int | None:
@@ -209,11 +211,11 @@ class RotationCoupling:
     @property
     def measurements(self) -> Mapping[str, float]:
         return {
-            "n_segments": float(self.n_segments),
+            "n_coupling_segments": float(self.n_coupling_segments),
             "n_tilts": float(self.n_tilts),
-            "cover_max": float(self.cover_max),
-            "beams_union": float(self.beams_union),
-            "beams_seg_max": float(self.beams_seg_max),
+            "max_tilts_per_segment": float(self.max_tilts_per_segment),
+            "n_union_beams": float(self.n_union_beams),
+            "max_beams_per_segment": float(self.max_beams_per_segment),
         }
 
 

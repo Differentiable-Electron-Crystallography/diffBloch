@@ -20,10 +20,10 @@ from torch import Tensor
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine.plan import (
+    CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
     ScatteringGrid,
-    SegmentedOrientationPlan,
 )
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
     The tilt-independent-only plan-shaping steps (``select_beams``, ``integrate_rocking_curve``,
     ``mosaicity``) transform the :class:`OrientationPlan`, which carries one shared beam set.
     ``couple_beams`` replaces each orientation with a
-    :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` (a per-tilt-chunk beam set) that those
+    :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (a per-tilt-chunk beam set) that those
     steps cannot consume, so they must all precede ``couple_beams`` in a pipeline. This helper
     enforces that ordering with a clear error and narrows the element type for the caller.
 
@@ -125,7 +125,7 @@ def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
         if not isinstance(op, OrientationPlan):
             raise TypeError(
                 "this step transforms tilt-independent OrientationPlans, but this plan holds a "
-                "SegmentedOrientationPlan; couple_beams produces those and no other Plan -> Plan "
+                "CoupledOrientationPlan; couple_beams produces those and no other Plan -> Plan "
                 "step can consume them, so couple_beams must be the final step in the pipeline"
             )
         narrowed.append(op)
@@ -133,7 +133,7 @@ def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
 
 
 def require_built_plans(plan: Plan) -> tuple[OrientationPlanLike, ...]:
-    """Parse the orientation *phase* to built (``OrientationPlan`` / ``SegmentedOrientationPlan``).
+    """Parse the orientation *phase* to built (``OrientationPlan`` / ``CoupledOrientationPlan``).
 
     ``Plan.orientations`` is a phase-union (:class:`CandidatePlan` before the build, built plans
     after) rather than a phase-indexed ``Plan[P]``, as the recipe is a runtime ``pipeline`` list
@@ -152,7 +152,7 @@ def require_built_plans(plan: Plan) -> tuple[OrientationPlanLike, ...]:
     for op in plan.orientations:
         if isinstance(op, CandidatePlan):
             raise TypeError(
-                "this operation needs a built plan (OrientationPlan / SegmentedOrientationPlan), "
+                "this operation needs a built plan (OrientationPlan / CoupledOrientationPlan), "
                 "but the plan holds a CandidatePlan; run build_orientation_plans after select_beams"
             )
     return cast("tuple[OrientationPlanLike, ...]", plan.orientations)
@@ -184,39 +184,40 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
     """One rotation's solve-geometry shape: the ``(unions, tilts-per-union, beams-per-union)`` cost.
 
     Phase-robust (a plan is summarised after every pipeline step, from the pre-build candidate on):
-    a :class:`~diffBloch.engine.plan.SegmentedOrientationPlan` reports its real coupling
-    (``n_segments`` unions, per-union ``cover`` widths and ``union_index`` beam counts); a built
-    :class:`~diffBloch.engine.plan.OrientationPlan` is one implicit union spanning all its tilts; a
-    pre-build :class:`CandidatePlan` knows only its beam-pool size (no tilts/segments yet). These
-    are exactly the ``(B, T, N)`` drivers of the segmented Bloch solve the refinement loop repeats.
+    a :class:`~diffBloch.engine.plan.CoupledOrientationPlan` reports its real coupling
+    (``n_coupling_segments`` unions, per-union ``cover`` widths and ``union_beam_index`` beam
+    counts); a built :class:`~diffBloch.engine.plan.OrientationPlan` is one implicit union spanning
+    all its tilts; a pre-build :class:`CandidatePlan` knows only its beam-pool size (no
+    tilts/segments yet). These are exactly the ``(B, T, N)`` drivers of the segmented Bloch solve
+    the refinement loop repeats.
     """
-    if isinstance(op, SegmentedOrientationPlan):
+    if isinstance(op, CoupledOrientationPlan):
         covers = [len(segment.cover) for segment in op.segments]
-        seg_beams = [int(segment.union_index.shape[0]) for segment in op.segments]
+        seg_beams = [int(segment.union_beam_index.shape[0]) for segment in op.segments]
         return {
-            "n_segments": len(op.segments),
+            "n_coupling_segments": len(op.segments),
             "n_tilts": int(op.tilts.shape[0]),
-            "cover_max": max(covers, default=0),
-            "beams_union": int(op.beam_hkl.shape[0]),
-            "beams_seg_max": max(seg_beams, default=0),
+            "max_tilts_per_segment": max(covers, default=0),
+            "n_union_beams": int(op.beam_hkl.shape[0]),
+            "max_beams_per_segment": max(seg_beams, default=0),
         }
     if isinstance(op, OrientationPlan):
         n_tilts = len(op.beam_plans)
         beams = int(op.beam_hkl.shape[0])
         return {
-            "n_segments": 1,
+            "n_coupling_segments": 1,
             "n_tilts": n_tilts,
-            "cover_max": n_tilts,
-            "beams_union": beams,
-            "beams_seg_max": beams,
+            "max_tilts_per_segment": n_tilts,
+            "n_union_beams": beams,
+            "max_beams_per_segment": beams,
         }
     beams = int(np.asarray(op.beam_hkl).shape[0])  # CandidatePlan: only the beam pool is known
     return {
-        "n_segments": 0,
+        "n_coupling_segments": 0,
         "n_tilts": 0,
-        "cover_max": 0,
-        "beams_union": beams,
-        "beams_seg_max": beams,
+        "max_tilts_per_segment": 0,
+        "n_union_beams": beams,
+        "max_beams_per_segment": beams,
     }
 
 
@@ -227,15 +228,15 @@ def summarize_plan(plan: Plan) -> dict[str, float]:
     (``n_grid_hkl`` = the ``Fgb`` table size, ``g_max`` = its radius). Emitted per pipeline step
     (the plan's evolution) and once at the consumer boundary (the plan the refinement loop
     consumes), so a long run's dominant cost -- the per-rotation coupled eigensolve over
-    ``beams_seg_max`` beams -- is legible from the log.
+    ``max_beams_per_segment`` beams -- is legible from the log.
     """
     stats = [coupling_stats(op) for op in plan.orientations]
     return {
         "n_orientations": float(len(stats)),
         "n_grid_hkl": float(plan.grid.grid_hkl.shape[0]),
         "g_max": float(plan.grid.g_max),
-        "segments_total": float(sum(s["n_segments"] for s in stats)),
-        "cover_max": float(max((s["cover_max"] for s in stats), default=0)),
-        "beams_seg_max": float(max((s["beams_seg_max"] for s in stats), default=0)),
-        "beams_union_max": float(max((s["beams_union"] for s in stats), default=0)),
+        "n_coupling_segments_total": float(sum(s["n_coupling_segments"] for s in stats)),
+        "max_tilts_per_segment": float(max((s["max_tilts_per_segment"] for s in stats), default=0)),
+        "max_beams_per_segment": float(max((s["max_beams_per_segment"] for s in stats), default=0)),
+        "n_union_beams_max": float(max((s["n_union_beams"] for s in stats), default=0)),
     }

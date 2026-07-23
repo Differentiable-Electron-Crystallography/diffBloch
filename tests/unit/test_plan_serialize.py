@@ -3,7 +3,7 @@
 The checkpoint stores only each plan's source (orientation/tilts/thickness/beam set(s)/pattern/
 reduction/scored set) + the recipe provenance, and rebuilds all compiled geometry on read. The
 load-bearing property is a *byte-identical* forward simulation after a round trip -- for both the
-tilt-independent :class:`OrientationPlan` and the coupled :class:`SegmentedOrientationPlan` (the
+tilt-independent :class:`OrientationPlan` and the coupled :class:`CoupledOrientationPlan` (the
 path the reverted serializer never handled) -- plus faithful provenance.
 """
 
@@ -21,7 +21,7 @@ from tests.unit.test_inference import (
 )
 
 from diffBloch.core.products import MosaicSmoothed, PatternBatch
-from diffBloch.engine import SegmentedOrientationPlan
+from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import StepRecord
@@ -74,7 +74,7 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     chunk_a = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
     chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
     scored = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # -100 in union but excluded here
-    op = SegmentedOrientationPlan.build(
+    op = CoupledOrientationPlan.build(
         grid,
         [(chunk_a, (0, 1)), (chunk_b, (2, 3))],
         pattern,
@@ -89,12 +89,12 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     plan = Plan(
         grid=grid,
         orientations=(op,),
-        provenance=(StepRecord("couple_beams", {"__type__": "TiltSegmentUnion"}),),
+        provenance=(StepRecord("couple_beams", {"__type__": "SegmentedUnionCoupling"}),),
     )
     loaded = _assert_round_trips(plan, tmp_path)
 
     (reloaded_op,) = loaded.orientations
-    assert isinstance(reloaded_op, SegmentedOrientationPlan)
+    assert isinstance(reloaded_op, CoupledOrientationPlan)
     assert len(reloaded_op.segments) == 2
     assert reloaded_op.alignment.hkl.tolist() == op.alignment.hkl.tolist()  # scored set preserved
     assert isinstance(reloaded_op.tilt_reduction, MosaicSmoothed)
@@ -108,7 +108,7 @@ def test_mixed_plan_round_trips(tmp_path) -> None:
     plain = OrientationPlan.build(
         grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
     )
-    segmented = SegmentedOrientationPlan.build(
+    segmented = CoupledOrientationPlan.build(
         grid,
         [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
         pattern,
@@ -121,4 +121,4 @@ def test_mixed_plan_round_trips(tmp_path) -> None:
     plan = Plan(grid=grid, orientations=(plain, segmented))
     loaded = _assert_round_trips(plan, tmp_path)
     assert isinstance(loaded.orientations[0], OrientationPlan)
-    assert isinstance(loaded.orientations[1], SegmentedOrientationPlan)
+    assert isinstance(loaded.orientations[1], CoupledOrientationPlan)

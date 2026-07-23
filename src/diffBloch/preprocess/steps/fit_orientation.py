@@ -36,7 +36,7 @@ re-coupling per trial, measured), not a re-derivation.
 
 With ``coupling=None`` (the default) each trial is ``current.with_orientation(...)``, defined on
 both the tilt-independent :class:`OrientationPlan` and the
-:class:`~diffBloch.engine.plan.SegmentedOrientationPlan`, so an already-segmented plan is fit under
+:class:`~diffBloch.engine.plan.CoupledOrientationPlan`, so an already-segmented plan is fit under
 its frozen union.
 """
 
@@ -58,10 +58,10 @@ from diffBloch.core.dynamical import (
 from diffBloch.core.reciprocal import g_vectors, gmax_mask
 from diffBloch.core.solver import FloatFormat, Method
 from diffBloch.engine import RefinementEngine
-from diffBloch.engine.plan import OrientationPlanLike, ScatteringGrid, SegmentedOrientationPlan
+from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, ScatteringGrid
 from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
 from diffBloch.params import Device
-from diffBloch.preprocess.coupling import tilt_segment_coupling
+from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
@@ -307,10 +307,10 @@ def _coupled_trial(
     gather_cache: dict[bytes, StructureFactorGather] | None = None,
     *,
     validate: bool = True,
-) -> SegmentedOrientationPlan:
+) -> CoupledOrientationPlan:
     """Re-couple the solve union and re-select the scored set at ``orientation`` (faithful trial).
 
-    Ports one ``diffBloch_private`` objective evaluation: (1) ``tilt_segment_coupling`` re-derives
+    Ports one ``diffBloch_private`` objective evaluation: (1) ``build_coupling_segments`` re-derives
     the per-tilt-segment excitation union at ``orientation`` (the SOLVE set); (2) the Klar window
     (:func:`klar_beam_mask`) intersected with the scoring-resolution cap
     (:func:`~diffBloch.core.reciprocal.gmax_mask`, an ideal-cell ``|g|`` metric mirroring the
@@ -324,12 +324,12 @@ def _coupled_trial(
     ``validate`` (default ``True``) is forwarded to each cache-miss
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather`; ``False`` skips its O(N^2)
     integrity checks on the hot path (safe under the caller's coverage guard). It reaches only that
-    build -- the ``SegmentedOrientationPlan.build`` below always receives the precomputed
+    build -- the ``CoupledOrientationPlan.build`` below always receives the precomputed
     ``gathers``, so its own ``validate`` never triggers a rebuild here.
     """
     cell = np.asarray(grid.cell, dtype=np.float64)
     tilts = np.asarray(op.tilts, dtype=np.float64)
-    segments = tilt_segment_coupling(
+    segments = build_coupling_segments(
         coupling.policy,
         np.asarray(grid.grid_hkl, dtype=np.int64),
         cell=cell,
@@ -338,7 +338,7 @@ def _coupled_trial(
         energy=op.energy,
         u0=op.u0,
     )
-    union = np.unique(np.concatenate([segment.beam_hkl for segment in segments]), axis=0)
+    union = np.unique(np.concatenate([segment.union_hkl for segment in segments]), axis=0)
     scored = coupling.scored
     basis = orientation_basis(cell, orientation)
     keep = klar_beam_mask(
@@ -362,19 +362,19 @@ def _coupled_trial(
         source: NDArray[np.int64] | None = None
         gathers = []
         for segment in segments:
-            key = np.ascontiguousarray(segment.beam_hkl).tobytes()
+            key = np.ascontiguousarray(segment.union_hkl).tobytes()
             gather = gather_cache.get(key)
             if gather is None:
                 if source is None:
                     source = grid_source_indices(grid_hkl, grid.gpts)
                 gather = build_structure_factor_gather(
-                    grid_hkl, segment.beam_hkl, grid.gpts, validate=validate, source_indices=source
+                    grid_hkl, segment.union_hkl, grid.gpts, validate=validate, source_indices=source
                 )
                 gather_cache[key] = gather
             gathers.append(gather)
-    return SegmentedOrientationPlan.build(
+    return CoupledOrientationPlan.build(
         grid,
-        [(segment.beam_hkl, segment.cover) for segment in segments],
+        [(segment.union_hkl, segment.covered_tilt_indices) for segment in segments],
         op.pattern,
         energy=op.energy,
         thickness=op.thickness,

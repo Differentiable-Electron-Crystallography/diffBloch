@@ -3,11 +3,12 @@
 The persistence primitive behind the ``run`` program's checkpoint/resume: *serialize the whole
 ``Plan``*, never per-facet state (see ``design/decisions/effects-and-observability.md``). It
 exploits the plan types' own design -- both :class:`~diffBloch.engine.plan.OrientationPlan` and
-:class:`~diffBloch.engine.plan.SegmentedOrientationPlan` separate their **source / rebuild inputs**
+:class:`~diffBloch.engine.plan.CoupledOrientationPlan` separate their **source / rebuild inputs**
 (orientation / tilts / thickness / beam set(s) / observed ``pattern`` / ``energy`` / ``u0`` /
-``tilt_reduction``, plus the segmented plan's per-chunk ``(beam_hkl, cover)`` and pinned scored set)
-from their **built geometry** (``beam_plans`` incl. the heavy ``StructureFactorGather``,
-``alignment``, the union + ``union_index``), and ``ScatteringGrid.from_cell`` + ``.build`` rebuild
+``tilt_reduction``, plus the segmented plan's per-chunk ``(union_hkl, covered_tilt_indices)`` and
+pinned scored set) from their **built geometry** (``beam_plans`` incl. the heavy
+``StructureFactorGather``, ``alignment``, the union + ``union_beam_index``), and
+``ScatteringGrid.from_cell`` + ``.build`` rebuild
 the built parts from the source. So we persist only the source and rebuild the derived geometry
 on read -- a stored gather is a pure function of the beam set + grid and could only desync.
 
@@ -36,17 +37,17 @@ from torch import Tensor
 
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, PlainSum, TiltReduction
 from diffBloch.engine.plan import (
+    CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
     ScatteringGrid,
-    SegmentedOrientationPlan,
 )
 from diffBloch.preprocess.pipeline import StepRecord
 from diffBloch.preprocess.plan import Plan, require_built_plans
 
 __all__ = ["read_plan", "write_plan"]
 
-_FORMAT_VERSION = 2
+_FORMAT_VERSION = 3
 
 
 def write_plan(plan: Plan, path: str | Path) -> None:
@@ -65,13 +66,13 @@ def write_plan(plan: Plan, path: str | Path) -> None:
             "u0": op.u0,
             "tilt_reduction": _dump_reduction(op.tilt_reduction),
         }
-        if isinstance(op, SegmentedOrientationPlan):
+        if isinstance(op, CoupledOrientationPlan):
             entry["kind"] = "segmented"
             entry["n_segments"] = len(op.segments)
             arrays[f"scored_hkl_{i}"] = _numpy(op.alignment.hkl)  # the pinned scored set
             for j, segment in enumerate(op.segments):
-                arrays[f"seg_beam_hkl_{i}_{j}"] = _numpy(segment.plan.beam_hkl)
-                arrays[f"seg_cover_{i}_{j}"] = _numpy(segment.cover)
+                arrays[f"union_hkl_{i}_{j}"] = _numpy(segment.plan.beam_hkl)
+                arrays[f"covered_tilt_indices_{i}_{j}"] = _numpy(segment.cover)
         else:
             entry["kind"] = "plain"
             arrays[f"beam_hkl_{i}"] = _numpy(op.beam_hkl)
@@ -126,12 +127,12 @@ def _read_orientation(
     if entry["kind"] == "segmented":
         segments = [
             (
-                np.asarray(data[f"seg_beam_hkl_{i}_{j}"]),
-                tuple(int(c) for c in data[f"seg_cover_{i}_{j}"]),
+                np.asarray(data[f"union_hkl_{i}_{j}"]),
+                tuple(int(c) for c in data[f"covered_tilt_indices_{i}_{j}"]),
             )
             for j in range(int(entry["n_segments"]))
         ]
-        return SegmentedOrientationPlan.build(
+        return CoupledOrientationPlan.build(
             grid,
             segments,
             pattern,

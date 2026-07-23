@@ -406,7 +406,7 @@ def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
     if cfg.preprocess.coupling is None:
         raise ValueError(
             "the coupled orientation fit needs a coupling policy, but preprocess.coupling is "
-            "unset; add a preprocess.coupling block (n_splits, g_max, sg_max) to config"
+            "unset; add a preprocess.coupling block (fixed_n_segments, g_max, sg_max) to config"
         )
     return TrialCoupling(
         policy=cfg.preprocess.coupling.to_policy(),

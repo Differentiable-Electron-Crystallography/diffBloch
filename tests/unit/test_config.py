@@ -17,8 +17,8 @@ from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     HexagonalSearch,
     RockingCurve,
+    SegmentedUnionCoupling,
     ThicknessGrid,
-    TiltSegmentUnion,
 )
 
 
@@ -234,7 +234,10 @@ def test_coupling_policy_requires_all_fields_when_declared() -> None:
     base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
     with pytest.raises(ValidationError, match="[Ff]ield required"):
         ExperimentConfig.model_validate(
-            {**base, "preprocess": {"coupling": {"n_splits": 4, "g_max": 1.5}}}  # missing fields
+            {
+                **base,
+                "preprocess": {"coupling": {"fixed_n_segments": 4, "g_max": 1.5}},
+            }  # missing fields
         )
 
 
@@ -243,18 +246,18 @@ def test_coupling_policy_override_parses() -> None:
     cfg = ExperimentConfig.model_validate(
         {
             **base,
-            "preprocess": {"coupling": {"n_splits": 4, "g_max": 1.5, "sg_max": 0.02}},
+            "preprocess": {"coupling": {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02}},
         }
     )
     assert cfg.preprocess.coupling is not None
-    assert cfg.preprocess.coupling.to_policy() == TiltSegmentUnion(
-        n_splits=4, g_max=1.5, sg_max=0.02
+    assert cfg.preprocess.coupling.to_policy() == SegmentedUnionCoupling(
+        fixed_n_segments=4, g_max=1.5, sg_max=0.02
     )
 
 
 def test_coupling_adaptive_fields_default_off_and_thread_through() -> None:
     base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
-    fixed = {"n_splits": 4, "g_max": 1.5, "sg_max": 0.02}
+    fixed = {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02}
     # Omitted -> the faithful fixed even-split (adaptive off), unchanged from the current behaviour.
     default = ExperimentConfig.model_validate({**base, "preprocess": {"coupling": fixed}})
     assert default.preprocess.coupling is not None
@@ -278,11 +281,11 @@ def test_coupling_policy_bounds_are_validated() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
 
     def coupling(**overrides: float) -> dict:
-        policy = {"n_splits": 12, "g_max": 2.25, "sg_max": 0.01, **overrides}
+        policy = {"fixed_n_segments": 12, "g_max": 2.25, "sg_max": 0.01, **overrides}
         return {**base, "preprocess": {"coupling": policy}}
 
-    with pytest.raises(ValidationError, match="n_splits must be >= 1"):
-        ExperimentConfig.model_validate(coupling(n_splits=0))
+    with pytest.raises(ValidationError, match="fixed_n_segments must be >= 1"):
+        ExperimentConfig.model_validate(coupling(fixed_n_segments=0))
     with pytest.raises(ValidationError, match="g_max and sg_max must be positive"):
         ExperimentConfig.model_validate(coupling(sg_max=0.0))
     with pytest.raises(ValidationError, match="g_max and sg_max must be positive"):

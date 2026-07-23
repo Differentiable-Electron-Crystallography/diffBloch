@@ -44,10 +44,10 @@ from diffBloch.engine.losses import (
 )
 from diffBloch.engine.penalties import BondLengthPenalty, perceive_bond_length_penalty
 from diffBloch.engine.plan import (
+    CoupledOrientationPlan,
     OrientationPlan,
     OrientationPlanLike,
     ScatteringGrid,
-    SegmentedOrientationPlan,
     mean_plan_thickness,
 )
 from diffBloch.engine.refine import (
@@ -86,7 +86,7 @@ __all__ = [
     "RefinementResult",
     "PenaltyTerm",
     "ScatteringGrid",
-    "SegmentedOrientationPlan",
+    "CoupledOrientationPlan",
     "ThicknessBounds",
     "TrainableSpec",
     "build_refinement_model",

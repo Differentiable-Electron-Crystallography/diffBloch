@@ -7,7 +7,7 @@ tilt needs (a reflection drifts through the Ewald sphere as the crystal rocks). 
 each chunk, the **union** of the excited-beam sets at the chunk's two boundary tilts.
 
 This module is the pure geometry of that partition: given a
-:class:`~diffBloch.specs.TiltSegmentUnion`
+:class:`~diffBloch.specs.SegmentedUnionCoupling`
 policy and the rotation's tilt geometry, it returns the ordered :class:`Segment` list (each a beam
 set + the disjoint tilt indices it covers). It computes the same excitation mask
 (``|Sg| < sg_max`` and ``|g| < g_max``) the private's ``BlochNet.forward`` builds its
@@ -26,11 +26,11 @@ from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
-from diffBloch.specs import TiltSegmentUnion
+from diffBloch.specs import SegmentedUnionCoupling
 
 __all__ = [
     "Segment",
-    "tilt_segment_coupling",
+    "build_coupling_segments",
 ]
 
 
@@ -38,31 +38,33 @@ __all__ = [
 class Segment:
     """One tilt chunk's coupling: the beam set it solves and the tilt indices it covers.
 
-    ``beam_hkl`` ``(n_beams, 3)`` is the union of the excited beams at the chunk's boundary tilts
-    (includes ``(0, 0, 0)``, always excited). ``cover`` are the global rocking-curve tilt indices
-    this segment is responsible for -- contiguous and, across a rotation's segments, disjoint and
-    covering every tilt exactly once. The segment solves its beam set at each covered tilt; the
-    per-tilt intensities are later scattered back onto each reflection's full rocking curve.
+    ``union_hkl`` ``(n_beams, 3)`` is the union of the excited beams at the chunk's boundary tilts
+    (includes ``(0, 0, 0)``, always excited). ``covered_tilt_indices`` are the global rocking-curve
+    tilt indices this segment is responsible for -- contiguous and, across a rotation's segments,
+    disjoint and covering every tilt exactly once. The segment solves its beam set at each covered
+    tilt; the per-tilt intensities are later scattered back onto each reflection's full rocking
+    curve.
     """
 
-    beam_hkl: NDArray[np.int64]
-    cover: tuple[int, ...]
+    union_hkl: NDArray[np.int64]
+    covered_tilt_indices: tuple[int, ...]
 
 
-def _split_boundaries(n_tilts: int, n_splits: int) -> NDArray[np.int64]:
-    """The private's contiguous split boundaries into ``n_splits`` chunks over ``n_tilts`` tilts.
+def _fixed_segment_ranges(n_tilts: int, fixed_n_segments: int) -> NDArray[np.int64]:
+    """The private's contiguous split boundaries into ``fixed_n_segments`` chunks over ``n_tilts``.
 
     Ported verbatim from ``BlochNet.forward`` (``union_adaptive = False`` path): evenly sized chunks
     with the remainder front-loaded, boundaries clamped so the last index is ``n_tilts - 1``, then
-    de-duplicated. Returns the strictly increasing boundary indices (length ``n_splits + 1`` before
-    de-duplication), so ``n_splits`` segments span ``boundaries[i] .. boundaries[i + 1]``.
+    de-duplicated. Returns the strictly increasing boundary indices (length ``fixed_n_segments + 1``
+    before de-duplication), so ``fixed_n_segments`` segments span ``boundaries[i] .. boundaries[i +
+    1]``.
     """
-    n_splits = max(1, n_splits)
-    if n_splits >= n_tilts:
+    fixed_n_segments = max(1, fixed_n_segments)
+    if fixed_n_segments >= n_tilts:
         boundaries = np.arange(n_tilts, dtype=np.int64)
     else:
-        base, extra = divmod(n_tilts, n_splits)
-        sizes = [base + 1] * extra + [base] * (n_splits - extra)
+        base, extra = divmod(n_tilts, fixed_n_segments)
+        sizes = [base + 1] * extra + [base] * (fixed_n_segments - extra)
         acc = [0]
         for size in sizes:
             acc.append(acc[-1] + size)
@@ -111,8 +113,8 @@ def _adaptive_segment_ranges(
     return final
 
 
-def tilt_segment_coupling(
-    policy: TiltSegmentUnion,
+def build_coupling_segments(
+    policy: SegmentedUnionCoupling,
     candidate_hkl: NDArray[np.int64],
     *,
     cell: NDArray[np.float64],
@@ -122,6 +124,8 @@ def tilt_segment_coupling(
     u0: float,
 ) -> tuple[Segment, ...]:
     """Partition the rocking curve into boundary-union coupled segments (pure geometry).
+
+    v1 analog: the union-split block in ``BlochNet.forward``.
 
     ``candidate_hkl`` ``(G, 3)`` is the beam candidate pool to select from (the shared
     :class:`~diffBloch.engine.plan.ScatteringGrid` ``grid_hkl`` -- radius ``2 * g_max``, so the
@@ -176,22 +180,22 @@ def tilt_segment_coupling(
         return mask
 
     if policy.union_adaptive:
-        # Adaptive boundaries by recursive bisection (n_splits ignored). Each segment's beam set is
-        # the union of *its own* inclusive endpoints, and the covers tile every tilt exactly once.
+        # Adaptive boundaries by recursive bisection (fixed_n_segments ignored). Each segment's beam
+        # set is the union of its own inclusive endpoints; the covers tile every tilt exactly once.
         ranges = _adaptive_segment_ranges(n_tilts, excited_mask, policy.union_max_new_beams_pct)
         return tuple(
             Segment(
-                beam_hkl=pool[excited_mask(a) | excited_mask(b)].copy(),
-                cover=tuple(range(a, b + 1)),
+                union_hkl=pool[excited_mask(a) | excited_mask(b)].copy(),
+                covered_tilt_indices=tuple(range(a, b + 1)),
             )
             for a, b in ranges
         )
 
-    boundaries = _split_boundaries(n_tilts, policy.n_splits)
+    boundaries = _fixed_segment_ranges(n_tilts, policy.fixed_n_segments)
     segments = []
     for i in range(len(boundaries) - 1):
         a, b = int(boundaries[i]), int(boundaries[i + 1])
         union = excited_mask(a) | excited_mask(b)
         cover = tuple(range(a, n_tilts if i == len(boundaries) - 2 else b))
-        segments.append(Segment(beam_hkl=pool[union].copy(), cover=cover))
+        segments.append(Segment(union_hkl=pool[union].copy(), covered_tilt_indices=cover))
     return tuple(segments)

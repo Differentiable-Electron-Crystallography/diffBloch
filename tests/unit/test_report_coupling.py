@@ -12,7 +12,7 @@ import torch
 from tests.unit.test_inference import _BEAM_HKL, _ENERGY, _silicon
 
 from diffBloch.core.products import PatternBatch
-from diffBloch.engine import OrientationPlan, SegmentedOrientationPlan
+from diffBloch.engine import CoupledOrientationPlan, OrientationPlan
 from diffBloch.observability import CouplingSummary, RecordingLogger, RotationCoupling
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import CandidatePlan, Plan, coupling_stats, summarize_plan
@@ -29,11 +29,11 @@ def _pattern() -> PatternBatch:
     )
 
 
-def _segmented(grid: object) -> SegmentedOrientationPlan:
-    # Two chunks (2 beams each, one shared 000) over 4 tilts -> union of 3 beams, cover_max 2.
+def _segmented(grid: object) -> CoupledOrientationPlan:
+    # Two chunks (2 beams each, one shared 000) over 4 tilts -> union of 3 beams, 2 tilts/segment.
     chunk_a = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
     chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
-    return SegmentedOrientationPlan.build(
+    return CoupledOrientationPlan.build(
         grid,
         [(chunk_a, (0, 1)), (chunk_b, (2, 3))],
         _pattern(),
@@ -50,28 +50,28 @@ def test_coupling_stats_reads_each_plan_phase() -> None:
 
     segmented = coupling_stats(_segmented(grid))
     assert segmented == {
-        "n_segments": 2,
+        "n_coupling_segments": 2,
         "n_tilts": 4,
-        "cover_max": 2,
-        "beams_union": 3,  # {000, 100, -100} deduped
-        "beams_seg_max": 2,  # each chunk carries 2 beams
+        "max_tilts_per_segment": 2,
+        "n_union_beams": 3,  # {000, 100, -100} deduped
+        "max_beams_per_segment": 2,  # each chunk carries 2 beams
     }
 
     tilt_independent = OrientationPlan.build(
         grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
     )
     stats = coupling_stats(tilt_independent)
-    assert stats["n_segments"] == 1  # one implicit union
-    assert stats["n_tilts"] == 4 and stats["cover_max"] == 4
-    assert stats["beams_union"] == len(_BEAM_HKL) == stats["beams_seg_max"]
+    assert stats["n_coupling_segments"] == 1  # one implicit union
+    assert stats["n_tilts"] == 4 and stats["max_tilts_per_segment"] == 4
+    assert stats["n_union_beams"] == len(_BEAM_HKL) == stats["max_beams_per_segment"]
 
     candidate = CandidatePlan.seed(_BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,))
     assert coupling_stats(candidate) == {
-        "n_segments": 0,  # no tilts/segments before the build
+        "n_coupling_segments": 0,  # no tilts/segments before the build
         "n_tilts": 0,
-        "cover_max": 0,
-        "beams_union": len(_BEAM_HKL),
-        "beams_seg_max": len(_BEAM_HKL),
+        "max_tilts_per_segment": 0,
+        "n_union_beams": len(_BEAM_HKL),
+        "max_beams_per_segment": len(_BEAM_HKL),
     }
 
 
@@ -91,12 +91,12 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     summaries = [event for event in log.events if isinstance(event, CouplingSummary)]
     assert [event.index for event in rotations] == [0, 1]
     assert (
-        rotations[0].n_segments == 2 and rotations[0].beams_seg_max == 2
+        rotations[0].n_coupling_segments == 2 and rotations[0].max_beams_per_segment == 2
     )  # the segmented rotation
-    assert rotations[1].n_segments == 1  # the tilt-independent rotation
+    assert rotations[1].n_coupling_segments == 1  # the tilt-independent rotation
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
-    assert summaries[0].measurements["segments_total"] == 3.0  # 2 + 1
+    assert summaries[0].measurements["n_coupling_segments_total"] == 3.0  # 2 + 1
     assert summaries[0].measurements["n_grid_hkl"] == float(grid.grid_hkl.shape[0])
 
 
@@ -105,7 +105,7 @@ def test_summarize_plan_aggregates_the_widest_and_largest() -> None:
     plan = Plan(grid=grid, orientations=(_segmented(grid),))
     summary = summarize_plan(plan)
     assert summary["n_orientations"] == 1.0
-    assert summary["cover_max"] == 2.0
-    assert summary["beams_seg_max"] == 2.0
-    assert summary["beams_union_max"] == 3.0
+    assert summary["max_tilts_per_segment"] == 2.0
+    assert summary["max_beams_per_segment"] == 2.0
+    assert summary["n_union_beams_max"] == 3.0
     assert summary["g_max"] == float(grid.g_max)
