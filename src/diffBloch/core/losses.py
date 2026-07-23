@@ -1,17 +1,15 @@
 """Intensity-space loss/metric functions for refinement.
 
-Pure ports of the intensity comparisons in ``diffBloch_private/diffBloch/metrics.py`` (the
-``model``/``ase`` position metrics there belong to the engine/eval layer and are out of scope here).
-All functions compare a ``calculated`` intensity tensor against an ``observed`` one and reduce over
-the final (reflection) axis, so a ``(T, N)`` thickness/orientation batch yields a ``(T,)`` loss.
+The intensity comparisons used to score and refine a structure. (Position-space metrics belong to
+the engine/eval layer and are out of scope here.) All functions compare a ``calculated`` intensity
+tensor against an ``observed`` one and reduce over the final (reflection) axis, so a ``(T, N)``
+thickness/orientation batch yields a ``(T,)`` loss.
 
-- ``mse`` / ``l1`` / ``weighted_mse`` -- generic regression losses (private ``mse_loss`` /
-  ``l1_loss`` / ``weighted_mse_loss``).
-- ``rbragg`` -- the crystallographic Bragg R(obs) factor over reflections with ``I_obs > 3*sigma``
-  (private ``rbragg_abs``).
-- ``w_rbragg`` -- the weighted R2 of Klar et al. 2023 (private ``wRbragg``).
+- ``mse`` / ``l1`` / ``weighted_mse`` -- generic regression losses.
+- ``rbragg`` -- the crystallographic Bragg R(obs) factor over reflections with ``I_obs > 3*sigma``.
+- ``w_rbragg`` -- the weighted R2 of Klar et al. 2023.
 
-See ``REFERENCES.md`` for the R-factor sources. Differentiable in ``calculated``.
+Differentiable in ``calculated``.
 """
 
 from __future__ import annotations
@@ -68,8 +66,8 @@ def rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor) -> Tensor:
     0/1 mask: experimental intensities can be negative (background-subtracted), so ``sqrt`` of an
     excluded reflection is ``NaN``, and ``NaN * 0`` would poison the sum. Masked-in reflections have
     ``I_obs > 3*sigma > 0`` (and calculated ``|psi|^2 >= 0``), so their square roots are always
-    finite; the clamps guard only against numerical noise. This diverges from the private
-    ``metrics.rbragg_abs`` (multiply-mask, ``NaN``-unsafe on negatives).
+    finite; the clamps guard only against numerical noise. A 0/1 multiply-mask would be
+    ``NaN``-unsafe on the negative excluded intensities, which is why selection is used instead.
     """
     _check_pair(calculated, observed)
     _check_sigmas(sigmas, observed)
@@ -87,8 +85,8 @@ def w_rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor, *, mu: float 
 
     ``w = 1 / sqrt( sigma(sqrt(I_obs))^2 + (mu*sqrt(I_obs))^2 )`` with ``mu`` the instability
     factor;
-    weak reflections (``I_obs < 0.01*sigma``) use the ``5*sqrt(sigma)`` floor from the reference
-    SI.
+    weak reflections (``I_obs < 0.01*sigma``) use the ``5*sqrt(sigma)`` floor from the Klar et al.
+    2023 supplementary information.
     """
     _check_pair(calculated, observed)
     _check_sigmas(sigmas, observed)
@@ -114,7 +112,7 @@ def optimal_scale(
 ) -> tuple[Tensor, Tensor]:
     """Grid-search the multiplicative scale on ``calculated`` that minimises ``metric``.
 
-    Pure port of the private ``utils.initialize_scaling_factor``. The search runs ``num_points``
+    The search runs ``num_points``
     factors in ``[lo, hi]`` *relative to* the total ratio ``sum(observed)/sum(calculated)`` (so it
     is centred near scale 1), evaluates ``metric(scaled, observed, sigmas)`` at each, and returns
     the **absolute** scale applied to ``calculated`` and the minimum metric value. ``metric``

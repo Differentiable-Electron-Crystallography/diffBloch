@@ -11,10 +11,9 @@ They are plain frozen dataclasses (the codebase's one value-object vocabulary, l
 parses YAML at the edge but never rides into a step. A direct/test caller constructs them the same
 way the config does and gets the same construction-time error.
 
-Failures raise ``ValueError`` today (fail-fast; the only callers are config-load and direct
-construction). When the ``app`` layer needs to surface validation errors *as values* (to a TUI /
-batch runner), a thin boundary ``parse(...) -> Result[Spec, ValidationError]`` adapter will wrap
-these raising constructors -- Result stays at that boundary and never enters a step.
+Failures raise ``ValueError`` (fail-fast): the callers are config-load and direct construction. A
+boundary adapter that needs to surface validation errors *as values* rather than as exceptions (for
+a TUI or batch runner) can wrap these raising constructors without changing the step contract.
 """
 
 from __future__ import annotations
@@ -55,8 +54,6 @@ class IntegrationGeometry:
     from the goniometer rock axis for ``continuous_rotation``, distance from the beam for
     ``precession`` -- which fixes the ``sg_max`` lever arm and the tilt axis, so both consumers must
     agree on it too.
-
-    Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``data_collection_geometry``).
     """
 
     semiangle: float = 1.0  # degrees: tilt half-width / integration cone half-angle; scales sg_max
@@ -82,7 +79,7 @@ class BeamSelection:
     ``geometry`` that fixes its lever arm; it is *shared* with the :class:`RockingCurve` integrator
     (one physical angle, so the two cannot disagree).
 
-    Defaults are the faithful ``diffBloch_private`` values (``NumericsConfig``).
+    The default cutoffs are the values used by the default preprocess path.
     """
 
     rsg: float = 0.9  # relative excitation-error cutoff: keep when |Sg| / sg_max < rsg
@@ -99,17 +96,15 @@ class FrameSelection:
     """Validated criterion for the ``select_frames`` per-rotation (whole-frame) drop.
 
     The sibling of :class:`BeamSelection`: where that prunes *reflections within* a frame,
-    ``select_frames`` drops *whole frames* whose observed pattern is too sparse to inform the fit --
-    the public analog to ``diffBloch_private``'s per-dataset ``ignore_orientations``, for the
-    beam-damaged tail of a rotation scan. ``min_observed`` is the fewest *strong* observed
+    ``select_frames`` drops *whole frames* whose observed pattern is too sparse to inform the fit,
+    for the beam-damaged tail of a rotation scan. ``min_observed`` is the fewest *strong* observed
     reflections (``intensity > 3 * sigma``, strict) a frame must carry to be kept; frames below it
     are dropped. The count is **model-independent** -- it reads the observed pattern only, never the
     calculated fit -- so it cannot circularly keep the frames the current model already explains.
 
     ``min_observed == 0`` keeps every frame (the disabled / no-op default -- opting in requires a
-    positive threshold); a negative count is meaningless and rejected. This carries no
-    ``diffBloch_private`` value analog: the private hard-codes an explicit index list, whereas this
-    derives the drop from a data-quality floor.
+    positive threshold); a negative count is meaningless and rejected. The drop is derived from a
+    data-quality floor rather than a hard-coded list of frame indices.
     """
 
     min_observed: int = 0  # keep a frame iff its strong-reflection count (I > 3 sigma) >= this
@@ -125,14 +120,11 @@ class ConvergenceTolerance:
 
     A convergence sweep grows a simulation-accuracy knob and stops the first time *consecutive*
     simulations stop changing: ``r_factor_threshold`` is the largest consecutive-simulation R-factor
-    still counted as "converged" (the private's ``r_factor_threshold = 0.005``). ``max_iterations``
-    is the hard cap on sweep steps before non-convergence is raised (the private's
-    ``MAX_SWEEP_ITERATIONS = 100``); it also gives ``iterate_until``'s previously-bare cap a home.
+    still counted as "converged". ``max_iterations`` is the hard cap on sweep steps before
+    non-convergence is raised; it also gives ``iterate_until``'s otherwise-bare cap a home.
 
-    Defaults are the faithful ``diffBloch_private`` values
-    (``configs/convergence_test/base.yaml`` + ``convergence_testing.MAX_SWEEP_ITERATIONS``). The
-    stopping rule is the private's exactly -- the first below-threshold step stops the sweep, with
-    no patience and no null-step handling.
+    The stopping rule is deliberately simple: the first below-threshold step stops the sweep -- no
+    patience window and no null-step handling.
     """
 
     r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
@@ -153,7 +145,7 @@ class ConvergenceTest:
     minimum that maximises matched-reflection coverage (pure geometry, tilt untouched);
     ``self_stability`` grows the pool, window and rocking-curve tilt count until consecutive
     simulations stop changing; ``both`` runs coverage first and seeds self-stability from its
-    settled scalars (the private's ``initial_*`` handoff). ``start_g_max_refine`` is the pool
+    settled scalars. ``start_g_max_refine`` is the pool
     sweep's start
     radius -- the window and tilt starts come from :class:`IntegrationGeometry.semiangle` and
     :class:`RockingCurve.sampling`, so they are not duplicated here. ``g_max_refine_step`` / ``integration_semiangle_step``
@@ -162,11 +154,8 @@ class ConvergenceTest:
     stopping rule + runaway cap live on :class:`ConvergenceTolerance`, not here (single
     responsibility: this type is *what to sweep*, that one is *when to stop*).
 
-    ``operation`` and ``num_passes`` are faithful to ``diffBloch_private`` ``convergence_test``
-    (branch ``pattern-vis-convergence-testing``: ``operation in {initial_minimum_param_sweep,
-    hyperparams_optimization, both}`` renamed to the 2.0 phase names; ``num_passes`` the e2e's 2).
-    The step magnitudes are 2.0 defaults -- the private branch's config yaml was not captured, so
-    they are calibrated for the convergence tutorial rather than ported verbatim (tune per dataset).
+    The step magnitudes are defaults calibrated for the convergence tutorial rather than for any one
+    dataset -- tune them per dataset.
     """
 
     operation: Literal["coverage", "self_stability", "both"] = "both"
@@ -199,12 +188,12 @@ class ConvergenceTest:
 
 @dataclass(frozen=True)
 class HexagonalSearch:
-    """Validated bounds for the ``fit_orientation`` Palatinus hexagonal search (degrees).
+    """Validated bounds for the ``fit_orientation`` hexagonal search (degrees, Palatinus et al. 2013).
 
-    Defaults are the faithful ``diffBloch_private`` values (``configs/preprocess/base.yaml``).
-    ``max_iterations`` has no private precedent (the private search has no cap -- it relies on
-    monotone wR2 descent plus the radius floor). Its default of ``2000`` is **calibrated on the
-    quartz anchor under the integrated recipe**: every one of its 99 rotations still terminates by
+    ``max_iterations`` is a runaway guard on an otherwise uncapped search: the search terminates on
+    its own by monotone wR2 descent plus the radius floor, and the cap only catches a genuine
+    non-terminating case. Its default of ``2000`` is **calibrated on the quartz anchor under the
+    integrated recipe**: every one of its 99 rotations still terminates by
     the radius floor, but the bumpier rocking-curve-integrated landscape needs many more passes than
     the static fit -- the slowest legitimate search took 1288 passes (526 without integration), so
     2000 leaves cross-platform headroom while still catching a genuine runaway. A dataset with
@@ -227,9 +216,9 @@ class HexagonalSearch:
     4. Set ``max_iterations = ceil(headroom * max(n_passes))`` with ``headroom`` ~1.5 (quartz:
        ``1288 -> 2000``). Record the calibrating dataset + recipe alongside the value.
 
-    The ``../notebooks/iain`` calibration notebook automates steps 1-4 (runs the search, plots the
-    per-rotation ``n_passes`` distribution against ``pass_cap``, flags any cap-hitters, and prints
-    the recommended cap).
+    Steps 1-4 are mechanical and can be automated: run the search, plot the per-rotation
+    ``n_passes`` distribution against ``pass_cap``, flag any cap-hitters, and read off the
+    recommended cap.
     """
 
     max_search_angle: float = 0.4  # largest tilt radius the search starts from
@@ -261,9 +250,6 @@ class RockingCurve:
     angular range as the Klar beam-selection window, shared with :class:`BeamSelection` so the two
     cannot disagree -- and the ``geometry`` that selects the sweep (``continuous_rotation``,
     goniometer x-axis tilts, implemented; or ``precession``, a deferred cone mode).
-
-    Faithful to ``diffBloch_private`` (``integration_semiangle`` / ``rocking_curve_sampling`` /
-    ``data_collection_geometry``; ``rotation_dataset.generate_integration_rotation_matrices``).
     """
 
     sampling: int = 42  # number of tilts across +/- semiangle; 1 = single static solve (identity)
@@ -278,7 +264,7 @@ class RockingCurve:
 class Mosaicity:
     """Mosaicity broadening of the rocking curve: a moving-average window over the tilt axis.
 
-    Crystal mosaic spread smears each reflection's rocking curve; the private models it as a
+    Crystal mosaic spread smears each reflection's rocking curve; diffBloch models it as a
     ``window``-wide moving average of the per-tilt intensities before the sum-over-tilts
     integration. ``window`` is the number of consecutive tilts averaged; it must be ``>= 1`` and, at
     reduction time, ``<= sampling`` (the tilt count). ``window = 1`` is the identity (no
@@ -286,14 +272,10 @@ class Mosaicity:
     of the rocking-curve integration (:class:`RockingCurve`) -- it only has meaning once the tilt
     set exists, so the ``mosaicity`` step is ordered after ``integrate_rocking_curve``.
 
-    **Divergence from ``diffBloch_private``:** the private hardcodes the moving-average
-    ``window_size = 5`` and uses its ``mosaicity_num_frames`` config only as an on/off flag (the
-    frame count never reaches the window). 2.0 keeps the faithful **default of 5** but exposes
-    ``window`` as a real, tunable config parameter -- a principled fix of the private quirk (the
-    config field name implied a tunable window the code ignored).
+    ``window`` is a tunable config parameter; its default of 5 is the standard moving-average width.
     """
 
-    window: int = 5  # tilts averaged per sliding window; faithful private default (hardcoded there)
+    window: int = 5  # tilts averaged per sliding window (standard moving-average width)
 
     def __post_init__(self) -> None:
         if self.window < 1:
@@ -304,9 +286,7 @@ class Mosaicity:
 class SegmentedUnionCoupling:
     """Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.
 
-    v1 analog: the ``union_splits`` / ``union_adaptive`` policy.
-
-    The ``diffBloch_private`` coupling policy for rocking-curve integration. It partitions the
+    The coupling policy for rocking-curve integration: it partitions the
     ``B`` tilts into ``fixed_n_segments`` contiguous, disjoint chunks and gives each chunk its own
     coupled beam set: the **union** of the excited-beam masks at the chunk's two boundary tilts.
     A beam is excited at a tilt when ``|Sg| < sg_max`` *and* ``|g| < g_max`` (a hard
@@ -314,12 +294,12 @@ class SegmentedUnionCoupling:
     :class:`BeamSelection`).
     Because a sharp reflection drifts through the Ewald sphere as the crystal rocks, the excited set
     genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
-    beams a later tilt needs. The per-chunk union is the private's compromise. Each reflection's
-    full rocking curve is later reassembled across chunks before the mosaicity reduction (the window
-    spans more tilts than one chunk holds).
+    beams a later tilt needs. The per-chunk union is the compromise this policy strikes. Each
+    reflection's full rocking curve is later reassembled across chunks before the mosaicity
+    reduction (the window spans more tilts than one chunk holds).
 
-    ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max`` (the private's post-#154
-    mask, which dropped the earlier ``- 0.2`` margin so the cutoff is the physical solve radius).
+    ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max``. The cutoff is the
+    physical solve radius, with no additional margin.
     ``sg_max`` is the excitation-error cutoff. The mean-inner-potential ``u0`` and beam energy are
     experiment quantities threaded in at build time, not policy knobs.
 
@@ -330,9 +310,7 @@ class SegmentedUnionCoupling:
     where the excited set drifts and sparse where it is stable. In the adaptive mode
     ``fixed_n_segments`` is ignored.
 
-    Defaults are the faithful ``diffBloch_private`` values (``config.union_splits = 12``,
-    ``self.g_max = 2.25``, ``self.sg_max = 0.01``, ``union_adaptive = False``,
-    ``union_max_new_beams_pct = 0.01``).
+    The defaults suit the standard rocking-curve recipe (12 fixed even-sized chunks, fixed mode).
     """
 
     fixed_n_segments: int = (
@@ -380,21 +358,18 @@ def assert_grid_covers_coupling(policy: SegmentedUnionCoupling, grid_g_max: floa
 class TiltIndependent:
     """The default coupling: one beam set shared across every rocking-curve tilt.
 
-    The 2.0 baseline (and the ``diffBloch_private`` ``union_splits <= 1`` degenerate case): the
-    active beam set ``select_beams`` picks for the nominal orientation is reused, unchanged, at
-    every
-    tilt of the rocking curve. Fieldless because it carries no policy of its own -- the shared set
-    is
-    already fixed on the plan; it is the identity member of the coupling discriminated union, chosen
-    by construction when a run does *not* want the tilt-dependent per-chunk re-selection.
+    The baseline: the active beam set ``select_beams`` picks for the nominal orientation is reused,
+    unchanged, at every tilt of the rocking curve. Fieldless because it carries no policy of its own
+    -- the shared set is already fixed on the plan; it is the identity member of the coupling
+    discriminated union, chosen by construction when a run does *not* want the tilt-dependent
+    per-chunk re-selection.
     """
 
 
 # How a rocking curve couples beams across its tilts: one shared set (:class:`TiltIndependent`) or
-# the private's per-tilt-chunk boundary unions (:class:`SegmentedUnionCoupling`). A discriminated
-# union the
-# ``couple_beams`` step matches on, not a boolean toggle -- the faithful policy carries its own
-# parameters, the default carries none.
+# per-tilt-chunk boundary unions (:class:`SegmentedUnionCoupling`). A discriminated union the
+# ``couple_beams`` step matches on, not a boolean toggle -- the tilt-dependent policy carries its
+# own parameters, the default carries none.
 CouplingPolicy = TiltIndependent | SegmentedUnionCoupling
 
 
@@ -404,21 +379,18 @@ class ScoredHklSelection:
 
     When a fit re-derives its reflection sets per trial under a coupling policy, the *scored* set is
     not the solve union -- it is the union filtered back down to the reflections actually compared
-    against the observed pattern. That is two filters, mirroring ``diffBloch_private``'s
-    ``filter_hkls`` (the Klar relative-excitation window) followed by ``resolution_filter`` (a
-    radial ``|g|`` cap): ``klar`` supplies the former (:class:`BeamSelection` -- ``rsg`` / ``dsg`` +
-    the shared :class:`IntegrationGeometry`), and ``g_max`` the latter. The private's
-    ``g_min_refine`` is ``0.0`` for every dataset (verified), so no lower-shell bound is modelled;
-    add one when a dataset needs it.
+    against the observed pattern. That is two filters: the Klar relative-excitation window followed
+    by a radial ``|g|`` cap. ``klar`` supplies the former (:class:`BeamSelection` -- ``rsg`` /
+    ``dsg`` + the shared :class:`IntegrationGeometry`), and ``g_max`` the latter. No lower-shell
+    bound is modelled; add one when a dataset needs it.
 
-    ``g_max`` is the *scoring*-resolution cap (the private's ``g_max_refine`` in its scored-set
-    role), given its own named home here so it is distinct from the seed beam-pool radius -- the two
-    are numerically equal today (both ``1.6`` on quartz) but are separate quantities. It must be
-    positive.
+    ``g_max`` is the *scoring*-resolution cap, given its own named home here so it is distinct from
+    the seed beam-pool radius -- the two may be numerically equal but are separate quantities. It
+    must be positive.
     """
 
     klar: BeamSelection = field(default_factory=BeamSelection)
-    g_max: float = 1.6  # scoring-resolution cap on |g| (the private's g_max_refine scored role)
+    g_max: float = 1.6  # scoring-resolution cap on |g|
 
     def __post_init__(self) -> None:
         if self.g_max <= 0.0:
@@ -429,7 +401,7 @@ class ScoredHklSelection:
 class TrialCoupling:
     """Per-trial re-derivation of both reflection sets during an orientation fit.
 
-    The faithful ``diffBloch_private`` orientation objective re-runs the whole forward at every
+    The orientation objective under this coupling re-runs the whole forward at every
     trial orientation: it re-couples the SOLVE union (the excitation coupling of ``policy``) *and*
     re-selects the SCORED set (``scored``) from that fresh union, so both sets track the trial
     orientation rather than staying pinned to the seed. Passed to
@@ -450,8 +422,8 @@ class ThicknessGrid:
     """Validated grid of candidate thicknesses for ``fit_thickness`` (Angstroms).
 
     ``fit_thickness`` evaluates ``n_steps`` candidates spaced evenly from ``min_thickness`` to
-    ``max_thickness`` (inclusive) and keeps the lowest-wR2 one. Defaults are the faithful
-    ``diffBloch_private`` values (``configs/preprocess/base.yaml``: 5 A to 2000 A in 100 steps).
+    ``max_thickness`` (inclusive) and keeps the lowest-wR2 one. The defaults span 5 A to 2000 A in
+    100 steps.
     """
 
     min_thickness: float = 5.0  # smallest candidate thickness

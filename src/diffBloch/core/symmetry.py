@@ -62,8 +62,8 @@ def build_asu_expansion_plan(
 ) -> AsuExpansionPlan:
     """Precompute unique ASU/symop memberships for later torch expansion.
 
-    This mirrors the private atom-major, symop-minor membership order while moving duplicate
-    detection out of the differentiable path.
+    Membership is ordered atom-major, symop-minor; duplicate detection is kept out of the
+    differentiable path.
     """
     if symprec <= 0.0:
         raise ValueError("symprec must be positive")

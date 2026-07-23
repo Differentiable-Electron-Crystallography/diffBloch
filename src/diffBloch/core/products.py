@@ -63,11 +63,11 @@ class PlainSum:
 class MosaicSmoothed:
     """Mosaicity: a width-``window`` moving average over the tilt axis, applied before the sum.
 
-    Models crystal mosaic spread by broadening the rocking curve (the private ``moving_average``).
-    ``window`` consecutive tilts are averaged in a sliding window, then the smoothed curve is
-    summed. Equivalently the integrated intensity is the sum of the ``N - window + 1`` window means:
-    the private zero-pads the smoothed curve back to length ``N`` before summing, and those zeros do
-    not change the sum. ``window`` must not exceed the tilt count ``N`` (checked at reduction time).
+    Models crystal mosaic spread by broadening the rocking curve. ``window`` consecutive tilts are
+    averaged in a sliding window, then the smoothed curve is summed. Equivalently the integrated
+    intensity is the sum of the ``N - window + 1`` window means: padding the smoothed curve back to
+    length ``N`` with zeros before summing does not change the sum. ``window`` must not exceed the
+    tilt count ``N`` (checked at reduction time).
     """
 
     window: int
@@ -86,7 +86,7 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     """Reduce stacked per-tilt intensities ``(N_tilts, ...)`` over the leading tilt axis.
 
     The rocking-curve rotation-frame integration: :class:`PlainSum` sums the tilts;
-    :class:`MosaicSmoothed` applies a width-``window`` moving average first (the private mosaicity
+    :class:`MosaicSmoothed` applies a width-``window`` moving average first (the mosaicity
     broadening). Public because the tilt axis is reduced from two places -- a single shared beam set
     (:meth:`BlochSolution.integrate` / :meth:`BlochSolution.integrate_batched`) and the segmented
     coupling path, which reassembles each reflection's curve across per-chunk beam sets onto a
@@ -261,8 +261,8 @@ def build_alignment_plan(
     is how ``couple_beams`` keeps scoring on the ``select_beams`` selection while the *solve* set
     expands to the coupling union -- ``solution_hkl`` (the union) grows, but the scored axis stays
     the pre-couple set. It is an intersection, so a ``restrict_to`` reflection absent from
-    ``solution_hkl`` is dropped (faithful: you can only score a reflection you solved, the same
-    ``scored ⊆ coupled`` invariant the private's ``filter_hkls`` has by running on the coupled set).
+    ``solution_hkl`` is dropped: you can only score a reflection you solved, which is the
+    ``scored ⊆ coupled`` invariant.
     ``None`` (the default) scores the whole ``pattern ∩ solution``, keeping the tilt-independent
     path unchanged. ``pattern_index`` indexes the full ``pattern_hkl`` regardless, so ``align`` is
     untouched.
