@@ -1,7 +1,7 @@
 """Serialize a preprocessed ``Plan`` to a portable ``.npz`` checkpoint and read it back.
 
 The persistence primitive behind the ``run`` program's checkpoint/resume: *serialize the whole
-``Plan``*, never per-facet state (see ``design/decisions/effects-and-observability.md``). It
+``Plan``*, never per-facet state. It
 exploits the plan types' own design -- both :class:`~diffBloch.engine.plan.OrientationPlan` and
 :class:`~diffBloch.engine.plan.CoupledOrientationPlan` separate their **source / rebuild inputs**
 (orientation / tilts / thickness / beam set(s) / observed ``pattern`` / ``energy`` / ``u0`` /
