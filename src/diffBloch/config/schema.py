@@ -32,7 +32,7 @@ from diffBloch.specs import (
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
 # defaults derive from these default instances so the boundary value cannot drift from the
 # value-type it parses into. The value-type in ``specs`` is the single source of truth for both the
-# default value and its validation rules (e.g. the quartz-calibrated ``max_iterations`` lives once,
+# default value and its validation rules (e.g. the calibrated ``max_iterations`` lives once,
 # in ``HexagonalSearch``).
 _HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
@@ -43,9 +43,8 @@ class _StrictConfig(BaseModel):
 
     ``extra="forbid"`` turns an unrecognised key into a load-time ``ValidationError`` instead of
     pydantic's default silent drop. Without it, a stale or misspelled key (or a field removed from
-    the schema but left in a YAML) is ignored unnoticed -- the exact hole that let the dead
-    ``g_max_sf`` / ``sg_max`` keys linger in the fixtures. It is the Ecto-``cast`` / NimbleOptions
-    allowlist: config carries only what a consumer reads, enforced at parse time. It does not catch
+    the schema but left in a YAML) is ignored unnoticed. It is an allowlist: config carries only
+    what a consumer reads, enforced at parse time. It does not catch
     a *declared* field with no reader (whole-program analysis would); pairs with keeping each config
     block close to the value-type its fields feed.
     """
@@ -66,14 +65,14 @@ class SolverConfig(_StrictConfig):
 
 
 class NumericsConfig(_StrictConfig):
-    """Stage-3 numerical-accuracy controls, frozen into the simulation spec.
+    """Numerical-accuracy controls, frozen into the simulation spec.
 
     ``g_max_refine`` (seed beam-pool / scoring-resolution radius) is a grid primitive consumed
     directly. The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
     solve cutoff (the ``preprocess.coupling`` radius, or ``g_max_refine`` when a run is
     tilt-independent), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
     reaching ``2 * cutoff`` -- so declaring both cutoff and support would let them contradict
-    (the ``diffBloch_private`` #154 model: one beam cutoff, support derived). ``rsg`` / ``dsg`` are
+    (one beam cutoff, support derived). ``rsg`` / ``dsg`` are
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count -- the parts of
     :class:`BeamSelection` / :class:`RockingCurve` those value-types do *not* share. ``integration``
     is the shared :class:`IntegrationGeometry` (one physical angle + geometry feeding both), carried
@@ -130,8 +129,8 @@ class SampleConfig(_StrictConfig):
 class DataSplitConfig(_StrictConfig):
     """Required train/validation split declaration.
 
-    The concrete selector language is intentionally small for Stage 1: it records the fixed split
-    policy that later dataset code will materialize into ``data_used``.
+    The concrete selector language is intentionally small: it records the fixed split
+    policy that dataset code materializes into ``data_used``.
     """
 
     train: str = "all_except_validation"
@@ -142,11 +141,11 @@ class ObjectiveConfig(_StrictConfig):
     """The differentiable data loss for the default refinement path.
 
     ``data_term`` parses (via :meth:`to_loss`) into the
-    :data:`~diffBloch.engine.forward.LossFn` ``build_engine`` consumes. Only implemented terms are
-    admissible (a Poisson NLL and a Gauss-Newton least-squares backend are deferred). Only knobs the
-    default path actually consumes live here -- outlier rejection, penalty/nuisance weighting, and
-    gradient-norm reporting are deferred until wired, not accepted-but-ignored (cf. penalties, which
-    are Python/API composition, not config).
+    :data:`~diffBloch.engine.forward.LossFn` ``build_engine`` consumes; only implemented terms are
+    admissible. Only knobs the default path actually consumes live here -- outlier rejection,
+    penalty/nuisance weighting, and gradient-norm reporting are not accepted config keys until a
+    consumer reads them, rather than accepted-but-ignored (cf. penalties, which are Python/API
+    composition, not config).
     """
 
     data_term: Literal["scaled_weighted_r", "least_squares"] = "scaled_weighted_r"
@@ -280,7 +279,7 @@ class CouplingConfig(_StrictConfig):
     delegates all validation there (one rule home, no drift).
 
     Unlike the numerical preprocess blocks, coupling carries **no defaults**: it determines the
-    physics (the per-trial SOLVE union) and is experiment-specific, so a silent faithful-default
+    physics (the per-trial SOLVE union) and is experiment-specific, so a silent default
     would let a forgotten policy pass as a deliberate one. All three fields are required when the
     block is present, and the block itself is optional only for experiments that never run the
     coupled fit (see :class:`PreprocessConfig`); composing the fit without it raises. The value-type
@@ -290,8 +289,8 @@ class CouplingConfig(_StrictConfig):
     fixed_n_segments: int  # contiguous tilt chunks (fixed mode)
     g_max: float  # coupling radius (1/Angstrom): a beam couples when |g| < g_max
     sg_max: float  # excitation-error cutoff
-    # Adaptive segmentation is a mode toggle with a faithful-fixed default, so (unlike the four
-    # physics fields) it may be omitted -- an absent block runs the current even-split behaviour.
+    # Adaptive segmentation is a mode toggle with a fixed default, so (unlike the four
+    # physics fields) it may be omitted -- an absent value runs the even-split behaviour.
     union_adaptive: bool = False  # recursive-bisection chunk boundaries instead of even splits
     union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
 
@@ -319,10 +318,10 @@ class PreprocessConfig(_StrictConfig):
     and its per-trial ``coupling`` policy) and ``fit_thickness``. The optional ``converge_numerics``
     driver is *not* in the default recipe, so it has no config block -- a caller that composes it
     constructs :class:`~diffBloch.specs.ConvergenceTest` /
-    :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (their defaults are the
-    faithful values). Opt-in step config lives with the step, not in an always-present block.
+    :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (which carry their own
+    defaults). Opt-in step config lives with the step, not in an always-present block.
 
-    ``coupling`` is ``None`` unless declared: it has no faithful default (see
+    ``coupling`` is ``None`` unless declared: it has no default (see
     :class:`CouplingConfig`), so an experiment that runs the coupled orientation fit must declare it
     or the recipe build raises. An experiment that never runs the fit may leave it unset.
     """
