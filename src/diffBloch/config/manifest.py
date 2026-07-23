@@ -81,7 +81,8 @@ class PreprocessLock(BaseModel):
 
     A checkpoint is safe to reuse only when the current run matches on all four axes -- the input
     bytes, the resolved config, the software version, and the composed recipe -- AND the ``.npz``
-    verifies against ``plan``. The recipe axis is the piece the earlier cache attempt omitted;
+    verifies against ``plan``. The recipe axis distinguishes checkpoints built from the same inputs
+    and config by different step sequences;
     ``code_version`` is the software-implementation axis the recipe (step shape + params) cannot
     capture. The full ``code_version`` string (``__version__+g<sha>[.dirty]``) is recorded here as a
     build stamp, but the reuse gate compares only its release ``__version__`` (see
