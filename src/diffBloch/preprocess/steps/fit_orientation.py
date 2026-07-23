@@ -14,25 +14,24 @@ the step never mutates; the simulation inside is
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
 The active beam set is held fixed at each orientation's seed selection across the search -- it is
-*not* re-filtered per trial (a divergence from ``diffBloch_private``) *unless* the fit is opted into
+*not* re-filtered per trial *unless* the fit is opted into
 coupling via ``coupling=`` (see below). The rocking-curve tilt set carried by the ``Plan`` is
 threaded through every trial unchanged, so each candidate is scored under the *same* integration as
-the seed -- the fit/eval consistency invariant (the private fits under integration too, passing
-``tilts`` into every simplex trial). Ordering ``integrate_rocking_curve`` before this step therefore
-couples the fit to the integrated model; with rocking off the tilt set is a single identity,
-byte-identical to a static fit.
+the seed -- the fit/eval consistency invariant. Ordering ``integrate_rocking_curve`` before this
+step therefore couples the fit to the integrated model; with rocking off the tilt set is a single
+identity, identical to a static fit.
 
-**Coupling (opt-in, ``coupling=TrialCoupling(...)``)** reproduces the private's objective exactly:
-at *every* trial orientation both the SOLVE union (the per-tilt-segment excitation coupling) and the
-SCORED set (the Klar window intersected with a resolution cap) are re-derived from scratch, so both
-track the trial rather than staying pinned to the seed. The seed is rebuilt through the same builder
-so the greedy comparison is always coupled-vs-coupled, and the last accepted trial is already the
-coupled-at-fitted-orientation plan -- no separate ``couple_beams`` step is needed. Per-trial
-re-selection makes the objective **deliberately non-stationary**: consecutive trials score different
-reflection sets (different wR2 denominators). This is faithful -- the private's objective returns
-wR2 over each trial's own filtered set -- not a bug. It is affordable because the atomic ``F_gb`` is
-computed once and every segment's structure-factor matrix is a cheap gather-index into it (~55 ms of
-re-coupling per trial, measured), not a re-derivation.
+**Coupling (opt-in, ``coupling=TrialCoupling(...)``)** re-derives both reflection sets at every
+trial: at *every* trial orientation both the SOLVE union (the per-tilt-segment excitation coupling)
+and the SCORED set (the Klar window intersected with a resolution cap) are re-derived from scratch,
+so both track the trial rather than staying pinned to the seed. The seed is rebuilt through the same
+builder so the greedy comparison is always coupled-vs-coupled, and the last accepted trial is
+already the coupled-at-fitted-orientation plan -- no separate ``couple_beams`` step is needed.
+Per-trial re-selection makes the objective **deliberately non-stationary**: consecutive trials score
+different reflection sets (different wR2 denominators). This is intended, not a bug -- each trial's
+wR2 is over that trial's own filtered set. It is affordable because the atomic ``F_gb`` is
+computed once and every segment's structure-factor matrix is a cheap gather-index into it, not a
+re-derivation.
 
 With ``coupling=None`` (the default) each trial is ``current.with_orientation(...)``, defined on
 both the tilt-independent :class:`OrientationPlan` and the
@@ -94,10 +93,10 @@ def fit_orientation(
     ``search`` is a pre-validated :class:`~diffBloch.specs.HexagonalSearch` (invalid bounds are
     unrepresentable, so this function never re-validates): ``max_search_angle`` /
     ``min_search_angle`` (degrees) bound the shrinking tilt radius, and ``n_steps`` is the number of
-    hexagonal azimuths (6 -> 0, 60, ..., 300 deg, matching the private). ``method`` configures the
+    hexagonal azimuths (6 -> 0, 60, ..., 300 deg). ``method`` configures the
     engine's solver (``score_orientation`` uses a scaling-optimised wR2 internally).
 
-    ``coupling`` (default ``None``) opts the fit into the private's per-trial re-coupling: a
+    ``coupling`` (default ``None``) opts the fit into per-trial re-coupling: a
     :class:`~diffBloch.specs.TrialCoupling` re-derives the solve union and re-selects the scored set
     at every trial orientation (see the module docstring for the non-stationary-objective nuance).
     ``None`` keeps the tilt-independent fit (one fixed beam set across the search).
@@ -114,14 +113,14 @@ def fit_orientation(
     spans the beam-difference support; without that guarantee a skipped check would let a gather
     silently read zeros. Inert unless ``coupling`` is set (the tilt-independent path rebuilds no
     gather in the search), and, like the coverage guard, it does not enter the recipe identity: the
-    checks are pure, so ``False`` yields byte-identical gather indices when coverage holds.
+    checks are pure, so ``False`` yields identical gather indices when coverage holds.
 
     ``device`` (default ``None`` = CPU) places the search's forward solve on the given accelerator:
     the seed params are moved there and ``engine.fgb`` is computed on-device, so every per-trial
     ``score_orientation`` co-locates onto the param-derived ``fgb.device`` at the use site (the CPU
     trial rebuilds are cheap numpy; only their tensors reach the device). This is the fp32 search's
     device wiring (pair it with ``precision="fp32"`` for the large-cell fork). Kept out of the
-    recipe identity like ``workers``/``logger`` -- but unlike those it is not byte-identical: the
+    recipe identity like ``workers``/``logger`` -- but unlike those it is not bit-exact: the
     solve shifts ~1e-11 cross-device, and because the greedy search accepts on a threshold, that
     shift can flip a near-tie into a full-radius orientation difference (a well-conditioned fit
     stays; a knife-edge one legitimately diverges). Safe regardless: reproducibility is anchored at
@@ -148,12 +147,12 @@ def fit_orientation(
     ``search.max_iterations`` caps the total passes *per orientation* and a ``RuntimeError`` is
     raised if it is reached -- silent non-convergence is never returned.
 
-    The cap is a 2.0 addition: ``diffBloch_private``'s search has none (it relies on monotone wR2
-    descent + the radius floor). The search does terminate by construction for a
-    non-degenerate objective -- the cap only guards pathological ridge-walking on (near-)degenerate
-    landscapes. Its default of ``2000`` is **calibrated on the quartz anchor under the integrated
-    recipe** (slowest legitimate search: 1288 passes across 99 rotations, so 2000 has headroom);
-    raise it via config if a dataset with shallower minima trips it.
+    The cap is a runaway guard: the search terminates by construction for a
+    non-degenerate objective (monotone wR2 descent + the radius floor), so the cap only guards
+    pathological ridge-walking on (near-)degenerate landscapes. Its default of ``2000`` is
+    **calibrated on the quartz anchor under the integrated recipe** (slowest legitimate search: 1288
+    passes across 99 rotations, so 2000 has headroom); raise it via config if a dataset with
+    shallower minima trips it.
     """
 
     if workers < 1:
@@ -244,17 +243,16 @@ def _refine_one(
 
     With ``coupling=None`` each trial is ``current.with_orientation(grid, o)`` -- it rebuilds only
     the orientation-dependent bases and reuses the F-gather, so the beam set, rocking-curve tilts,
-    and reduction are held fixed across the search (byte-identical to the pre-coupling behaviour).
-    With a :class:`~diffBloch.specs.TrialCoupling`, the seed *and* every trial are rebuilt through
+    and reduction are held fixed across the search. With a
+    :class:`~diffBloch.specs.TrialCoupling`, the seed *and* every trial are rebuilt through
     :func:`_coupled_trial`, which re-couples the solve union and re-selects the scored set at that
-    orientation -- the deliberately non-stationary faithful objective (see the module docstring).
+    orientation -- the deliberately non-stationary objective (see the module docstring).
     """
     grid = plan.structure_factor_grid
     n_trials = 0
     # One rotation's search revisits the same excitation unions across many nearby trials, so the
-    # orientation-free per-segment F-gathers are memoized by beam set for the search's duration
-    # (the private caches its per-union A-matrices the same way). Scoped per rotation: bounded, and
-    # trivially thread-safe if rotations ever fit in parallel.
+    # orientation-free per-segment F-gathers are memoized by beam set for the search's duration.
+    # Scoped per rotation: bounded, and trivially thread-safe if rotations ever fit in parallel.
     gather_cache: dict[bytes, StructureFactorGather] = {}
     if coupling is None:
         current = op
@@ -308,18 +306,18 @@ def _coupled_trial(
     *,
     validate: bool = True,
 ) -> CoupledOrientationPlan:
-    """Re-couple the solve union and re-select the scored set at ``orientation`` (faithful trial).
+    """Re-couple the solve union and re-select the scored set at ``orientation`` (one coupled trial).
 
-    Ports one ``diffBloch_private`` objective evaluation: (1) ``build_coupling_segments`` re-derives
+    One objective evaluation: (1) ``build_coupling_segments`` re-derives
     the per-tilt-segment excitation union at ``orientation`` (the SOLVE set); (2) the Klar window
     (:func:`klar_beam_mask`) intersected with the scoring-resolution cap
-    (:func:`~diffBloch.core.reciprocal.gmax_mask`, an ideal-cell ``|g|`` metric mirroring the
-    private's ``resolution_filter``) selects the SCORED set from that union, with ``000`` retained
+    (:func:`~diffBloch.core.reciprocal.gmax_mask`, an ideal-cell ``|g|`` metric) selects the SCORED
+    set from that union, with ``000`` retained
     (it anchors ``psi0`` and is dropped later on pattern intersection). The observed ``pattern``,
     ``thickness``, and ``tilt_reduction`` are carried from ``op`` unchanged. The atomic ``F_gb`` is
     untouched either way; ``gather_cache`` (keyed by a segment's beam-set bytes) reuses the
     orientation-free per-segment F-gathers across a search's trials -- identical beam set, identical
-    gather -- collapsing the per-trial rebuild cost the way the private's per-union cache does.
+    gather -- collapsing the per-trial rebuild cost.
 
     ``validate`` (default ``True``) is forwarded to each cache-miss
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather`; ``False`` skips its O(N^2)

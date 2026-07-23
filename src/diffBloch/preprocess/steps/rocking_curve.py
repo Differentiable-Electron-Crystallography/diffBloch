@@ -6,8 +6,8 @@ the tilts (an incoherent rotation-frame integration; see
 :meth:`diffBloch.core.products.BlochSolution.integrate`). The rocking curve is *the* scientific
 enabling structure of the rotation-electron-diffraction forward model, so it is a composable,
 toggleable step rather than baked into ``from_experiment``: composing it in with
-``rocking.sampling == 1`` (a single angle-0 tilt) is the identity, so appending it off leaves the
-``Plan`` byte-identical.
+``rocking.sampling == 1`` (a single angle-0 tilt) is the identity, so leaving it out leaves the
+``Plan`` unchanged.
 
 It is pure geometry -- no engine, no structure factors, no refinement: the tilts depend only on the
 fixed ``RockingCurve`` and each settled nominal orientation, so they are prebuilt into the
@@ -16,9 +16,8 @@ fixed ``RockingCurve`` and each settled nominal orientation, so they are prebuil
 the fits settle the nominal orientation and the one shared beam set, then this bakes the integration
 geometry those results are held fixed at, reusing that beam set across every tilt.
 
-Faithful to ``diffBloch_private``'s ``generate_integration_rotation_matrices`` +
-``get_integrated_intensities`` (which the private wires in unconditionally); 2.0 exposes it as a
-composed unit.
+Building the tilt matrices and integrating their intensities is exposed here as one composable unit,
+rather than being wired in unconditionally.
 """
 
 from __future__ import annotations
