@@ -44,13 +44,20 @@ def test_coverage_phase_window_sweep_grows_the_window_when_the_pool_is_narrow() 
     _, seed = seed_system()
     # Narrow start window: growing the pool adds nothing (the window clips it), so only the window
     # sweep moves -- 0.68 -> 0.88 -- and the pool is left at its start.
-    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, tilt_sampling=1)
+    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, rocking_curve_sampling=1)
     plan, settled = run_coverage_phase(
-        seed, start, _SELECTION, pool_step=0.1, window_step=0.2, max_iterations=30
+        seed,
+        start,
+        _SELECTION,
+        g_max_refine_step=0.1,
+        integration_semiangle_step=0.2,
+        max_iterations=30,
     )
     assert settled.g_max_refine == 0.5
     assert settled.integration_semiangle == pytest.approx(0.88)
-    assert settled.tilt_sampling == 1  # coverage is pure geometry -- tilt passes through untouched
+    assert (
+        settled.rocking_curve_sampling == 1
+    )  # coverage is pure geometry -- tilt passes through untouched
     assert plan_coverage(plan) == 13
     assert _coverage(seed, 0.5, 0.68) == 9  # grew coverage 9 -> 13
 
@@ -58,9 +65,14 @@ def test_coverage_phase_window_sweep_grows_the_window_when_the_pool_is_narrow() 
 def test_coverage_phase_pool_sweep_grows_the_pool_when_the_window_is_wide() -> None:
     _, seed = seed_system()
     # Wider start window: the pool is no longer starved, so the pool sweep moves 0.5 -> 0.9.
-    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, tilt_sampling=1)
+    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, rocking_curve_sampling=1)
     plan, settled = run_coverage_phase(
-        seed, start, _SELECTION, pool_step=0.1, window_step=0.2, max_iterations=30
+        seed,
+        start,
+        _SELECTION,
+        g_max_refine_step=0.1,
+        integration_semiangle_step=0.2,
+        max_iterations=30,
     )
     assert settled.g_max_refine == pytest.approx(0.9)
     assert settled.integration_semiangle == 1.2
@@ -70,9 +82,14 @@ def test_coverage_phase_pool_sweep_grows_the_pool_when_the_window_is_wide() -> N
 
 def test_coverage_phase_returns_the_plan_at_the_settled_scalars() -> None:
     _, seed = seed_system()
-    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, tilt_sampling=1)
+    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.2, rocking_curve_sampling=1)
     plan, settled = run_coverage_phase(
-        seed, start, _SELECTION, pool_step=0.1, window_step=0.2, max_iterations=30
+        seed,
+        start,
+        _SELECTION,
+        g_max_refine_step=0.1,
+        integration_semiangle_step=0.2,
+        max_iterations=30,
     )
     # The returned Plan is exactly the windowed pool at the settled state (the evalState value).
     assert plan_coverage(plan) == _coverage(
@@ -82,11 +99,15 @@ def test_coverage_phase_returns_the_plan_at_the_settled_scalars() -> None:
 
 def test_coverage_phase_rejects_non_positive_steps() -> None:
     _, seed = seed_system()
-    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.0, tilt_sampling=1)
-    with pytest.raises(ValueError, match="pool_step must be positive"):
-        run_coverage_phase(seed, start, _SELECTION, pool_step=0.0, window_step=0.2)
-    with pytest.raises(ValueError, match="window_step must be positive"):
-        run_coverage_phase(seed, start, _SELECTION, pool_step=0.1, window_step=0.0)
+    start = ConvergenceState(g_max_refine=0.5, integration_semiangle=1.0, rocking_curve_sampling=1)
+    with pytest.raises(ValueError, match="g_max_refine_step must be positive"):
+        run_coverage_phase(
+            seed, start, _SELECTION, g_max_refine_step=0.0, integration_semiangle_step=0.2
+        )
+    with pytest.raises(ValueError, match="integration_semiangle_step must be positive"):
+        run_coverage_phase(
+            seed, start, _SELECTION, g_max_refine_step=0.1, integration_semiangle_step=0.0
+        )
 
 
 # --- run_stability_phase: the fixed num_passes coordinate sweep to consecutive-sim stability ---
@@ -95,7 +116,7 @@ _ROCKING = RockingCurve(
     sampling=1, integration=IntegrationGeometry(semiangle=0.5)
 )  # tilt span/geometry fixed; count from state
 _TOLERANCE = ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20)
-_START = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, tilt_sampling=1)
+_START = ConvergenceState(g_max_refine=0.5, integration_semiangle=0.68, rocking_curve_sampling=1)
 
 
 def _stability(refinement, seed, **kwargs):
@@ -106,9 +127,9 @@ def _stability(refinement, seed, **kwargs):
         _ROCKING,
         refinement,
         _TOLERANCE,
-        pool_step=kwargs.get("pool_step", 0.1),
-        window_step=kwargs.get("window_step", 0.2),
-        tilt_step=kwargs.get("tilt_step", 2),
+        g_max_refine_step=kwargs.get("g_max_refine_step", 0.1),
+        integration_semiangle_step=kwargs.get("integration_semiangle_step", 0.2),
+        rocking_curve_sampling_step=kwargs.get("rocking_curve_sampling_step", 2),
         num_passes=kwargs.get("num_passes", 2),
     )
 
@@ -120,7 +141,7 @@ def test_stability_phase_one_pass_settles_all_three_knobs() -> None:
     plan, settled = _stability(refinement, seed, num_passes=1)
     assert settled.g_max_refine == pytest.approx(0.6)
     assert settled.integration_semiangle == pytest.approx(1.08)
-    assert settled.tilt_sampling == 7  # tilt IS tuned here (unlike coverage), 1 -> 7
+    assert settled.rocking_curve_sampling == 7  # tilt IS tuned here (unlike coverage), 1 -> 7
     assert beam_count(plan) == 17
     assert len(plan.orientations[0].tilts) == 7  # returned Plan is built at the settled state
 
@@ -133,20 +154,20 @@ def test_stability_phase_second_pass_revisits_and_grows_the_knobs() -> None:
     _, two = _stability(refinement, seed, num_passes=2)
     assert two.g_max_refine == pytest.approx(0.7)
     assert two.integration_semiangle == pytest.approx(1.28)
-    assert two.tilt_sampling == 9
+    assert two.rocking_curve_sampling == 9
     assert two.g_max_refine >= one.g_max_refine
     assert two.integration_semiangle >= one.integration_semiangle
-    assert two.tilt_sampling >= one.tilt_sampling
+    assert two.rocking_curve_sampling >= one.rocking_curve_sampling
 
 
 def test_stability_phase_rejects_bad_steps_and_passes() -> None:
     refinement, seed = seed_system()
-    with pytest.raises(ValueError, match="pool_step must be positive"):
-        _stability(refinement, seed, pool_step=0.0)
-    with pytest.raises(ValueError, match="window_step must be positive"):
-        _stability(refinement, seed, window_step=0.0)
-    with pytest.raises(ValueError, match="tilt_step must be positive"):
-        _stability(refinement, seed, tilt_step=0.0)
+    with pytest.raises(ValueError, match="g_max_refine_step must be positive"):
+        _stability(refinement, seed, g_max_refine_step=0.0)
+    with pytest.raises(ValueError, match="integration_semiangle_step must be positive"):
+        _stability(refinement, seed, integration_semiangle_step=0.0)
+    with pytest.raises(ValueError, match="rocking_curve_sampling_step must be positive"):
+        _stability(refinement, seed, rocking_curve_sampling_step=0.0)
     with pytest.raises(ValueError, match="num_passes must be at least 1"):
         _stability(refinement, seed, num_passes=0)
 
@@ -162,9 +183,9 @@ def _numerics(refinement, seed, operation: str):
     test = ConvergenceTest(
         operation=operation,
         start_g_max_refine=0.5,
-        pool_step=0.1,
-        window_step=0.2,
-        tilt_step=2,
+        g_max_refine_step=0.1,
+        integration_semiangle_step=0.2,
+        rocking_curve_sampling_step=2,
         num_passes=2,
     )
     return converge_numerics(test, _SEL_NARROW, _ROCKING, refinement, _TOLERANCE)(seed)
