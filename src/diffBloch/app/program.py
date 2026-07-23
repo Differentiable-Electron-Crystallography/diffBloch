@@ -70,7 +70,7 @@ from diffBloch.preprocess import (
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import ScoredSelection, TrialCoupling
+from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
 __all__ = ["preprocess_experiment", "refine_experiment", "run_experiment"]
 
@@ -410,7 +410,7 @@ def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
         )
     return TrialCoupling(
         policy=cfg.preprocess.coupling.to_policy(),
-        scored=ScoredSelection(
+        scored=ScoredHklSelection(
             klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine
         ),
     )

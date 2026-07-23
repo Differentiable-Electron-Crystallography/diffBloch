@@ -149,12 +149,12 @@ class ObjectiveConfig(_StrictConfig):
     are Python/API composition, not config).
     """
 
-    data_term: Literal["weighted_r", "least_squares"] = "weighted_r"
+    data_term: Literal["scaled_weighted_r", "least_squares"] = "scaled_weighted_r"
 
     def to_loss(self) -> LossFn:
         """Parse the data term into the ``LossFn`` the engine scores with."""
         return {
-            "weighted_r": scaled_w_rbragg_loss,
+            "scaled_weighted_r": scaled_w_rbragg_loss,
             "least_squares": weighted_mse_loss,
         }[self.data_term]
 

@@ -58,7 +58,7 @@ def spec_to_params(spec: Any) -> dict[str, Any] | None:
     """Serialize a frozen-dataclass value-type to a canonical, deterministic dict for provenance.
 
     Recurses into nested dataclasses (the specs nest: ``TrialCoupling`` holds a policy +
-    ``ScoredSelection`` holds a ``BeamSelection`` holds an ``IntegrationGeometry``), tagging each
+    ``ScoredHklSelection`` holds a ``BeamSelection`` holds an ``IntegrationGeometry``), tagging each
     with ``__type__`` = its class name so a *fieldless* discriminated-union arm (e.g.
     ``TiltIndependent``, whose ``asdict`` is ``{}``) is distinguishable from any other empty spec.
     Non-dataclass leaves (int/float/str/bool/None, Literals-as-str) pass through; tuples/lists

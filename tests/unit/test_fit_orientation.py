@@ -30,7 +30,7 @@ from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import (
     BeamSelection,
     HexagonalSearch,
-    ScoredSelection,
+    ScoredHklSelection,
     SegmentedUnionCoupling,
     TrialCoupling,
 )
@@ -227,7 +227,7 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
     grid, asu_plan, spec, numbers = _silicon()  # g_max = 0.45
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     coupling = TrialCoupling(
-        policy=SegmentedUnionCoupling(), scored=ScoredSelection(klar=BeamSelection(), g_max=0.3)
+        policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(klar=BeamSelection(), g_max=0.3)
     )
     with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
         fit_orientation(_refinement(asu_plan, spec, numbers), HexagonalSearch(), coupling=coupling)(

@@ -61,7 +61,7 @@ from diffBloch.core.reciprocal import (
 from diffBloch.core.scattering import (
     debye_waller_factor,
     lobato_form_factors,
-    resolution_cutoff,
+    structure_factor_cutoff,
     structure_factors,
 )
 from diffBloch.core.solver import propagate
@@ -126,7 +126,7 @@ __all__ = [
     "reciprocal_cell",
     "reciprocal_space_gpts",
     "reflection_condition",
-    "resolution_cutoff",
+    "structure_factor_cutoff",
     "structure_factors",
     "structure_matrix",
     "structure_matrix_prefactor",
