@@ -9,9 +9,8 @@ rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiabl
 
 ``objective_value`` / ``simulate`` are pure and differentiable;
 :func:`run_refinement_model` delegates to the quarantined imperative loop in
-:mod:`diffBloch.engine.refine`. ``from_config`` / ``from_experiment``
-construction is deferred until beam selection (stage 11) exists; engines are assembled from explicit
-per-orientation beam sets.
+:mod:`diffBloch.engine.refine`. Engines are assembled from explicit per-orientation beam sets that
+preprocessing has already selected.
 """
 
 from __future__ import annotations
@@ -101,7 +100,7 @@ class RefinementEngine:
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: SolverMethod = "matrix_exp"
-    # Solve numeric field. "fp64" everywhere by default (byte-identical to complex128). "fp32"
+    # Solve numeric field. "fp64" (complex128) everywhere by default. "fp32"
     # (complex64) is a speed/precision knob: preprocess uses it only for transient coarse-search
     # engines, and the default refine path stays fp64 unless config opts in. See
     # core.solver.propagate.
@@ -110,7 +109,7 @@ class RefinementEngine:
     # rounding-level ~1 ulp shift, never accuracy). None (default) lets each
     # solve pick a memory-safe block from its beam count (memory_safe_max_batch), which bounds the
     # (B, T, N, N) propagator that a wide coupled segment x a thickness grid would otherwise
-    # materialize all at once (the adaptive-union fit_thickness OOM). A positive int pins the block
+    # materialize all at once. A positive int pins the block
     # for a specific device budget. Execution-only, like precision/method.
     max_batch: int | None = None
 
@@ -142,8 +141,7 @@ class RefinementEngine:
         (:meth:`fgb`), aligns calculated vs observed intensities, and grid-searches the intensity
         scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple
         thicknesses the best-fitting thickness's score is returned -- thickness is a nuisance when
-        scoring orientation (the private preprocess scored the first thickness). This is the
-        objective ``fit_orientation`` minimises.
+        scoring orientation. This is the objective ``fit_orientation`` minimises.
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
 
@@ -205,8 +203,9 @@ class RefinementEngine:
         (duplicate names rejected), so both the diffraction term and the ``penalties`` see the
         transformed state. The ``"diffraction"`` component is always present; ``penalties`` add
         weighted soft-penalty components (bond-length, etc.) without making the optimizer know their
-        details. Hydrogen riding will be the first concrete ``ConstraintTransform``; a soft penalty
-        and a hard constraint are distinct -- a constraint reparameterizes, it is not a cost term.
+        details. Hydrogen riding (:class:`~diffBloch.engine.constraints.HydrogenRiding`) is one such
+        ``ConstraintTransform``; a soft penalty and a hard constraint are distinct -- a constraint
+        reparameterizes, it is not a cost term.
         """
         return self._objective_value(
             params,
@@ -221,7 +220,7 @@ class RefinementEngine:
         *,
         penalties: tuple[PenaltyTerm, ...] = (),
     ) -> ObjectiveValue:
-        """Return the objective for a JAX-style refinement model.
+        """Return the objective for a :class:`RefinementModel`.
 
         Structure-only models delegate to :meth:`objective_value` for exact behavior parity. Models
         with components use the same objective order, but let components supply forward-context
@@ -331,7 +330,7 @@ class RefinementEngine:
         real_dtype, _ = precision_dtypes(self.precision)
         thicknesses = thicknesses.to(device=device, dtype=real_dtype)
         beam_hkl = orientation.beam_hkl.to(device)
-        # Untilted (length 1): the static solve, byte-identical to the pre-integration path.
+        # Untilted (length 1): the static single solve.
         if len(orientation.beam_plans) == 1:
             amplitudes = propagate(
                 build_bloch_system(orientation.beam_plans[0], fgb),
@@ -362,7 +361,7 @@ class RefinementEngine:
     ) -> BlochSolution:
         """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
 
-        The tilt-dependent coupling path (Option A): each :class:`SegmentPlan` is solved over its
+        The tilt-dependent coupling path: each :class:`SegmentPlan` is solved over its
         covered tilts with the batched propagator, and its per-tilt intensities are scattered onto
         the shared ``(N_tilts, T, N_union)`` rocking curve (each tilt belongs to exactly one
         segment; a beam absent from a chunk stays 0 at that chunk's tilts). Only once the whole
@@ -393,8 +392,8 @@ class RefinementEngine:
             curve[cover] = block
         total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
         # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
-        # store the magnitude sqrt(total) in the solve's complex format (complex128 under fp64 ->
-        # byte-identical to today; complex64 under fp32, matching the static/batched fp32 paths).
+        # store the magnitude sqrt(total) in the solve's complex format (complex128 under fp64,
+        # complex64 under fp32, matching the static/batched paths).
         _, complex_dtype = precision_dtypes(self.precision)
         return BlochSolution(
             total.sqrt().to(complex_dtype), total, plan.beam_hkl.to(device), thicknesses
@@ -405,8 +404,8 @@ class RefinementEngine:
 class ForwardContext:
     """Forward-model values supplied by refinement model components.
 
-    Phase 4 keeps this narrow: apparent thickness is the only value admitted because it is the only
-    upcoming concrete component. Scale/background/damage fields should be added only when consumed.
+    Deliberately narrow: apparent thickness is the only value admitted, since it is the only value a
+    component currently supplies. Scale/background/damage fields should be added only when consumed.
     """
 
     thickness: Tensor | None = None
@@ -444,10 +443,10 @@ class ModelComponent(Protocol):
 class StructureComponent:
     """The physical-structure component of a refinement model.
 
-    This is a no-behavior-change wrapper around the existing structure refinement inputs:
-    ``initial`` is today's :class:`~diffBloch.params.RefinableParams`, and ``constraints`` is
-    today's tuple of hard molecular transforms applied after crystallographic ``constrain``. The
-    long-term JAX-style endpoint is for structure-local hard parameterizations to live here.
+    A thin wrapper around the structure refinement inputs: ``initial`` is the
+    :class:`~diffBloch.params.RefinableParams`, and ``constraints`` is the tuple of hard molecular
+    transforms applied after the crystallographic ``constrain``. Structure-local hard
+    parameterizations belong here.
     """
 
     initial: RefinableParams
@@ -516,10 +515,10 @@ def build_refinement_model(
     components: tuple[ModelComponent, ...] = (),
     component_params: Mapping[str, Mapping[str, Tensor]] = MappingProxyType({}),
 ) -> RefinementModel:
-    """Construct the phase-1 JAX-style refinement model wrapper.
+    """Construct a :class:`RefinementModel`.
 
-    This is intentionally behavior-equivalent to today's structure-only refinement when no
-    components are supplied. Concrete component execution is added in later phases.
+    With no components supplied it is behavior-equivalent to structure-only refinement; supplied
+    components contribute forward-context values (e.g. apparent thickness) to that structure core.
     """
     return RefinementModel(
         structure=StructureComponent(initial=initial, constraints=constraints),
@@ -532,7 +531,7 @@ def build_refinement_model(
 class ModelRefinementResult:
     """The outcome of optimizing a refinement model.
 
-    The JAX-style result returns the optimized model value. ``params``/``best_params`` properties
+    Returns the optimized model value. ``params``/``best_params`` properties
     preserve the structure-only convenience used by the default app path and existing tests.
     """
 

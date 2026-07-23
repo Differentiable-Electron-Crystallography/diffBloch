@@ -23,8 +23,8 @@ class BondLengthPenalty:
     The current ASU positions are fractional coordinates, so the penalty owns the invariant
     fractional-to-Cartesian cell matrix. ``pairs`` indexes ASU atom rows; ``target_angstrom`` and
     ``sigma_angstrom`` carry the penalty target and tolerance for each pair. The raw loss is the
-    mean squared normalized bond-distance residual by default. ``flat_bottom_l1`` is the
-    private/abiraterone-style robust criterion: zero inside the sigma tolerance and linear outside.
+    mean squared normalized bond-distance residual by default. ``flat_bottom_l1`` is a robust
+    criterion: zero inside the sigma tolerance and linear outside.
     """
 
     pairs: Tensor
@@ -84,9 +84,8 @@ def perceive_bond_length_penalty(
 
     This is an explicit source/builder layer, separate from the pure penalty value. It assumes
     the bonded molecule is contiguous in the ASU and deliberately does **not** do minimum-image
-    wrapping, matching the private bond loss. The perceived target for each bond is the current
-    Cartesian distance in the input structure; Mogul/CIF penalty sources can later provide
-    literature targets and sigmas.
+    wrapping. The perceived target for each bond is the current Cartesian distance in the input
+    structure; an external source of literature bond targets and sigmas could supply them instead.
     """
     if sigma_angstrom <= 0:
         raise ValueError("bond-penalty sigma must be positive")
