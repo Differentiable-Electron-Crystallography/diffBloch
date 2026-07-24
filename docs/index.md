@@ -24,17 +24,17 @@ rocking-curve geometry, fitted nuisance values, and checkpoint provenance. Toget
 refinement engine, which runs a deterministic Bloch-wave simulation, compares calculated and
 observed intensities, and iteratively minimizes the objective by updating selected trainable
 parameters. The guides below unpack that path from experiment inputs through preprocessing,
-reproducibility, refinement, observability, and runnable examples.
+refinement, reproducibility, observability, and runnable examples.
 
 | Guide | What it covers |
 |---|---|
-| [Architecture](architecture.md) | The whole shape of the system: typed IO and config at the boundary, preprocessing as the geometry-building shell, deterministic Bloch-wave kernels in the core, and the refinement engine as the optimization layer. |
-| [Inputs](inputs.md) | The raw data needed to refine a structure: the experiment directory, starting `.cif`, rotating-stage 3DED observations reduced by PETS2 into `.cif_pets`, YAML config, and typed records that keep parser details out of the numerical core. |
-| [Preprocessing](preprocessing.md) | How experiment records become a reusable `Plan`: the scaffold that fixes beam/scoring sets, rocking-curve and mosaicity geometry, alignments, fitted nuisance values, and checkpointable `Plan -> Plan` provenance. |
-| [Reproducibility](reproducibility.md) | Once a `Plan` exists, understand how `experiment.lock`, `plan.npz`, and `plan.lock` let later runs verify and reuse that expensive preprocessing result without overstating hardware-independent determinism. |
-| [Refinement](refinement.md) | With a settled `Plan`, choose evaluation or optimization: `infer` scores without changing parameters, while `refine` updates selected structural parameters and can be extended with hard constraints, soft penalties, and learned nuisance components. |
-| [Observability](observability-guide.md) | During those runs, follow typed progress events through console, CSV, W&B, Comet, or custom loggers so preprocessing, coupling, inference, and refinement remain inspectable. |
-| [Examples](examples.md) | Finally, run the bundled quartz and checkpoint examples, then use the paper examples as references for richer Python composition patterns. |
+| [Architecture](architecture.md) | The whole shape of the system. |
+| [Inputs](inputs.md) | The raw data needed to refine a structure. |
+| [Preprocessing](preprocessing.md) | How raw input data becomes a reusable `Plan`. |
+| [Refinement](refinement.md) | With a settled `Plan`, choose evaluation or optimization. |
+| [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` let later runs verify and reuse expensive preprocessing results. |
+| [Observability](observability-guide.md) | How to track progress and debug refinements. |
+| [Examples](examples.md) | Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch. |
 
 For day-to-day use, start with the CLI quickstart below. For custom scientific workflows, the same
 pieces are available through the public Python API.
@@ -83,10 +83,6 @@ Python users can compose preprocessing steps, constraints, penalties, and refine
 directly with the public API; the CLI is the friendly default runner, not the only path.
 
 ## API
-
-API docs are generated from the package's docstrings and type signatures. The navigation covers
-every public layer: **Config**, **IO**, **Core**, **Params**, **Specs**, **Engine**,
-**Preprocess**, **Observability**, and **App**.
 
 ```{toctree}
 :hidden:
