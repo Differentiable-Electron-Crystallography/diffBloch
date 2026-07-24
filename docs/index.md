@@ -170,9 +170,6 @@ reproducibility.md
 refinement.md
 observability-guide.md
 examples.md
-model-composition.md
-beams-and-scoring.md
-rocking-curve.md
 ```
 
 ```{toctree}

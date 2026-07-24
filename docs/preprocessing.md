@@ -40,6 +40,32 @@ Plan(
 )
 ```
 
+## Beam sets and scoring inside a `Plan`
+
+A `Plan` deliberately separates hkl sets that answer different questions:
+
+| Set | Meaning |
+|---|---|
+| Structure-factor hkl | The shared support where `Fgb` is tabulated. |
+| Solve beams | The beam basis used in a Bloch solve. |
+| Observed hkl | Reflections present in the PETS observations. |
+| Scored hkl | Reflections included in the objective/scoring comparison. |
+| Matched hkl | The calculated/observed overlap recorded by the alignment. |
+
+This split matters because the best solve basis is not always the same as the set of reflections you
+want in the objective. Under coupled rocking-curve solves, the solve set may expand to a per-segment
+beam union while the scored set stays pinned to the selected/scored hkl, so widening the solve basis
+does not silently change what the objective compares.
+
+## Rocking curve and mosaicity inside a `Plan`
+
+A rotation electron-diffraction frame integrates intensity while the crystal rocks through a small
+angular range. In a `Plan`, that is represented as virtual tilt sub-orientations on each rotation:
+`integrate_rocking_curve` replaces a single static orientation with sampled tilts, and `mosaicity`
+adds a tilt-axis moving-average reduction before intensities are summed. If beam coupling is enabled,
+`couple_beams` can then replace one shared beam set with per-segment beam unions over the rocking
+curve.
+
 ## API shape: from experiment records to an initial `Plan`
 
 ```python
@@ -81,10 +107,12 @@ Real steps include:
 - {func}`diffBloch.preprocess.steps.coupling.couple_beams` — settle coupled per-segment beam unions.
 - {func}`diffBloch.preprocess.driver.converge_numerics` — run coverage/convergence sweeps over numerical knobs.
 
-The pipeline also provides composition helpers such as `iterate_until` and `Fork` for repeated,
-conditional, or branching preprocess logic. More advanced steps use the same contract: convergence
-sweeps repeatedly improve numerical plan values, while `fit_orientation` and `fit_thickness` score
-candidate plans and return the best updated `Plan`.
+The pipeline also provides composition helpers such as {func}`diffBloch.preprocess.pipeline.fork`,
+{func}`diffBloch.preprocess.pipeline.iterate_until`, and
+{func}`diffBloch.preprocess.pipeline.stateful_plan_step` for conditional, repeated, or stateful
+preprocess logic. More advanced steps use the same contract: convergence sweeps repeatedly improve
+numerical plan values, while `fit_orientation` and `fit_thickness` score candidate plans and return
+the best updated `Plan`.
 
 ## API example: composing simple steps
 
@@ -120,24 +148,40 @@ print(len(orientations))
 print(plan.structure_factor_grid.structure_factor_hkl.shape)
 ```
 
-## API shape: `Fork` and `iterate_until`
+## API shape: branching, looping, and stateful drivers
 
-Advanced branching and looping pipelines can be composed with the `Fork` and `iterate_until`
-utilities. `Fork` chooses one of two step lists from the immutable structure-factor grid, so the
-chosen recipe can still be resolved before checkpointing; the default app recipe uses this shape to
-route large cells through a coarser fp32 orientation/thickness-fit branch. `iterate_until` wraps a
-repeated `Plan -> Plan` improvement behind the same step shape.
+Advanced branching and looping pipelines can be composed with
+{func}`diffBloch.preprocess.pipeline.fork`,
+{func}`diffBloch.preprocess.pipeline.iterate_until`, and
+{func}`diffBloch.preprocess.pipeline.stateful_plan_step`.
+
+`fork` constructs a {class}`diffBloch.preprocess.pipeline.Fork` value: the lowercase function is the
+user-facing combinator, while uppercase `Fork` is the returned dataclass/type used for recipe
+resolution. It chooses one of two step lists from the immutable structure-factor grid, so the chosen
+recipe can still be resolved before checkpointing; the default app recipe uses this shape to route
+large cells through a coarser fp32 orientation/thickness-fit branch. `iterate_until` wraps a repeated
+`Plan -> Plan` improvement behind the same step shape.
 
 The convergence path is the stateful version of this idea. Its public pipeline surface is still a
-single `Plan -> Plan` step, but internally `converge_numerics` runs a small coordinate-search driver:
-it threads a `ConvergenceState` containing `g_max_refine`, `integration_semiangle`, and
-`rocking_curve_sampling` through coverage and self-stability sweeps, rebuilding candidate `Plan`
-values from each scalar setting. There is not currently a general-purpose stateful pipeline utility
-for this shape; `converge_scalar`, `run_coverage_phase`, and `run_stability_phase` are the dedicated
-helpers that formalize it for convergence.
+single `Plan -> Plan` step, but internally {func}`diffBloch.preprocess.driver.converge_numerics`
+runs a coordinate-search driver: it threads a `ConvergenceState` containing `g_max_refine`,
+`integration_semiangle`, and `rocking_curve_sampling` through coverage and self-stability sweeps,
+rebuilding candidate `Plan` values from each scalar setting. The generic shape is formalized as
+{data}`diffBloch.preprocess.pipeline.StatefulPlanStep`,
+{func}`diffBloch.preprocess.pipeline.stateful_pipeline`, and
+{func}`diffBloch.preprocess.pipeline.stateful_plan_step`: an explicit immutable-state carry, similar
+to Haskell's `State`, Elm's model-threading `update`, or JAX's `carry` in `scan`/`while_loop`.
 
 ```python
-from diffBloch.preprocess import fork, identity, iterate_until
+from dataclasses import dataclass
+
+from diffBloch.preprocess import (
+    fork,
+    identity,
+    iterate_until,
+    stateful_pipeline,
+    stateful_plan_step,
+)
 
 large_cell_branch = fork(
     lambda grid: grid.cell_volume > 1000.0,
@@ -149,6 +193,21 @@ repeat_until_stable = iterate_until(
     identity(),
     until=lambda previous, current: previous is current,
     max_iterations=1,
+)
+
+@dataclass(frozen=True)
+class SearchState:
+    tried: int = 0
+
+
+def bump_trial_count(plan, state: SearchState):
+    # A real driver would rebuild a candidate Plan from state, score it, and return the new carry.
+    return plan, SearchState(tried=state.tried + 1)
+
+
+stateful_driver = stateful_plan_step(
+    init_state=lambda plan: SearchState(),
+    step=stateful_pipeline([bump_trial_count, bump_trial_count]),
 )
 ```
 

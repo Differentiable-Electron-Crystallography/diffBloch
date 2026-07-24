@@ -24,7 +24,12 @@ from dataclasses import dataclass, replace
 
 from diffBloch.core.solver import SolverMethod
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.pipeline import PlanStep
+from diffBloch.preprocess.pipeline import (
+    PlanStep,
+    StatefulPlanStep,
+    stateful_pipeline,
+    stateful_plan_step,
+)
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.steps.beams import reseed_pool
 from diffBloch.preprocess.steps.convergence import converge_scalar, simulation_rfactor
@@ -78,49 +83,27 @@ def converge_numerics(
     discard the state. Dispatches on ``convergence_test.operation``.
     """
 
-    def run(plan: Plan) -> Plan:
-        start = ConvergenceState(
+    def start_state(_plan: Plan) -> ConvergenceState:
+        return ConvergenceState(
             g_max_refine=test.start_g_max_refine,
             integration_semiangle=selection.integration.semiangle,
             rocking_curve_sampling=rocking.sampling,
         )
-        if test.operation == "coverage":
-            converged, _ = run_coverage_phase(
-                plan,
-                start,
-                selection,
-                g_max_refine_step=test.g_max_refine_step,
-                integration_semiangle_step=test.integration_semiangle_step,
-                max_iterations=tolerance.max_iterations,
-            )
-            return converged
-        if test.operation == "self_stability":
-            converged, _ = run_stability_phase(
-                plan,
-                start,
-                selection,
-                rocking,
-                refinement,
-                tolerance,
-                g_max_refine_step=test.g_max_refine_step,
-                integration_semiangle_step=test.integration_semiangle_step,
-                rocking_curve_sampling_step=test.rocking_curve_sampling_step,
-                num_passes=test.num_passes,
-                method=method,
-            )
-            return converged
-        # "both": coverage's settled scalars seed self-stability.
-        covered, settled = run_coverage_phase(
+
+    def coverage(plan: Plan, state: ConvergenceState) -> tuple[Plan, ConvergenceState]:
+        return run_coverage_phase(
             plan,
-            start,
+            state,
             selection,
             g_max_refine_step=test.g_max_refine_step,
             integration_semiangle_step=test.integration_semiangle_step,
             max_iterations=tolerance.max_iterations,
         )
-        converged, _ = run_stability_phase(
-            covered,
-            settled,
+
+    def self_stability(plan: Plan, state: ConvergenceState) -> tuple[Plan, ConvergenceState]:
+        return run_stability_phase(
+            plan,
+            state,
             selection,
             rocking,
             refinement,
@@ -131,9 +114,17 @@ def converge_numerics(
             num_passes=test.num_passes,
             method=method,
         )
-        return converged
 
-    return run
+    phases: tuple[StatefulPlanStep[ConvergenceState], ...]
+    if test.operation == "coverage":
+        phases = (coverage,)
+    elif test.operation == "self_stability":
+        phases = (self_stability,)
+    else:
+        # "both": coverage's settled scalars seed self-stability.
+        phases = (coverage, self_stability)
+
+    return stateful_plan_step(start_state, stateful_pipeline(phases))
 
 
 def run_coverage_phase(

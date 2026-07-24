@@ -32,6 +32,8 @@ from diffBloch.preprocess.pipeline import (
     pipeline,
     resolve_recipe,
     spec_to_params,
+    stateful_pipeline,
+    stateful_plan_step,
     step_records,
 )
 from diffBloch.specs import (
@@ -128,6 +130,42 @@ def test_identity_records_itself_and_is_a_noop() -> None:
 def test_empty_pipeline_leaves_provenance_untouched() -> None:
     seeded = replace(_plan(), provenance=(StepRecord(name="prior"),))
     assert pipeline([])(seeded).provenance == (StepRecord(name="prior"),)
+
+
+def test_stateful_pipeline_threads_plan_and_state_left_to_right() -> None:
+    def add_orientation(plan: Plan, total: int) -> tuple[Plan, int]:
+        out = replace(plan, orientations=(*plan.orientations, object()))
+        return out, total + 1
+
+    def double_state(plan: Plan, total: int) -> tuple[Plan, int]:
+        return plan, total * 2
+
+    out, state = stateful_pipeline([add_orientation, double_state, add_orientation])(_plan(), 3)
+
+    assert len(out.orientations) == 2
+    assert state == 9
+
+
+def test_stateful_plan_step_adapts_to_plain_plan_step_and_drops_state() -> None:
+    def init(plan: Plan) -> int:
+        return len(plan.orientations)
+
+    def add_orientation(plan: Plan, total: int) -> tuple[Plan, int]:
+        out = replace(plan, orientations=(*plan.orientations, object()))
+        return out, total + 1
+
+    step = stateful_plan_step(init, add_orientation)
+    out = step(_plan())
+
+    assert len(out.orientations) == 1
+
+
+def test_stateful_plan_step_is_opaque_when_used_directly_in_pipeline() -> None:
+    step = stateful_plan_step(lambda _plan: 0, lambda plan, state: (plan, state + 1))
+
+    out = pipeline([step])(_plan())
+
+    assert out.provenance == (OPAQUE,)
 
 
 # --- fork (the choice combinator) -----------------------------------------------------------------
