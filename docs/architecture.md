@@ -34,7 +34,7 @@ rather than a full script because real runs need an experiment directory, locks,
 configuration.
 
 ```python
-from diffBloch.app.program import refine_experiment, run_experiment
+from diffBloch.app import refine_experiment, run_experiment
 
 # Simulate/score a checkpointed experiment.
 inference = run_experiment("examples/experiments/quartz-checkpoint")

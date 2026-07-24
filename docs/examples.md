@@ -57,7 +57,7 @@ highest-precision refinement path.
 ## Python API example
 
 ```python
-from diffBloch.app.program import run_experiment
+from diffBloch.app import run_experiment
 
 result = run_experiment("examples/experiments/quartz-checkpoint")
 print(result.n_evaluated, result.mean_r_obs)

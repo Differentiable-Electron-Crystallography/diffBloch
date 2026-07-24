@@ -28,8 +28,7 @@ or Comet unless you use those backends.
 ```python
 from pathlib import Path
 
-from diffBloch.app.loggers import CSVLogger, ConsoleLogger
-from diffBloch.app.program import run_experiment
+from diffBloch.app import CSVLogger, ConsoleLogger, run_experiment
 from diffBloch.observability import MultiLogger
 
 logger = MultiLogger((
