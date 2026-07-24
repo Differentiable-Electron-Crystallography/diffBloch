@@ -1,7 +1,7 @@
 {
   "experiment_lock_sha256": "798ba1b49d7511e116a5c682ccfa501232f64ba7ab108c2407dc5f10771c55cf",
-  "config_digest": "9e57c9b5f7026226933195f1120f6fb1e3c57355599781b2af988b348cb4544c",
-  "code_version": "0.2.0+g82a942e.dirty",
+  "config_digest": "8d978a087dc8db8136e33a8a5fd0e8ac9b5e4bc7225a141e0f4256a98ba77af5",
+  "code_version": "0.2.0+gba75224.dirty",
   "recipe": [
     {
       "name": "select_beams",
@@ -52,15 +52,15 @@
         "coupling": {
           "__type__": "TrialCoupling",
           "policy": {
-            "__type__": "TiltSegmentUnion",
-            "n_splits": 12,
+            "__type__": "SegmentedUnionCoupling",
+            "fixed_n_segments": 12,
             "g_max": 2.25,
             "sg_max": 0.01,
             "union_adaptive": false,
             "union_max_new_beams_pct": 0.01
           },
           "scored": {
-            "__type__": "ScoredSelection",
+            "__type__": "ScoredHklSelection",
             "klar": {
               "__type__": "BeamSelection",
               "rsg": 0.9,
@@ -88,8 +88,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "ff3a2df1d7514f698da470d188e5c1a5420eff20c75e7d6f1b4b341b01f7dd0b",
-    "bytes": 1030169,
+    "sha256": "4d4eaf9b65f9e1e4a38a93c43b945e0e3891ee433fe42664ab60d634a686a352",
+    "bytes": 1049181,
     "media_type": "application/octet-stream"
   }
 }

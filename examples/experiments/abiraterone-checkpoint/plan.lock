@@ -1,6 +1,6 @@
 {
   "experiment_lock_sha256": "57bfc48b59ae1614ed850c719ece0cfb0639393e269ec9a556d43b23ac81b129",
-  "config_digest": "6e6a2c65c7864458b0967283cefe63807d4f05f032061304e37ec7c1cecd3d5f",
+  "config_digest": "acb371fc124039d2ad89af42312463464deabe1c0b5d14651da60939be9358cf",
   "code_version": "0.2.0",
   "recipe": [
     {
@@ -52,15 +52,15 @@
         "coupling": {
           "__type__": "TrialCoupling",
           "policy": {
-            "__type__": "TiltSegmentUnion",
-            "n_splits": 4,
+            "__type__": "SegmentedUnionCoupling",
+            "fixed_n_segments": 4,
             "g_max": 1.5,
             "sg_max": 0.02,
             "union_adaptive": false,
             "union_max_new_beams_pct": 0.01
           },
           "scored": {
-            "__type__": "ScoredSelection",
+            "__type__": "ScoredHklSelection",
             "klar": {
               "__type__": "BeamSelection",
               "rsg": 0.6,
@@ -88,8 +88,8 @@
   ],
   "plan": {
     "path": "plan.npz",
-    "sha256": "73884d61637b565ca29e8455f9e4a9de58b1d43ee9a9b0b46fc8e0ee46ee7ad9",
-    "bytes": 753037,
+    "sha256": "bffcb6cf83849406e9fa2cfee1687e7c3233d3f13f557a073290147b2c49c001",
+    "bytes": 756560,
     "media_type": "application/octet-stream"
   }
 }
