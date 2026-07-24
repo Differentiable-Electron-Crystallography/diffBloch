@@ -24,12 +24,13 @@ from diffBloch.engine import (
     TrainableSpec,
     build_refinement_model,
     build_refinement_problem,
+    mean_plan_thickness,
     run_refinement_model,
     weighted_mse_loss,
 )
-from diffBloch.engine.plan import mean_plan_thickness
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
+    build_engine,
     build_orientation_plans,
     fit_orientation,
     from_experiment,
@@ -39,7 +40,6 @@ from diffBloch.preprocess import (
     select_beams,
     select_finite_loss_frames,
 )
-from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
 EXPERIMENT_DIR = Path("examples/papers/malik-2026-hybrid-physics-ml/experiments/quartz-synthetic")

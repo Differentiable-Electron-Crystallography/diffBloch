@@ -21,11 +21,14 @@ structure and the scientific question, so treat the middle block as an example p
 from pathlib import Path
 
 from diffBloch.config import load_config
-from diffBloch.engine import build_refinement_model, build_refinement_problem, run_refinement_model
-from diffBloch.engine.constraints import with_hydrogen_riding
+from diffBloch.engine import (
+    build_refinement_model,
+    build_refinement_problem,
+    run_refinement_model,
+    with_hydrogen_riding,
+)
 from diffBloch.io import read_structure
-from diffBloch.preprocess import build_engine, read_plan
-from diffBloch.preprocess.experiment import RefinementSetup
+from diffBloch.preprocess import RefinementSetup, build_engine, read_plan
 
 root = Path("examples/experiments/abiraterone-checkpoint")
 cfg = load_config(root / "experiment.yaml")

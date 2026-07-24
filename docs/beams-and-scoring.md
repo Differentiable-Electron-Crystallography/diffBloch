@@ -22,8 +22,7 @@ from pathlib import Path
 
 from diffBloch.config import load_config
 from diffBloch.io import read_structure
-from diffBloch.preprocess import read_plan, score_orientations
-from diffBloch.preprocess.experiment import RefinementSetup
+from diffBloch.preprocess import RefinementSetup, read_plan, score_orientations
 
 root = Path("examples/experiments/quartz-checkpoint")
 cfg = load_config(root / "experiment.yaml")
