@@ -44,9 +44,14 @@ dev = [
     "mypy>=1.10",
     "types-pyyaml>=6.0",
     "pre-commit>=3.7",
-    # mkdocs-shadcn: shadcn/ui-styled docs theme (theme name `shadcn`).
-    "mkdocs-shadcn>=0.11",
-    "mkdocstrings[python]>=0.25",
+    # Sphinx docs: furo theme, MyST for the Markdown sources, autodoc+napoleon for the API reference.
+    "sphinx>=7.4",
+    "furo>=2024.8.6",
+    "myst-parser>=4.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinxext-opengraph>=0.9.1",
+    "sphinx-inline-tabs>=2023.4.21",
+    "sphinx-autobuild>=2024.10.3",
     "jupyterlab>=4.6.2",
     "jupytext>=1.19.4",
     "ipykernel>=7.3.0",

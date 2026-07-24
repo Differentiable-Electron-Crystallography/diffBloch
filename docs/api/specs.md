@@ -5,4 +5,6 @@ mosaicity, orientation search, convergence sweeps. Pydantic parses YAML at the b
 these frozen dataclasses to the steps, so the algorithm contract stays pydantic-free; invalid
 bounds are unrepresentable by construction.
 
-::: diffBloch.specs
+```{eval-rst}
+.. automodule:: diffBloch.specs
+```

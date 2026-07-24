@@ -112,34 +112,38 @@ for the conservative highest-precision refinement path.
 
 ## Quickstart
 
+Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/), then sync the
+project environment from the repository root:
+
+```bash
+uv sync --dev
+```
+
+Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
+on your shell `PATH`.
+
 Validate a config before launching a longer job:
 
 ```bash
-diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
 ```
 
 Simulate and score the settled quartz checkpoint without changing parameters:
 
 ```bash
-diffbloch run infer examples/experiments/quartz-checkpoint
+uv run diffbloch run infer examples/experiments/quartz-checkpoint
 ```
 
 Run the small quartz example end to end, including preprocessing and refinement:
 
 ```bash
-diffbloch run refine examples/experiments/quartz
+uv run diffbloch run refine examples/experiments/quartz
 ```
 
 Start refinement faster from the bundled quartz preprocessing checkpoint:
 
 ```bash
-diffbloch run refine examples/experiments/quartz-checkpoint
-```
-
-Run a larger checkpointed compound on CUDA:
-
-```bash
-diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+uv run diffbloch run refine examples/experiments/quartz-checkpoint
 ```
 
 Use `infer` to run the forward simulation and scoring pass over a settled `Plan`; it does not update
@@ -151,6 +155,37 @@ directly with the public API; the CLI is the friendly default runner, not the on
 
 ## API
 
-API docs are generated from docstrings and type signatures via `mkdocstrings`. The navigation
-covers every public layer: **Config**, **IO**, **Core**, **Params**, **Specs**, **Engine**,
+API docs are generated from the package's docstrings and type signatures. The navigation covers
+every public layer: **Config**, **IO**, **Core**, **Params**, **Specs**, **Engine**,
 **Preprocess**, **Observability**, and **App**.
+
+```{toctree}
+:hidden:
+:caption: Guides
+
+architecture.md
+inputs.md
+preprocessing.md
+reproducibility.md
+refinement.md
+observability-guide.md
+examples.md
+model-composition.md
+beams-and-scoring.md
+rocking-curve.md
+```
+
+```{toctree}
+:hidden:
+:caption: API
+
+api/config.md
+api/io.md
+api/core.md
+api/params.md
+api/specs.md
+api/engine.md
+api/preprocess.md
+api/observability.md
+api/app.md
+```

@@ -7,27 +7,32 @@ diffraction intensities agree.
 > **2.0 rewrite in progress.** This package is being built from scratch, porting from the research
 > codebase stepwise — one discrete, tested commit per stage.
 
-📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (mkdocstrings), rendered from the source on every green `main`.
+📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
 
 ## Quickstart
 
-```bash
-just install      # uv sync --dev + pre-commit install
-just check        # lint + typecheck + unit tests
-just docs-serve   # live API docs
-just anchor       # the quartz physics anchors (opt-in e2e)
+Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/), then sync the
+project environment from the repository root:
 
+```bash
+uv sync --dev
+```
+
+Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
+on your shell `PATH`.
+
+```bash
 # Validate a config before launching a longer job:
-diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
 
 # Simulate and score without changing parameters:
-diffbloch run infer examples/experiments/quartz-checkpoint
+uv run diffbloch run infer examples/experiments/quartz-checkpoint
 
 # Run the optimizer and update trainable structural parameters:
-diffbloch run refine examples/experiments/quartz
+uv run diffbloch run refine examples/experiments/quartz
 
 # Start refinement faster from the bundled quartz preprocessing checkpoint:
-diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run refine examples/experiments/quartz-checkpoint
 ```
 
 See `examples/experiments/quartz/README.md` for the worked example and its expected residual.
@@ -39,7 +44,7 @@ src/diffBloch/    the library (config/, io/, core/, engine, app/ — added stage
 examples/         runnable experiment directories (`examples/experiments/quartz{,-checkpoint}`)
 tests/unit/       fast per-kernel tests
 tests/e2e/        characterization anchors (opt-in: `just test-e2e`)
-docs/             API docs (mkdocstrings); `just docs`
+docs/             Docs (Sphinx + furo, MyST); `just docs`
 ```
 
 ## Principles

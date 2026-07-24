@@ -62,13 +62,13 @@ format:
 typecheck:
     uv run mypy src/diffBloch
 
-# Build API docs from docstrings/signatures (fails on warnings)
+# Build the docs (Sphinx + furo; fails on warnings)
 docs:
-    uv run mkdocs build --strict
+    uv run sphinx-build -W -b html docs docs/_build/html
 
 # Serve docs locally with live reload
 docs-serve:
-    uv run mkdocs serve
+    uv run sphinx-autobuild docs docs/_build/html
 
 # The pre-push gate: lint, types, unit tests
 check: lint typecheck test

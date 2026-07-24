@@ -3,24 +3,42 @@
 The differentiable heart: pure tensor-in/tensor-out kernels from structural parameters to
 simulated intensities and the R-loss. Nothing here imports a parser, an optimizer, or a vendor SDK.
 
-::: diffBloch.core
+```{eval-rst}
+.. automodule:: diffBloch.core.adp
+```
 
-::: diffBloch.core.adp
+```{eval-rst}
+.. automodule:: diffBloch.core.constraints
+```
 
-::: diffBloch.core.constraints
+```{eval-rst}
+.. automodule:: diffBloch.core.crystal
+```
 
-::: diffBloch.core.crystal
+```{eval-rst}
+.. automodule:: diffBloch.core.reciprocal
+```
 
-::: diffBloch.core.reciprocal
+```{eval-rst}
+.. automodule:: diffBloch.core.symmetry
+```
 
-::: diffBloch.core.symmetry
+```{eval-rst}
+.. automodule:: diffBloch.core.scattering
+```
 
-::: diffBloch.core.scattering
+```{eval-rst}
+.. automodule:: diffBloch.core.dynamical
+```
 
-::: diffBloch.core.dynamical
+```{eval-rst}
+.. automodule:: diffBloch.core.solver
+```
 
-::: diffBloch.core.solver
+```{eval-rst}
+.. automodule:: diffBloch.core.products
+```
 
-::: diffBloch.core.products
-
-::: diffBloch.core.losses
+```{eval-rst}
+.. automodule:: diffBloch.core.losses
+```

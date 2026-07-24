@@ -7,14 +7,26 @@ quarantined) imperative optimization loop.
 Scientific composition is done with typed Python values, not config: build a problem with
 `build_refinement_problem` and add hard constraints (e.g. `with_hydrogen_riding`) or soft penalties.
 
-::: diffBloch.engine.plan
+```{eval-rst}
+.. automodule:: diffBloch.engine.plan
+```
 
-::: diffBloch.engine.forward
+```{eval-rst}
+.. automodule:: diffBloch.engine.forward
+```
 
-::: diffBloch.engine.constraints
+```{eval-rst}
+.. automodule:: diffBloch.engine.constraints
+```
 
-::: diffBloch.engine.penalties
+```{eval-rst}
+.. automodule:: diffBloch.engine.penalties
+```
 
-::: diffBloch.engine.losses
+```{eval-rst}
+.. automodule:: diffBloch.engine.losses
+```
 
-::: diffBloch.engine.refine
+```{eval-rst}
+.. automodule:: diffBloch.engine.refine
+```
