@@ -47,5 +47,6 @@ prepare = pipeline([
 ])
 ```
 
-See also the `solve-set-vs-scored-set` design decision in the context docs for the detailed
-rationale behind the split.
+The split matters most under coupled rocking-curve solves: the *solve* set expands to the
+per-segment beam union while the *scored* set stays pinned to the `select_beams` selection, so
+widening the solve basis never changes which reflections the objective compares.
