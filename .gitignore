@@ -15,7 +15,7 @@ pytest.xml
 # Build / docs output
 dist/
 build/
-site/
+docs/_build/
 
 # Preprocess checkpoints (generated per-experiment; regenerated on demand, never committed)
 plan.npz

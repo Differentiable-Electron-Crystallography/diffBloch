@@ -7,41 +7,73 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 
 ## Spine
 
-::: diffBloch.preprocess.plan
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.plan
+```
 
-::: diffBloch.preprocess.experiment
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.experiment
+```
 
-::: diffBloch.preprocess.pipeline
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.pipeline
+```
 
-::: diffBloch.preprocess.orientation
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.orientation
+```
 
-::: diffBloch.preprocess.scoring
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.scoring
+```
 
-::: diffBloch.preprocess.coupling
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.coupling
+```
 
 ## Steps
 
-::: diffBloch.preprocess.steps.beams
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.beams
+```
 
-::: diffBloch.preprocess.steps.fit_orientation
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.fit_orientation
+```
 
-::: diffBloch.preprocess.steps.fit_thickness
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.fit_thickness
+```
 
-::: diffBloch.preprocess.steps.rocking_curve
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.rocking_curve
+```
 
-::: diffBloch.preprocess.steps.mosaicity
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.mosaicity
+```
 
-::: diffBloch.preprocess.steps.convergence
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.convergence
+```
 
-::: diffBloch.preprocess.steps.coverage
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.coverage
+```
 
-::: diffBloch.preprocess.steps.coupling
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.steps.coupling
+```
 
 ## Orchestration and terminals
 
-::: diffBloch.preprocess.driver
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.driver
+```
 
-::: diffBloch.preprocess.inference
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.inference
+```
 
 ## Checkpoint / resume
 
@@ -49,4 +81,6 @@ Serialize a settled `Plan` to a portable `.npz` and read it back (source persist
 geometry rebuilt on load). The `run infer` CLI checkpoints/resumes against this plus the
 `plan.lock` provenance in `diffBloch.config.manifest`.
 
-::: diffBloch.preprocess.serialize
+```{eval-rst}
+.. automodule:: diffBloch.preprocess.serialize
+```

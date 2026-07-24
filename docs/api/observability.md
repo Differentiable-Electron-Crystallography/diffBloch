@@ -4,4 +4,6 @@ Domain observations as typed events with pluggable logger sinks. The pure core *
 plain values; a `Logger` attached at the app boundary interprets them (the null default discards
 them). Solver diagnostics ride stdlib `logging` instead — two channels, two mechanisms.
 
-::: diffBloch.observability
+```{eval-rst}
+.. automodule:: diffBloch.observability
+```

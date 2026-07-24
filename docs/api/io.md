@@ -1,9 +1,17 @@
 # IO
 
-::: diffBloch.io
+```{eval-rst}
+.. automodule:: diffBloch.io
+```
 
-::: diffBloch.io.record
+```{eval-rst}
+.. automodule:: diffBloch.io.record
+```
 
-::: diffBloch.io.cif
+```{eval-rst}
+.. automodule:: diffBloch.io.cif
+```
 
-::: diffBloch.io.pets
+```{eval-rst}
+.. automodule:: diffBloch.io.pets
+```

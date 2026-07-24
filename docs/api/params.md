@@ -1,3 +1,5 @@
 # Params
 
-::: diffBloch.params
+```{eval-rst}
+.. automodule:: diffBloch.params
+```

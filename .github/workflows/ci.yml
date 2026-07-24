@@ -32,13 +32,13 @@ jobs:
         run: uv run pytest --cov=diffBloch --cov-report=term-missing
 
       - name: Build docs
-        run: uv run mkdocs build --strict
+        run: uv run sphinx-build -W -b html docs docs/_build/html
 
       - name: Build package (wheel + sdist)
         run: uv build
 
   # Publish the docsite to GitHub Pages on every green main push (repo Pages source must be
-  # "GitHub Actions"). PRs still validate the build via the check job's `mkdocs build --strict`.
+  # "GitHub Actions"). PRs still validate the build via the check job's strict `sphinx-build -W`.
   docs-deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
@@ -62,12 +62,12 @@ jobs:
         run: uv sync --dev
 
       - name: Build docs
-        run: uv run mkdocs build --strict
+        run: uv run sphinx-build -W -b html docs docs/_build/html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: docs/_build/html
 
       - name: Deploy to GitHub Pages
         id: deployment
