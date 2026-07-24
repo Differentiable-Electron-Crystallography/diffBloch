@@ -44,14 +44,15 @@ tests/e2e/        characterization anchors (opt-in: `just test-e2e`)
 docs/             Docs (Sphinx + furo, MyST); `just docs`
 ```
 
-## Principles
+## Layers
 
-- **Functional core, imperative shell** — pure tensor-in/tensor-out kernels; `nn.Module` only holds
-  parameters.
-- **Pydantic config, validated at the boundary** — no Hydra.
-- **gemmi** (blessed CIF/PETS reader) **+ diffpy** (symmetry constraints); nothing in `core/` imports
-  a parser.
-- **Swappable solver** (`matrix_exp` + `bloch_eigen`), **typed products**, **plans not caches**,
-  **effects at the edges** (pluggable `Logger`; no vendor SDK in core).
-- **Characterization tests first** — the single-rotation quartz anchor pins the physics; it stays
-  green at every commit.
+| Layer | Role |
+|---|---|
+| IO | Parse CIF/PETS files into validated typed records. |
+| Config | Validate experiment settings and lock input/checkpoint identity. |
+| Preprocess | Build and improve the immutable `Plan` the simulator consumes. |
+| Core | Deterministic crystallographic and Bloch-wave numerical kernels. |
+| Params | Differentiable structural parameters and physical constraints. |
+| Engine | Combine `Plan` + parameters, simulate, score, and refine. |
+| Observability | Emit typed events without coupling the core to logger backends. |
+| App | CLI and default orchestration around the reusable API. |
