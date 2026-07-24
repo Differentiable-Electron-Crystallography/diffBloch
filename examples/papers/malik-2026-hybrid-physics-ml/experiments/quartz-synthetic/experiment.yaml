@@ -23,7 +23,7 @@ solver:
 
 preprocess:
   coupling:
-    n_splits: 12
+    fixed_n_segments: 12
     g_max: 1.0
     sg_max: 0.01
 

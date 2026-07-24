@@ -11,7 +11,7 @@ solving those tilt sub-orientations, and reducing the tilt intensities into one 
 | `RockingCurve` | Number of tilt samples and shared integration geometry. |
 | `integrate_rocking_curve` | `Plan -> Plan` step that adds virtual tilt sub-orientations. |
 | `Mosaicity` / `mosaicity` | Moving-average broadening over the tilt axis. |
-| `TiltSegmentUnion` / `couple_beams` | Coupled per-segment beam unions for rocking-curve solves. |
+| `SegmentedUnionCoupling` / `couple_beams` | Coupled per-segment beam unions for rocking-curve solves. |
 
 ## API example: composing rocking-curve steps
 
@@ -34,9 +34,9 @@ plain orientation plans.
 
 ```python
 from diffBloch.preprocess import couple_beams
-from diffBloch.specs import TiltSegmentUnion
+from diffBloch.specs import SegmentedUnionCoupling
 
-couple = couple_beams(TiltSegmentUnion(n_splits=12, g_max=2.25, sg_max=0.01))
+couple = couple_beams(SegmentedUnionCoupling(fixed_n_segments=12, g_max=2.25, sg_max=0.01))
 
 # coupled_plan = couple(plan_with_rocking_curve_tilts)
 ```

@@ -40,7 +40,7 @@ preprocess:
   # faithful defaults. Coupling radius g_max = 1.5; the SF grid is derived as 2 * g_max = 3.0 to
   # span the beam-difference support. Declared explicitly because coupling has no config default.
   coupling:
-    n_splits: 4
+    fixed_n_segments: 4
     g_max: 1.5
     sg_max: 0.02
 
