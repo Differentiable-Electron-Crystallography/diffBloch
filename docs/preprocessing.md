@@ -49,7 +49,7 @@ print(plan.grid.grid_hkl.shape)
 
 ## API example: composing simple steps
 
-This example shows the composition shape. It is intentionally small; the full faithful recipe also
+This example shows the composition shape. It is intentionally small; the full default recipe also
 captures refinement setup, coupling policy, device/precision choices, and logging.
 
 ```python
