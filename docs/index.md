@@ -4,28 +4,32 @@ title: diffBloch
 
 # diffBloch
 
-Differentiable Bloch-wave electron-diffraction structure refinement.
+Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
 
 The valuable core is a small **differentiable map from a handful of structural parameters to a
 scalar R-loss**, minimised by gradient descent so that simulated and observed diffraction
-intensities agree. Everything else — parsing, config, logging, orchestration — exists to make that
-map inspectable, reproducible, and safe to evolve, and lives *around* the core, never inside it.
+intensities agree. Because rotating-stage 3DED is dynamical — a multiple-scattering diffraction
+problem — that map uses a Bloch-wave simulation rather than a kinematical approximation. Everything
+else — parsing, config, logging, orchestration — exists to make the map inspectable, reproducible,
+and safe to evolve, and lives *around* the core, never inside it.
 
 ## Overview
 
-diffBloch models refinement as two complementary values: a raw crystal structure and a settled
-`Plan`. The structure supplies the differentiable crystallographic parameters; the `Plan` supplies
-the geometry and data scaffold around them — typed observations, beam/scoring sets, rocking-curve
-geometry, fitted nuisance values, and checkpoint provenance. Together they feed the refinement
-engine, which runs a deterministic Bloch-wave simulation, compares calculated and observed
-intensities, and iteratively minimizes the objective by updating selected trainable parameters. The
-guides below unpack that path from experiment inputs through preprocessing, reproducibility,
-refinement, observability, and runnable examples.
+diffBloch starts from continuous-rotation 3DED observations: diffraction frames collected while the
+crystal is tilted/rocked through reciprocal space and reduced upstream by PETS2 into `.cif_pets`.
+It models refinement as two complementary values: a raw crystal structure and a settled `Plan`. The
+structure supplies the differentiable crystallographic parameters; the `Plan` supplies the geometry
+and data scaffold around them — typed observations, per-frame orientations, beam/scoring sets,
+rocking-curve geometry, fitted nuisance values, and checkpoint provenance. Together they feed the
+refinement engine, which runs a deterministic Bloch-wave simulation, compares calculated and
+observed intensities, and iteratively minimizes the objective by updating selected trainable
+parameters. The guides below unpack that path from experiment inputs through preprocessing,
+reproducibility, refinement, observability, and runnable examples.
 
 | Guide | What it covers |
 |---|---|
 | [Architecture](architecture.md) | The whole shape of the system: typed IO and config at the boundary, preprocessing as the geometry-building shell, deterministic Bloch-wave kernels in the core, and the refinement engine as the optimization layer. |
-| [Inputs](inputs.md) | The raw data needed to refine a structure: the experiment directory, starting `.cif`, PETS2 `.cif_pets` observations, YAML config, and typed records that keep parser details out of the numerical core. |
+| [Inputs](inputs.md) | The raw data needed to refine a structure: the experiment directory, starting `.cif`, rotating-stage 3DED observations reduced by PETS2 into `.cif_pets`, YAML config, and typed records that keep parser details out of the numerical core. |
 | [Preprocessing](preprocessing.md) | How experiment records become a reusable `Plan`: the scaffold that fixes beam/scoring sets, rocking-curve and mosaicity geometry, alignments, fitted nuisance values, and checkpointable `Plan -> Plan` provenance. |
 | [Reproducibility](reproducibility.md) | Once a `Plan` exists, understand how `experiment.lock`, `plan.npz`, and `plan.lock` let later runs verify and reuse that expensive preprocessing result without overstating hardware-independent determinism. |
 | [Refinement](refinement.md) | With a settled `Plan`, choose evaluation or optimization: `infer` scores without changing parameters, while `refine` updates selected structural parameters and can be extended with hard constraints, soft penalties, and learned nuisance components. |
