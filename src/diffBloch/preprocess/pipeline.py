@@ -46,10 +46,10 @@ __all__ = [
     "identity",
     "iterate_until",
     "pipeline",
-    "stateful_pipeline",
-    "stateful_plan_step",
     "resolve_recipe",
     "spec_to_params",
+    "stateful_pipeline",
+    "stateful_plan_step",
     "step_records",
 ]
 
@@ -58,9 +58,8 @@ type PlanStep = Callable[[Plan], Plan]
 type ConvergenceCheck = Callable[[Plan, Plan], bool]
 
 # Stateful preprocess drivers use the same public Plan -> Plan boundary, but internally thread a
-# small immutable state value between phases. This is the explicit Python spelling of Haskell's
-# State-style ``Plan -> State s Plan`` / JAX's ``carry`` pattern: no hidden mutation, no globals, and
-# the state is deliberately dropped at the PlanStep boundary.
+# small immutable state value between phases: no hidden mutation, no globals, and the state is
+# deliberately dropped at the PlanStep boundary.
 type StateInitializer[State] = Callable[[Plan], State]
 type StatefulPlanStep[State] = Callable[[Plan, State], tuple[Plan, State]]
 
@@ -197,8 +196,8 @@ def stateful_pipeline[State](steps: Sequence[StatefulPlanStep[State]]) -> Statef
     A :data:`StatefulPlanStep` has shape ``(Plan, State) -> (Plan, State)``: it can transform the
     plan while also carrying live driver state that should not become part of the public
     :class:`~diffBloch.preprocess.plan.Plan`. This helper is the explicit, immutable-state
-    counterpart to :func:`pipeline`: Haskell would call this State composition, Elm would keep the
-    state in the model passed through ``update``, and JAX would call the pair a ``carry``.
+    counterpart to :func:`pipeline`: it folds the phases left to right, threading ``(plan, state)``
+    through each one without mutating either in place.
 
     The returned value is still stateful. Use :func:`stateful_plan_step` to adapt it back to the
     ordinary ``Plan -> Plan`` preprocess boundary.
