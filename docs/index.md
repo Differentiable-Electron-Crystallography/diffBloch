@@ -13,7 +13,7 @@ map inspectable, reproducible, and safe to evolve, and lives *around* the core, 
 
 ## Overview
 
-### Core simulation and refinement
+### Simulation and refinement
 
 The [core](api/core.md) starts with a deterministic Bloch-wave simulation, then the
 [refinement engine](api/engine.md) exposes selected simulation inputs as differentiable
@@ -26,9 +26,9 @@ compares their calculated and observed intensities. The differentiable parameter
 quantities — primarily asymmetric-unit (ASU) atom coordinates, with ADPs, occupancies, and structure
 factors available as refinable groups.
 
-### Core flow
+### End-to-end flow
 
-The core flow is:
+The end-to-end flow is:
 
 1. `.cif` + `.cif_pets` + config are parsed into typed records.
 2. Preprocessing turns those records into a reusable `Plan`.
