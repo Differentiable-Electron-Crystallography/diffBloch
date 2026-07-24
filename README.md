@@ -4,9 +4,6 @@ Differentiable Bloch-wave electron-diffraction structure refinement: a small dif
 structural parameters to a scalar R-loss, minimised by gradient descent so that simulated and observed
 diffraction intensities agree.
 
-> **2.0 rewrite in progress.** This package is being built from scratch, porting from the research
-> codebase stepwise — one discrete, tested commit per stage.
-
 📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
 
 ## Quickstart

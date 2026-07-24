@@ -169,8 +169,8 @@ runs a coordinate-search driver: it threads a `ConvergenceState` containing `g_m
 rebuilding candidate `Plan` values from each scalar setting. The generic shape is formalized as
 {data}`diffBloch.preprocess.pipeline.StatefulPlanStep`,
 {func}`diffBloch.preprocess.pipeline.stateful_pipeline`, and
-{func}`diffBloch.preprocess.pipeline.stateful_plan_step`: an explicit immutable-state carry, similar
-to Haskell's `State`, Elm's model-threading `update`, or JAX's `carry` in `scan`/`while_loop`.
+{func}`diffBloch.preprocess.pipeline.stateful_plan_step`: an explicit immutable state threaded
+between phases and dropped again at the `Plan -> Plan` boundary.
 
 ```python
 from dataclasses import dataclass
