@@ -40,7 +40,7 @@ from diffBloch.preprocess import (
     select_finite_loss_frames,
 )
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import ScoredSelection, TrialCoupling
+from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
 EXPERIMENT_DIR = Path("examples/papers/malik-2026-hybrid-physics-ml/experiments/quartz-synthetic")
 DEVICE = torch.device("cpu")
@@ -79,7 +79,9 @@ print(f"{cfg.name}: {structure.n_atoms} atoms, {observations.n_rotations} observ
 assert cfg.preprocess.coupling is not None, "this experiment must declare preprocess.coupling"
 coupling = TrialCoupling(
     policy=cfg.preprocess.coupling.to_policy(),
-    scored=ScoredSelection(klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine),
+    scored=ScoredHklSelection(
+        klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine
+    ),
 )
 plan = pipeline(
     [

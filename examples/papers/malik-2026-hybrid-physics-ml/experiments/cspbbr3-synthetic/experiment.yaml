@@ -30,11 +30,11 @@ solver:
   refine: matrix_exp
 
 preprocess:
-  # Public explicit coupling analog for the original private/default TiltSegmentUnion with
+  # Public explicit coupling analog for the original private/default SegmentedUnionCoupling with
   # g_max_sf=5.0 SF grid): coupling radius g_max=2.5 (cap = g_max, no margin post-#154);
   # SF grid derived as 2 * g_max + 0.5.
   coupling:
-    n_splits: 12
+    fixed_n_segments: 12
     g_max: 2.5
     sg_max: 0.01
 

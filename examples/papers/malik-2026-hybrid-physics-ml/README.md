@@ -59,8 +59,8 @@ integration = IntegrationGeometry(semiangle=1.0)
 beam_selection = BeamSelection(rsg=0.9, dsg=0.0015, integration=integration)
 orientation_search = HexagonalSearch(max_search_angle=0.4, min_search_angle=0.001)
 coupling = TrialCoupling(
-    policy=TiltSegmentUnion(n_splits=12, g_max=1.0, sg_max=0.01),
-    scored=ScoredSelection(klar=beam_selection, g_max=1.0),
+    policy=SegmentedUnionCoupling(fixed_n_segments=12, g_max=1.0, sg_max=0.01),
+    scored=ScoredHklSelection(klar=beam_selection, g_max=1.0),
 )
 plan = pipeline([
     select_beams(beam_selection),
