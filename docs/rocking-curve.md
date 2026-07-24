@@ -41,6 +41,6 @@ couple = couple_beams(SegmentedUnionCoupling(fixed_n_segments=12, g_max=2.25, sg
 # coupled_plan = couple(plan_with_rocking_curve_tilts)
 ```
 
-The default app recipe uses the same underlying policy for faithful per-trial coupling during
+The default app recipe uses the same underlying policy for per-trial coupling during
 orientation fitting; `couple_beams` is the explicit composable step when callers want to settle a
 coupled plan themselves.
