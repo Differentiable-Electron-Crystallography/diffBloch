@@ -1,6 +1,6 @@
 # Observability and loggers
 
-DiffBloch reports progress by emitting typed events. A logger is any object with one method:
+diffBloch reports progress by emitting typed events. A logger is any object with one method:
 
 ```python
 def report(event): ...

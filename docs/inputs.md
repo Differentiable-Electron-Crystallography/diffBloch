@@ -22,7 +22,7 @@ Checkpointed examples also include:
 
 ## Typed IO boundary
 
-DiffBloch does not pass parser output directly into numerical kernels. It parses CIF/PETS inputs
+diffBloch does not pass parser output directly into numerical kernels. It parses CIF/PETS inputs
 into typed Pydantic records first, so unsupported shapes, units, missing fields, or invalid values
 fail at the boundary.
 

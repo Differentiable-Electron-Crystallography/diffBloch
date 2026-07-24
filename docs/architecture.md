@@ -1,6 +1,6 @@
 # Architecture
 
-DiffBloch is organized around one stable scientific centre: a deterministic Bloch-wave simulation.
+diffBloch is organized around one stable scientific centre: a deterministic Bloch-wave simulation.
 The surrounding layers prepare inputs, build reusable geometry, run optimization, and report
 progress without making those concerns part of the numerical core.
 

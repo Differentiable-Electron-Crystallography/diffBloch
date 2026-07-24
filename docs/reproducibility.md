@@ -1,6 +1,6 @@
 # Reproducibility and checkpoints
 
-DiffBloch separates input identity from generated artifacts.
+diffBloch separates input identity from generated artifacts.
 
 - `experiment.lock` pins the input structure and observation files by content hash.
 - `plan.lock` ties a `plan.npz` checkpoint to the input lock, resolved preprocess-determining config,
