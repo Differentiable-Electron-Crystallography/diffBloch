@@ -82,8 +82,6 @@ and updating the selected trainable structural parameters.
 Python users can compose preprocessing steps, constraints, penalties, and refinement problems
 directly with the public API; the CLI is the friendly default runner, not the only path.
 
-## API
-
 ```{toctree}
 :hidden:
 :caption: Guides

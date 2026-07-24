@@ -16,34 +16,120 @@ The end-to-end flow is:
 
 ## Layers
 
-| Layer | Role |
-|---|---|
-| [IO](api/io.md) | Parse CIF/PETS files into validated typed records. |
-| [Config](api/config.md) | Validate experiment settings and lock input/checkpoint identity. |
-| [Preprocess](api/preprocess.md) | Build and improve the immutable `Plan` the simulator consumes. |
-| [Core](api/core.md) | Deterministic crystallographic and Bloch-wave numerical kernels. |
-| [Params](api/params.md) | Differentiable structural parameters and physical constraints. |
-| [Engine](api/engine.md) | Combine `Plan` + parameters, simulate, score, and refine. |
-| [Observability](api/observability.md) | Emit typed events without coupling the core to logger backends. |
-| [App](api/app.md) | CLI and default orchestration around the reusable API. |
+| Layer | Role | Guide |
+|---|---|---|
+| [IO](api/io.md) | Parse CIF/PETS files into validated typed records. | [Inputs](inputs.md) |
+| [Config](api/config.md) | Validate experiment settings and lock input/checkpoint identity. | [Inputs](inputs.md), [Reproducibility](reproducibility.md) |
+| [Preprocess](api/preprocess.md) | Build and improve the immutable `Plan` the simulator consumes. | [Preprocessing](preprocessing.md) |
+| [Core](api/core.md) | Deterministic crystallographic and Bloch-wave numerical kernels. | [Architecture](architecture.md), [Refinement](refinement.md) |
+| [Params](api/params.md) | Differentiable structural parameters and physical constraints. | [Refinement](refinement.md) |
+| [Engine](api/engine.md) | Combine `Plan` + parameters, simulate, score, and refine. | [Refinement](refinement.md) |
+| [Observability](api/observability.md) | Emit typed events without coupling the core to logger backends. | [Observability](observability-guide.md) |
+| [App](api/app.md) | CLI and default orchestration around the reusable API. | [Examples](examples.md), [Refinement](refinement.md) |
 
 ## API shape
 
-This is the high-level shape used by the CLI internally. It is intentionally shown as API shape
-rather than a full script because real runs need an experiment directory, locks, and preprocessing
-configuration.
+This pseudocode shows the declarative public API shape underneath the CLI: load typed inputs,
+compose a `Plan -> Plan` preprocessing recipe, build an engine from the settled `Plan`, then run the
+refinement model while typed progress events flow to loggers. The example is close to runnable code,
+but it is shown as API shape rather than a recipe to copy verbatim.
 
 ```python
-from diffBloch.app import refine_experiment, run_experiment
+from pathlib import Path
 
-# Simulate/score a checkpointed experiment.
-inference = run_experiment("examples/experiments/quartz-checkpoint")
+from diffBloch.app import CSVLogger, ConsoleLogger
+from diffBloch.config import load_experiment
+from diffBloch.engine import build_refinement_model, build_refinement_problem, run_refinement_model
+from diffBloch.io import read_observations, read_structure
+from diffBloch.observability import MultiLogger
+from diffBloch.preprocess import (
+    build_engine,
+    build_orientation_plans,
+    fit_orientation,
+    fit_thickness,
+    from_experiment,
+    integrate_rocking_curve,
+    mosaicity,
+    pipeline,
+    run_inference,
+    select_beams,
+)
+from diffBloch.specs import ScoredHklSelection, TrialCoupling
+
+root = Path("examples/experiments/quartz-checkpoint")
+
+# Boundary: parse experiment.yaml, verify experiment.lock, and read typed CIF/PETS records.
+cfg, experiment_lock = load_experiment(root)
+structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
+observations = read_observations(root / cfg.inputs.observations)
+
+# Effects stay at the edge: loggers consume typed events from preprocessing/refinement.
+logger = MultiLogger((ConsoleLogger(), CSVLogger(root / "events.csv")))
+
+# Initial construction: raw input records become a Plan scaffold plus structure-side params/specs.
+setup = from_experiment(structure, observations, cfg)
+
+# Scientific choices are explicit typed values, not a string registry or hidden CLI behavior.
+trial_coupling = TrialCoupling(
+    policy=cfg.preprocess.coupling.to_policy(),
+    scored=ScoredHklSelection(
+        klar=cfg.numerics.to_beam_selection(),
+        g_max=cfg.numerics.g_max_refine,
+    ),
+)
+
+# Preprocessing is declarative composition of Plan -> Plan steps.
+prepare = pipeline(
+    [
+        select_beams(cfg.numerics.to_beam_selection()),
+        build_orientation_plans(),
+        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+        mosaicity(cfg.numerics.mosaicity),
+        fit_orientation(
+            setup.refinement,
+            cfg.preprocess.orientation.to_search(),
+            method=cfg.solver.refine,
+            coupling=trial_coupling,
+            logger=logger,
+        ),
+        fit_thickness(
+            setup.refinement,
+            cfg.preprocess.thickness.to_grid(),
+            method=cfg.solver.refine,
+            logger=logger,
+        ),
+    ],
+    logger=logger,
+)
+plan = prepare(setup.plans.combined)
+
+# Inference is the terminal score-only path: same settled Plan, no optimizer updates.
+inference = run_inference(plan, setup.refinement, method=cfg.solver.inference, logger=logger)
+
+# Refinement composes a pure engine/context with model/problem values, then runs the optimizer shell.
+engine = build_engine(
+    plan,
+    setup.refinement,
+    loss=cfg.refinement.objective.to_loss(),
+    method=cfg.solver.refine,
+    precision=cfg.refinement.precision,
+)
+model = build_refinement_model(initial=setup.refinement.params)
+problem = build_refinement_problem()
+result = run_refinement_model(
+    engine,
+    model,
+    problem,
+    trainable=cfg.refinement.trainable.to_spec(),
+    steps=cfg.refinement.steps,
+    optimizer=cfg.refinement.optimizer.name,
+    lr=cfg.refinement.optimizer.lr,
+    logger=logger,
+)
+
 print(inference.mean_r_obs)
-
-# Run the refinement loop against the same settled Plan.
-refined = refine_experiment("examples/experiments/quartz-checkpoint")
-print(refined.best_loss)
+print(result.best_step, result.best_loss)
 ```
 
-For lower-level composition, use the public `preprocess` and `engine` APIs directly; see
-[Preprocessing](preprocessing.md) and [Refinement](refinement.md).
+For checkpoint/reuse behavior, the app layer wraps this same public composition with
+`plan.npz`/`plan.lock` handling; see [Reproducibility](reproducibility.md).
