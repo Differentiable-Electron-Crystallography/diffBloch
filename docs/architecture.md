@@ -4,9 +4,9 @@ DiffBloch is organized around one stable scientific centre: a deterministic Bloc
 The surrounding layers prepare inputs, build reusable geometry, run optimization, and report
 progress without making those concerns part of the numerical core.
 
-## Core pattern
+## End-to-end flow
 
-The core flow is:
+The end-to-end flow is:
 
 1. `.cif` + `.cif_pets` + config are parsed into typed records.
 2. Preprocessing turns those records into a reusable `Plan`.
