@@ -1,6 +1,6 @@
 # diffBloch
 
-![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDifferentiable-Electron-Crystallography%2FdiffBloch%2Fbadges%2Fcoverage-endpoint.json)
+![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fdifferentiable-electron-crystallography.github.io%2FdiffBloch%2Fcoverage-endpoint.json)
 ![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
@@ -77,8 +77,8 @@ measurement (the committed checkpoint was stale for that commit's recipe, so the
 could not score it).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/anchor-trend-dark.svg">
-  <img alt="Mean R_obs of the coupled quartz anchor for every merge to main" src="https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/anchor-trend.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend-dark.svg">
+  <img alt="Mean R_obs of the coupled quartz anchor for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
 </picture>
 
 ## Layout
