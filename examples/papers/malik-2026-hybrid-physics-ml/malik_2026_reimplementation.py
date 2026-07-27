@@ -47,7 +47,9 @@ from diffBloch.specs import ScoredHklSelection, TrialCoupling
 # repo-root-relative path would break there).
 HERE = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 EXPERIMENT_DIR = HERE / "experiments/quartz-synthetic"
-DEVICE = torch.device("cpu")
+# CUDA when available, else CPU. Apple's MPS backend is deliberately excluded: the default
+# solve format is fp64 (float64/complex128 -- see core/solver.py) and MPS has no float64.
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # %% [markdown]
 # ## 1. Load the experiment
