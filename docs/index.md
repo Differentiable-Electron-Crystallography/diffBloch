@@ -95,6 +95,24 @@ and updating the selected trainable structural parameters.
 Python users can compose preprocessing steps, constraints, penalties, and refinement problems
 directly with the public API; the CLI is the friendly default runner, not the only path.
 
+## Citation
+
+If you use diffBloch in your research, please cite it (see
+[CITATION.cff](https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/main/CITATION.cff)):
+
+```bibtex
+@misc{diffBloch,
+  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain},
+  title   = {diffBloch},
+  version = {0.2.0},
+  url     = {https://github.com/Differentiable-Electron-Crystallography/diffBloch}
+}
+```
+
+This work is funded by [Schmidt Sciences](https://www.schmidtsciences.org/) and developed with
+the [Scientific Software Engineering Center (SSEC)](https://ai.jhu.edu/ssec/) at Johns Hopkins
+University.
+
 ```{toctree}
 :hidden:
 :caption: Guides
