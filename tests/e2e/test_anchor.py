@@ -184,7 +184,9 @@ def test_quartz_reference_anchor(material: str) -> None:
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
 
 
-def test_quartz_coupled_anchor(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_quartz_coupled_anchor(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, anchor_metrics: dict[str, float]
+) -> None:
     """Headline north-star (CI-fast): score the committed frozen coupled checkpoint, no fit.
 
     The fixture ships ``plan.npz`` + ``plan.lock`` -- the settled coupled ``Plan`` (fitted
@@ -235,6 +237,9 @@ def test_quartz_coupled_anchor(tmp_path: Path, caplog: pytest.LogCaptureFixture)
 
     with caplog.at_level(logging.INFO, logger="diffBloch.app.program"):
         result = run_experiment(exp)
+    # Recorded before any assertion: a drifted value must still reach the trend plot -- the one
+    # event the plot exists to show.
+    anchor_metrics["quartz_coupled_mean_r_obs"] = float(result.mean_r_obs)
     assert "full reuse" in caplog.text  # reused the checkpoint; no fit ran (the CI-fast guarantee)
     assert result.n_evaluated == 99  # every rotation yields a finite R_obs
     assert result.mean_r_obs == pytest.approx(
