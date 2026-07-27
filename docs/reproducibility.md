@@ -7,7 +7,9 @@ diffBloch separates input identity from generated artifacts.
   ordered preprocess recipe, producing code version, and checkpoint artifact hash.
 
 This gives inference and refinement a verifiable starting point: a reused `plan.npz` is known to
-match the inputs and preprocessing recipe that produced it.
+match the inputs and preprocessing recipe that produced it. In committed examples, `plan.npz` and
+`.cif_pets` files are Git LFS artifacts; `plan.lock` verifies the realized file bytes after LFS
+checkout, not the small pointer file.
 
 ## What this guarantees
 
@@ -62,11 +64,11 @@ print(status)  # "reuse", "resume", or "stale"
 Run preprocessing and write/reuse the checkpoint:
 
 ```bash
-diffbloch run preprocess examples/experiments/quartz-checkpoint
+uv run diffbloch run preprocess examples/experiments/quartz-checkpoint
 ```
 
 Run refinement from a checkpointed plan:
 
 ```bash
-diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run refine examples/experiments/quartz-checkpoint
 ```

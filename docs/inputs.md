@@ -20,6 +20,10 @@ Checkpointed examples also include:
 | `plan.npz` | Serialized preprocessed `Plan`. |
 | `plan.lock` | Provenance lock tying the checkpoint to inputs, config, recipe, code version, and artifact hash. |
 
+Bundled binary artifacts such as `.cif_pets` observations and committed `plan.npz` checkpoints are
+tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
+examples so these files are present as real data rather than LFS pointer files.
+
 ## Typed IO boundary
 
 diffBloch does not pass parser output directly into numerical kernels. It parses CIF/PETS inputs
@@ -56,5 +60,5 @@ print(observations.hkl.shape)
 Validate a config from the CLI before launching a longer job:
 
 ```bash
-diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
 ```
