@@ -12,10 +12,12 @@
 # the engine → compose the model → refine → inspect.
 
 # %%
+import logging
 from pathlib import Path
 
 import torch
 
+from diffBloch.app.loggers import ConsoleLogger
 from diffBloch.config import load_experiment
 from diffBloch.engine import (
     ApparentThicknessNN,
@@ -47,9 +49,16 @@ from diffBloch.specs import ScoredHklSelection, TrialCoupling
 # repo-root-relative path would break there).
 HERE = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 EXPERIMENT_DIR = HERE / "experiments/quartz-synthetic"
-# CUDA when available, else CPU. Apple's MPS backend is deliberately excluded: the default
-# solve format is fp64 (float64/complex128 -- see core/solver.py) and MPS has no float64.
+# CUDA when available, else CPU. Apple's MPS backend is deliberately unsupported for now: the
+# refinement solve honors ``cfg.refinement.precision`` (fp32 for this experiment), but the
+# orientation fit here still solves in fp64 (float64/complex128), which MPS lacks.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Live progress: diffBloch reports through typed events on a Logger; ConsoleLogger bridges them
+# to stdlib logging, and attaching a handler is the app boundary's job -- basicConfig is that
+# boundary here, so the long cells (preprocessing, refinement) scroll their progress.
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+LOGGER = ConsoleLogger()
 
 # %% [markdown]
 # ## 1. Load the experiment
@@ -101,11 +110,13 @@ plan = pipeline(
             method=cfg.solver.refine,
             coupling=coupling,
             device=DEVICE,
+            logger=LOGGER,
         ),
         select_finite_loss_frames(
             refinement, loss=cfg.refinement.objective.to_loss(), method=cfg.solver.refine
         ),
-    ]
+    ],
+    logger=LOGGER,
 )(setup.plans.combined)
 print(f"orientations after preprocess: {len(plan.orientations)}")
 
@@ -120,7 +131,13 @@ print(f"orientations after preprocess: {len(plan.orientations)}")
 # learned thickness profile, not the absolute value.
 
 # %%
-engine = build_engine(plan, refinement, loss=weighted_mse_loss, method=cfg.solver.refine)
+engine = build_engine(
+    plan,
+    refinement,
+    loss=weighted_mse_loss,
+    method=cfg.solver.refine,
+    precision=cfg.refinement.precision,
+)
 
 # %% [markdown]
 # ## 4. Compose the refinement model — structure + a learned thickness
@@ -169,7 +186,7 @@ trainable = TrainableSpec(adp=AtomSelection.all())
 STEPS = 40
 LR = 1e-3
 result = run_refinement_model(
-    engine, model, problem, trainable=trainable, steps=STEPS, optimizer="adam", lr=LR
+    engine, model, problem, trainable=trainable, steps=STEPS, optimizer="adam", lr=LR, logger=LOGGER
 )
 print(f"loss: {float(result.losses[0]):.4f} -> {float(result.losses[-1]):.4f}")
 print(f"best {result.best_loss:.4f} at step {result.best_step}")
