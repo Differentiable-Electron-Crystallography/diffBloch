@@ -1,0 +1,8 @@
+structure:
+  ref: quartz_P3121.cif
+  sha256: 25b1a899318822ad028e00fe8f7ad48dcd012f9f2910361252065150d80d1b23
+  bytes: 942
+observations:
+  ref: quartz_exp_data.cif_pets
+  sha256: 96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4
+  bytes: 303151

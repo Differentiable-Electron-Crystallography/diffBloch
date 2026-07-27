@@ -12,7 +12,7 @@ studied, copied, and modified as research starting points, use `examples/papers`
 Runs preprocessing and refinement from the ordinary quartz example directory.
 
 ```bash
-diffbloch run refine examples/experiments/quartz
+uv run diffbloch run refine examples/experiments/quartz
 ```
 
 ### Quartz, checkpointed
@@ -21,7 +21,7 @@ Starts from a committed `plan.npz` + `plan.lock`, so it skips preprocessing and 
 quickly.
 
 ```bash
-diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run refine examples/experiments/quartz-checkpoint
 ```
 
 ### Abiraterone, checkpointed on CUDA
@@ -29,7 +29,17 @@ diffbloch run refine examples/experiments/quartz-checkpoint
 A larger compound; use an accelerator when available.
 
 ```bash
-diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+```
+
+### Quartz chirality check
+
+Compares two committed preprocessed quartz `Plan`s against the same observed PETS2 `.cif_pets`
+data. One diffBloch simulation scores the P3_2 21 matching hand at mean R_obs = 0.0507 and the
+P3_1 21 enantiomorphic candidate at mean R_obs = 0.2192.
+
+```bash
+uv run python -c 'from pathlib import Path; from diffBloch.app import run_experiment; print("running quartz chirality comparison...", flush=True); root = Path("examples/experiments/quartz-chirality"); matching = run_experiment(root / "matching-hand", checkpoint=True); opposite = run_experiment(root / "opposite-hand", checkpoint=True); print(f"matching-hand mean R_obs: {matching.mean_r_obs:.4f}"); print(f"opposite-hand mean R_obs: {opposite.mean_r_obs:.4f}"); print(f"opposite/matching ratio: {opposite.mean_r_obs / matching.mean_r_obs:.2f}x")'
 ```
 
 ## Example precision
@@ -52,6 +62,7 @@ highest-precision refinement path.
 | `examples/experiments/quartz-checkpoint` | Fast-start quartz run from a committed preprocess checkpoint. |
 | `examples/experiments/abiraterone-checkpoint` | Larger molecular example; good CUDA/refine demonstration. |
 | `examples/experiments/lta` | Larger zeolite example. |
+| `examples/experiments/quartz-chirality` | Handedness-discrimination proof of concept using two committed quartz plans. |
 | `examples/papers/...` | Advanced research/composition examples. |
 
 ## Python API example

@@ -120,15 +120,27 @@ This example shows the composition shape. It is intentionally small; the full de
 captures refinement setup, coupling policy, device/precision choices, and logging.
 
 ```python
-from diffBloch.preprocess import build_orientation_plans, pipeline, select_beams
+from pathlib import Path
+
+from diffBloch.config import load_experiment
+from diffBloch.io import read_observations, read_structure
+from diffBloch.preprocess import build_orientation_plans, from_experiment, pipeline, select_beams
 from diffBloch.specs import BeamSelection
+
+root = Path("examples/experiments/quartz-checkpoint")
+cfg, _lock = load_experiment(root)
+structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
+observations = read_observations(root / cfg.inputs.observations)
+
+setup = from_experiment(structure, observations, cfg)
+base_plan = setup.plans.combined
 
 prepare = pipeline([
     select_beams(BeamSelection()),
     build_orientation_plans(),
 ])
 
-# prepared_plan = prepare(candidate_plan)
+prepared_plan = prepare(base_plan)
 ```
 
 ## API example: loading a checkpointed `Plan`

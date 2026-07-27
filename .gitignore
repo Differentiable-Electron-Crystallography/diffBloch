@@ -28,6 +28,10 @@ plan.lock
 !examples/experiments/quartz-checkpoint/plan.lock
 !examples/experiments/abiraterone-checkpoint/plan.npz
 !examples/experiments/abiraterone-checkpoint/plan.lock
+!examples/experiments/quartz-chirality/matching-hand/plan.npz
+!examples/experiments/quartz-chirality/matching-hand/plan.lock
+!examples/experiments/quartz-chirality/opposite-hand/plan.npz
+!examples/experiments/quartz-chirality/opposite-hand/plan.lock
 # The verify-quartz-full stash: a from-scratch candidate checkpoint awaiting `just promote-quartz`
 # (the explicit step that replaces the committed reference). Never committed itself.
 .candidate/

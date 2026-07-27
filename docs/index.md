@@ -41,10 +41,13 @@ pieces are available through the public Python API.
 
 ## Quickstart
 
-Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/), then sync the
-project environment from the repository root:
+Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
+[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` observations and `plan.npz`
+checkpoints, then sync the project environment from the repository root:
 
 ```bash
+git lfs install
+git lfs pull
 uv sync --dev
 ```
 
