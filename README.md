@@ -91,6 +91,12 @@ tests/e2e/        characterization anchors
 docs/             docs site (Sphinx + furo, MyST)
 ```
 
+## Funding
+
+This work is funded by [Schmidt Sciences](https://www.schmidtsciences.org/) and developed with
+the [Scientific Software Engineering Center (SSEC)](https://ai.jhu.edu/ssec/) at Johns Hopkins
+University.
+
 ## Layers
 
 | Layer | Role | Guide |
