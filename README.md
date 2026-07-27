@@ -1,5 +1,7 @@
 # diffBloch
 
+![Coverage](https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/coverage.svg)
+
 Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
 
 diffBloch refines crystal structures against continuous-rotation 3DED observations: diffraction
