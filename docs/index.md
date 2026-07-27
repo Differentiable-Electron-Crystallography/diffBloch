@@ -4,6 +4,16 @@ title: diffBloch
 
 # diffBloch
 
+![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fdifferentiable-electron-crystallography.github.io%2FdiffBloch%2Fcoverage-endpoint.json)
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white)
+![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)
+![Ruff](https://img.shields.io/badge/Ruff-D7FF64?logo=ruff&logoColor=black)
+![mypy](https://img.shields.io/badge/mypy-strict-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)
+
 Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
 
 The valuable core is a small **differentiable map from a handful of structural parameters to a

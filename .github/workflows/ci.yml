@@ -90,6 +90,29 @@ jobs:
       - name: Build docs
         run: uv run sphinx-build -W -b html docs docs/_build/html
 
+      # The docsite is the PUBLIC host for badge data while the repo is private: shields.io
+      # (coverage badge) and camo (README trend embed) can fetch Pages but not the private
+      # `badges` branch. The trend SVGs come from `badges` as of the previous publish -- this
+      # job runs before the current merge's row lands there (one-merge lag, invisible on a
+      # flatline).
+      - name: Download coverage JSON
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-json
+
+      - name: Add coverage endpoint + anchor trend to the docsite
+        run: |
+          pct=$(jq '.totals.percent_covered_display | tonumber | floor' coverage.json)
+          color=$([ "$pct" -ge 90 ] && echo green || ([ "$pct" -ge 80 ] && echo yellow || echo red))
+          jq -n --arg msg "${pct}%" --arg color "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $msg, color: $color}' \
+            > docs/_build/html/coverage-endpoint.json
+          git fetch --depth 1 origin badges
+          for svg in anchor-trend.svg anchor-trend-dark.svg; do
+            git show FETCH_HEAD:"$svg" > "docs/_build/html/$svg" \
+              || echo "::warning::$svg not on badges yet; docsite copy skipped"
+          done
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
@@ -99,11 +122,10 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
-  # Publish generated README artifacts to the orphan `badges` branch: the shields.io coverage
-  # endpoint JSON and the anchor R_obs trend (CSV + SVGs, rendered by plot_anchor_trend.py, which
-  # lives ON `badges`). Gated on check success but runs even when e2e is red -- coverage keeps
-  # publishing and the anchor row becomes a gap. These embeds only render publicly
-  # (raw.githubusercontent.com 404s anonymously while the repo is private).
+  # Publish the anchor R_obs trend to the orphan `badges` branch: CSV + SVGs, rendered by
+  # plot_anchor_trend.py, which lives ON `badges`. Gated on check success but runs even when
+  # e2e is red -- the anchor row becomes a gap. The docsite (docs-deploy) is what serves the
+  # badge data publicly; this branch is the durable store the docsite copies from.
   publish:
     needs: [check, e2e]
     if: >-
@@ -130,23 +152,11 @@ jobs:
         with:
           enable-cache: false  # no lockfile on badges; nothing worth caching
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: coverage-json
-
       - name: Download anchor metrics
         uses: actions/download-artifact@v8
         continue-on-error: true  # e2e red or drifted upload -> gap row, not a publish failure
         with:
           name: anchor-metrics
-
-      - name: Write shields coverage endpoint
-        run: |
-          pct=$(jq '.totals.percent_covered_display | tonumber | floor' coverage.json)
-          color=$([ "$pct" -ge 90 ] && echo green || ([ "$pct" -ge 80 ] && echo yellow || echo red))
-          jq -n --arg msg "${pct}%" --arg color "$color" \
-            '{schemaVersion: 1, label: "coverage", message: $msg, color: $color}' \
-            > coverage-endpoint.json
 
       - name: Append anchor history row
         run: |
@@ -165,11 +175,11 @@ jobs:
         run: MPLBACKEND=Agg uv run --python 3.12 --with 'matplotlib==3.*' python plot_anchor_trend.py
 
       # file_pattern keeps the downloaded artifacts out of the commit.
-      - name: Commit endpoint + trend
+      - name: Commit anchor trend
         uses: stefanzweifel/git-auto-commit-action@v7.1.0
         with:
-          commit_message: Update coverage endpoint and anchor trend
-          file_pattern: coverage-endpoint.json anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
+          commit_message: Update anchor trend
+          file_pattern: anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
 
   # The physics anchors: opt-in locally (`just anchor`), a separate job here so the fast checks
   # report first. Full 99-rotation static + integrated (CLI-driven) quartz pins, ~5-6 min on CPU.
