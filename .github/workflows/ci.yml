@@ -8,10 +8,16 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_XML: coverage.xml
+      COVERAGE_JSON: coverage.json
+      PATCH_MIN_THRESHOLD: 80
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
+          # Full history so the patch-coverage gate can diff against origin/<base>.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -31,7 +37,22 @@ jobs:
         run: uv run mypy src/diffBloch
 
       - name: Unit tests (with coverage)
-        run: uv run pytest --cov=diffBloch --cov-report=term-missing
+        run: uv run pytest --cov=diffBloch --cov-report=term-missing --cov-report=xml:${COVERAGE_XML} --cov-report=json:${COVERAGE_JSON}
+
+      # Fails a PR whose changed lines are under-covered; total coverage is unconstrained.
+      - name: Patch coverage gate
+        if: github.event_name == 'pull_request'
+        run: uv run --with diff-cover diff-cover ${COVERAGE_XML} --compare-branch=origin/${{ github.base_ref }} --fail-under=${PATCH_MIN_THRESHOLD}
+
+      # Hand-off to publish-badge: the JSON report carries the total percentage.
+      - name: Upload coverage JSON for badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-json-${{ github.run_id }}
+          path: ${{ env.COVERAGE_JSON }}
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Build docs
         run: uv run sphinx-build -W -b html docs docs/_build/html
@@ -76,6 +97,47 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # The README coverage badge: an SVG committed to the orphan `badges` branch on every green main
+  # push, so badge churn stays out of main's history. The branch is created once by hand; the badge
+  # only renders publicly (raw.githubusercontent.com 404s anonymously while the repo is private).
+  publish-badge:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: badges
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-json-${{ github.run_id }}
+
+      - name: Extract coverage percent + color
+        id: cov
+        run: |
+          pct=$(jq '.totals.percent_covered_display | tonumber | floor' coverage.json)
+          color=$([ "$pct" -ge 90 ] && echo green || ([ "$pct" -ge 80 ] && echo yellow || echo red))
+          echo "percent=$pct" >> "$GITHUB_OUTPUT"
+          echo "color=$color" >> "$GITHUB_OUTPUT"
+
+      - name: Generate badge
+        uses: jaywcjlove/generated-badges@v1.1.0
+        with:
+          label: coverage
+          status: ${{ steps.cov.outputs.percent }}%
+          color: ${{ steps.cov.outputs.color }}
+          output: coverage.svg
+
+      # file_pattern keeps the downloaded coverage.json out of the commit.
+      - name: Commit badge
+        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        with:
+          commit_message: Update coverage badge
+          file_pattern: coverage.svg
 
   # The physics anchors: opt-in locally (`just anchor`), a separate job here so the fast checks
   # report first. Full 99-rotation static + integrated (CLI-driven) quartz pins, ~5-6 min on CPU.
