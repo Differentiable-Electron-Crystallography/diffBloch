@@ -201,9 +201,7 @@ print(f"best {result.best_loss:.4f} at step {result.best_step}")
 final_params = result.model.component_params[thickness_nn.key]
 per_orientation = []
 for i, orientation in enumerate(engine.orientations):
-    context = thickness_nn.forward_context(
-        final_params, orientation_index=i, orientation=orientation
-    )
+    context = thickness_nn.forward_context(final_params, rotation_index=i, orientation=orientation)
     assert context.thickness is not None  # ApparentThicknessNN always provides a thickness
     per_orientation.append(context.thickness[0])
 thickness = torch.stack(per_orientation).detach()
