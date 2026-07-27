@@ -13,14 +13,14 @@ jobs:
       COVERAGE_JSON: coverage.json
       PATCH_MIN_THRESHOLD: 80
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: true
           # Full history so the patch-coverage gate can diff against origin/<base>.
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
@@ -47,7 +47,7 @@ jobs:
       # Hand-off to publish-badge: the JSON report carries the total percentage.
       - name: Upload coverage JSON for badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-json-${{ github.run_id }}
           path: ${{ env.COVERAGE_JSON }}
@@ -74,12 +74,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
@@ -90,13 +90,13 @@ jobs:
         run: uv run sphinx-build -W -b html docs docs/_build/html
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/_build/html
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # The README coverage badge: an SVG committed to the orphan `badges` branch on every green main
   # push, so badge churn stays out of main's history. The branch is created once by hand; the badge
@@ -108,11 +108,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: badges
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: coverage-json-${{ github.run_id }}
 
@@ -144,12 +144,12 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
