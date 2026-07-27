@@ -107,16 +107,21 @@ def render(rows: list[tuple[datetime, str, float]], suffix: str, theme: dict) ->
     )
 
     # Sparse date ticks: ~6 across the sequence, deduplicated (a dense tail of same-day
-    # merges would otherwise repeat the label).
+    # merges would otherwise repeat the label). The last point is always ticked -- without
+    # it the axis reads as ending days before the newest data.
     if rows:
         step = max(1, len(rows) // 6)
-        ticks, labels, last = [], [], None
-        for i in range(0, len(rows), step):
+        candidates = list(range(0, len(rows), step))
+        if candidates[-1] != len(rows) - 1:
+            candidates.append(len(rows) - 1)
+        ticks, labels = [], []
+        for i in candidates:
             label = rows[i][0].strftime("%b %d")
-            if label != last:
-                ticks.append(i)
-                labels.append(label)
-                last = label
+            if labels and label == labels[-1]:
+                ticks[-1] = i  # same-day duplicate: keep the later index (axis ends dated)
+                continue
+            ticks.append(i)
+            labels.append(label)
         ax.set_xticks(ticks)
         ax.set_xticklabels(labels, fontsize=8)
     ax.tick_params(colors=theme["ink_muted"], labelsize=8, length=0)
