@@ -42,7 +42,11 @@ from diffBloch.preprocess import (
 )
 from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
-EXPERIMENT_DIR = Path("examples/papers/malik-2026-hybrid-physics-ml/experiments/quartz-synthetic")
+# Anchored to this file, not the CWD: as a script __file__ resolves it; as a notebook the
+# Jupyter kernel's CWD is this directory (regardless of where `jupyter lab` was launched, so a
+# repo-root-relative path would break there).
+HERE = Path(__file__).parent if "__file__" in globals() else Path.cwd()
+EXPERIMENT_DIR = HERE / "experiments/quartz-synthetic"
 DEVICE = torch.device("cpu")
 
 # %% [markdown]
