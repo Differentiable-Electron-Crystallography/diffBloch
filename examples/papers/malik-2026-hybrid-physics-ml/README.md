@@ -25,6 +25,15 @@ v1 example path.
 
 ## Running the example
 
+Prerequisite: the bundled datasets (`.cif_pets` observations, `plan.npz` checkpoints) are stored
+in [Git LFS](https://git-lfs.com/) — without it a checkout contains pointer stubs and loading
+fails with a parse error, not a missing file:
+
+```bash
+git lfs install
+git lfs pull
+```
+
 As a plain script from the repository root:
 
 ```bash
