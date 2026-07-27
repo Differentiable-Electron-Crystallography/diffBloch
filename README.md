@@ -1,6 +1,15 @@
 # diffBloch
 
-![Coverage](https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/coverage.svg)
+![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FDifferentiable-Electron-Crystallography%2FdiffBloch%2Fbadges%2Fcoverage-endpoint.json)
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white)
+![uv](https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white)
+![Ruff](https://img.shields.io/badge/Ruff-D7FF64?logo=ruff&logoColor=black)
+![mypy](https://img.shields.io/badge/mypy-strict-blue)
+[![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0969da?logo=sphinx&logoColor=white)](https://differentiable-electron-crystallography.github.io/diffBloch/)
 
 Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
 
@@ -57,6 +66,20 @@ See `examples/experiments/quartz/README.md` for the worked example and its expec
   including checkpointed runs that start from a committed `Plan`.
 - `examples/papers` contains paper implementations that demonstrate doing science with diffBloch via
   richer Python API composition.
+
+## Anchor trend
+
+Every merge to `main` re-runs the e2e physics anchors. The plot tracks the measured mean R_obs of
+the coupled quartz anchor (the checkpointed 99-rotation scoring in `tests/e2e/test_anchor.py`) for
+every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
+outcome — evidence the physics is reproducible commit over commit. Gaps are commits with no valid
+measurement (the committed checkpoint was stale for that commit's recipe, so the fast anchor
+could not score it).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/anchor-trend-dark.svg">
+  <img alt="Mean R_obs of the coupled quartz anchor for every merge to main" src="https://raw.githubusercontent.com/Differentiable-Electron-Crystallography/diffBloch/badges/anchor-trend.svg">
+</picture>
 
 ## Layout
 
