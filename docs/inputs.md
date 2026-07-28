@@ -1,7 +1,7 @@
 # Inputs and experiment directories
 
 A diffBloch run starts from an experiment directory. The directory contains a small YAML config, a
-starting crystal structure, processed diffraction observations, and lock/checkpoint artifacts when
+starting crystal structure, reduced experimental diffraction data, and lock/checkpoint artifacts when
 available.
 
 ## Required inputs
@@ -10,7 +10,7 @@ available.
 |---|---|
 | `experiment.yaml` | Experiment config and relative references to the input files. |
 | `structure.cif` | Starting crystal structure. |
-| `observations.cif_pets` | Experimental diffraction observations processed by [PETS2](https://pets.fzu.cz/). |
+| `observations.cif_pets` | Reduced experimental diffraction data. |
 | `experiment.lock` | Content identity for the input CIF/PETS files. |
 
 Checkpointed examples also include:

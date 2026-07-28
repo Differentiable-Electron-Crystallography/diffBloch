@@ -14,34 +14,24 @@ title: diffBloch
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)
 
-Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
+Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
-The valuable core is a small **differentiable map from a handful of structural parameters to a
-scalar R-loss**, minimised by gradient descent so that simulated and observed diffraction
-intensities agree. Because rotating-stage 3DED is dynamical — a multiple-scattering diffraction
-problem — that map uses a Bloch-wave simulation rather than a kinematical approximation. Everything
-else — parsing, config, logging, orchestration — exists to make the map inspectable, reproducible,
-and safe to evolve, and lives *around* the core, never inside it.
+This codebase is entirely open-source, and we welcome contributions as well as questions.  
+
 
 ## Overview
 
-diffBloch starts from continuous-rotation 3DED observations: diffraction frames collected while the
-crystal is tilted/rocked through reciprocal space and reduced upstream by PETS2 into `.cif_pets`.
-It models refinement as two complementary values: a raw crystal structure and a settled `Plan`. The
-structure supplies the differentiable crystallographic parameters; the `Plan` supplies the geometry
-and data scaffold around them — typed observations, per-frame orientations, beam/scoring sets,
-rocking-curve geometry, fitted nuisance values, and checkpoint provenance. Together they feed the
-refinement engine, which runs a deterministic Bloch-wave simulation, compares calculated and
-observed intensities, and iteratively minimizes the objective by updating selected trainable
-parameters. The guides below unpack that path from experiment inputs through preprocessing,
-refinement, reproducibility, observability, and runnable examples.
+diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format. 
+
+diffBloch performs the refinement as two complementary values: a crystal structure, consisting of atomic coordinates and thermal displacement parameters, and a settled `Plan`, consisting of crystallographic metadata such as thickness or orientation. Together they feed the refinement engine, which runs a repeatable Bloch-wave simulation, compares calculated and observed intensities, and iteratively minimizes the objective by updating selected trainable parameters. The guides below unpack that path from experiment inputs through preprocessing, refinement, reproducibility, observability, and runnable examples.
 
 | Guide | What it covers |
 |---|---|
-| [Architecture](architecture.md) | The whole shape of the system. |
-| [Inputs](inputs.md) | The raw data needed to refine a structure. |
-| [Preprocessing](preprocessing.md) | How raw input data becomes a reusable `Plan`. |
-| [Refinement](refinement.md) | With a settled `Plan`, choose evaluation or optimization. |
+| [Architecture](architecture.md) | Code Structure. |
+| [Inputs](inputs.md) | Data needed to refine a structure. |
+| [Preprocessing](preprocessing.md) | Initial steps before refinement. |
+| [Hyperparameter selection](hyperparameter-selection.md) | Choosing beam and rocking-curve settings using convergence tests. |
+| [Refinement](refinement.md) | Optimizing crystal structure |
 | [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` let later runs verify and reuse expensive preprocessing results. |
 | [Observability](observability-guide.md) | How to track progress and debug refinements. |
 | [Examples](examples.md) | Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch. |
@@ -102,16 +92,14 @@ If you use diffBloch in your research, please cite it (see
 
 ```bibtex
 @misc{diffBloch,
-  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain},
+  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain, and Midgley, Paul},
   title   = {diffBloch},
   version = {0.2.0},
+  year = {2026},
   url     = {https://github.com/Differentiable-Electron-Crystallography/diffBloch}
 }
 ```
 
-This work is funded by [Schmidt Sciences](https://www.schmidtsciences.org/) and developed with
-the [Scientific Software Engineering Center (SSEC)](https://ai.jhu.edu/ssec/) at Johns Hopkins
-University.
 
 ```{toctree}
 :hidden:
@@ -120,6 +108,7 @@ University.
 architecture.md
 inputs.md
 preprocessing.md
+hyperparameter-selection.md
 reproducibility.md
 refinement.md
 observability-guide.md
