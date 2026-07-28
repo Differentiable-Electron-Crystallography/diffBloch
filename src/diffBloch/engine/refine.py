@@ -50,7 +50,6 @@ _TRAINABLE_FIELDS: dict[str, tuple[str, ...]] = {
     "positions": ("asu_positions",),
     "adp": ("uij_raw", "u_iso_raw"),
     "occupancy": ("occupancy_raw",),
-    "fgb": ("Fgb",),
 }
 
 
@@ -128,7 +127,6 @@ class TrainableSpec:
     positions: AtomSelection = field(default_factory=AtomSelection.none)
     adp: AtomSelection = field(default_factory=AtomSelection.none)
     occupancy: AtomSelection = field(default_factory=AtomSelection.none)
-    fgb: AtomSelection = field(default_factory=AtomSelection.none)
 
     @classmethod
     def positions_and_adp(cls) -> TrainableSpec:
