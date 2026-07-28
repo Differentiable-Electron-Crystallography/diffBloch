@@ -1,6 +1,6 @@
 # Architecture
 
-diffBloch is organized around one stable scientific centre: a deterministic Bloch-wave simulation.
+diffBloch is organized around its core module: Bloch-wave simulation of multiple electron scattering.
 The surrounding layers prepare inputs, build reusable geometry, run optimization, and report
 progress without making those concerns part of the numerical core.
 
@@ -10,9 +10,9 @@ The end-to-end flow is:
 
 1. `.cif` + `.cif_pets` + config are parsed into typed records.
 2. Preprocessing turns those records into a reusable `Plan`.
-3. The `Plan` and differentiable structural parameters feed the deterministic Bloch-wave simulation.
-4. The simulated pattern is compared with the observed pattern as an R-loss.
-5. Gradients from that loss update the differentiable structural parameters, then the loop repeats.
+3. The `Plan` and differentiable structural parameters feed the Bloch-wave simulation.
+4. The simulated diffraction intensities are compared with experiment and loss is calculated. 
+5. Gradients from that loss update the differentiable structural parameters, then the loop repeats, improving the agreement between simulation and experiment.
 
 ## Layers
 
@@ -21,7 +21,7 @@ The end-to-end flow is:
 | [IO](api/io.md) | Parse CIF/PETS files into validated typed records. | [Inputs](inputs.md) |
 | [Config](api/config.md) | Validate experiment settings and lock input/checkpoint identity. | [Inputs](inputs.md), [Reproducibility](reproducibility.md) |
 | [Preprocess](api/preprocess.md) | Build and improve the immutable `Plan` the simulator consumes. | [Preprocessing](preprocessing.md) |
-| [Core](api/core.md) | Deterministic crystallographic and Bloch-wave numerical kernels. | [Architecture](architecture.md), [Refinement](refinement.md) |
+| [Core](api/core.md) | Bloch-wave numerical kernels. | [Architecture](architecture.md), [Refinement](refinement.md) |
 | [Params](api/params.md) | Differentiable structural parameters and physical constraints. | [Refinement](refinement.md) |
 | [Engine](api/engine.md) | Combine `Plan` + parameters, simulate, score, and refine. | [Refinement](refinement.md) |
 | [Observability](api/observability.md) | Emit typed events without coupling the core to logger backends. | [Observability](observability-guide.md) |
@@ -73,7 +73,7 @@ setup = from_experiment(structure, observations, cfg)
 trial_coupling = TrialCoupling(
     policy=cfg.preprocess.coupling.to_policy(),
     scored=ScoredHklSelection(
-        klar=cfg.numerics.to_beam_selection(),
+        klar=cfg.numerics.to_beam_selection(setup.integration),
         g_max=cfg.numerics.g_max_refine,
     ),
 )
@@ -81,9 +81,9 @@ trial_coupling = TrialCoupling(
 # Preprocessing is declarative composition of Plan -> Plan steps.
 prepare = pipeline(
     [
-        select_beams(cfg.numerics.to_beam_selection()),
+        select_beams(cfg.numerics.to_beam_selection(setup.integration)),
         build_orientation_plans(),
-        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
+        integrate_rocking_curve(cfg.numerics.to_rocking_curve(setup.integration)),
         mosaicity(cfg.numerics.mosaicity),
         fit_orientation(
             setup.refinement,

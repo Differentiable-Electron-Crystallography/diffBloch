@@ -1,18 +1,51 @@
 # Preprocessing and `Plan`
 
-The first step after loading an experiment is to create a refinable `Plan`. A `Plan` is the
-geometry and data scaffold around the differentiable structural parameters; it is not the structure
-being refined.
+Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
+therefore fits this experimental metadata before refining the structure and stores it in a `Plan`.
 
-A `Plan` carries things such as:
+PETS2 reduces continuous-rotation data into overlapping **virtual frames**, allowing complete
+rocking curves to be integrated and partial reflections to be rejected
+([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). diffBloch represents each
+virtual frame by sampled tilt sub-orientations and sums their simulated intensities.
 
-- shared structure-factor support;
-- per-rotation orientations;
-- solve beam sets;
-- rocking-curve tilts;
-- observed patterns and alignments;
-- fitted nuisance values such as per-rotation thickness;
-- coupled beam-union geometry when coupling is enabled.
+## Orientation
+
+PETS2 supplies a best-fit **UB matrix**: \(B\) maps the reciprocal lattice and \(U\)
+orients that lattice in the laboratory frame. For virtual frame \(i\), diffBloch constructs
+
+\[
+M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB\,B^{-1}),
+\]
+
+where \(\alpha\) is the main varying goniometer angle.
+
+Using a fixed trial thickness and the starting structure, `fit_orientation` searches nearby
+orientations for better agreement with experiment. Three approaches are available:
+
+| Method | Difference |
+|---|---|
+| Bayesian optimization | Explores a broad angular range; robust but expensive. |
+| Nelder–Mead | Locally optimizes all three rotation angles; efficient but sensitive to the starting orientation. |
+| Modified simplex | Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close. |
+
+## Thickness
+
+Real crystals have irregular shapes. diffBloch offers two
+approaches, both using the starting structure to improve agreement with experiment:
+
+| Method | Difference |
+|---|---|
+| Grid search | Selects the best mean thickness independently for each rotation. |
+| Neural network | Learns how apparent thickness varies smoothly with rotation angle. |
+
+Thickness can be refined before or after orientation; the default workflow refines orientation
+first.
+
+## The `Plan`
+
+A `Plan` is the fitted geometry and observation scaffold around the structural parameters; it is
+not the structure being refined. It carries optimized orientations, rocking-curve tilts,
+per-rotation thicknesses, reflection sets, and preprocessing provenance.
 
 Conceptually, a settled `Plan` looks like this:
 
@@ -27,12 +60,8 @@ Plan(
     orientations=(
         OrientationPlan(
             orientation=...,      # one rotation/orientation
-            beam_hkl=...,         # solve beam set
-            beam_plans=...,       # precomputed Bloch geometry for those beams
             tilts=...,            # rocking-curve sub-orientations
-            pattern=...,          # observed intensities for this rotation
-            alignment=...,        # calculated/observed hkl alignment
-            thickness=...,        # fitted nuisance value
+            thickness=...,        # fitted value
         ),
         # ...more rotations...
     ),
@@ -42,29 +71,23 @@ Plan(
 
 ## Beam sets and scoring inside a `Plan`
 
-A `Plan` deliberately separates hkl sets that answer different questions:
+A `Plan` deliberately separates sets of hkls by purpose or origin:
 
 | Set | Meaning |
 |---|---|
-| Structure-factor hkl | The shared support where `Fgb` is tabulated. |
-| Solve beams | The beam basis used in a Bloch solve. |
-| Observed hkl | Reflections present in the PETS observations. |
-| Scored hkl | Reflections included in the objective/scoring comparison. |
-| Matched hkl | The calculated/observed overlap recorded by the alignment. |
+| Structure-factor hkl | Stored structure factors calculated for all reciprocal space up to a given resolution. |
+| Solve beams | The beam basis used in a given Bloch wave calculation. |
+| Observed hkl | Experimentally observed reflections. |
+| Scored hkl | Reflections included in the loss calculation. |
+| Matched hkl | The calculated/observed overlap. |
 
-This split matters because the best solve basis is not always the same as the set of reflections you
-want in the objective. Under coupled rocking-curve solves, the solve set may expand to a per-segment
-beam union while the scored set stays pinned to the selected/scored hkl, so widening the solve basis
-does not silently change what the objective compares.
 
-## Rocking curve and mosaicity inside a `Plan`
+## Rocking curves and mosaicity inside a `Plan`
 
-A rotation electron-diffraction frame integrates intensity while the crystal rocks through a small
-angular range. In a `Plan`, that is represented as virtual tilt sub-orientations on each rotation:
-`integrate_rocking_curve` replaces a single static orientation with sampled tilts, and `mosaicity`
-adds a tilt-axis moving-average reduction before intensities are summed. If beam coupling is enabled,
-`couple_beams` can then replace one shared beam set with per-segment beam unions over the rocking
-curve.
+The virtual frame's angular range is represented by tilt sub-orientations around its central
+orientation. `integrate_rocking_curve` replaces a single static orientation with those samples.
+`mosaicity` applies a moving-average broadening along the tilt axis before their intensities are
+summed.
 
 ## API shape: from experiment records to an initial `Plan`
 
@@ -103,9 +126,8 @@ Real steps include:
 - {func}`diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve` — expand orientations into virtual rocking-curve tilts.
 - {func}`diffBloch.preprocess.steps.mosaicity.mosaicity` — apply tilt-axis mosaic broadening.
 - {func}`diffBloch.preprocess.steps.fit_orientation.fit_orientation` — search nearby orientations and keep the best-scoring one.
-- {func}`diffBloch.preprocess.steps.fit_thickness.fit_thickness` — search specimen thickness and keep the best-scoring value.
-- {func}`diffBloch.preprocess.steps.coupling.couple_beams` — settle coupled per-segment beam unions.
-- {func}`diffBloch.preprocess.driver.converge_numerics` — run coverage/convergence sweeps over numerical knobs.
+- {func}`diffBloch.preprocess.steps.fit_thickness.fit_thickness` — search mean specimen thickness and keep the best-scoring value.
+- {func}`diffBloch.preprocess.driver.converge_numerics` — test convergence over `g_max`, `sg_max`, and `tilt_steps`.
 
 The pipeline also provides composition helpers such as {func}`diffBloch.preprocess.pipeline.fork`,
 {func}`diffBloch.preprocess.pipeline.iterate_until`, and
@@ -176,9 +198,8 @@ large cells through a coarser fp32 orientation/thickness-fit branch. `iterate_un
 
 The convergence path is the stateful version of this idea. Its public pipeline surface is still a
 single `Plan -> Plan` step, but internally {func}`diffBloch.preprocess.driver.converge_numerics`
-runs a coordinate-search driver: it threads a `ConvergenceState` containing `g_max_refine`,
-`integration_semiangle`, and `rocking_curve_sampling` through coverage and self-stability sweeps,
-rebuilding candidate `Plan` values from each scalar setting. The generic shape is formalized as
+varies `g_max`, `sg_max`, and `tilt_steps`, rebuilding the simulation at each setting. The generic
+shape is formalized as
 {data}`diffBloch.preprocess.pipeline.StatefulPlanStep`,
 {func}`diffBloch.preprocess.pipeline.stateful_pipeline`, and
 {func}`diffBloch.preprocess.pipeline.stateful_plan_step`: an explicit immutable state threaded
