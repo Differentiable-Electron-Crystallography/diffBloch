@@ -37,10 +37,22 @@ from diffBloch.observability import (
 
 
 def _fitted(index: int, wr2: float) -> OrientationFitted:
-    return OrientationFitted(index=index, wr2=wr2, n_trials=10, n_passes=3, pass_cap=2000)
+    return OrientationFitted(
+        index=index,
+        wr2=wr2,
+        n_matched_hkl=42,
+        n_trials=10,
+        n_passes=3,
+        pass_cap=2000,
+    )
 
 
 def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
+    orientation = _fitted(index=10, wr2=0.025)
+    assert orientation.channel == "orientation"
+    assert orientation.step == 10
+    assert orientation.measurements == {"wr2": 0.025, "n_matched_hkl": 42.0}
+
     rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
     assert rotation.channel == "rotation"
     assert rotation.step == 3  # a rotation's step is its index
@@ -78,10 +90,10 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "max_beams_per_segment": 641.0,
     }
 
-    coupling_summary = CouplingSummary(measurements={"n_orientations": 55.0, "g_max": 5.0})
+    coupling_summary = CouplingSummary(measurements={"n_orientations": 55.0})
     assert coupling_summary.channel == "coupling"
     assert coupling_summary.step is None  # a run-level aggregate shares the channel, step None
-    assert coupling_summary.measurements == {"n_orientations": 55.0, "g_max": 5.0}
+    assert coupling_summary.measurements == {"n_orientations": 55.0}
 
     # PlanStepCompleted carries the step NAME as a per-instance channel (not a class constant).
     plan_step = PlanStepCompleted(channel="fit_orientation", index=4, measurements={"beams": 641.0})
@@ -97,16 +109,11 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     structured_refinement = RefinementStep(
         iteration=5,
         loss=2.0,
+        wr2=0.05,
         objective_total=2.0,
         components={"diffraction": {"raw": 1.0, "weight": 2.0, "contribution": 2.0}},
     )
-    assert structured_refinement.measurements == {
-        "loss": 2.0,
-        "objective_total": 2.0,
-        "component.diffraction.raw": 1.0,
-        "component.diffraction.weight": 2.0,
-        "component.diffraction.contribution": 2.0,
-    }
+    assert structured_refinement.measurements == {"wr2": 0.05}
 
     refinement_done = RefinementCompleted(n_steps=20, best_step=17, best_loss=0.3)
     assert refinement_done.channel == "refinement"  # shares the stream's channel
@@ -148,6 +155,42 @@ def test_console_logger_logs_channel_step_and_measurements(
     assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
     assert "r_obs=0.5" in rotation_msg
     assert inference_msg.startswith("inference ")  # aggregate has no step bracket
+
+
+def test_console_logger_labels_refinement_epochs_and_shows_only_wr2(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(RefinementStep(iteration=7, loss=4.95, wr2=0.05))
+
+    assert caplog.records[-1].getMessage() == (
+        "structure refinement[refinement_epoch=7] wr2=0.05"
+    )
+
+
+def test_console_logger_labels_orientation_refinement_index(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(_fitted(index=10, wr2=0.025))
+
+    assert caplog.records[-1].getMessage().startswith(
+        "orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42"
+    )
+
+
+def test_console_logger_labels_thickness_refinement_index(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(ThicknessFitted(index=10, wr2=0.025, thickness=820.0))
+
+    assert caplog.records[-1].getMessage() == (
+        "thickness refinement[orientation_index=10] wr2=0.025 thickness=820"
+    )
 
 
 def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:

@@ -96,16 +96,14 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     assert rotations[1].n_coupling_segments == 1  # the tilt-independent rotation
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
-    assert summaries[0].measurements["n_coupling_segments_total"] == 3.0  # 2 + 1
     assert summaries[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
 
 
-def test_summarize_plan_aggregates_the_widest_and_largest() -> None:
+def test_summarize_plan_reports_only_basic_shape() -> None:
     grid, *_ = _silicon()
     plan = Plan(structure_factor_grid=grid, orientations=(_segmented(grid),))
     summary = summarize_plan(plan)
-    assert summary["n_orientations"] == 1.0
-    assert summary["max_tilts_per_segment"] == 2.0
-    assert summary["max_beams_per_segment"] == 2.0
-    assert summary["n_union_beams_max"] == 3.0
-    assert summary["g_max"] == float(grid.g_max)
+    assert summary == {
+        "n_orientations": 1.0,
+        "n_grid_hkl": float(grid.structure_factor_hkl.shape[0]),
+    }

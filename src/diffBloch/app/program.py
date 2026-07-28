@@ -60,7 +60,6 @@ from diffBloch.preprocess import (
     mosaicity,
     pipeline,
     read_plan,
-    report_coupling,
     resolve_recipe,
     run_inference,
     select_beams,
@@ -309,10 +308,6 @@ def _preprocess(
         refresh=refresh,
         logger=logger,
     )
-    # Report the settled plan's coupling geometry at the consumer boundary: fires on every run
-    # (including a checkpoint-reuse refine, which ran no pipeline steps), so the coupling the loop
-    # is about to consume is logged before the first step.
-    report_coupling(logger)(prepared)
     return setup.refinement, prepared
 
 

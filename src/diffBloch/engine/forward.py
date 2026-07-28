@@ -43,6 +43,7 @@ from diffBloch.core.solver import (
 )
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
+from diffBloch.engine.losses import scaled_w_rbragg_loss
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlanLike,
@@ -687,6 +688,12 @@ def run_refinement_model(
             RefinementStep(
                 iteration=step,
                 loss=loss_value,
+                wr2=(
+                    _scalar_float(reported_objective.components["diffraction"].raw)
+                    / len(engine.orientations)
+                    if engine.loss is scaled_w_rbragg_loss
+                    else None
+                ),
                 objective_total=_scalar_float(reported_objective.total),
                 components=_component_measurements(reported_objective),
             )

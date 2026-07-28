@@ -191,6 +191,7 @@ def fit_orientation(
                         OrientationFitted(
                             index=index,
                             wr2=wr2,
+                            n_matched_hkl=int(fitted.alignment.hkl.shape[0]),
                             n_trials=n_trials,
                             n_passes=n_passes,
                             pass_cap=cap,
@@ -211,7 +212,12 @@ def fit_orientation(
                 fitted_by_index[index] = fitted
                 logger.report(
                     OrientationFitted(
-                        index=index, wr2=wr2, n_trials=n_trials, n_passes=n_passes, pass_cap=cap
+                        index=index,
+                        wr2=wr2,
+                        n_matched_hkl=int(fitted.alignment.hkl.shape[0]),
+                        n_trials=n_trials,
+                        n_passes=n_passes,
+                        pass_cap=cap,
                     )
                 )
         ordered = tuple(fitted_by_index[i] for i in range(len(built)))
