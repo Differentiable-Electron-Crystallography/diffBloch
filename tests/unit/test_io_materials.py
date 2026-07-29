@@ -37,7 +37,7 @@ def test_lta_experiment_lock_verifies_the_committed_inputs() -> None:
     # whitespace hook silently rewriting the PETS file) fails loudly here, not silently at Tier 2.
     cfg, _lock = load_experiment(FIXTURE_ROOT / "lta_anchor")
     assert cfg.name == "lta-anchor"
-    assert cfg.numerics.g_max_refine == 1.4
+    assert cfg.blochwave.g_max_refine == 1.4
 
 
 def test_read_paracetamol_uiso_fixture() -> None:

@@ -130,14 +130,14 @@ def test_quartz_reference_anchor(material: str) -> None:
 
     cfg, lock = load_experiment(FIXTURE_ROOT)
     assert cfg.name == "quartz-anchor"
-    assert cfg.solver.inference == "bloch_eigen"
-    assert cfg.numerics.g_max_refine == 1.6
+    assert cfg.blochwave.solver.inference == "bloch_eigen"
+    assert cfg.blochwave.g_max_refine == 1.6
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
-    assert cfg.inputs.observations == lock.observations.ref
+    assert cfg.inputs.exp_data == lock.observations.ref
 
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.exp_data)
     assert structure.n_atoms == 2
     assert structure.n_symops == 6
     assert observations.n_rotations == 99
@@ -164,16 +164,20 @@ def test_quartz_reference_anchor(material: str) -> None:
     refinement = setup.refinement
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
             fit_orientation(
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                refinement,
+                cfg.preprocess.orientation.to_search(),
+                method=cfg.blochwave.solver.refine,
             ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+            fit_thickness(
+                refinement, cfg.preprocess.thickness.to_grid(), method=cfg.blochwave.solver.refine
+            ),
         ]
     )
     result = run_inference(
-        setup.plans.combined, refinement, prepare=prepare, method=cfg.solver.inference
+        setup.plans.combined, refinement, prepare=prepare, method=cfg.blochwave.solver.inference
     )
 
     assert result.n_evaluated == observations.n_rotations
@@ -213,10 +217,10 @@ def test_quartz_coupled_anchor(
     # the base grid first -- exactly as _prepare does before recording -- to key on the flat branch.
     cfg, _lock = load_experiment(exp)
     structure = read_structure(exp / cfg.inputs.structure)
-    observations = read_observations(exp / cfg.inputs.observations)
+    observations = read_observations(exp / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
     steps = resolve_recipe(
-        _recipe_steps(cfg, setup.refinement, NULL_LOGGER),
+        _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
         setup.plans.combined.structure_factor_grid,
     )
     records = step_records(steps)
@@ -285,7 +289,7 @@ def test_quartz_tilt_independent_anchor() -> None:
     """
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
 
@@ -298,17 +302,21 @@ def test_quartz_tilt_independent_anchor() -> None:
 
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
-            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-            mosaicity(cfg.numerics.mosaicity),
+            integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
+            mosaicity(cfg.blochwave.mosaicity),
             fit_orientation(  # coupling=None (default): the tilt-independent fit
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                refinement,
+                cfg.preprocess.orientation.to_search(),
+                method=cfg.blochwave.solver.refine,
             ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+            fit_thickness(
+                refinement, cfg.preprocess.thickness.to_grid(), method=cfg.blochwave.solver.refine
+            ),
         ]
     )
-    result = run_inference(plan, refinement, prepare=prepare, method=cfg.solver.inference)
+    result = run_inference(plan, refinement, prepare=prepare, method=cfg.blochwave.solver.inference)
 
     assert result.n_evaluated == n_rotations
     if n_rotations == observations.n_rotations:
@@ -350,14 +358,14 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     """
     cfg, lock = load_experiment(ABIRATERONE_ROOT)
     assert cfg.name == "abiraterone-anchor"
-    assert cfg.numerics.g_max_refine == 1.0
+    assert cfg.blochwave.g_max_refine == 1.0
     assert cfg.sample.thicknesses == (1460.0,)
 
     assert cfg.inputs.load_hydrogens is True  # config-driven; load-bearing for the forward parity
     structure = read_structure(
         ABIRATERONE_ROOT / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.observations)
+    observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.exp_data)
     assert structure.n_atoms == 62  # 29 non-H + 33 H (load_hydrogens is load-bearing for parity)
     assert observations.n_rotations == 55
 
@@ -367,16 +375,18 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     )  # rotation 0 only -- the private reference's single forward frame
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),
-            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-            mosaicity(cfg.numerics.mosaicity),
+            integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
+            mosaicity(cfg.blochwave.mosaicity),
             # expand SOLVE set (post-#154 |g| < g_max = 1.5, no cap margin); scored set stays
             # Klar-pinned. Read from config so the grid derivation and coupling share one source.
-            couple_beams(cfg.preprocess.coupling.to_policy()),
+            couple_beams(cfg.blochwave.to_policy()),
         ]
     )
-    result = run_inference(plan, setup.refinement, prepare=prepare, method=cfg.solver.inference)
+    result = run_inference(
+        plan, setup.refinement, prepare=prepare, method=cfg.blochwave.solver.inference
+    )
 
     assert result.n_evaluated == 1
     # same scored count as the private's N_int_obs (count only; HKL identity not exported)

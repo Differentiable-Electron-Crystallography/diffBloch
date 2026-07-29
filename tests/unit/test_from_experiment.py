@@ -55,7 +55,7 @@ def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
     g = beam_hkl.astype(np.float64) @ np.asarray(
         setup.plans.train.structure_factor_grid.reciprocal_basis
     )
-    assert np.all(np.linalg.norm(g, axis=1) <= config.numerics.g_max_refine + 1e-9)
+    assert np.all(np.linalg.norm(g, axis=1) <= config.blochwave.g_max_refine + 1e-9)
 
 
 def test_from_experiment_patterns_are_per_zone_axis() -> None:
