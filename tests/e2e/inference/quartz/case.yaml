@@ -1,0 +1,9 @@
+fixture: tests/fixtures/quartz_anchor
+orientation_csv: tests/fixtures/quartz_anchor/optim_orientation.csv
+thickness: 820.0
+seed: 42
+compare_n_rotations: 10
+rotation_indices: [26, 33, 56, 18, 70, 84, 85, 96, 20, 34]
+solver: bloch_eigen
+union_adaptive: false
+atol: 1.0e-6
