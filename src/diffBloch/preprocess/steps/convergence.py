@@ -77,6 +77,7 @@ def simulation_rfactor(
     refinement: RefinementSetup,
     *,
     method: SolverMethod = "matrix_exp",
+    comparison_hkl: tuple[Tensor, ...] | None = None,
 ) -> SimulationRfactor:
     """Return ``(previous, current) -> float``: the mean consecutive-simulation R-factor.
 
@@ -98,10 +99,14 @@ def simulation_rfactor(
         current_solutions = _simulate(current, refinement, method)
         if len(previous_solutions) != len(current_solutions):
             raise ValueError("convergence check requires the two Plans to share their orientations")
-        r_factors = [
-            _orientation_rfactor(prev, curr)
-            for prev, curr in zip(previous_solutions, current_solutions, strict=True)
-        ]
+        if comparison_hkl is not None and len(comparison_hkl) != len(previous_solutions):
+            raise ValueError("comparison_hkl must contain one fixed reflection set per orientation")
+        r_factors = []
+        for index, (prev, curr) in enumerate(
+            zip(previous_solutions, current_solutions, strict=True)
+        ):
+            fixed = None if comparison_hkl is None else comparison_hkl[index]
+            r_factors.append(_orientation_rfactor(prev, curr, comparison_hkl=fixed))
         return float(np.mean(r_factors))
 
     return measure
@@ -137,14 +142,17 @@ def converge_scalar[T](
     *,
     start: float,
     step: float,
+    accept_converged_candidate: bool = True,
 ) -> T:
     """Grow a scalar knob until two consecutive builds stop changing; return the converged object.
 
     The parameter-agnostic convergence driver -- it knows nothing about beams or Plans.
     ``build(value)`` rebuilds the object at a knob value; ``measure(previous, candidate)`` is the
     consecutive-output R-factor (0 when identical). Starting from ``start`` and clicking by ``step``
-    each iteration, it returns the first candidate whose R-factor against the previous build is
-    below ``tolerance.r_factor_threshold``. The stopping rule is deliberately simple -- the first
+    each iteration, it stops at the first candidate whose R-factor against the previous build is
+    below ``tolerance.r_factor_threshold``. By default it returns that candidate;
+    ``accept_converged_candidate=False`` retains the previous value instead. The stopping rule is
+    deliberately simple -- the first
     dip stops the sweep, and an unchanged build (R = 0) counts as converged -- with no patience and
     no null-step handling. Raises
     ``RuntimeError`` if ``tolerance.max_iterations`` steps pass without a dip below threshold
@@ -157,9 +165,9 @@ def converge_scalar[T](
         value += step
         candidate = build(value)
         r = measure(current, candidate)
-        current = candidate
         if r < tolerance.r_factor_threshold:
-            return current
+            return candidate if accept_converged_candidate else current
+        current = candidate
     raise RuntimeError(f"converge_scalar did not converge within {tolerance.max_iterations} steps")
 
 
@@ -297,7 +305,12 @@ def _simulate(
     return build_engine(plan, refinement, method=method).simulate(refinement.params)
 
 
-def _orientation_rfactor(previous: BlochSolution, current: BlochSolution) -> float:
+def _orientation_rfactor(
+    previous: BlochSolution,
+    current: BlochSolution,
+    *,
+    comparison_hkl: Tensor | None = None,
+) -> float:
     """Scale-optimised ``rbragg`` between two simulations on their shared reflections.
 
     Each table is ``(T, N)`` over its own beam set; the beam sets differ between the two
@@ -305,12 +318,50 @@ def _orientation_rfactor(previous: BlochSolution, current: BlochSolution) -> flo
     scale (shared across thicknesses, matching ``optimal_scale``) maps ``current`` onto ``previous``
     before the R-factor, since the two simulations have no common normalization.
     """
-    previous_index, current_index = _shared_reflections(previous.beam_hkl, current.beam_hkl)
+    if comparison_hkl is None:
+        previous_index, current_index = _shared_reflections(
+            previous.beam_hkl, current.beam_hkl
+        )
+    else:
+        previous_index, current_index = _fixed_reflections(
+            previous.beam_hkl,
+            current.beam_hkl,
+            comparison_hkl,
+        )
     previous_intensity = previous.intensities.detach().cpu()[:, previous_index].reshape(-1)
     current_intensity = current.intensities.detach().cpu()[:, current_index].reshape(-1)
     sigmas = torch.full_like(previous_intensity, _UNWEIGHTED_SIGMA)
     _, r_value = optimal_scale(current_intensity, previous_intensity, sigmas, metric=rbragg)
     return float(r_value)
+
+
+def _fixed_reflections(
+    previous_hkl: Tensor,
+    current_hkl: Tensor,
+    comparison_hkl: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Index the same preselected HKLs in two consecutive simulations."""
+    previous_position = {
+        tuple(row): index for index, row in enumerate(previous_hkl.detach().cpu().numpy())
+    }
+    current_position = {
+        tuple(row): index for index, row in enumerate(current_hkl.detach().cpu().numpy())
+    }
+    targets = comparison_hkl.detach().cpu().numpy()
+    missing = [
+        tuple(int(component) for component in row)
+        for row in targets
+        if tuple(row) not in previous_position or tuple(row) not in current_position
+    ]
+    if missing:
+        raise ValueError(
+            "fixed convergence comparison reflections must remain in every simulation; "
+            f"first missing hkl {missing[0]}"
+        )
+    return (
+        torch.tensor([previous_position[tuple(row)] for row in targets]),
+        torch.tensor([current_position[tuple(row)] for row in targets]),
+    )
 
 
 def _shared_reflections(previous_hkl: Tensor, current_hkl: Tensor) -> tuple[Tensor, Tensor]:

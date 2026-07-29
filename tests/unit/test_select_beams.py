@@ -23,7 +23,8 @@ def _quartz_train_plan():
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     observations = read_observations(QUARTZ / "exp_data.cif_pets")
     config = load_config(QUARTZ / "experiment.yaml")
-    return from_experiment(structure, observations, config).plans.train, config
+    setup = from_experiment(structure, observations, config)
+    return setup.plans.train, config, setup.integration
 
 
 # --- the criterion --------------------------------------------------------------------------------
@@ -71,8 +72,8 @@ def test_klar_mask_rejects_non_3_column_g() -> None:
 
 
 def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
-    plan, config = _quartz_train_plan()
-    step = select_beams(config.numerics.to_beam_selection())
+    plan, config, integration = _quartz_train_plan()
+    step = select_beams(config.blochwave.to_beam_selection(integration))
     pruned = step(plan)
 
     # Plan -> Plan: the shared grid object is preserved; a new Plan is returned.
@@ -96,8 +97,8 @@ def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
 
 
 def test_select_beams_preserves_source_and_defers_the_build() -> None:
-    plan, config = _quartz_train_plan()
-    pruned = select_beams(config.numerics.to_beam_selection())(plan)
+    plan, config, integration = _quartz_train_plan()
+    pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
     before = plan.orientations[0]
     after = pruned.orientations[0]
     # Source is preserved; select_beams stays on the candidate phase -- no gather is built here.
