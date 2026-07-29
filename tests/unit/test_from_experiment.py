@@ -41,11 +41,7 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     observations = read_observations(QUARTZ / "exp_data.cif_pets")
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={
-            "blochwave": base.blochwave.model_copy(
-                update={"ignore_orientations": (0, 9, 56)}
-            )
-        }
+        update={"blochwave": base.blochwave.model_copy(update={"ignore_orientations": (0, 9, 56)})}
     )
 
     setup = from_experiment(structure, observations, config)
@@ -62,8 +58,7 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     )
     assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
     assert not any(
-        np.allclose(plan.orientation, expected[56])
-        for plan in setup.plans.combined.orientations
+        np.allclose(plan.orientation, expected[56]) for plan in setup.plans.combined.orientations
     )
 
 

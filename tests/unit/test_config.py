@@ -78,13 +78,9 @@ def test_ignore_orientations_parses_to_validated_source_indices() -> None:
     assert cfg.blochwave.to_orientation_selection() == OrientationSelection((0, 18, 56))
 
     with pytest.raises(ValidationError, match="non-negative"):
-        ExperimentConfig.model_validate(
-            {**base, "blochwave": {"ignore_orientations": [-1]}}
-        )
+        ExperimentConfig.model_validate({**base, "blochwave": {"ignore_orientations": [-1]}})
     with pytest.raises(ValidationError, match="duplicate"):
-        ExperimentConfig.model_validate(
-            {**base, "blochwave": {"ignore_orientations": [2, 2]}}
-        )
+        ExperimentConfig.model_validate({**base, "blochwave": {"ignore_orientations": [2, 2]}})
 
 
 def test_sample_thicknesses_are_positive_and_nonempty() -> None:
