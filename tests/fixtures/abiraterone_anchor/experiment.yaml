@@ -27,6 +27,7 @@ blochwave:
   fixed_n_segments: 4
   g_max: 1.5
   sg_max: 0.02
+  union_adaptive: false
   solver:
     inference: bloch_eigen
     refine: matrix_exp

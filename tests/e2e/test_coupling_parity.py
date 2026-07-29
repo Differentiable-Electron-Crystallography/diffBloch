@@ -122,15 +122,13 @@ def _replay_r_obs(
 def test_quartz_coupling_parity() -> None:
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
-        structure.unit_cell, cfg.preprocess.coupling.g_max
-    )
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, cfg.blochwave.g_max)
     refinement = RefinementSetup.from_structure(structure)
     tilts = np.load(REPLAY_ROOT / "tilts.npz")["tilts"]
     reference = _reference_r_obs()
 
     for rotation in PARITY_ROTATIONS:
-        r_obs = _replay_r_obs(rotation, grid, refinement, cfg.solver.inference, tilts)
+        r_obs = _replay_r_obs(rotation, grid, refinement, cfg.blochwave.solver.inference, tilts)
         assert r_obs == pytest.approx(reference[rotation], abs=PARITY_TOL), (
             f"rot {rotation}: replay R_obs {r_obs:.4f} vs reference {reference[rotation]:.4f}"
         )

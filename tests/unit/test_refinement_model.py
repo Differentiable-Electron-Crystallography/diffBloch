@@ -98,14 +98,14 @@ def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     """
     cfg, _lock = load_experiment(_QUARTZ_ROOT)
     structure = read_structure(_QUARTZ_ROOT / cfg.inputs.structure)
-    observations = read_observations(_QUARTZ_ROOT / cfg.inputs.observations)
+    observations = read_observations(_QUARTZ_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
     plan = read_plan(_QUARTZ_ROOT / "plan.npz")
     engine = build_engine(
         plan,
         setup.refinement,
         loss=cfg.refinement.objective.to_loss(),
-        method=cfg.solver.refine,
+        method=cfg.blochwave.solver.refine,
     )
     engine = dataclasses.replace(engine, orientations=engine.orientations[:1])
     params = setup.refinement.params
