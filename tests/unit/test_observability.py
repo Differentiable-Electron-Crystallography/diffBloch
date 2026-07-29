@@ -161,9 +161,7 @@ def test_console_logger_labels_refinement_epochs_and_shows_only_wr2(
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
         logger.report(RefinementStep(iteration=7, loss=4.95, wr2=0.05))
 
-    assert caplog.records[-1].getMessage() == (
-        "structure refinement[refinement_epoch=7] wr2=0.05"
-    )
+    assert caplog.records[-1].getMessage() == ("structure refinement[refinement_epoch=7] wr2=0.05")
 
 
 def test_console_logger_labels_orientation_refinement_index(
@@ -173,8 +171,10 @@ def test_console_logger_labels_orientation_refinement_index(
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
         logger.report(_fitted(index=10, wr2=0.025))
 
-    assert caplog.records[-1].getMessage().startswith(
-        "orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42"
+    assert (
+        caplog.records[-1]
+        .getMessage()
+        .startswith("orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42")
     )
 
 

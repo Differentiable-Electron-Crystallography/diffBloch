@@ -24,6 +24,9 @@ from pathlib import Path
 
 from diffBloch.observability import (
     NULL_LOGGER,
+    ConvergencePassStarted,
+    ConvergenceSweepStarted,
+    ConvergenceTrial,
     Event,
     Logger,
     OrientationFitted,
@@ -68,6 +71,37 @@ class ConsoleLogger:
     level: int = logging.INFO
 
     def report(self, event: Event) -> None:
+        if isinstance(event, ConvergencePassStarted):
+            _log.log(
+                self.level,
+                "=== Hyperparameter Optimization Pass %d ===",
+                event.pass_index,
+            )
+            _log.log(
+                self.level,
+                "start: gmax=%g sgmax=%g tilt_steps=%d r_threshold=%.6f orientations=%d",
+                event.g_max,
+                event.sg_max,
+                event.tilt_steps,
+                event.r_factor_threshold,
+                event.n_orientations,
+            )
+            return
+        if isinstance(event, ConvergenceSweepStarted):
+            label = "gmax" if event.control == "g_max" else event.control
+            _log.log(self.level, "sweep: %s", label)
+            return
+        if isinstance(event, ConvergenceTrial):
+            label = "gmax" if event.control == "g_max" else event.control
+            _log.log(
+                self.level,
+                "  %s -> %g | R=%.6f | fixed_hkls=%d",
+                label,
+                event.candidate,
+                event.r_factor,
+                event.n_compared_hkl,
+            )
+            return
         if isinstance(event, OrientationFitted):
             label = f"orientation refinement[orientation_index={event.index}]"
         elif isinstance(event, ThicknessFitted):

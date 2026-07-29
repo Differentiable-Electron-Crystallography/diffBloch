@@ -55,11 +55,7 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     root = FIXTURES / "quartz_anchor"
     cfg, _ = load_experiment(root)
     cfg = cfg.model_copy(
-        update={
-            "blochwave": cfg.blochwave.model_copy(
-                update={"fixed_n_segments": 4}
-            )
-        }
+        update={"blochwave": cfg.blochwave.model_copy(update={"fixed_n_segments": 4})}
     )
     structure = read_structure(root / cfg.inputs.structure)
     observations = read_observations(root / cfg.inputs.exp_data)

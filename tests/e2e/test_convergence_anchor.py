@@ -42,7 +42,7 @@ pytestmark = pytest.mark.e2e
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
 # The sampling=1, step=2 sweep at the private's 0.005 threshold converges the full-99 integrated
-# quartz pattern at 39 tilts (deterministic: CPU / float64 / no RNG). Pinned exactly as a
+# quartz pattern at 39 tilts (repeatable: CPU / float64 / no RNG). Pinned exactly as a
 # characterization; the durable scientific claim -- 39 < the reference 42, and well above a
 # spurious low-tilt dip -- is asserted separately so a cross-platform eigensolver shift of +/-1 tilt
 # would flag the exact pin without hiding the finding.
@@ -53,11 +53,11 @@ SWEEP_STEP = 2.0
 def test_quartz_sampling_convergence() -> None:
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
 
     plan = setup.plans.combined
-    reference_sampling = cfg.numerics.rocking_curve_sampling  # 42, the reference's tilt count
+    reference_sampling = cfg.blochwave.rocking_curve_sampling  # 42, the reference's tilt count
     subset_env = os.environ.get("DIFFBLOCH_ANCHOR_ROTATIONS")
     n_rotations = int(subset_env) if subset_env else len(plan.orientations)
     if not 1 <= n_rotations <= len(plan.orientations):
@@ -66,10 +66,16 @@ def test_quartz_sampling_convergence() -> None:
 
     # Select the beam set once, build it, then sweep the tilt count from a single static solve
     # (sampling=1) upward until consecutive integrated simulations agree to the tolerance.
-    seed = build_orientation_plans()(select_beams(cfg.numerics.to_beam_selection())(plan))
-    rocking = replace(cfg.numerics.to_rocking_curve(), sampling=1)
+    seed = build_orientation_plans()(
+        select_beams(cfg.blochwave.to_beam_selection(setup.integration))(plan)
+    )
+    rocking = replace(cfg.blochwave.to_rocking_curve(setup.integration), sampling=1)
     converge = converge_sampling(
-        rocking, setup.refinement, ConvergenceTolerance(), step=SWEEP_STEP, method=cfg.solver.refine
+        rocking,
+        setup.refinement,
+        ConvergenceTolerance(),
+        step=SWEEP_STEP,
+        method=cfg.blochwave.solver.refine,
     )
     converged = converge(seed)
     # One beam plan is built per tilt, so the beam-plan count is the converged tilt count.

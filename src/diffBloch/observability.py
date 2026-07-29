@@ -29,6 +29,9 @@ from typing import ClassVar, Protocol, runtime_checkable
 __all__ = [
     "NULL_LOGGER",
     "CouplingSummary",
+    "ConvergenceTrial",
+    "ConvergencePassStarted",
+    "ConvergenceSweepStarted",
     "Event",
     "InferenceCompleted",
     "Logger",
@@ -76,6 +79,83 @@ class Logger(Protocol):
     """
 
     def report(self, event: Event) -> None: ...
+
+
+@dataclass(frozen=True)
+class ConvergenceTrial:
+    """One comparison between consecutive numerical settings in a convergence sweep."""
+
+    control: str
+    trial_index: int
+    pass_index: int
+    previous: float
+    candidate: float
+    r_factor: float
+    n_compared_hkl: int
+
+    @property
+    def channel(self) -> str:
+        return f"convergence {self.control}"
+
+    @property
+    def step(self) -> int | None:
+        return self.trial_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "pass": float(self.pass_index),
+            "previous": self.previous,
+            "candidate": self.candidate,
+            "r_factor": self.r_factor,
+            "n_compared_hkl": float(self.n_compared_hkl),
+        }
+
+
+@dataclass(frozen=True)
+class ConvergencePassStarted:
+    """Starting settings for one coordinated convergence pass."""
+
+    pass_index: int
+    g_max: float
+    sg_max: float
+    tilt_steps: int
+    r_factor_threshold: float
+    n_orientations: int
+
+    channel: ClassVar[str] = "convergence pass"
+
+    @property
+    def step(self) -> int | None:
+        return self.pass_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "g_max": self.g_max,
+            "sg_max": self.sg_max,
+            "tilt_steps": float(self.tilt_steps),
+            "r_factor_threshold": self.r_factor_threshold,
+            "n_orientations": float(self.n_orientations),
+        }
+
+
+@dataclass(frozen=True)
+class ConvergenceSweepStarted:
+    """Announcement emitted before one parameter sweep begins."""
+
+    control: str
+    pass_index: int
+
+    channel: ClassVar[str] = "convergence sweep"
+
+    @property
+    def step(self) -> int | None:
+        return self.pass_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"pass": float(self.pass_index)}
 
 
 @dataclass(frozen=True)

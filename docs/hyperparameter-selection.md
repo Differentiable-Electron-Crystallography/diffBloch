@@ -53,10 +53,10 @@ from diffBloch.preprocess import (
 root = Path("examples/experiments/quartz")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
-observations = read_observations(root / cfg.inputs.observations)
+observations = read_observations(root / cfg.inputs.exp_data)
 setup = from_experiment(structure, observations, cfg)
 plan = build_orientation_plans()(
-    select_beams(cfg.numerics.to_beam_selection(setup.integration))(setup.plans.combined)
+    select_beams(cfg.blochwave.to_beam_selection(setup.integration))(setup.plans.combined)
 )
 
 test = ConvergenceTest(
@@ -72,8 +72,8 @@ tolerance = ConvergenceTolerance(
 
 converged_plan = converge_numerics(
     test,
-    cfg.numerics.to_rocking_curve(setup.integration),
-    cfg.preprocess.coupling.to_policy(),
+    cfg.blochwave.to_rocking_curve(setup.integration),
+    cfg.blochwave.to_policy(),
     setup.refinement,
     tolerance,
 )(plan)
