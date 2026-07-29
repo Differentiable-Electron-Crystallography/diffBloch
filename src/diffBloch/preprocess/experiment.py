@@ -190,7 +190,7 @@ def from_experiment(
         observations.betas,
         observations.omegas,
     )
-    plans = tuple(
+    all_plans = tuple(
         CandidatePlan.seed(
             beam_hkl,
             PatternBatch.from_observation_record(observations, zone_axis_id=int(zone_id)),
@@ -201,9 +201,23 @@ def from_experiment(
         for index, zone_id in enumerate(observations.zone_axis_ids)
     )
 
-    validation = _validation_mask(len(plans), config.refinement.split)
-    train_orientations = tuple(p for p, v in zip(plans, validation, strict=True) if not v)
-    val_orientations = tuple(p for p, v in zip(plans, validation, strict=True) if v)
+    selection = config.blochwave.to_orientation_selection()
+    ignored = set(selection.ignore_orientations)
+    out_of_range = sorted(index for index in ignored if index >= len(all_plans))
+    if out_of_range:
+        raise ValueError(
+            "ignore_orientations contains indices outside the PETS rotation range "
+            f"0..{len(all_plans) - 1}: {out_of_range}"
+        )
+    selected = tuple((index, plan) for index, plan in enumerate(all_plans) if index not in ignored)
+    if not selected:
+        raise ValueError("ignore_orientations excludes every PETS rotation")
+
+    # Split membership is defined on the original PETS order. Ignoring a rotation must not renumber
+    # later frames and silently move them between train and validation.
+    validation = _validation_mask(len(all_plans), config.refinement.split)
+    train_orientations = tuple(plan for index, plan in selected if not validation[index])
+    val_orientations = tuple(plan for index, plan in selected if validation[index])
     return ExperimentSetup(
         plans=PlanSplit(
             train=Plan(structure_factor_grid=grid, orientations=train_orientations),

@@ -13,23 +13,21 @@ re-orthonormalisation). The captured ``refinement`` is read-only context
 the step never mutates; the simulation inside is
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
-The active beam set is held fixed at each orientation's seed selection across the search -- it is
-*not* re-filtered per trial *unless* the fit is opted into
-coupling via ``coupling=`` (see below). The rocking-curve tilt set carried by the ``Plan`` is
+The SCORED reflection set is held fixed at each orientation's seed selection across the search.
+With ``coupling=`` the additional SOLVE beams are re-derived per trial, while every scored
+reflection is retained in each segment's solve basis. The rocking-curve tilt set carried by the
+``Plan`` is
 threaded through every trial unchanged, so each candidate is scored under the *same* integration as
 the seed -- the fit/eval consistency invariant. Ordering ``integrate_rocking_curve`` before this
 step therefore couples the fit to the integrated model; with rocking off the tilt set is a single
 identity, identical to a static fit.
 
-**Coupling (opt-in, ``coupling=TrialCoupling(...)``)** re-derives both reflection sets at every
-trial: at *every* trial orientation both the SOLVE union (the per-tilt-segment excitation coupling)
-and the SCORED set (the Klar window intersected with a resolution cap) are re-derived from scratch,
-so both track the trial rather than staying pinned to the seed. The seed is rebuilt through the same
-builder so the greedy comparison is always coupled-vs-coupled, and the last accepted trial is
-already the coupled-at-fitted-orientation plan -- no separate ``couple_beams`` step is needed.
-Per-trial re-selection makes the objective **deliberately non-stationary**: consecutive trials score
-different reflection sets (different wR2 denominators). This is intended, not a bug -- each trial's
-wR2 is over that trial's own filtered set. It is affordable because the atomic ``F_gb`` is
+**Coupling (opt-in, ``coupling=TrialCoupling(...)``)** re-derives the excitation-selected SOLVE
+beams at every trial while pinning the SCORED set to the seed alignment. Pinning is required for a
+valid greedy comparison: otherwise a trial can lower wR2 merely by deleting reflections and reach
+the degenerate one-reflection ``wr2=0`` minimum. The seed is rebuilt through the same builder, and
+the last accepted trial is already the coupled-at-fitted-orientation plan -- no separate
+``couple_beams`` step is needed. It is affordable because the atomic ``F_gb`` is
 computed once and every segment's structure-factor matrix is a cheap gather-index into it, not a
 re-derivation.
 
@@ -48,13 +46,11 @@ import numpy as np
 from numpy.typing import NDArray
 from torch import Tensor
 
-from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import (
     StructureFactorGather,
     build_structure_factor_gather,
     grid_source_indices,
 )
-from diffBloch.core.reciprocal import g_vectors, gmax_mask
 from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
@@ -66,7 +62,6 @@ from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import HexagonalSearch, TrialCoupling, assert_grid_covers_coupling
 
 __all__ = ["fit_orientation"]
@@ -173,7 +168,13 @@ def fit_orientation(
 
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
             return _refine_one(
-                engine, fgb, plan, op, search=search, coupling=coupling, validate=validate
+                engine,
+                fgb,
+                plan,
+                op,
+                search=search,
+                coupling=coupling,
+                validate=validate,
             )
 
         built = require_built_plans(plan)
@@ -226,7 +227,7 @@ def fit_orientation(
     # search rides in the config digest too, but coupling is a composition-site kwarg (not config),
     # so it MUST be in the recipe identity; workers/logger/device are execution-only (device shifts
     # output only to solver tolerance -- see the docstring -- so it stays out of the identity).
-    return as_step("fit_orientation", {"search": search, "coupling": coupling}, run)
+    return as_step("optimize_orientation", {"search": search, "coupling": coupling}, run)
 
 
 def _refine_one(
@@ -292,7 +293,8 @@ def _refine_one(
                 )
             n_trials += 1
             trial_score = float(engine.score_orientation(trial, fgb))
-            if trial_score < current_score:  # greedy first-improvement; restart at this radius
+            accepted = trial_score < current_score
+            if accepted:  # greedy first-improvement; restart at this radius
                 current, current_score = trial, trial_score
                 improved = True
                 break
@@ -312,15 +314,13 @@ def _coupled_trial(
     *,
     validate: bool = True,
 ) -> CoupledOrientationPlan:
-    """Re-couple the solve union and re-select the scored set at ``orientation`` (one coupled trial).
+    """Re-couple the solve union while pinning the scored set at ``orientation`` (one trial).
 
     One objective evaluation: (1) ``build_coupling_segments`` re-derives
-    the per-tilt-segment excitation union at ``orientation`` (the SOLVE set); (2) the Klar window
-    (:func:`klar_beam_mask`) intersected with the scoring-resolution cap
-    (:func:`~diffBloch.core.reciprocal.gmax_mask`, an ideal-cell ``|g|`` metric) selects the SCORED
-    set from that union, with ``000`` retained
-    (it anchors ``psi0`` and is dropped later on pattern intersection). The observed ``pattern``,
-    ``thickness``, and ``tilt_reduction`` are carried from ``op`` unchanged. The atomic ``F_gb`` is
+    the per-tilt-segment excitation union at ``orientation`` (the changing SOLVE set); (2) the seed
+    alignment is added to every segment and retained as the fixed SCORED set. Thus every trial's
+    wR2 compares the same observations. The observed ``pattern``, ``thickness``, and
+    ``tilt_reduction`` are carried from ``op`` unchanged. The atomic ``F_gb`` is
     untouched either way; ``gather_cache`` (keyed by a segment's beam-set bytes) reuses the
     orientation-free per-segment F-gathers across a search's trials -- identical beam set, identical
     gather -- collapsing the per-trial rebuild cost.
@@ -342,20 +342,19 @@ def _coupled_trial(
         energy=op.energy,
         u0=op.u0,
     )
-    union = np.unique(np.concatenate([segment.union_hkl for segment in segments]), axis=0)
-    scored = coupling.scored
-    basis = orientation_basis(cell, orientation)
-    keep = klar_beam_mask(
-        g_vectors(union, basis),
-        energy=op.energy,
-        u0=op.u0,
-        rsg=scored.klar.rsg,
-        dsg=scored.klar.dsg,
-        semiangle=scored.klar.integration.semiangle,
-        geometry=scored.klar.integration.geometry,
+    scored_hkl = np.asarray(op.alignment.hkl, dtype=np.int64)
+    # A trial must not improve merely by dropping scored reflections. Keep the seed objective
+    # domain fixed and include it in every segment so scored ⊆ solved holds throughout the curve.
+    segments = tuple(
+        replace(
+            segment,
+            union_hkl=np.unique(
+                np.concatenate([segment.union_hkl, scored_hkl]),
+                axis=0,
+            ),
+        )
+        for segment in segments
     )
-    keep |= (union == 0).all(axis=1)  # 000 anchors psi0; dropped later on pattern intersection
-    keep &= gmax_mask(union, np.asarray(grid.reciprocal_basis), scored.g_max)  # resolution cap
     gathers = None
     if gather_cache is not None:
         structure_factor_hkl = np.asarray(grid.structure_factor_hkl)
@@ -391,6 +390,6 @@ def _coupled_trial(
         orientation=orientation,
         tilts=tilts,
         tilt_reduction=op.tilt_reduction,
-        scored_hkl=union[keep],
+        scored_hkl=scored_hkl,
         gathers=gathers,
     )

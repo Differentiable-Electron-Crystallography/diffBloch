@@ -1,10 +1,8 @@
 # Example experiment: quartz (SiO2) electron-diffraction inference.
 #
-# A complete, runnable experiment directory. `diffbloch run infer examples/experiments/quartz` reads
-# this file, verifies the input bytes against `experiment.lock`, preprocesses the 99 rotations (beam
-# selection, rocking-curve integration, mosaicity, then the per-rotation orientation + thickness
-# fits, with the orientation fit under the faithful per-trial beam coupling) and scores the full
-# dynamical Bloch-wave forward model against the observed intensities (mean R_obs = 0.0506).
+# Diagnostic quartz configuration retaining source PETS rotation 62 only. `run preprocess` performs
+# coupled SOLVE-beam selection from g_max/sg_max, final rocking-curve plan construction, and
+# orientation optimization; thickness optimization is disabled below.
 #
 # The inputs are the published quartz precession-electron-diffraction dataset:
 #   quartz.cif                the SiO2 structure (space group P3_1 21)
@@ -19,6 +17,8 @@ sample:
   thicknesses: [820.0] # crystal thickness (Angstrom); fit_thickness refines around this seed
 
 blochwave:
+  # Keep only source PETS rotation 62 (the frame previously reported as combined index 56).
+  ignore_orientations: [] #[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98]
   g_max_refine: 1.6 # seed beam-pool radius / scoring-resolution cap (1/Angstrom)
   rocking_curve_sampling: 42 # tilt samples per rocking curve
   dsg: 0.0015 # Klar beam-selection excitation-error cutoff
@@ -29,6 +29,9 @@ blochwave:
   # values (SegmentedUnionCoupling defaults).
   g_max: 2.25
   sg_max: 0.01
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: false
 refinement:
   precision: fp32
   split:

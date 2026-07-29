@@ -27,6 +27,18 @@ from diffBloch.config import load_config, pack_run
 from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
 
 
+def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
+    """Print a consistently aligned 62-column completion summary."""
+    width = 62
+    label_width = 22
+    value_width = width - label_width - 3
+    heading = f" {title} "
+    print(f"╭{heading:─^{width}}╮")
+    for label, value in rows:
+        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
+    print(f"╰{'─' * width}╯")
+
+
 def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``run infer`` and ``run preprocess`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
@@ -184,8 +196,22 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        recipe = ", ".join(record.name for record in plan.provenance)
-        print(f"preprocessed {len(plan.orientations)} rotations; recipe: {recipe}")
+        print()
+        _print_summary_box(
+            "PREPROCESS COMPLETE",
+            (
+                ("Rotations", str(len(plan.orientations))),
+                ("Stages", str(len(plan.provenance))),
+            ),
+        )
+        print()
+        print("Pipeline")
+        for index, record in enumerate(plan.provenance, start=1):
+            print(f"  {index:>2}. {record.name.replace('_', ' ').title()}")
+        print()
+        print("Output files")
+        print(f"  • {'Plan':<20} {(Path(args.experiment_directory) / 'plan.npz').resolve()}")
+        print(f"  • {'Plan Lock':<20} {(Path(args.experiment_directory) / 'plan.lock').resolve()}")
         return 0
 
     if args.command == "run" and args.run_command == "refine":
@@ -208,11 +234,30 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print(
-            f"refined {refined.losses.shape[0]} steps; objective "
-            f"{float(refined.losses[0]):.6f} -> {refined.best_loss:.6f} "
-            f"(best at step {refined.best_step})"
+        best = refined.history[refined.best_step]
+        wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
+        r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
+        diff_loss = "n/a" if best.diff_loss is None else f"{best.diff_loss:.6g}"
+        counts = refined.reflection_counts
+        print()
+        _print_summary_box(
+            "REFINEMENT COMPLETE",
+            (
+                ("Best epoch", str(refined.best_step + 1)),
+                ("Objective", f"{refined.best_loss:.6g}"),
+                ("wR2", wr2),
+                ("R_obs", r_obs),
+                ("Diffraction loss", diff_loss),
+                (
+                    "HKLs (Observed/total)",
+                    f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
+                ),
+            ),
         )
+        print()
+        print("Output files")
+        for name, path in refined.artifacts.items():
+            print(f"  • {name.replace('_', ' ').title():<20} {path}")
         return 0
 
     if args.command == "run" and args.run_command == "converge":

@@ -48,11 +48,8 @@ from diffBloch.preprocess import (
     fit_orientation,
     fit_thickness,
     from_experiment,
-    integrate_rocking_curve,
-    mosaicity,
     pipeline,
     run_inference,
-    select_beams,
 )
 from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
@@ -61,7 +58,7 @@ root = Path("examples/experiments/quartz-checkpoint")
 # Boundary: parse experiment.yaml, verify experiment.lock, and read typed CIF/PETS records.
 cfg, experiment_lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
-observations = read_observations(root / cfg.inputs.observations)
+observations = read_observations(root / cfg.inputs.exp_data)
 
 # Effects stay at the edge: loggers consume typed events from preprocessing/refinement.
 logger = MultiLogger((ConsoleLogger(), CSVLogger(root / "events.csv")))
@@ -71,31 +68,33 @@ setup = from_experiment(structure, observations, cfg)
 
 # Scientific choices are explicit typed values, not a string registry or hidden CLI behavior.
 trial_coupling = TrialCoupling(
-    policy=cfg.preprocess.coupling.to_policy(),
+    policy=cfg.blochwave.to_policy(),
     scored=ScoredHklSelection(
-        klar=cfg.numerics.to_beam_selection(setup.integration),
-        g_max=cfg.numerics.g_max_refine,
+        klar=cfg.blochwave.to_beam_selection(setup.integration),
+        g_max=cfg.blochwave.g_max_refine,
     ),
 )
 
 # Preprocessing is declarative composition of Plan -> Plan steps.
 prepare = pipeline(
     [
-        select_beams(cfg.numerics.to_beam_selection(setup.integration)),
-        build_orientation_plans(),
-        integrate_rocking_curve(cfg.numerics.to_rocking_curve(setup.integration)),
-        mosaicity(cfg.numerics.mosaicity),
+        build_orientation_plans(
+            cfg.blochwave.to_rocking_curve(setup.integration),
+            cfg.blochwave.mosaicity,
+            coupling=cfg.blochwave.to_policy(),
+            scoring_selection=cfg.blochwave.to_beam_selection(setup.integration),
+        ),
         fit_orientation(
             setup.refinement,
             cfg.preprocess.orientation.to_search(),
-            method=cfg.solver.refine,
+            method=cfg.blochwave.solver.refine,
             coupling=trial_coupling,
             logger=logger,
         ),
         fit_thickness(
             setup.refinement,
             cfg.preprocess.thickness.to_grid(),
-            method=cfg.solver.refine,
+            method=cfg.blochwave.solver.refine,
             logger=logger,
         ),
     ],
@@ -104,14 +103,19 @@ prepare = pipeline(
 plan = prepare(setup.plans.combined)
 
 # Inference is the terminal score-only path: same settled Plan, no optimizer updates.
-inference = run_inference(plan, setup.refinement, method=cfg.solver.inference, logger=logger)
+inference = run_inference(
+    plan,
+    setup.refinement,
+    method=cfg.blochwave.solver.inference,
+    logger=logger,
+)
 
 # Refinement composes a pure engine/context with model/problem values, then runs the optimizer shell.
 engine = build_engine(
     plan,
     setup.refinement,
     loss=cfg.refinement.objective.to_loss(),
-    method=cfg.solver.refine,
+    method=cfg.blochwave.solver.refine,
     precision=cfg.refinement.precision,
 )
 model = build_refinement_model(initial=setup.refinement.params)

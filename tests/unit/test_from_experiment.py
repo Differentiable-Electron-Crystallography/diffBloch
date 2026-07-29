@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from diffBloch.config import load_config
@@ -33,6 +34,58 @@ def test_from_experiment_builds_grid_sharing_train_val_split() -> None:
     assert len(train.orientations) + len(val.orientations) == observations.n_rotations
     assert len(val.orientations) == 9
     assert len(train.orientations) == 90
+
+
+def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    observations = read_observations(QUARTZ / "exp_data.cif_pets")
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"ignore_orientations": (0, 9, 56)})}
+    )
+
+    setup = from_experiment(structure, observations, config)
+
+    # Raw index 9 remains a validation member when removed; later rotations are not renumbered.
+    assert len(setup.plans.train.orientations) == 88
+    assert len(setup.plans.validation.orientations) == 8
+    expected = orientation_matrices(
+        observations.ub_matrix,
+        observations.cell_parameters,
+        observations.alphas,
+        observations.betas,
+        observations.omegas,
+    )
+    assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
+    assert not any(
+        np.allclose(plan.orientation, expected[56]) for plan in setup.plans.combined.orientations
+    )
+
+
+def test_from_experiment_rejects_invalid_data_dependent_ignore_selection() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    observations = read_observations(QUARTZ / "exp_data.cif_pets")
+    base = load_config(QUARTZ / "experiment.yaml")
+
+    out_of_range = base.model_copy(
+        update={
+            "blochwave": base.blochwave.model_copy(
+                update={"ignore_orientations": (observations.n_rotations,)}
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="outside the PETS rotation range"):
+        from_experiment(structure, observations, out_of_range)
+
+    all_ignored = base.model_copy(
+        update={
+            "blochwave": base.blochwave.model_copy(
+                update={"ignore_orientations": tuple(range(observations.n_rotations))}
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="excludes every PETS rotation"):
+        from_experiment(structure, observations, all_ignored)
 
 
 def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:

@@ -58,6 +58,11 @@ Use `infer` to score a settled `Plan` without changing parameters; use `refine` 
 trainable structural parameters. Checkpointed examples include `plan.npz` + `plan.lock`, so they can
 reuse expensive preprocessing instead of rebuilding the `Plan` from scratch.
 
+The default refinement runs for 40 epochs and streams `wR2`, `R_obs`, and diffraction loss. Its
+completion summary identifies the best epoch, shows matched observed / total matched HKLs, and
+writes `refined_structure.cif`, `refined_parameters.npz`, and `refinement_summary.json` beside the
+experiment.
+
 See `examples/experiments/quartz/README.md` for the worked example and its expected residual.
 
 ## Examples

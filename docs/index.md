@@ -82,6 +82,10 @@ Use `infer` to run the forward simulation and scoring pass over a settled `Plan`
 structural parameters. Use `refine` to run the optimization loop, repeatedly simulating, scoring,
 and updating the selected trainable structural parameters.
 
+The default refinement runs for 40 epochs, streams `wR2`, `R_obs`, and diffraction loss, then writes
+the best refined CIF, exact raw parameter snapshot, and JSON summary into the experiment directory.
+The CLI prints aligned preprocess/refinement completion summaries and absolute artifact paths.
+
 Python users can compose preprocessing steps, constraints, penalties, and refinement problems
 directly with the public API; the CLI is the friendly default runner, not the only path.
 

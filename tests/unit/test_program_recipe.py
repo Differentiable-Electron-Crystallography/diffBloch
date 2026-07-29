@@ -62,7 +62,7 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     setup = from_experiment(structure, observations, cfg)
     steps = _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
-    fit = next(r for r in records if r.name == "fit_orientation")
+    fit = next(r for r in records if r.name == "optimize_orientation")
     assert fit.params["coupling"]["policy"]["fixed_n_segments"] == 4
 
 
@@ -79,13 +79,38 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
     small = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     large = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=5000.0)))
     names = [
-        "select_beams",
         "build_orientation_plans",
-        "integrate_rocking_curve",
-        "mosaicity",
-        "fit_orientation",
-        "fit_thickness",
+        "optimize_orientation",
+        "optimize_thickness",
     ]
     assert [r.name for r in small] == names == [r.name for r in large]
     # identical params too (fit_orientation records only {search, coupling}; no precision/validate)
     assert [r.params for r in small] == [r.params for r in large]
+
+
+def test_fit_stages_can_be_enabled_independently() -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={
+            "preprocess": cfg.preprocess.model_copy(
+                update={
+                    "optimize_orientation": True,
+                    "optimize_thickness": False,
+                }
+            )
+        }
+    )
+    structure = read_structure(root / cfg.inputs.structure)
+    observations = read_observations(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, observations, cfg)
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+    assert [record.name for record in records] == [
+        "build_orientation_plans",
+        "optimize_orientation",
+    ]

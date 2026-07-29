@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
 
@@ -25,7 +25,7 @@ import torch
 from torch import Tensor
 
 from diffBloch.core.dynamical import build_bloch_system, build_bloch_systems, stack_beam_plans
-from diffBloch.core.losses import optimal_scale
+from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
     BlochSolution,
@@ -234,6 +234,57 @@ class RefinementEngine:
             forward_context_for=_component_forward_context_for(model) if model.components else None,
         )
 
+    def refinement_metrics(self, model: RefinementModel) -> tuple[float, int, int, int, int]:
+        """Return mean R_obs and reflection counts for one refinement-model snapshot.
+
+        Counts are over PETS rows in the selected rotations: matched rows enter the diffraction
+        alignment, unmatched rows do not; strong/weak split matched rows at ``I > 3 sigma``.
+        """
+        with torch.no_grad():
+            state = self.physical_state(model.structure.initial)
+            for constraint in model.structure.constraints:
+                state = constraint.apply(state)
+            fgb = self._structure_factors_from_state(state)
+            r_values: list[float] = []
+            n_matched = 0
+            n_strong = 0
+            n_weak = 0
+            n_unmatched = 0
+            for rotation_index, orientation in enumerate(self.orientations):
+                context = _forward_context(
+                    model, rotation_index=rotation_index, orientation=orientation
+                )
+                thickness = context.thickness
+                if thickness is None:
+                    thickness = self._thickness_for(orientation, model.structure.initial)
+                aligned = align(
+                    self._solve(orientation, fgb, thickness),
+                    orientation.pattern,
+                    orientation.alignment,
+                )
+                scores = torch.stack(
+                    [
+                        optimal_scale(
+                            aligned.calculated[t],
+                            aligned.observed[t],
+                            aligned.sigmas[t],
+                            metric=rbragg,
+                        )[1]
+                        for t in range(aligned.calculated.shape[0])
+                    ]
+                )
+                finite = scores[torch.isfinite(scores)]
+                if finite.numel():
+                    r_values.append(float(finite.min()))
+                strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
+                matched = int(strong.numel())
+                n_matched += matched
+                n_strong += int(strong.sum())
+                n_weak += matched - int(strong.sum())
+                n_unmatched += int(orientation.pattern.hkl.shape[0]) - matched
+        mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
+        return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
+
     def _objective_value(
         self,
         params: RefinableParams,
@@ -253,6 +304,7 @@ class RefinementEngine:
             state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
+        r_obs_values: list[float] = []
         for rotation_index, orientation in enumerate(self.orientations):
             context = (
                 ForwardContext()
@@ -264,6 +316,21 @@ class RefinementEngine:
                 thickness = self._thickness_for(orientation, params)
             solution = self._solve(orientation, fgb, thickness)
             aligned = align(solution, orientation.pattern, orientation.alignment)
+            with torch.no_grad():
+                scores = torch.stack(
+                    [
+                        optimal_scale(
+                            aligned.calculated[t].detach(),
+                            aligned.observed[t],
+                            aligned.sigmas[t],
+                            metric=rbragg,
+                        )[1]
+                        for t in range(aligned.calculated.shape[0])
+                    ]
+                )
+                finite = scores[torch.isfinite(scores)]
+                if finite.numel():
+                    r_obs_values.append(float(finite.min()))
             term = self.loss(aligned)
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
@@ -275,7 +342,12 @@ class RefinementEngine:
             components[penalty.name] = ObjectiveComponent(
                 raw=penalty.value(state), weight=penalty.weight
             )
-        return ObjectiveValue(components)
+        return ObjectiveValue(
+            components,
+            diagnostics={
+                "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan"))
+            },
+        )
 
     def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
         """The thickness ``(T,)`` the forward model uses for one orientation.
@@ -540,6 +612,9 @@ class ModelRefinementResult:
     losses: Tensor
     best_model: RefinementModel
     best_step: int
+    history: tuple[RefinementStep, ...] = ()
+    reflection_counts: Mapping[str, int] = field(default_factory=dict)
+    artifacts: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def params(self) -> RefinableParams:
@@ -672,6 +747,7 @@ def run_refinement_model(
         return float(loss.detach())
 
     losses: list[float] = []
+    history: list[RefinementStep] = []
     best_loss = float("inf")
     best_step = 0
     best_model = _detach_model(current_model())
@@ -684,26 +760,38 @@ def run_refinement_model(
         if reported_objective is None:
             raise RuntimeError("optimizer did not evaluate the refinement objective")
         losses.append(loss_value)
-        logger.report(
-            RefinementStep(
-                iteration=step,
-                loss=loss_value,
-                wr2=(
-                    _scalar_float(reported_objective.components["diffraction"].raw)
-                    / len(engine.orientations)
-                    if engine.loss is scaled_w_rbragg_loss
-                    else None
-                ),
-                objective_total=_scalar_float(reported_objective.total),
-                components=_component_measurements(reported_objective),
-            )
+        diffraction_loss = _scalar_float(reported_objective.components["diffraction"].raw)
+        event = RefinementStep(
+            iteration=step,
+            loss=loss_value,
+            wr2=(
+                diffraction_loss / len(engine.orientations)
+                if engine.loss is scaled_w_rbragg_loss
+                else None
+            ),
+            r_obs=reported_objective.diagnostics["r_obs"],
+            diff_loss=diffraction_loss,
+            objective_total=_scalar_float(reported_objective.total),
+            components=_component_measurements(reported_objective),
         )
+        history.append(event)
+        logger.report(event)
         if loss_value < best_loss:
             best_loss, best_step, best_model = loss_value, step, snapshot
     logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
+    _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)
     return ModelRefinementResult(
         model=_detach_model(current_model()),
         losses=torch.tensor(losses, dtype=torch.float64),
         best_model=best_model,
         best_step=best_step,
+        history=tuple(history),
+        reflection_counts=MappingProxyType(
+            {
+                "matched": n_matched,
+                "matched_i_gt_3sigma": n_strong,
+                "matched_i_le_3sigma": n_weak,
+                "unmatched_observed": n_unmatched,
+            }
+        ),
     )

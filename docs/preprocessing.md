@@ -19,7 +19,7 @@ M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
 
 where {math}`\alpha` is the main varying goniometer angle.
 
-Using a fixed trial thickness and the starting structure, `fit_orientation` searches nearby
+Using a fixed trial thickness and the starting structure, orientation optimization searches nearby
 orientations for better agreement with experiment. Three approaches are available:
 
 | Method | Difference |
@@ -38,8 +38,14 @@ approaches, both using the starting structure to improve agreement with experime
 | Grid search | Selects the best mean thickness independently for each rotation. |
 | Neural network | Learns how apparent thickness varies smoothly with rotation angle. |
 
-Thickness can be refined before or after orientation; the default workflow refines orientation
-first.
+The default workflow optimizes orientation first and thickness second when both stages are enabled.
+Either stage can be disabled independently:
+
+```yaml
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: false
+```
 
 ## The `Plan`
 
@@ -85,9 +91,10 @@ A `Plan` deliberately separates sets of hkls by purpose or origin:
 ## Rocking curves and mosaicity inside a `Plan`
 
 The virtual frame's angular range is represented by tilt sub-orientations around its central
-orientation. `integrate_rocking_curve` replaces a single static orientation with those samples.
-`mosaicity` applies a moving-average broadening along the tilt axis before their intensities are
-summed.
+orientation. In the default app recipe, `build_orientation_plans` constructs those sub-tilts,
+selects each tilt-dependent SOLVE basis from `g_max` and `sg_max`, builds the Bloch geometry, and
+attaches the configured mosaic reduction. Rocking integration and mosaicity are parts of the built
+orientation plan, not separately displayed default stages.
 
 ## API shape: from experiment records to an initial `Plan`
 
@@ -113,16 +120,19 @@ print(refinement_setup.params.asu_positions.shape)
 
 ## `Plan -> Plan` steps
 
-Preprocessing is a composable `Plan -> Plan` pipeline. A `select_beams` step, for example, is a
-function that takes a `Plan` and adjusts its geometry/data scaffold by replacing each rotation's
-candidate beam set with the reflections selected by the beam-selection policy. More generally, any
-function with that shape can be a step: it receives a `Plan`, does one focused piece of work, and
-returns an updated `Plan`.
+Preprocessing is a composable `Plan -> Plan` pipeline. Any function with that shape receives a
+`Plan`, does one focused piece of work, and returns an updated `Plan`.
+
+The default app recipe begins with one displayed `build_orientation_plans` stage. It calculates the
+shared structure-factor support, constructs every central orientation and rocking sub-tilt,
+calculates excitation errors for reciprocal-lattice points inside the solve cutoff, selects the
+tilt-dependent SOLVE beams, builds the Bloch geometry, and matches the selected scoring reflections
+to PETS observations. It does not use experimental presence to choose the SOLVE basis.
 
 Real steps include:
 
-- {func}`diffBloch.preprocess.steps.beams.select_beams` — choose each rotation's candidate solve beams.
-- {func}`diffBloch.preprocess.steps.beams.build_orientation_plans` — build solvable per-orientation beam geometry.
+- {func}`diffBloch.preprocess.steps.beams.build_orientation_plans` — build the default coupled solve geometry, rocking sub-tilts, reduction, and scoring alignment.
+- {func}`diffBloch.preprocess.steps.beams.select_beams` — lower-level tilt-independent candidate selection for custom API pipelines and convergence work; it is not a separate default app stage.
 - {func}`diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve` — expand orientations into virtual rocking-curve tilts.
 - {func}`diffBloch.preprocess.steps.mosaicity.mosaicity` — apply tilt-axis mosaic broadening.
 - {func}`diffBloch.preprocess.steps.fit_orientation.fit_orientation` — search nearby orientations and keep the best-scoring one.
@@ -138,16 +148,15 @@ the best updated `Plan`.
 
 ## API example: composing simple steps
 
-This example shows the composition shape. It is intentionally small; the full default recipe also
-captures refinement setup, coupling policy, device/precision choices, and logging.
+This example mirrors the default geometry-build shape. The app additionally handles checkpointing,
+device/precision choices, optional fitting stages, and logging.
 
 ```python
 from pathlib import Path
 
 from diffBloch.config import load_experiment
 from diffBloch.io import read_observations, read_structure
-from diffBloch.preprocess import build_orientation_plans, from_experiment, pipeline, select_beams
-from diffBloch.specs import BeamSelection
+from diffBloch.preprocess import build_orientation_plans, from_experiment, pipeline
 
 root = Path("examples/experiments/quartz-checkpoint")
 cfg, _lock = load_experiment(root)
@@ -158,11 +167,23 @@ setup = from_experiment(structure, observations, cfg)
 base_plan = setup.plans.combined
 
 prepare = pipeline([
-    select_beams(BeamSelection()),
-    build_orientation_plans(),
+    build_orientation_plans(
+        cfg.blochwave.to_rocking_curve(setup.integration),
+        cfg.blochwave.mosaicity,
+        coupling=cfg.blochwave.to_policy(),
+        scoring_selection=cfg.blochwave.to_beam_selection(setup.integration),
+    ),
 ])
 
 prepared_plan = prepare(base_plan)
+```
+
+From the CLI, preprocessing prints each completed stage as
+`Preprocess stage N │ Name │ measurements`, then an aligned completion box, the resolved pipeline,
+and the absolute `plan.npz` / `plan.lock` locations:
+
+```bash
+uv run diffbloch run preprocess examples/experiments/quartz --refresh
 ```
 
 ## API example: loading a checkpointed `Plan`

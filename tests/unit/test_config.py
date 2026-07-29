@@ -17,6 +17,7 @@ from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     HexagonalSearch,
     IntegrationGeometry,
+    OrientationSelection,
     RockingCurve,
     SegmentedUnionCoupling,
     ThicknessGrid,
@@ -40,6 +41,9 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.objective.data_term == "scaled_weighted_r"
     assert cfg.refinement.precision == "fp64"
     assert cfg.refinement.split.validation == "every_10th_rotation"
+    assert cfg.blochwave.ignore_orientations == ()
+    assert cfg.preprocess.optimize_orientation is True
+    assert cfg.preprocess.optimize_thickness is True
 
 
 def test_solver_method_must_be_a_known_method() -> None:
@@ -64,6 +68,19 @@ def test_unknown_key_is_rejected_not_ignored() -> None:
         ExperimentConfig.model_validate({**base, "blochwave": {"g_max_sf": 5.0}})
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "nonsense": True})  # unknown top-level key
+
+
+def test_ignore_orientations_parses_to_validated_source_indices() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    cfg = ExperimentConfig.model_validate(
+        {**base, "blochwave": {"ignore_orientations": [0, 18, 56]}}
+    )
+    assert cfg.blochwave.to_orientation_selection() == OrientationSelection((0, 18, 56))
+
+    with pytest.raises(ValidationError, match="non-negative"):
+        ExperimentConfig.model_validate({**base, "blochwave": {"ignore_orientations": [-1]}})
+    with pytest.raises(ValidationError, match="duplicate"):
+        ExperimentConfig.model_validate({**base, "blochwave": {"ignore_orientations": [2, 2]}})
 
 
 def test_sample_thicknesses_are_positive_and_nonempty() -> None:

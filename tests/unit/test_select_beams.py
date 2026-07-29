@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from diffBloch.config import load_config
+from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_observations, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -15,6 +17,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
+from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, SegmentedUnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -109,3 +112,49 @@ def test_select_beams_preserves_source_and_defers_the_build() -> None:
     # build_orientation_plans then bridges the pruned beams to the pattern via the alignment.
     built = build_orientation_plans()(pruned).orientations[0]
     assert built.alignment.hkl.shape[1] == 3
+
+
+def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> None:
+    plan, config, integration = _quartz_train_plan()
+    pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
+
+    built = build_orientation_plans(
+        config.blochwave.to_rocking_curve(integration),
+        config.blochwave.mosaicity,
+    )(pruned).orientations[0]
+
+    assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
+    assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
+    assert isinstance(built.tilt_reduction, MosaicSmoothed)
+
+
+def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:
+    with pytest.raises(ValueError, match="mosaicity requires"):
+        build_orientation_plans(mosaicity=Mosaicity(window=1))
+    with pytest.raises(ValueError, match="coupling requires"):
+        build_orientation_plans(coupling=SegmentedUnionCoupling())
+
+
+def test_build_orientation_plans_rejects_mosaic_window_larger_than_sampling() -> None:
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"),
+        sampling=2,
+    )
+    with pytest.raises(ValueError, match="exceeds"):
+        build_orientation_plans(rocking, Mosaicity(window=3))
+
+
+def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment() -> None:
+    plan, config, integration = _quartz_train_plan()
+
+    built = build_orientation_plans(
+        config.blochwave.to_rocking_curve(integration),
+        config.blochwave.mosaicity,
+        coupling=config.blochwave.to_policy(),
+    )(plan).orientations[0]
+
+    observed = {tuple(row) for row in plan.orientations[0].pattern.hkl.tolist()}
+    scored = {tuple(row) for row in built.alignment.hkl.tolist()}
+    simulated = {tuple(row) for row in built.beam_hkl.tolist()}
+    assert scored == observed & simulated
+    assert (0, 0, 0) in simulated

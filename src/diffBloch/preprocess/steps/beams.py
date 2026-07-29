@@ -27,12 +27,15 @@ from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
+from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
-from diffBloch.engine.plan import OrientationPlan
+from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
+from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import seed_beam_hkl
+from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
-from diffBloch.specs import BeamSelection
+from diffBloch.specs import BeamSelection, Mosaicity, RockingCurve, SegmentedUnionCoupling
 
 __all__ = ["build_orientation_plans", "klar_beam_mask", "reseed_pool", "select_beams"]
 
@@ -63,34 +66,145 @@ def select_beams(selection: BeamSelection) -> PlanStep:
     return as_step("select_beams", selection, run)
 
 
-def build_orientation_plans() -> PlanStep:
-    """Return a ``Plan -> Plan`` step that builds each candidate into a solvable orientation plan.
+def build_orientation_plans(
+    rocking: RockingCurve | None = None,
+    mosaicity: Mosaicity | None = None,
+    *,
+    coupling: SegmentedUnionCoupling | None = None,
+    scoring_selection: BeamSelection | None = None,
+) -> PlanStep:
+    """Build each candidate's final tilted Bloch geometry and intensity reduction.
 
     The single *build* boundary of the preprocess pipeline: it materialises each orientation's
     structure-factor gather (the dominant cost) over its beam set via ``OrientationPlan.build``, and
-    the rebuilt ``AlignmentPlan`` re-bridges the observed ``pattern`` to that set. Composed *after*
-    :func:`select_beams`, so the gather is built once over the small Klar-active set -- never the
-    full candidate pool ``from_experiment`` lays down (which is intractable for a large cell). The
-    engine consumes only these built plans; a :class:`~diffBloch.preprocess.plan.CandidatePlan` has
-    no ``beam_plans`` and is unsolvable by construction.
+    the rebuilt ``AlignmentPlan`` re-bridges the simulator output to the observed ``pattern``. A
+    custom pipeline may compose it after :func:`select_beams`; the default coupled path instead
+    derives the SOLVE beams directly from ``g_max``/``sg_max`` and the explicit sub-tilts. The
+    engine consumes only these built plans; a
+    :class:`~diffBloch.preprocess.plan.CandidatePlan` has no ``beam_plans`` and is unsolvable by
+    construction.
+
+    When ``rocking`` is supplied, the builder directly creates its complete sub-tilt geometry
+    instead of first building a temporary central-orientation plan and rebuilding it later.
+    ``mosaicity`` selects the reduction applied to those sub-tilt intensities and therefore requires
+    ``rocking``. When ``coupling`` is supplied, each segment's beam set is selected from the full
+    support grid by ``|g| < g_max`` and ``|Sg| < sg_max`` at its boundary tilts, then the ordinary
+    alignment intersects the resulting simulator HKLs with the PETS observations.
+    ``scoring_selection`` optionally applies the former Klar ``rsg``/``dsg``/semiangle filter to
+    the candidate scoring pool before that intersection; it does not alter the coupled SOLVE beams.
+    Omitting ``coupling`` preserves the simple builder used by focused APIs/tests.
     """
+    if mosaicity is not None and rocking is None:
+        raise ValueError("mosaicity requires rocking-curve geometry")
+    if coupling is not None and rocking is None:
+        raise ValueError("coupling requires rocking-curve geometry")
+    tilts = (
+        None
+        if rocking is None
+        else rocking_curve_tilts(
+            rocking.integration.semiangle,
+            rocking.sampling,
+            geometry=rocking.integration.geometry,
+        )
+    )
+    if mosaicity is not None:
+        assert rocking is not None  # narrowed by the construction guard above
+        if mosaicity.window > rocking.sampling:
+            raise ValueError(
+                f"mosaicity window {mosaicity.window} exceeds the {rocking.sampling} "
+                "rocking-curve tilts"
+            )
+    reduction = PLAIN_SUM if mosaicity is None else MosaicSmoothed(mosaicity.window)
 
     def run(plan: Plan) -> Plan:
-        built = tuple(
-            OrientationPlan.build(
-                plan.structure_factor_grid,
-                np.asarray(cp.beam_hkl),
-                cp.pattern,
-                energy=cp.energy,
-                thickness=cp.thickness,
-                u0=cp.u0,
-                orientation=cp.orientation,
+        candidates = require_candidate_plans(plan)
+        built: tuple[OrientationPlan | CoupledOrientationPlan, ...]
+        if coupling is None:
+            built = tuple(
+                OrientationPlan.build(
+                    plan.structure_factor_grid,
+                    np.asarray(cp.beam_hkl),
+                    cp.pattern,
+                    energy=cp.energy,
+                    thickness=cp.thickness,
+                    u0=cp.u0,
+                    orientation=cp.orientation,
+                    tilts=tilts,
+                    tilt_reduction=reduction,
+                )
+                for cp in candidates
             )
-            for cp in require_candidate_plans(plan)
-        )
+        else:
+            assert tilts is not None
+            grid = plan.structure_factor_grid
+            built = tuple(
+                _build_coupled_candidate(
+                    grid,
+                    cp,
+                    tilts,
+                    reduction,
+                    coupling,
+                    scoring_selection=scoring_selection,
+                )
+                for cp in candidates
+            )
         return replace(plan, orientations=built)
 
-    return as_step("build_orientation_plans", None, run)
+    return as_step(
+        "build_orientation_plans",
+        (
+            None
+            if rocking is None and coupling is None
+            else {
+                "rocking": rocking,
+                "mosaicity": mosaicity,
+                "coupling": coupling,
+                "scoring_selection": scoring_selection,
+            }
+        ),
+        run,
+    )
+
+
+def _build_coupled_candidate(
+    grid: StructureFactorGrid,
+    candidate: CandidatePlan,
+    tilts: NDArray[np.float64],
+    reduction: TiltReduction,
+    coupling: SegmentedUnionCoupling,
+    *,
+    scoring_selection: BeamSelection | None,
+) -> CoupledOrientationPlan:
+    """Build one simulator plan from geometric coupling only; alignment handles observations."""
+    segments = build_coupling_segments(
+        coupling,
+        np.asarray(grid.structure_factor_hkl, dtype=np.int64),
+        cell=np.asarray(grid.cell, dtype=np.float64),
+        orientation=np.asarray(candidate.orientation, dtype=np.float64),
+        tilts=tilts,
+        energy=candidate.energy,
+        u0=candidate.u0,
+    )
+    scored_hkl = (
+        None
+        if scoring_selection is None
+        else np.asarray(
+            _reselect(np.asarray(grid.cell), candidate, scoring_selection).beam_hkl,
+            dtype=np.int64,
+        )
+    )
+    return CoupledOrientationPlan.build(
+        grid,
+        [(segment.union_hkl, segment.covered_tilt_indices) for segment in segments],
+        candidate.pattern,
+        energy=candidate.energy,
+        thickness=candidate.thickness,
+        u0=candidate.u0,
+        orientation=candidate.orientation,
+        tilts=tilts,
+        tilt_reduction=reduction,
+        scored_hkl=scored_hkl,
+    )
 
 
 def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) -> Plan:
