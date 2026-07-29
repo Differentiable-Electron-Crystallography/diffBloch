@@ -16,12 +16,12 @@ The main numerical controls are:
 
 | Control | What it changes |
 |---|---|
-| `g_max` | Maximum reciprocal-vector length included in the simulation. |
-| `sg_max` | Maximum excitation error for a reflection to enter the simulation. |
-| `tilt_steps` | Number of orientations used to integrate each rocking curve. |
+| `g_max` | Maximum reciprocal-vector length of beams included in the Bloch-wave simulation. |
+| `sg_max` | Maximum excitation-error magnitude for a beam to enter the simulation at a sampled tilt. |
+| `rocking_curve_sampling` | Number of tilt samples used to integrate each rocking curve. |
 
 Increasing `g_max` or `sg_max` increases the number of beams \(N\), with simulation cost scaling
-approximately as \(N^3\). Cost scales linearly with `tilt_steps`.
+approximately as \(N^3\). Cost scales approximately linearly with `rocking_curve_sampling`.
 
 ## Convergence testing in diffBloch
 
@@ -29,8 +29,9 @@ For each control, diffBloch increases the value by a chosen step, rebuilds the s
 compares consecutive calculated intensity sets. The sweep stops when their R-factor falls below
 `r_factor_threshold`; failure to reach the threshold within `max_iterations` raises an error.
 
-Convergence testing sweeps `g_max`, `sg_max`, and `tilt_steps`. It should include representative
-experimental orientations because reciprocal-space density varies through a tilt series. 
+Convergence testing sweeps `g_max`, `sg_max`, and `rocking_curve_sampling`. It should include
+representative experimental orientations because reciprocal-space density varies through a tilt
+series.
 ## API example
 
 Convergence testing is an optional preprocessing step, so its settings are explicit Python values
