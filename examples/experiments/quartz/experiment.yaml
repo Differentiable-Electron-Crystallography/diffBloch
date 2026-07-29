@@ -27,18 +27,10 @@ blochwave:
   # Per-trial SOLVE-union coupling for the orientation fit. Declared explicitly because coupling has
   # no config default -- it determines the fit's physics. These are the faithful diffBloch_private
   # values (SegmentedUnionCoupling defaults).
-  fixed_n_segments: 12
   g_max: 2.25
   sg_max: 0.01
-  union_adaptive: true
-
-  solver:
-    inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
-    refine: matrix_exp # gradient-safe solver used inside the preprocess fits
-
 refinement:
   precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation
-

@@ -15,13 +15,8 @@ blochwave:
   rsg: 0.9
   # Per-trial SOLVE-union coupling for the orientation fit (declared explicitly; coupling has no
   # config default). Faithful diffBloch_private values, recovered from the committed plan.lock.
-  fixed_n_segments: 12
   g_max: 2.25
   sg_max: 0.01
-  solver:
-    inference: bloch_eigen
-    refine: matrix_exp
-
 refinement:
   precision: fp32
   split:

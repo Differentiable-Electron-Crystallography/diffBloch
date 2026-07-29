@@ -61,7 +61,7 @@ class SolverConfig(_StrictConfig):
     """
 
     refine: SolverMethod = "matrix_exp"  # gradient-safe default for the refinement (backprop) path
-    inference: SolverMethod = "bloch_eigen"  # pinned to match existing e2e references
+    inference: SolverMethod = "matrix_exp"
 
 
 class BlochwaveConfig(_StrictConfig):

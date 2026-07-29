@@ -14,14 +14,8 @@ blochwave:
   rsg: 0.9
   # The faithful diffBloch_private SOLVE-union coupling (SegmentedUnionCoupling defaults); declared
   # explicitly because coupling has no config default -- it determines the fit's physics.
-  fixed_n_segments: 12
   g_max: 2.25
   sg_max: 0.01
-  union_adaptive: false
-  solver:
-    inference: bloch_eigen
-    refine: matrix_exp
-
 refinement:
   split:
     train: all_except_validation

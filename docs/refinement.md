@@ -60,11 +60,7 @@ print(result.best_step, result.best_loss)
 ## Advanced composition: constraints, penalties, and learned thickness
 
 The default CLI refinement is intentionally conservative: it refines selected structural parameter
-groups against diffraction. The lower-level API also supports the richer composition pattern used in
-Malik et al. (2026),
-["Hybrid physics-machine learning models for quantitative electron diffraction refinements"](https://doi.org/10.1038/s41467-026-71673-9),
-and reimplemented in
-[`examples/papers/malik-2026-hybrid-physics-ml`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/papers/malik-2026-hybrid-physics-ml):
+groups against diffraction. The lower-level API also supports richer composition:
 
 - **crystallographic constraints** are built into `RefinementSetup.from_structure(...)`; special-
   position coordinates and ADP equality constraints are always enforced by the parameter
@@ -76,9 +72,7 @@ and reimplemented in
 - **components** are trainable non-structural model pieces that provide dependent forward-model
   values, such as apparent thickness, alongside the structural parameters.
 
-This is the pattern used in
-[`examples/papers`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/papers):
-compose a structure component, optional hard constraints, optional soft penalties, and optional
+Compose a structure component, optional hard constraints, optional soft penalties, and optional
 forward-model components, then optimize all selected leaves through one objective.
 
 ```python

@@ -30,7 +30,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.name == "quartz"
     # defaults-as-code: the experiment file only needs inputs + overrides
     assert cfg.blochwave.solver.refine == "matrix_exp"
-    assert cfg.blochwave.solver.inference == "bloch_eigen"
+    assert cfg.blochwave.solver.inference == "matrix_exp"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.blochwave.g_max_refine == 1.6
     assert cfg.refinement.trainable.positions == "all"

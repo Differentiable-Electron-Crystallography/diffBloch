@@ -32,13 +32,8 @@ blochwave:
   # Abiraterone's per-trial SOLVE-union coupling -- experiment-specific, distinct from quartz's
   # faithful defaults. Coupling radius g_max = 1.5; the SF grid is derived as 2 * g_max = 3.0 to
   # span the beam-difference support. Declared explicitly because coupling has no config default.
-  fixed_n_segments: 4
   g_max: 1.5
   sg_max: 0.02
-
-  solver:
-    inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
-    refine: matrix_exp # gradient-safe solver used inside the preprocess fits
 
 refinement:
   precision: fp32
@@ -60,4 +55,3 @@ refinement:
   split:
     train: all_except_validation
     validation: every_10th_rotation
-
