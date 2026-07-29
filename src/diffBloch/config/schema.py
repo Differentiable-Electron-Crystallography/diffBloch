@@ -181,7 +181,6 @@ class TrainableConfig(_StrictConfig):
     positions: Literal["all", "none"] = "all"
     adp: Literal["all", "none"] = "all"
     occupancy: Literal["all", "none"] = "none"
-    fgb: Literal["all", "none"] = "none"
 
     def to_spec(self) -> TrainableSpec:
         """Parse into the ``TrainableSpec`` the refinement optimizer consumes."""
@@ -189,7 +188,6 @@ class TrainableConfig(_StrictConfig):
             positions=_atom_selection(self.positions),
             adp=_atom_selection(self.adp),
             occupancy=_atom_selection(self.occupancy),
-            fgb=_atom_selection(self.fgb),
         )
 
 
