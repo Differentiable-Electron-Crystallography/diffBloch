@@ -145,8 +145,8 @@ def test_config_digest_is_stable_and_value_sensitive() -> None:
     # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
     bumped = cfg.model_copy(
         update={
-            "numerics": cfg.numerics.model_copy(
-                update={"g_max_refine": cfg.numerics.g_max_refine + 1.0}
+            "blochwave": cfg.blochwave.model_copy(
+                update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
             )
         }
     )
@@ -159,14 +159,22 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
     base = config_digest(cfg)
 
     def with_solver(**update: object) -> object:
-        return cfg.model_copy(update={"solver": cfg.solver.model_copy(update=update)})
+        return cfg.model_copy(
+            update={
+                "blochwave": cfg.blochwave.model_copy(
+                    update={"solver": cfg.blochwave.solver.model_copy(update=update)}
+                )
+            }
+        )
 
     def with_refinement(**update: object) -> object:
         return cfg.model_copy(update={"refinement": cfg.refinement.model_copy(update=update)})
 
     # excluded -- cannot alter the preprocess Plan, so must not restale the checkpoint
     assert config_digest(cfg.model_copy(update={"name": "different"})) == base
-    assert config_digest(with_solver(inference=_other_method(cfg.solver.inference))) == base
+    assert (
+        config_digest(with_solver(inference=_other_method(cfg.blochwave.solver.inference))) == base
+    )
     assert (
         config_digest(
             with_refinement(
@@ -182,7 +190,7 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
         == base
     )
     # included -- determine the settled Plan, so a change must restale
-    assert config_digest(with_solver(refine=_other_method(cfg.solver.refine))) != base
+    assert config_digest(with_solver(refine=_other_method(cfg.blochwave.solver.refine))) != base
     assert (
         config_digest(
             with_refinement(
@@ -250,8 +258,8 @@ def test_config_change_is_stale(tmp_path: Path) -> None:
     args["config_digest"] = config_digest(
         cfg.model_copy(
             update={
-                "numerics": cfg.numerics.model_copy(
-                    update={"g_max_refine": cfg.numerics.g_max_refine + 1.0}
+                "blochwave": cfg.blochwave.model_copy(
+                    update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
                 )
             }
         )

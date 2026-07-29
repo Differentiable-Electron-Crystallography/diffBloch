@@ -22,6 +22,7 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from diffBloch.config import (
@@ -49,6 +50,8 @@ from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import Device
 from diffBloch.preprocess import (
     OPAQUE,
+    ConvergenceTest,
+    ConvergenceTolerance,
     Plan,
     PlanStep,
     build_orientation_plans,
@@ -60,19 +63,24 @@ from diffBloch.preprocess import (
     mosaicity,
     pipeline,
     read_plan,
-    report_coupling,
     resolve_recipe,
     run_inference,
     select_beams,
     step_records,
     write_plan,
 )
+from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import ScoredHklSelection, TrialCoupling
+from diffBloch.specs import IntegrationGeometry, ScoredHklSelection, TrialCoupling
 
-__all__ = ["preprocess_experiment", "refine_experiment", "run_experiment"]
+__all__ = [
+    "converge_experiment",
+    "preprocess_experiment",
+    "refine_experiment",
+    "run_experiment",
+]
 
 _log = logging.getLogger(__name__)
 
@@ -93,6 +101,67 @@ _PLAN_LOCK = "plan.lock"
 # -- possibly worse -- basin than fp64 would on the bumpy coupled landscape. A search-robustness
 # trade, not a scoring one.
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
+
+
+def converge_experiment(
+    experiment_dir: str | Path,
+    *,
+    logger: Logger = NULL_LOGGER,
+    device: Device = "cuda",
+    n_orientations: int = 1,
+) -> ConvergenceState:
+    """Run the standard numerical-convergence test for an experiment.
+
+    Starting from the experiment's configured simulation settings, sweep ``g_max``, ``sg_max``,
+    and rocking-curve tilt steps using the defaults owned by :class:`ConvergenceTest` and
+    :class:`ConvergenceTolerance`. Return the smallest settled values found by the sweep.
+    """
+    root = Path(experiment_dir)
+    cfg, _lock = load_experiment(root)
+
+    structure = read_structure(
+        root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
+    )
+    observations = read_observations(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, observations, cfg)
+    refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
+    combined = setup.plans.combined
+    if n_orientations < 1:
+        raise ValueError("n_orientations must be >= 1")
+    if n_orientations > len(combined.orientations):
+        raise ValueError(
+            f"n_orientations={n_orientations} exceeds the experiment's "
+            f"{len(combined.orientations)} orientations"
+        )
+    selected = replace(
+        combined,
+        orientations=combined.orientations[:n_orientations],
+    )
+    rocking = cfg.blochwave.to_rocking_curve(setup.integration)
+    simulation = cfg.blochwave.to_policy()
+    plan = pipeline(
+        [
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
+            build_orientation_plans(),
+        ]
+    )(selected)
+
+    _plan, settled = run_convergence(
+        plan,
+        ConvergenceState(
+            g_max=simulation.g_max,
+            sg_max=simulation.sg_max,
+            tilt_steps=rocking.sampling,
+        ),
+        ConvergenceTest(),
+        rocking,
+        simulation,
+        refinement,
+        ConvergenceTolerance(),
+        method=cfg.blochwave.solver.refine,
+        logger=logger,
+    )
+    return settled
 
 
 def preprocess_experiment(
@@ -118,7 +187,7 @@ def preprocess_experiment(
     The recipe includes **per-trial beam coupling** (the fit
     re-derives the SOLVE union + SCORED set at every trial orientation). Its coupling policy,
     orientation-search bounds, thickness grid, and whether
-    hydrogens are loaded all come from config (``preprocess.coupling`` / ``preprocess.orientation``
+    hydrogens are loaded all come from config (``blochwave`` / ``preprocess.orientation``
     / ``preprocess.thickness`` / ``inputs.load_hydrogens``). A caller wanting a different
     composition (e.g. the cheaper tilt-independent fit) composes their own ``pipeline([...])`` with
     the public steps.
@@ -201,7 +270,7 @@ def run_experiment(
     return run_inference(
         prepared,
         refinement,
-        method=cfg.solver.inference,
+        method=cfg.blochwave.solver.inference,
         device=device,
         max_batch=max_batch,
         logger=logger,
@@ -255,7 +324,7 @@ def refine_experiment(
         prepared,
         refinement,
         loss=cfg.refinement.objective.to_loss(),
-        method=cfg.solver.refine,
+        method=cfg.blochwave.solver.refine,
         precision=cfg.refinement.precision,
         max_batch=max_batch,
     )
@@ -295,10 +364,16 @@ def _preprocess(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    observations = read_observations(root / cfg.inputs.observations)
+    observations = read_observations(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
     steps = _recipe_steps(
-        cfg, setup.refinement, logger, device=device, workers=workers, max_batch=max_batch
+        cfg,
+        setup.refinement,
+        setup.integration,
+        logger,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
     )
     prepared = _prepare(
         setup.plans.combined,
@@ -309,16 +384,13 @@ def _preprocess(
         refresh=refresh,
         logger=logger,
     )
-    # Report the settled plan's coupling geometry at the consumer boundary: fires on every run
-    # (including a checkpoint-reuse refine, which ran no pipeline steps), so the coupling the loop
-    # is about to consume is logged before the first step.
-    report_coupling(logger)(prepared)
     return setup.refinement, prepared
 
 
 def _recipe_steps(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
+    integration: IntegrationGeometry,
     logger: Logger,
     *,
     device: Device | None = None,
@@ -348,13 +420,13 @@ def _recipe_steps(
     """
     search = cfg.preprocess.orientation.to_search()
     thickness_grid = cfg.preprocess.thickness.to_grid()
-    coupling = _trial_coupling(cfg)
+    coupling = _trial_coupling(cfg, integration)
 
     def orientation_fit(*, precision: FloatFormat, validate: bool) -> PlanStep:
         return fit_orientation(
             refinement,
             search,
-            method=cfg.solver.refine,
+            method=cfg.blochwave.solver.refine,
             coupling=coupling,
             precision=precision,
             validate=validate,
@@ -368,7 +440,7 @@ def _recipe_steps(
         return fit_thickness(
             refinement,
             thickness_grid,
-            method=cfg.solver.refine,
+            method=cfg.blochwave.solver.refine,
             precision=precision,
             device=device,
             max_batch=max_batch,
@@ -376,10 +448,10 @@ def _recipe_steps(
         )
 
     return [
-        select_beams(cfg.numerics.to_beam_selection()),
+        select_beams(cfg.blochwave.to_beam_selection(integration)),
         build_orientation_plans(),
-        integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-        mosaicity(cfg.numerics.mosaicity),
+        integrate_rocking_curve(cfg.blochwave.to_rocking_curve(integration)),
+        mosaicity(cfg.blochwave.mosaicity),
         fork(
             lambda grid: grid.cell_volume > _LARGE_CELL_THRESHOLD_A3,
             when_true=[  # large cell: coarse fp32 search, integrity checks skipped
@@ -394,23 +466,19 @@ def _recipe_steps(
     ]
 
 
-def _trial_coupling(cfg: ExperimentConfig) -> TrialCoupling:
-    """Assemble the per-trial coupling from config; raise if the coupled fit has no policy.
+def _trial_coupling(
+    cfg: ExperimentConfig, integration: IntegrationGeometry
+) -> TrialCoupling:
+    """Assemble the per-trial beam-union policy from the top-level Bloch-wave config.
 
-    Coupling carries no default (it determines the physics), so a
-    config that runs the coupled orientation fit must declare ``preprocess.coupling``. The SCORED
-    set reuses the *same* Klar window as ``select_beams`` (so the two filters cannot disagree) and
-    the config's ``g_max_refine`` as the scoring-resolution cap.
+    The SCORED set reuses the same Klar window as ``select_beams`` and the config's
+    ``g_max_refine`` as the scoring-resolution cap.
     """
-    if cfg.preprocess.coupling is None:
-        raise ValueError(
-            "the coupled orientation fit needs a coupling policy, but preprocess.coupling is "
-            "unset; add a preprocess.coupling block (fixed_n_segments, g_max, sg_max) to config"
-        )
     return TrialCoupling(
-        policy=cfg.preprocess.coupling.to_policy(),
+        policy=cfg.blochwave.to_policy(),
         scored=ScoredHklSelection(
-            klar=cfg.numerics.to_beam_selection(), g_max=cfg.numerics.g_max_refine
+            klar=cfg.blochwave.to_beam_selection(integration),
+            g_max=cfg.blochwave.g_max_refine,
         ),
     )
 

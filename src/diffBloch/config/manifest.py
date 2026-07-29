@@ -132,7 +132,7 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     lock_path = root / "experiment.lock"
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
-    _verify_input(root, cfg.inputs.observations, lock.observations)
+    _verify_input(root, cfg.inputs.exp_data, lock.observations)
     return cfg, lock
 
 
@@ -152,8 +152,7 @@ def config_digest(config: ExperimentConfig) -> str:
     ``Plan`` -- so a committed preprocess checkpoint is restaled only by a change that could alter
     it:
 
-    - ``inputs``, ``sample``, ``numerics``, ``preprocess`` -- shape the grid, beams, and fits;
-    - ``solver.refine`` -- the solver the coupled fits run under;
+    - ``inputs``, ``sample``, ``blochwave``, ``preprocess`` -- shape the grid, beams, and fits;
     - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.
 
     Everything else is excluded because it cannot change the Plan: ``name`` (a label),
@@ -162,11 +161,14 @@ def config_digest(config: ExperimentConfig) -> str:
     is the config axis of the preprocess lock only, not a whole-config identity.
     """
     dump = config.model_dump(mode="json")
+    blochwave = {
+        **dump["blochwave"],
+        "solver": {"refine": dump["blochwave"]["solver"]["refine"]},
+    }
     preprocess_identity = {
         "inputs": dump["inputs"],
         "sample": dump["sample"],
-        "numerics": dump["numerics"],
-        "solver": {"refine": dump["solver"]["refine"]},
+        "blochwave": blochwave,
         "preprocess": dump["preprocess"],
         "refinement": {"split": dump["refinement"]["split"]},
     }

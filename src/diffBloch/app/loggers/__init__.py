@@ -22,7 +22,14 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from diffBloch.observability import NULL_LOGGER, Event, Logger, OrientationFitted
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Event,
+    Logger,
+    OrientationFitted,
+    RefinementStep,
+    ThicknessFitted,
+)
 
 __all__ = [
     "CSVLogger",
@@ -61,7 +68,14 @@ class ConsoleLogger:
     level: int = logging.INFO
 
     def report(self, event: Event) -> None:
-        label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
+        if isinstance(event, OrientationFitted):
+            label = f"orientation refinement[orientation_index={event.index}]"
+        elif isinstance(event, ThicknessFitted):
+            label = f"thickness refinement[orientation_index={event.index}]"
+        elif isinstance(event, RefinementStep):
+            label = f"structure refinement[refinement_epoch={event.step}]"
+        else:
+            label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
         _log.log(self.level, "%s %s", label, format_measurements(event))
 
 
