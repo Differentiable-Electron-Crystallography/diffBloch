@@ -13,7 +13,7 @@ def test_refine_experiment_threads_config_precision_to_engine(monkeypatch) -> No
     cfg = ExperimentConfig.model_validate(
         {
             "name": "q",
-            "inputs": {"structure": "q.cif", "observations": "q.cif_pets"},
+            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
             "refinement": {"precision": "fp32"},
         }
     )

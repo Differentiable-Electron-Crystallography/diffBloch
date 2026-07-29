@@ -316,9 +316,7 @@ def _quartz_rot13() -> tuple[object, OrientationPlan, object]:
     root = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
     cfg, _lock = load_experiment(root)
     structure = read_structure(root / cfg.inputs.structure)
-    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
-        structure.unit_cell, cfg.preprocess.coupling.g_max
-    )
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, cfg.blochwave.g_max)
     tilts = np.load(root / "parity_replay" / "tilts.npz")["tilts"]
     d = np.load(root / "parity_replay" / "rot_13.npz")
     pattern = PatternBatch(
