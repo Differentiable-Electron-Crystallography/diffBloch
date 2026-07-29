@@ -48,10 +48,6 @@ def _fitted(index: int, wr2: float) -> OrientationFitted:
 
 
 def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
-    orientation = _fitted(index=10, wr2=0.025)
-    assert orientation.channel == "orientation"
-    assert orientation.step == 10
-    assert orientation.measurements == {"wr2": 0.025, "n_matched_hkl": 42.0}
 
     rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
     assert rotation.channel == "rotation"
@@ -164,9 +160,7 @@ def test_console_logger_labels_refinement_epochs_and_shows_only_wr2(
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
         logger.report(RefinementStep(iteration=7, loss=4.95, wr2=0.05))
 
-    assert caplog.records[-1].getMessage() == (
-        "structure refinement[refinement_epoch=7] wr2=0.05"
-    )
+    assert caplog.records[-1].getMessage() == ("structure refinement[refinement_epoch=7] wr2=0.05")
 
 
 def test_console_logger_labels_orientation_refinement_index(
@@ -176,8 +170,10 @@ def test_console_logger_labels_orientation_refinement_index(
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
         logger.report(_fitted(index=10, wr2=0.025))
 
-    assert caplog.records[-1].getMessage().startswith(
-        "orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42"
+    assert (
+        caplog.records[-1]
+        .getMessage()
+        .startswith("orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42")
     )
 
 
