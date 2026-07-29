@@ -319,9 +319,7 @@ def _orientation_rfactor(
     before the R-factor, since the two simulations have no common normalization.
     """
     if comparison_hkl is None:
-        previous_index, current_index = _shared_reflections(
-            previous.beam_hkl, current.beam_hkl
-        )
+        previous_index, current_index = _shared_reflections(previous.beam_hkl, current.beam_hkl)
     else:
         previous_index, current_index = _fixed_reflections(
             previous.beam_hkl,

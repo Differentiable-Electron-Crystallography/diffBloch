@@ -138,19 +138,15 @@ def run_convergence(
                 for op in require_orientation_plans(plan)
             ),
         )
-        integrated = integrate_rocking_curve(
-            replace(rocking, sampling=int(round(tilt_steps)))
-        )(expanded)
-        coupled = couple_beams(
-            replace(simulation, g_max=g_max, sg_max=sg_max)
-        )(integrated)
+        integrated = integrate_rocking_curve(replace(rocking, sampling=int(round(tilt_steps))))(
+            expanded
+        )
+        coupled = couple_beams(replace(simulation, g_max=g_max, sg_max=sg_max))(integrated)
         if comparison_hkl is None:
             return coupled
         orientations = tuple(
             _include_fixed_hkl(coupled.structure_factor_grid, op, fixed)
-            for op, fixed in zip(
-                require_built_plans(coupled), comparison_hkl, strict=True
-            )
+            for op, fixed in zip(require_built_plans(coupled), comparison_hkl, strict=True)
         )
         return replace(coupled, orientations=orientations)
 
@@ -185,9 +181,7 @@ def run_convergence(
             else ("tilt_steps", "g_max", "sg_max")
         )
         for control in order:
-            logger.report(
-                ConvergenceSweepStarted(control=control, pass_index=pass_index + 1)
-            )
+            logger.report(ConvergenceSweepStarted(control=control, pass_index=pass_index + 1))
             start = values[control]
             trial_index = 0
 

@@ -71,7 +71,11 @@ def test_quartz_sampling_convergence() -> None:
     )
     rocking = replace(cfg.blochwave.to_rocking_curve(setup.integration), sampling=1)
     converge = converge_sampling(
-        rocking, setup.refinement, ConvergenceTolerance(), step=SWEEP_STEP, method=cfg.blochwave.solver.refine
+        rocking,
+        setup.refinement,
+        ConvergenceTolerance(),
+        step=SWEEP_STEP,
+        method=cfg.blochwave.solver.refine,
     )
     converged = converge(seed)
     # One beam plan is built per tilt, so the beam-plan count is the converged tilt count.

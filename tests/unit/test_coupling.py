@@ -38,9 +38,7 @@ ROTATIONS = (13, 27, 60, 61, 64)
 def _grid_and_tilts() -> tuple[StructureFactorGrid, np.ndarray]:
     cfg, _ = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    grid = StructureFactorGrid.from_cell_for_beam_cutoff(
-        structure.unit_cell, cfg.blochwave.g_max
-    )
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, cfg.blochwave.g_max)
     tilts = np.load(REPLAY_ROOT / "tilts.npz")["tilts"]
     return grid, tilts
 

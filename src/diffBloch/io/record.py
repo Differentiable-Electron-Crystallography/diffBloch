@@ -262,9 +262,7 @@ class ObservationRecord(BaseModel):
                 raise ValueError(f"{name} must have shape (R,) matching zone_axis_ids")
         if np.any(self.precession_angles <= 0.0):
             raise ValueError("PETS precession angles must be positive")
-        if not np.allclose(
-            self.precession_angles, self.precession_angles[0], rtol=0.0, atol=1e-9
-        ):
+        if not np.allclose(self.precession_angles, self.precession_angles[0], rtol=0.0, atol=1e-9):
             raise ValueError("PETS precession angles must be constant across virtual frames")
         if self.hkl.ndim != 2 or self.hkl.shape[1] != 3:
             raise ValueError("hkl must have shape (M, 3)")

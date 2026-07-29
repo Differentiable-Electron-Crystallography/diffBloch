@@ -466,9 +466,7 @@ def _recipe_steps(
     ]
 
 
-def _trial_coupling(
-    cfg: ExperimentConfig, integration: IntegrationGeometry
-) -> TrialCoupling:
+def _trial_coupling(cfg: ExperimentConfig, integration: IntegrationGeometry) -> TrialCoupling:
     """Assemble the per-trial beam-union policy from the top-level Bloch-wave config.
 
     The SCORED set reuses the same Klar window as ``select_beams`` and the config's

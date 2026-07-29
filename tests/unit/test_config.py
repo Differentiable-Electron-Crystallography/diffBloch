@@ -312,9 +312,7 @@ def test_numerics_to_rocking_curve_shares_the_integration_geometry() -> None:
 def test_numerics_rejects_removed_integration_config() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="[Ee]xtra"):
-        ExperimentConfig.model_validate(
-            {**base, "blochwave": {"integration": {"semiangle": 1.0}}}
-        )
+        ExperimentConfig.model_validate({**base, "blochwave": {"integration": {"semiangle": 1.0}}})
 
 
 def test_thickness_grid_bounds_are_validated() -> None:
