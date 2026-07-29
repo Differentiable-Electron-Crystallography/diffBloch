@@ -14,6 +14,10 @@ Runs preprocessing and refinement from the ordinary quartz example directory.
 uv run diffbloch run refine examples/experiments/quartz
 ```
 
+The live refinement line reports `wR2`, `R_obs`, and diffraction loss for each epoch. The final
+summary identifies the best epoch, reports matched observed / total matched HKLs, and lists the
+refined CIF, raw parameter snapshot, JSON summary, and plan artifacts.
+
 ### Quartz, checkpointed
 
 Starts from a committed `plan.npz` + `plan.lock`, so it skips preprocessing and reaches refinement
@@ -38,6 +42,7 @@ The example YAMLs choose:
 ```yaml
 refinement:
   precision: fp32
+  steps: 40
 ```
 
 That makes example refines faster and lighter. Switch to `fp64` for the conservative

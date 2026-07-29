@@ -37,14 +37,40 @@ parameter or every structure-factor calculation float32.
 
 ```bash
 # Full quartz run, including preprocessing.
-diffbloch run refine examples/experiments/quartz
+uv run diffbloch run refine examples/experiments/quartz
 
 # Faster start from a committed preprocessing checkpoint.
-diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run refine examples/experiments/quartz-checkpoint
 
 # Larger checkpointed example on CUDA.
-diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
 ```
+
+The default refinement budget is 40 epochs. Set a different recorded budget in the experiment
+config:
+
+```yaml
+refinement:
+  steps: 40
+```
+
+Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
+at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
+`HKLs (Observed/total): X / Y` means matched observed reflections / all matched reflections, where
+the observed classification uses the conventional `I > 3 sigma` test internally.
+
+## Refinement outputs
+
+The default app writes the best recorded epoch, not merely the final optimizer state:
+
+| File | Contents |
+|---|---|
+| `refined_structure.cif` | Best constrained coordinates, occupancies, and ADPs in CIF form. |
+| `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
+| `refinement_summary.json` | Best epoch metrics, the compact HKL count, and artifact paths. |
+| `plan.npz` / `plan.lock` | Settled preprocessing plan and its provenance lock. |
+
+The completion summary prints the absolute location of every output.
 
 ## API example: default app refinement
 
@@ -55,6 +81,8 @@ result = refine_experiment("examples/experiments/quartz-checkpoint")
 
 print(result.losses.shape)
 print(result.best_step, result.best_loss)
+print(result.history[result.best_step].wr2)
+print(result.history[result.best_step].r_obs)
 ```
 
 ## Advanced composition: constraints, penalties, and learned thickness
