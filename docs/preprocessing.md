@@ -10,14 +10,14 @@ virtual frame by sampled tilt sub-orientations and sums their simulated intensit
 
 ## Orientation
 
-PETS2 supplies a best-fit **UB matrix**: \(B\) maps the reciprocal lattice and \(U\)
-orients that lattice in the laboratory frame. For virtual frame \(i\), diffBloch constructs
+PETS2 supplies a best-fit **UB matrix**: {math}`B` maps the reciprocal lattice and {math}`U`
+orients that lattice in the laboratory frame. For virtual frame {math}`i`, diffBloch constructs
 
-\[
-M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB\,B^{-1}),
-\]
+```{math}
+M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
+```
 
-where \(\alpha\) is the main varying goniometer angle.
+where {math}`\alpha` is the main varying goniometer angle.
 
 Using a fixed trial thickness and the starting structure, `fit_orientation` searches nearby
 orientations for better agreement with experiment. Three approaches are available:
