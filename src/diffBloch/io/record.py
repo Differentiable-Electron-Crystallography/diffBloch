@@ -260,6 +260,10 @@ class ObservationRecord(BaseModel):
         ):
             if value.shape != (n_rotations,):
                 raise ValueError(f"{name} must have shape (R,) matching zone_axis_ids")
+        if np.any(self.precession_angles <= 0.0):
+            raise ValueError("PETS precession angles must be positive")
+        if not np.allclose(self.precession_angles, self.precession_angles[0], rtol=0.0, atol=1e-9):
+            raise ValueError("PETS precession angles must be constant across virtual frames")
         if self.hkl.ndim != 2 or self.hkl.shape[1] != 3:
             raise ValueError("hkl must have shape (M, 3)")
         if self.intensities.shape != (n_reflections,):
@@ -278,6 +282,11 @@ class ObservationRecord(BaseModel):
                 f"reflection zone-axis ids are not declared: {sorted(unknown_zone_ids)}"
             )
         return self
+
+    @property
+    def integration_semiangle(self) -> float:
+        """Angular integration semi-angle recorded consistently across the PETS virtual frames."""
+        return float(self.precession_angles[0])
 
     @property
     def n_rotations(self) -> int:

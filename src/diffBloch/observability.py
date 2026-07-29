@@ -29,6 +29,9 @@ from typing import ClassVar, Protocol, runtime_checkable
 __all__ = [
     "NULL_LOGGER",
     "CouplingSummary",
+    "ConvergenceTrial",
+    "ConvergencePassStarted",
+    "ConvergenceSweepStarted",
     "Event",
     "InferenceCompleted",
     "Logger",
@@ -79,6 +82,83 @@ class Logger(Protocol):
 
 
 @dataclass(frozen=True)
+class ConvergenceTrial:
+    """One comparison between consecutive numerical settings in a convergence sweep."""
+
+    control: str
+    trial_index: int
+    pass_index: int
+    previous: float
+    candidate: float
+    r_factor: float
+    n_compared_hkl: int
+
+    @property
+    def channel(self) -> str:
+        return f"convergence {self.control}"
+
+    @property
+    def step(self) -> int | None:
+        return self.trial_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "pass": float(self.pass_index),
+            "previous": self.previous,
+            "candidate": self.candidate,
+            "r_factor": self.r_factor,
+            "n_compared_hkl": float(self.n_compared_hkl),
+        }
+
+
+@dataclass(frozen=True)
+class ConvergencePassStarted:
+    """Starting settings for one coordinated convergence pass."""
+
+    pass_index: int
+    g_max: float
+    sg_max: float
+    tilt_steps: int
+    r_factor_threshold: float
+    n_orientations: int
+
+    channel: ClassVar[str] = "convergence pass"
+
+    @property
+    def step(self) -> int | None:
+        return self.pass_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "g_max": self.g_max,
+            "sg_max": self.sg_max,
+            "tilt_steps": float(self.tilt_steps),
+            "r_factor_threshold": self.r_factor_threshold,
+            "n_orientations": float(self.n_orientations),
+        }
+
+
+@dataclass(frozen=True)
+class ConvergenceSweepStarted:
+    """Announcement emitted before one parameter sweep begins."""
+
+    control: str
+    pass_index: int
+
+    channel: ClassVar[str] = "convergence sweep"
+
+    @property
+    def step(self) -> int | None:
+        return self.pass_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"pass": float(self.pass_index)}
+
+
+@dataclass(frozen=True)
 class RotationScored:
     """One rotation's forward-inference score, emitted per rotation by ``run_inference``."""
 
@@ -116,9 +196,10 @@ class OrientationFitted:
     with the step's ``PlanStepCompleted`` summary line, like the refinement stream's events.
     """
 
-    channel: ClassVar[str] = "fit_orientation"
+    channel: ClassVar[str] = "orientation"
     index: int
     wr2: float
+    n_matched_hkl: int
     n_trials: int
     n_passes: int
     pass_cap: int
@@ -129,12 +210,7 @@ class OrientationFitted:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {
-            "wr2": self.wr2,
-            "n_trials": float(self.n_trials),
-            "n_passes": float(self.n_passes),
-            "pass_cap": float(self.pass_cap),
-        }
+        return {"wr2": self.wr2, "n_matched_hkl": float(self.n_matched_hkl)}
 
 
 @dataclass(frozen=True)
@@ -168,12 +244,11 @@ class PlanStepCompleted:
 
     Unlike the other events its ``channel`` is the *step name* (``select_beams``,
     ``fit_orientation``, ...), set per instance rather than a class constant -- so the console reads
-    ``fit_orientation[4] n_orientations=55 max_beams_per_segment=641 ...``, carrying the categorical
+    ``fit_orientation[4] n_orientations=55 ...``, carrying the categorical
     step identity a fixed channel cannot. ``index`` is the step's ordinal in the recipe (its
     ``step`` on the run's x-axis); ``measurements`` is
     :func:`diffBloch.preprocess.plan.summarize_plan` of the resulting plan. Emitted only on a
-    *fresh* preprocess run -- a reused checkpoint runs no steps (see :class:`CouplingSummary` for
-    the boundary summary that fires on reuse).
+    *fresh* preprocess run -- a reused checkpoint runs no steps.
     """
 
     channel: str
@@ -262,17 +337,16 @@ class InferenceCompleted:
 
 @dataclass(frozen=True)
 class RefinementStep:
-    """One optimizer iteration, emitted per step by ``run_refinement``.
+    """One refinement epoch.
 
-    ``loss`` is the scalar value recorded by the optimizer loop. When available,
-    ``objective_total`` and ``components`` expose the structured
-    :class:`diffBloch.engine.refine.ObjectiveValue` diagnostics as plain numeric measurements:
-    every component contributes ``component.<name>.raw``, ``.weight``, and ``.contribution``.
+    ``wr2`` is the mean weighted-R2 across orientations when weighted-R2 is the data term.
+    Otherwise the optimizer loss is reported.
     """
 
     channel: ClassVar[str] = "refinement"
     iteration: int
     loss: float
+    wr2: float | None = None
     objective_total: float | None = None
     components: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
 
@@ -286,13 +360,7 @@ class RefinementStep:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        measurements = {"loss": self.loss}
-        if self.objective_total is not None:
-            measurements["objective_total"] = self.objective_total
-        for name, values in self.components.items():
-            for field_name, value in values.items():
-                measurements[f"component.{name}.{field_name}"] = value
-        return measurements
+        return {"wr2": self.wr2} if self.wr2 is not None else {"loss": self.loss}
 
 
 @dataclass(frozen=True)

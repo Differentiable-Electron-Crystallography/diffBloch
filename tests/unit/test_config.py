@@ -16,6 +16,7 @@ from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
 from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     HexagonalSearch,
+    IntegrationGeometry,
     RockingCurve,
     SegmentedUnionCoupling,
     ThicknessGrid,
@@ -24,14 +25,14 @@ from diffBloch.specs import (
 
 def test_minimal_config_validates_with_defaults() -> None:
     cfg = ExperimentConfig.model_validate(
-        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+        {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     assert cfg.name == "quartz"
     # defaults-as-code: the experiment file only needs inputs + overrides
-    assert cfg.solver.refine == "matrix_exp"
-    assert cfg.solver.inference == "bloch_eigen"
+    assert cfg.blochwave.solver.refine == "matrix_exp"
+    assert cfg.blochwave.solver.inference == "bloch_eigen"
     assert cfg.sample.thicknesses == (820.0,)
-    assert cfg.numerics.g_max_refine == 1.6
+    assert cfg.blochwave.g_max_refine == 1.6
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
@@ -44,9 +45,9 @@ def test_minimal_config_validates_with_defaults() -> None:
 def test_solver_method_must_be_a_known_method() -> None:
     # The solver fields are typed as the core SolverMethod literal, so an unknown method fails fast at
     # config load rather than deep in the forward model.
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):
-        ExperimentConfig.model_validate({**base, "solver": {"refine": "nope"}})
+        ExperimentConfig.model_validate({**base, "blochwave": {"solver": {"refine": "nope"}}})
 
 
 def test_missing_required_input_fails_fast() -> None:
@@ -57,10 +58,10 @@ def test_missing_required_input_fails_fast() -> None:
 def test_unknown_key_is_rejected_not_ignored() -> None:
     # The allowlist guard (extra="forbid"): a stale/misspelled key is a load-time error, not a
     # silent drop -- so config can only carry fields a consumer reads. Guards against a regression
-    # to pydantic's default "ignore", which is what let the dead g_max_sf / sg_max keys linger.
-    base = {"name": "q", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    # to pydantic's default "ignore", which is what let the dead g_max_sf key linger.
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="[Ee]xtra"):
-        ExperimentConfig.model_validate({**base, "numerics": {"sg_max": 0.01}})  # removed field
+        ExperimentConfig.model_validate({**base, "blochwave": {"g_max_sf": 5.0}})
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "nonsense": True})  # unknown top-level key
 
@@ -70,7 +71,7 @@ def test_sample_thicknesses_are_positive_and_nonempty() -> None:
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
                 "sample": {"thicknesses": []},
             }
         )
@@ -78,7 +79,7 @@ def test_sample_thicknesses_are_positive_and_nonempty() -> None:
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
                 "sample": {"thicknesses": [0.0]},
             }
         )
@@ -89,14 +90,14 @@ def test_input_refs_must_stay_inside_experiment_directory() -> None:
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "/tmp/q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "/tmp/q.cif", "exp_data": "q.cif_pets"},
             }
         )
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "../q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "../q.cif", "exp_data": "q.cif_pets"},
             }
         )
 
@@ -137,7 +138,7 @@ def test_trainable_group_keysets_do_not_drift() -> None:
 
 
 def test_refinement_trainable_replaces_string_targets() -> None:
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     cfg = ExperimentConfig.model_validate(
         {**base, "refinement": {"trainable": {"positions": "none", "occupancy": "all"}}}
     )
@@ -154,7 +155,7 @@ def test_refinement_trainable_replaces_string_targets() -> None:
 
 
 def test_refinement_precision_parses_and_rejects_unknown_values() -> None:
-    base = {"name": "q", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     cfg = ExperimentConfig.model_validate({**base, "refinement": {"precision": "fp32"}})
     assert cfg.refinement.precision == "fp32"
     with pytest.raises(ValidationError, match="Input should be"):
@@ -166,7 +167,7 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
                 "refinement": {"optimizer": {"name": "made_up"}},
             }
         )
@@ -174,7 +175,7 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
         ExperimentConfig.model_validate(
             {
                 "name": "bad",
-                "inputs": {"structure": "q.cif", "observations": "q.cif_pets"},
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
                 "refinement": {"objective": {"data_term": "made_up"}},
             }
         )
@@ -182,7 +183,7 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
 
 def test_preprocess_orientation_defaults_match_the_private() -> None:
     cfg = ExperimentConfig.model_validate(
-        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+        {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     orientation = cfg.preprocess.orientation
     # The config is a 1:1 edge over HexagonalSearch: its defaults derive from the value-type, so a
@@ -192,7 +193,7 @@ def test_preprocess_orientation_defaults_match_the_private() -> None:
 
 
 def test_orientation_search_bounds_are_validated() -> None:
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="must be positive"):
         ExperimentConfig.model_validate(
             {**base, "preprocess": {"orientation": {"min_search_angle": 0.0}}}
@@ -211,7 +212,7 @@ def test_orientation_search_bounds_are_validated() -> None:
 
 def test_preprocess_thickness_defaults_match_the_private() -> None:
     cfg = ExperimentConfig.model_validate(
-        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+        {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     thickness = cfg.preprocess.thickness
     # 1:1 edge over ThicknessGrid: a default config round-trips to the value-type's defaults; the
@@ -219,70 +220,54 @@ def test_preprocess_thickness_defaults_match_the_private() -> None:
     assert thickness.to_grid() == ThicknessGrid()
 
 
-def test_coupling_has_no_default_and_is_absent_unless_declared() -> None:
-    # Unlike the numerical preprocess blocks, coupling has NO faithful default -- omitting it leaves
-    # preprocess.coupling None (the recipe build, not config load, rejects a missing policy).
+def test_blochwave_has_one_complete_default() -> None:
     cfg = ExperimentConfig.model_validate(
-        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+        {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
-    assert cfg.preprocess.coupling is None
-
-
-def test_coupling_policy_requires_all_fields_when_declared() -> None:
-    # The block is all-or-nothing explicit: a partial coupling block is a load-time error, not a
-    # silent per-field fill from the value-type.
-    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
-    with pytest.raises(ValidationError, match="[Ff]ield required"):
-        ExperimentConfig.model_validate(
-            {
-                **base,
-                "preprocess": {"coupling": {"fixed_n_segments": 4, "g_max": 1.5}},
-            }  # missing fields
-        )
+    assert cfg.blochwave.to_policy() == SegmentedUnionCoupling()
 
 
 def test_coupling_policy_override_parses() -> None:
-    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
     cfg = ExperimentConfig.model_validate(
         {
             **base,
-            "preprocess": {"coupling": {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02}},
+            "blochwave": {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02},
         }
     )
-    assert cfg.preprocess.coupling is not None
-    assert cfg.preprocess.coupling.to_policy() == SegmentedUnionCoupling(
+    assert cfg.blochwave.to_policy() == SegmentedUnionCoupling(
         fixed_n_segments=4, g_max=1.5, sg_max=0.02
     )
 
 
 def test_coupling_adaptive_fields_default_off_and_thread_through() -> None:
-    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
     fixed = {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02}
     # Omitted -> the faithful fixed even-split (adaptive off), unchanged from the current behaviour.
-    default = ExperimentConfig.model_validate({**base, "preprocess": {"coupling": fixed}})
-    assert default.preprocess.coupling is not None
-    assert default.preprocess.coupling.to_policy().union_adaptive is False
+    default = ExperimentConfig.model_validate({**base, "blochwave": fixed})
+    assert default.blochwave.to_policy().union_adaptive is True
     # Declared -> threaded into the value-type the coupled fit consumes.
     adaptive = ExperimentConfig.model_validate(
         {
             **base,
-            "preprocess": {
-                "coupling": {**fixed, "union_adaptive": True, "union_max_new_beams_pct": 0.02}
+            "blochwave": {
+                **fixed,
+                "union_adaptive": True,
+                "union_max_new_beams_pct": 0.02,
             },
         }
     )
-    assert adaptive.preprocess.coupling is not None
-    policy = adaptive.preprocess.coupling.to_policy()
+    policy = adaptive.blochwave.to_policy()
     assert policy.union_adaptive is True
     assert policy.union_max_new_beams_pct == 0.02
 
 
 def test_coupling_policy_bounds_are_validated() -> None:
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
 
     def coupling(**overrides: float) -> dict:
         policy = {"fixed_n_segments": 12, "g_max": 2.25, "sg_max": 0.01, **overrides}
-        return {**base, "preprocess": {"coupling": policy}}
+        return {**base, "blochwave": policy}
 
     with pytest.raises(ValidationError, match="fixed_n_segments must be >= 1"):
         ExperimentConfig.model_validate(coupling(fixed_n_segments=0))
@@ -293,12 +278,12 @@ def test_coupling_policy_bounds_are_validated() -> None:
 
 
 def test_load_hydrogens_defaults_off_and_parses() -> None:
-    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
     assert ExperimentConfig.model_validate(base).inputs.load_hydrogens is False
     withH = ExperimentConfig.model_validate(
         {
             "name": "abi",
-            "inputs": {"structure": "a.cif", "observations": "a.cif_pets", "load_hydrogens": True},
+            "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets", "load_hydrogens": True},
         }
     )
     assert withH.inputs.load_hydrogens is True
@@ -307,26 +292,31 @@ def test_load_hydrogens_defaults_off_and_parses() -> None:
 def test_refinement_rejects_hydrogen_mode_as_unknown_key() -> None:
     # H handling is scientific composition (Python/API via with_hydrogen_riding), not a config mode;
     # a strict config rejects the removed key rather than silently accepting a dead knob.
-    base = {"name": "abi", "inputs": {"structure": "a.cif", "observations": "a.cif_pets"}}
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "refinement": {"hydrogen_mode": "riding"}})
 
 
 def test_numerics_to_rocking_curve_shares_the_integration_geometry() -> None:
     cfg = ExperimentConfig.model_validate(
-        {"name": "quartz", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+        {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
-    numerics = cfg.numerics
-    # The tilt span/geometry come from the SAME IntegrationGeometry as the beam window, so the two
-    # cannot disagree; rocking_curve_sampling is the tilt count.
-    assert numerics.to_rocking_curve() == RockingCurve(
-        sampling=numerics.rocking_curve_sampling, integration=numerics.integration
+    blochwave = cfg.blochwave
+    integration = IntegrationGeometry(semiangle=1.25)
+    assert blochwave.to_rocking_curve(integration) == RockingCurve(
+        sampling=blochwave.rocking_curve_sampling, integration=integration
     )
-    assert numerics.to_beam_selection().integration is numerics.integration
+    assert blochwave.to_beam_selection(integration).integration is integration
+
+
+def test_numerics_rejects_removed_integration_config() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "blochwave": {"integration": {"semiangle": 1.0}}})
 
 
 def test_thickness_grid_bounds_are_validated() -> None:
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="thickness bounds must be positive"):
         ExperimentConfig.model_validate(
             {**base, "preprocess": {"thickness": {"min_thickness": 0.0}}}
@@ -341,8 +331,6 @@ def test_thickness_grid_bounds_are_validated() -> None:
 
 def test_numerics_beam_selection_cutoffs_are_validated() -> None:
     # NumericsConfig delegates its beam-selection subset to BeamSelection (fail-fast at load).
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "observations": "q.cif_pets"}}
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="rsg must be positive"):
-        ExperimentConfig.model_validate({**base, "numerics": {"rsg": 0.0}})
-    with pytest.raises(ValidationError, match="semiangle must be positive"):
-        ExperimentConfig.model_validate({**base, "numerics": {"integration": {"semiangle": 0.0}}})
+        ExperimentConfig.model_validate({**base, "blochwave": {"rsg": 0.0}})

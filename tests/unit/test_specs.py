@@ -36,26 +36,20 @@ def test_convergence_tolerance_rejects_invalid_bounds() -> None:
 
 def test_convergence_test_defaults() -> None:
     test = ConvergenceTest()
-    assert test.operation == "both"  # the private's full operation
-    assert test.num_passes == 2  # the e2e's fixed pass count
-    assert test.start_g_max_refine == 0.5
-    assert (
-        test.g_max_refine_step,
-        test.integration_semiangle_step,
-        test.rocking_curve_sampling_step,
-    ) == (0.1, 0.2, 2.0)
+    assert test.num_passes == 2
+    assert (test.g_max_step, test.sg_max_step, test.tilt_steps_step) == (0.1, 0.005, 2)
 
 
-def test_convergence_test_rejects_invalid_operation_and_bounds() -> None:
-    with pytest.raises(ValueError, match="operation must be"):
-        ConvergenceTest(operation="coverage_and_stability")  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="start_g_max_refine must be positive"):
-        ConvergenceTest(start_g_max_refine=0.0)
+def test_convergence_test_rejects_invalid_bounds() -> None:
     with pytest.raises(
         ValueError,
-        match="g_max_refine_step, integration_semiangle_step and rocking_curve_sampling_step must be positive",
+        match="g_max_step, sg_max_step, and tilt_steps_step must be positive",
     ):
-        ConvergenceTest(integration_semiangle_step=0.0)
+        ConvergenceTest(g_max_step=0.0)
+    with pytest.raises(ValueError, match="g_max_step, sg_max_step, and tilt_steps_step"):
+        ConvergenceTest(sg_max_step=0.0)
+    with pytest.raises(ValueError, match="g_max_step, sg_max_step, and tilt_steps_step"):
+        ConvergenceTest(tilt_steps_step=0)
     with pytest.raises(ValueError, match="num_passes must be >= 1"):
         ConvergenceTest(num_passes=0)
 

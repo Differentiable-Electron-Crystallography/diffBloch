@@ -64,46 +64,60 @@ class SolverConfig(_StrictConfig):
     inference: SolverMethod = "bloch_eigen"  # pinned to match existing e2e references
 
 
-class NumericsConfig(_StrictConfig):
+class BlochwaveConfig(_StrictConfig):
     """Numerical-accuracy controls, frozen into the simulation spec.
 
     ``g_max_refine`` (seed beam-pool / scoring-resolution radius) is a grid primitive consumed
     directly. The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
-    solve cutoff (the ``preprocess.coupling`` radius, or ``g_max_refine`` when a run is
-    tilt-independent), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
+    solve cutoff (``g_max``), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
     reaching ``2 * cutoff`` -- so declaring both cutoff and support would let them contradict
     (one beam cutoff, support derived). ``rsg`` / ``dsg`` are
-    the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count -- the parts of
-    :class:`BeamSelection` / :class:`RockingCurve` those value-types do *not* share. ``integration``
-    is the shared :class:`IntegrationGeometry` (one physical angle + geometry feeding both), carried
-    once as its own value-type so it cannot be given two values; ``mosaicity`` is the
-    :class:`Mosaicity` reduction. The last two are the value-types themselves (identity, not a
-    projected copy), so pydantic validates them and forbids unknown keys inside them too.
+    the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
+    integration semi-angle is read from the PETS observations rather than configured.
+    ``mosaicity`` is the :class:`Mosaicity` reduction.
     """
 
+    solver: SolverConfig = Field(default_factory=SolverConfig)
     g_max_refine: float = 1.6
     rsg: float = 0.9
     dsg: float = 0.0015
     rocking_curve_sampling: int = 42
-    integration: IntegrationGeometry = Field(default_factory=IntegrationGeometry)
     mosaicity: Mosaicity = Field(default_factory=Mosaicity)
+    fixed_n_segments: int = 12
+    g_max: float = 2.25
+    sg_max: float = 0.01
+    union_adaptive: bool = True
+    union_max_new_beams_pct: float = 0.01
 
-    def to_beam_selection(self) -> BeamSelection:
+    def to_beam_selection(self, integration: IntegrationGeometry) -> BeamSelection:
         """Assemble the ``select_beams`` value-type: the Klar cutoffs + the shared integration."""
-        return BeamSelection(rsg=self.rsg, dsg=self.dsg, integration=self.integration)
+        return BeamSelection(rsg=self.rsg, dsg=self.dsg, integration=integration)
 
-    def to_rocking_curve(self) -> RockingCurve:
+    def to_rocking_curve(self, integration: IntegrationGeometry) -> RockingCurve:
         """Assemble the ``integrate_rocking_curve`` value-type: tilt count + the shared integration.
 
-        The tilt span and geometry come from the *same* :class:`IntegrationGeometry` as
-        ``to_beam_selection``, so the beam window and the tilt sweep cannot disagree.
+        The caller passes the PETS-derived value to both this method and
+        :meth:`to_beam_selection`, so the beam window and tilt sweep cannot disagree.
         """
-        return RockingCurve(sampling=self.rocking_curve_sampling, integration=self.integration)
+        return RockingCurve(sampling=self.rocking_curve_sampling, integration=integration)
+
+    def to_policy(self) -> SegmentedUnionCoupling:
+        """Assemble the segmented Bloch-wave beam-union policy."""
+        return SegmentedUnionCoupling(
+            fixed_n_segments=self.fixed_n_segments,
+            g_max=self.g_max,
+            sg_max=self.sg_max,
+            union_adaptive=self.union_adaptive,
+            union_max_new_beams_pct=self.union_max_new_beams_pct,
+        )
 
     @model_validator(mode="after")
-    def _parse_fails_fast(self) -> NumericsConfig:
-        self.to_beam_selection()  # the rules live in BeamSelection; fail fast at config load
-        self.to_rocking_curve()  # the rules live in RockingCurve; fail fast at config load
+    def _parse_fails_fast(self) -> BlochwaveConfig:
+        if self.rsg <= 0.0:
+            raise ValueError("rsg must be positive")
+        if self.rocking_curve_sampling < 1:
+            raise ValueError("rocking_curve_sampling must be >= 1")
+        self.to_policy()
         return self
 
 
@@ -181,7 +195,6 @@ class TrainableConfig(_StrictConfig):
     positions: Literal["all", "none"] = "all"
     adp: Literal["all", "none"] = "all"
     occupancy: Literal["all", "none"] = "none"
-    fgb: Literal["all", "none"] = "none"
 
     def to_spec(self) -> TrainableSpec:
         """Parse into the ``TrainableSpec`` the refinement optimizer consumes."""
@@ -189,7 +202,6 @@ class TrainableConfig(_StrictConfig):
             positions=_atom_selection(self.positions),
             adp=_atom_selection(self.adp),
             occupancy=_atom_selection(self.occupancy),
-            fgb=_atom_selection(self.fgb),
         )
 
 
@@ -271,63 +283,20 @@ class ThicknessFitConfig(_StrictConfig):
         return self
 
 
-class CouplingConfig(_StrictConfig):
-    """Per-trial beam coupling policy for ``fit_orientation`` (preprocess).
-
-    The YAML edge: parses (via :meth:`to_policy`) into the validated
-    :class:`~diffBloch.specs.SegmentedUnionCoupling` value-type the coupled fit consumes, and
-    delegates all validation there (one rule home, no drift).
-
-    Unlike the numerical preprocess blocks, coupling carries **no defaults**: it determines the
-    physics (the per-trial SOLVE union) and is experiment-specific, so a silent default
-    would let a forgotten policy pass as a deliberate one. All three fields are required when the
-    block is present, and the block itself is optional only for experiments that never run the
-    coupled fit (see :class:`PreprocessConfig`); composing the fit without it raises. The value-type
-    keeps its own defaults for programmatic pipeline authors -- only the config edge is explicit.
-    """
-
-    fixed_n_segments: int  # contiguous tilt chunks (fixed mode)
-    g_max: float  # coupling radius (1/Angstrom): a beam couples when |g| < g_max
-    sg_max: float  # excitation-error cutoff
-    # Adaptive segmentation is a mode toggle with a fixed default, so (unlike the four
-    # physics fields) it may be omitted -- an absent value runs the even-split behaviour.
-    union_adaptive: bool = False  # recursive-bisection chunk boundaries instead of even splits
-    union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
-
-    def to_policy(self) -> SegmentedUnionCoupling:
-        """Parse into the validated value-type the coupled ``fit_orientation`` consumes."""
-        return SegmentedUnionCoupling(
-            fixed_n_segments=self.fixed_n_segments,
-            g_max=self.g_max,
-            sg_max=self.sg_max,
-            union_adaptive=self.union_adaptive,
-            union_max_new_beams_pct=self.union_max_new_beams_pct,
-        )
-
-    @model_validator(mode="after")
-    def _parse_fails_fast(self) -> CouplingConfig:
-        self.to_policy()  # the rules live in SegmentedUnionCoupling; fail fast at config load
-        return self
-
-
 class PreprocessConfig(_StrictConfig):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
     Grouping, not composition: each block configures one preprocess step. Only steps the default run
-    composes get a config block here: ``fit_orientation`` (its search bounds under ``orientation``
-    and its per-trial ``coupling`` policy) and ``fit_thickness``. The optional ``converge_numerics``
+    composes get a config block here: ``fit_orientation`` under ``orientation`` and
+    ``fit_thickness`` under ``thickness``. The optional
+    ``converge_numerics``
     driver is *not* in the default recipe, so it has no config block -- a caller that composes it
     constructs :class:`~diffBloch.specs.ConvergenceTest` /
     :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (which carry their own
     defaults). Opt-in step config lives with the step, not in an always-present block.
-
-    ``coupling`` is ``None`` unless declared: it has no default (see
-    :class:`CouplingConfig`), so an experiment that runs the coupled orientation fit must declare it
-    or the recipe build raises. An experiment that never runs the fit may leave it unset.
     """
 
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
-    coupling: CouplingConfig | None = None
     thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
 
 
@@ -335,10 +304,10 @@ class Inputs(_StrictConfig):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
     structure: str
-    observations: str
+    exp_data: str
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
-    @field_validator("structure", "observations")
+    @field_validator("structure", "exp_data")
     @classmethod
     def _relative_path_only(cls, value: str) -> str:
         path = Path(value)
@@ -355,8 +324,7 @@ class ExperimentConfig(_StrictConfig):
     name: str
     inputs: Inputs
     sample: SampleConfig = Field(default_factory=SampleConfig)
-    numerics: NumericsConfig = Field(default_factory=NumericsConfig)
-    solver: SolverConfig = Field(default_factory=SolverConfig)
+    blochwave: BlochwaveConfig = Field(default_factory=BlochwaveConfig)
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 

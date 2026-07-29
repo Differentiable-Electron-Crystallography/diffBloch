@@ -22,7 +22,17 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from diffBloch.observability import NULL_LOGGER, Event, Logger, OrientationFitted
+from diffBloch.observability import (
+    NULL_LOGGER,
+    ConvergencePassStarted,
+    ConvergenceSweepStarted,
+    ConvergenceTrial,
+    Event,
+    Logger,
+    OrientationFitted,
+    RefinementStep,
+    ThicknessFitted,
+)
 
 __all__ = [
     "CSVLogger",
@@ -61,7 +71,45 @@ class ConsoleLogger:
     level: int = logging.INFO
 
     def report(self, event: Event) -> None:
-        label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
+        if isinstance(event, ConvergencePassStarted):
+            _log.log(
+                self.level,
+                "=== Hyperparameter Optimization Pass %d ===",
+                event.pass_index,
+            )
+            _log.log(
+                self.level,
+                "start: gmax=%g sgmax=%g tilt_steps=%d r_threshold=%.6f orientations=%d",
+                event.g_max,
+                event.sg_max,
+                event.tilt_steps,
+                event.r_factor_threshold,
+                event.n_orientations,
+            )
+            return
+        if isinstance(event, ConvergenceSweepStarted):
+            label = "gmax" if event.control == "g_max" else event.control
+            _log.log(self.level, "sweep: %s", label)
+            return
+        if isinstance(event, ConvergenceTrial):
+            label = "gmax" if event.control == "g_max" else event.control
+            _log.log(
+                self.level,
+                "  %s -> %g | R=%.6f | fixed_hkls=%d",
+                label,
+                event.candidate,
+                event.r_factor,
+                event.n_compared_hkl,
+            )
+            return
+        if isinstance(event, OrientationFitted):
+            label = f"orientation refinement[orientation_index={event.index}]"
+        elif isinstance(event, ThicknessFitted):
+            label = f"thickness refinement[orientation_index={event.index}]"
+        elif isinstance(event, RefinementStep):
+            label = f"structure refinement[refinement_epoch={event.step}]"
+        else:
+            label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
         _log.log(self.level, "%s %s", label, format_measurements(event))
 
 

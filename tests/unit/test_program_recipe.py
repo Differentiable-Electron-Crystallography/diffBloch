@@ -26,9 +26,9 @@ def _steps(material: str = "quartz_anchor") -> list:
     root = FIXTURES / material
     cfg, _ = load_experiment(root)
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.observations)
+    observations = read_observations(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
-    return _recipe_steps(cfg, setup.refinement, NULL_LOGGER)
+    return _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
 
 
 def _the_fork() -> Fork:
@@ -44,24 +44,8 @@ def test_fork_predicate_routes_at_the_threshold() -> None:
     assert fork.predicate(SimpleNamespace(cell_volume=_LARGE_CELL_THRESHOLD_A3 - 1.0)) is False
 
 
-def test_recipe_build_raises_when_coupling_is_unset() -> None:
-    """The coupled fit has no default policy: building the recipe without one is a clear error."""
-    import pytest
-
-    root = FIXTURES / "quartz_anchor"
-    cfg, _ = load_experiment(root)
-    cfg = cfg.model_copy(
-        update={"preprocess": cfg.preprocess.model_copy(update={"coupling": None})}
-    )
-    structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.observations)
-    setup = from_experiment(structure, observations, cfg)
-    with pytest.raises(ValueError, match="preprocess.coupling"):
-        _recipe_steps(cfg, setup.refinement, NULL_LOGGER)
-
-
 def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
-    """A ``preprocess.coupling`` override reaches the fit's recorded per-trial policy.
+    """A ``blochwave`` override reaches the fit's recorded per-trial policy.
 
     The recipe reads its coupling from config (not a hardcoded ``SegmentedUnionCoupling()``), so a
     config that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the
@@ -71,18 +55,12 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     root = FIXTURES / "quartz_anchor"
     cfg, _ = load_experiment(root)
     cfg = cfg.model_copy(
-        update={
-            "preprocess": cfg.preprocess.model_copy(
-                update={
-                    "coupling": cfg.preprocess.coupling.model_copy(update={"fixed_n_segments": 4})
-                }
-            )
-        }
+        update={"blochwave": cfg.blochwave.model_copy(update={"fixed_n_segments": 4})}
     )
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.observations)
+    observations = read_observations(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
-    steps = _recipe_steps(cfg, setup.refinement, NULL_LOGGER)
+    steps = _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     fit = next(r for r in records if r.name == "fit_orientation")
     assert fit.params["coupling"]["policy"]["fixed_n_segments"] == 4

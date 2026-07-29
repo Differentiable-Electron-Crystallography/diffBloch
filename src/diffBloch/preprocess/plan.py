@@ -224,19 +224,9 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
 def summarize_plan(plan: Plan) -> dict[str, float]:
     """Plan-level shape as numeric measurements (the observability summary of a settled/mid Plan).
 
-    Aggregates :func:`coupling_stats` across rotations and adds the shared structure-factor support
-    (``n_grid_hkl`` = the ``Fgb`` table size, ``g_max`` = its radius). Emitted per pipeline step
-    (the plan's evolution) and once at the consumer boundary (the plan the refinement loop
-    consumes), so a long run's dominant cost -- the per-rotation coupled eigensolve over
-    ``max_beams_per_segment`` beams -- is legible from the log.
+    Reports only the number of orientations and the shared structure-factor table size.
     """
-    stats = [coupling_stats(op) for op in plan.orientations]
     return {
-        "n_orientations": float(len(stats)),
+        "n_orientations": float(len(plan.orientations)),
         "n_grid_hkl": float(plan.structure_factor_grid.structure_factor_hkl.shape[0]),
-        "g_max": float(plan.structure_factor_grid.g_max),
-        "n_coupling_segments_total": float(sum(s["n_coupling_segments"] for s in stats)),
-        "max_tilts_per_segment": float(max((s["max_tilts_per_segment"] for s in stats), default=0)),
-        "max_beams_per_segment": float(max((s["max_beams_per_segment"] for s in stats), default=0)),
-        "n_union_beams_max": float(max((s["n_union_beams"] for s in stats), default=0)),
     }

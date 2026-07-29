@@ -198,6 +198,36 @@ def test_run_infer_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
+def test_run_converge_delegates_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_converge_experiment(
+        experiment_dir: str,
+        *,
+        logger: object,
+        device: object,
+        n_orientations: int,
+    ) -> SimpleNamespace:
+        assert experiment_dir == "/some/experiment"
+        assert isinstance(logger, ConsoleLogger)
+        assert device == "cuda"
+        assert n_orientations == 1
+        return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
+
+    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
+
+    assert main(["run", "converge", "/some/experiment"]) == 0
+    assert capsys.readouterr().out == (
+        "========================================\n"
+        "HYPERPARAMETER OPTIMIZATION RESULT\n"
+        "gmax: 2.5\n"
+        "sgmax: 0.02\n"
+        "tilt_steps: 46\n"
+        "========================================\n"
+        "optimized_hyperparams gmax=2.5 sgmax=0.02 tilt_steps=46\n"
+    )
+
+
 class _FakePlan:
     """Minimal stand-in for a settled Plan: enough for the CLI's summary line."""
 
@@ -239,7 +269,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
     assert captured["dir"] == "/some/experiment"
     assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     assert captured["checkpoint"] is True and captured["refresh"] is False
-    assert captured["workers"] == 1 and captured["device"] is None
+    assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
     assert "preprocessed 2 rotations" in out
     assert "fit_orientation, fit_thickness" in out  # recipe echoed; no R_obs (no scoring)
