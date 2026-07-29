@@ -13,32 +13,31 @@ name: quartz-checkpoint
 
 inputs:
   structure: quartz.cif
-  observations: quartz_exp_data.cif_pets
+  exp_data: quartz_exp_data.cif_pets
 
 sample:
   thicknesses: [820.0] # crystal thickness (Angstrom); fit_thickness refines around this seed
 
-numerics:
+blochwave:
   g_max_refine: 1.6 # seed beam-pool radius / scoring-resolution cap (1/Angstrom)
   rocking_curve_sampling: 42 # tilt samples per rocking curve
   dsg: 0.0015 # Klar beam-selection excitation-error cutoff
   rsg: 0.9 # Klar beam-selection relative-intensity cutoff
 
-solver:
-  inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
-  refine: matrix_exp # gradient-safe solver used inside the preprocess fits
-
-preprocess:
   # Per-trial SOLVE-union coupling for the orientation fit. Declared explicitly because coupling has
   # no config default -- it determines the fit's physics. These are the faithful diffBloch_private
   # values (SegmentedUnionCoupling defaults).
-  coupling:
-    fixed_n_segments: 12
-    g_max: 2.25
-    sg_max: 0.01
+  fixed_n_segments: 12
+  g_max: 2.25
+  sg_max: 0.01
+
+  solver:
+    inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
+    refine: matrix_exp # gradient-safe solver used inside the preprocess fits
 
 refinement:
   precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation
+

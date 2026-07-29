@@ -34,6 +34,7 @@ from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess.orientation import orientation_matrices
 from diffBloch.preprocess.plan import CandidatePlan, Plan
+from diffBloch.specs import IntegrationGeometry
 
 __all__ = [
     "ExperimentSetup",
@@ -87,6 +88,7 @@ class ExperimentSetup:
 
     plans: PlanSplit
     refinement: RefinementSetup
+    integration: IntegrationGeometry
 
 
 @dataclass(frozen=True)
@@ -159,14 +161,14 @@ def from_experiment(
     hand-declared: :func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff`
     sizes it
     to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The solve cutoff is the
-    ``preprocess.coupling`` radius when the run couples, else the seed pool ``g_max_refine`` (a
+    ``blochwave`` radius when the run couples, else the seed pool ``g_max_refine`` (a
     tilt-independent run solves only the seed set). The beam energy is derived from the PETS
     wavelength; one :class:`CandidatePlan` per rotation carries its crystal orientation matrix
     (native PETS derivation, no side-car file) and the observed pattern for that zone axis.
     Rotations split into ``train`` / ``validation`` plans sharing the grid.
 
     Each orientation is seeded with the orientation-independent, difference-safe beam set
-    ``{hkl in grid : |g| <= numerics.g_max_refine}`` (so beam differences stay within the derived
+    ``{hkl in grid : |g| <= blochwave.g_max_refine}`` (so beam differences stay within the derived
     grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
     pruning is the later ``select_beams`` step.
 
@@ -177,11 +179,10 @@ def from_experiment(
     (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
     ``RefinementSetup.from_structure``).
     """
-    coupling = config.preprocess.coupling
-    solve_cutoff = coupling.g_max if coupling is not None else config.numerics.g_max_refine
+    solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
     energy = wavelength2energy(observations.wavelength)
-    beam_hkl = seed_beam_hkl(grid, g_max_refine=config.numerics.g_max_refine)
+    beam_hkl = seed_beam_hkl(grid, g_max_refine=config.blochwave.g_max_refine)
     orientations = orientation_matrices(
         observations.ub_matrix,
         observations.cell_parameters,
@@ -209,6 +210,7 @@ def from_experiment(
             validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
         refinement=RefinementSetup.from_structure(structure),
+        integration=IntegrationGeometry(semiangle=observations.integration_semiangle),
     )
 
 

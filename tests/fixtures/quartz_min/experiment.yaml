@@ -5,6 +5,6 @@
 name: quartz-min
 inputs:
   structure: enantiomer_1.cif
-  observations: exp_data.cif_pets
-numerics:
+  exp_data: exp_data.cif_pets
+blochwave:
   g_max_refine: 1.6

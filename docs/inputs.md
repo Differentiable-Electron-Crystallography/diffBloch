@@ -50,7 +50,7 @@ root = Path("examples/experiments/quartz-checkpoint")
 cfg, experiment_lock = load_experiment(root)
 
 structure = read_structure(root / cfg.inputs.structure)
-observations = read_observations(root / cfg.inputs.observations)
+observations = read_observations(root / cfg.inputs.exp_data)
 
 print(cfg.name)
 print(structure.frac_positions.shape)

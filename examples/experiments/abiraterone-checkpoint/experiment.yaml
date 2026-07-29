@@ -3,7 +3,7 @@
 # The first molecular-crystal example the public config path can express end to end: a well-
 # conditioned organic crystal (P2_1 2_1 2_1, sg 19) whose faithful preprocess needs two things the
 # app path previously could not state -- hydrogens in the forward model and an experiment-specific
-# per-trial coupling. Both are now explicit config (`inputs.load_hydrogens`, `preprocess.coupling`),
+# per-trial coupling. Both are now explicit config (`inputs.load_hydrogens`, `blochwave`),
 # so `diffbloch run preprocess examples/experiments/abiraterone-checkpoint` settles the coupled Plan
 # (fitted orientations + thickness) with no bespoke script, and this directory ships that frozen
 # checkpoint (plan.npz + plan.lock) so the fit is paid once.
@@ -15,34 +15,30 @@ name: abiraterone-checkpoint
 
 inputs:
   structure: abiraterone.cif
-  observations: abiraterone_exp_data.cif_pets
+  exp_data: abiraterone_exp_data.cif_pets
   load_hydrogens: true # H contribute to the forward scattering (F_gb); molecular crystal
 
 sample:
   thicknesses: [1460.0] # crystal thickness (Angstrom); fit_thickness refines around this seed
 
-numerics:
+blochwave:
   # Match the private abiraterone configuration: structure-factor grid g_max 3, scoring/seed-pool
   # g_max_refine 1, and the rocking-curve integration geometry (dsg/rsg/sampling/semiangle).
   g_max_refine: 1.0
   rocking_curve_sampling: 30
   dsg: 0.0025
   rsg: 0.6
-  integration:
-    semiangle: 1.422
 
-solver:
-  inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
-  refine: matrix_exp # gradient-safe solver used inside the preprocess fits
-
-preprocess:
   # Abiraterone's per-trial SOLVE-union coupling -- experiment-specific, distinct from quartz's
   # faithful defaults. Coupling radius g_max = 1.5; the SF grid is derived as 2 * g_max = 3.0 to
   # span the beam-difference support. Declared explicitly because coupling has no config default.
-  coupling:
-    fixed_n_segments: 4
-    g_max: 1.5
-    sg_max: 0.02
+  fixed_n_segments: 4
+  g_max: 1.5
+  sg_max: 0.02
+
+  solver:
+    inference: bloch_eigen # forward model used for scoring (eigen-decomposition Bloch solver)
+    refine: matrix_exp # gradient-safe solver used inside the preprocess fits
 
 refinement:
   precision: fp32
@@ -64,3 +60,4 @@ refinement:
   split:
     train: all_except_validation
     validation: every_10th_rotation
+
