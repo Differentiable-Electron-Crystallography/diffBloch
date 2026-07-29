@@ -162,8 +162,13 @@ class ObjectiveValue:
 
     total: Tensor
     components: Mapping[str, ObjectiveComponent]
+    diagnostics: Mapping[str, float]
 
-    def __init__(self, components: Mapping[str, ObjectiveComponent]) -> None:
+    def __init__(
+        self,
+        components: Mapping[str, ObjectiveComponent],
+        diagnostics: Mapping[str, float] = MappingProxyType({}),
+    ) -> None:
         if not components:
             raise ValueError("at least one objective component is required")
         copied = dict(components)
@@ -180,6 +185,7 @@ class ObjectiveValue:
             total = total + contribution
         object.__setattr__(self, "total", total)
         object.__setattr__(self, "components", MappingProxyType(copied))
+        object.__setattr__(self, "diagnostics", MappingProxyType(dict(diagnostics)))
 
 
 class PenaltyTerm(Protocol):

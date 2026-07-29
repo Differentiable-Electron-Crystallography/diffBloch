@@ -30,6 +30,7 @@ from diffBloch.observability import (
     Event,
     Logger,
     OrientationFitted,
+    PlanStepCompleted,
     RefinementStep,
     ThicknessFitted,
 )
@@ -103,11 +104,32 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, OrientationFitted):
-            label = f"orientation refinement[orientation_index={event.index}]"
+            label = f"orientation optimization[orientation_index={event.index}]"
         elif isinstance(event, ThicknessFitted):
-            label = f"thickness refinement[orientation_index={event.index}]"
+            label = f"thickness optimization[orientation_index={event.index}]"
         elif isinstance(event, RefinementStep):
-            label = f"structure refinement[refinement_epoch={event.step}]"
+            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
+            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
+            _log.log(
+                self.level,
+                "Refinement epoch %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
+                event.iteration + 1,
+                wr2,
+                r_obs,
+                diff_loss,
+            )
+            return
+        elif isinstance(event, PlanStepCompleted):
+            stage = event.channel.replace("_", " ").title()
+            _log.log(
+                self.level,
+                "Preprocess stage %2d │ %-27s │ %s",
+                event.index + 1,
+                stage,
+                format_measurements(event),
+            )
+            return
         else:
             label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
         _log.log(self.level, "%s %s", label, format_measurements(event))

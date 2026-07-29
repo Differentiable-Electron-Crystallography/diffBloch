@@ -64,7 +64,7 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     }
 
     thickness = ThicknessFitted(index=7, wr2=0.031, thickness=1460.0)
-    assert thickness.channel == "fit_thickness"
+    assert thickness.channel == "optimize_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
 
@@ -92,8 +92,10 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert coupling_summary.measurements == {"n_orientations": 55.0}
 
     # PlanStepCompleted carries the step NAME as a per-instance channel (not a class constant).
-    plan_step = PlanStepCompleted(channel="fit_orientation", index=4, measurements={"beams": 641.0})
-    assert plan_step.channel == "fit_orientation"
+    plan_step = PlanStepCompleted(
+        channel="optimize_orientation", index=4, measurements={"beams": 641.0}
+    )
+    assert plan_step.channel == "optimize_orientation"
     assert plan_step.step == 4
     assert plan_step.measurements == {"beams": 641.0}
 
@@ -153,14 +155,16 @@ def test_console_logger_logs_channel_step_and_measurements(
     assert inference_msg.startswith("inference ")  # aggregate has no step bracket
 
 
-def test_console_logger_labels_refinement_epochs_and_shows_only_wr2(
+def test_console_logger_formats_refinement_epoch_metrics(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
         logger.report(RefinementStep(iteration=7, loss=4.95, wr2=0.05))
 
-    assert caplog.records[-1].getMessage() == ("structure refinement[refinement_epoch=7] wr2=0.05")
+    assert caplog.records[-1].getMessage() == (
+        "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a"
+    )
 
 
 def test_console_logger_labels_orientation_refinement_index(
@@ -173,7 +177,7 @@ def test_console_logger_labels_orientation_refinement_index(
     assert (
         caplog.records[-1]
         .getMessage()
-        .startswith("orientation refinement[orientation_index=10] wr2=0.025 n_matched_hkl=42")
+        .startswith("orientation optimization[orientation_index=10] wr2=0.025 n_matched_hkl=42")
     )
 
 
@@ -185,7 +189,7 @@ def test_console_logger_labels_thickness_refinement_index(
         logger.report(ThicknessFitted(index=10, wr2=0.025, thickness=820.0))
 
     assert caplog.records[-1].getMessage() == (
-        "thickness refinement[orientation_index=10] wr2=0.025 thickness=820"
+        "thickness optimization[orientation_index=10] wr2=0.025 thickness=820"
     )
 
 

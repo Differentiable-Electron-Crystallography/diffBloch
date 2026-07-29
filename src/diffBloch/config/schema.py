@@ -24,6 +24,7 @@ from diffBloch.specs import (
     HexagonalSearch,
     IntegrationGeometry,
     Mosaicity,
+    OrientationSelection,
     RockingCurve,
     SegmentedUnionCoupling,
     ThicknessGrid,
@@ -88,6 +89,7 @@ class BlochwaveConfig(_StrictConfig):
     sg_max: float = 0.01
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
+    ignore_orientations: tuple[int, ...] = ()
 
     def to_beam_selection(self, integration: IntegrationGeometry) -> BeamSelection:
         """Assemble the ``select_beams`` value-type: the Klar cutoffs + the shared integration."""
@@ -111,6 +113,10 @@ class BlochwaveConfig(_StrictConfig):
             union_max_new_beams_pct=self.union_max_new_beams_pct,
         )
 
+    def to_orientation_selection(self) -> OrientationSelection:
+        """Parse zero-based source PETS indices excluded from the whole Bloch experiment."""
+        return OrientationSelection(ignore_orientations=self.ignore_orientations)
+
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> BlochwaveConfig:
         if self.rsg <= 0.0:
@@ -118,6 +124,7 @@ class BlochwaveConfig(_StrictConfig):
         if self.rocking_curve_sampling < 1:
             raise ValueError("rocking_curve_sampling must be >= 1")
         self.to_policy()
+        self.to_orientation_selection()
         return self
 
 
@@ -219,7 +226,7 @@ class RefinementConfig(_StrictConfig):
     in complex64 for faster/lower-memory refines at reduced decimal precision.
     """
 
-    steps: int = 500
+    steps: int = 40
     trainable: TrainableConfig = Field(default_factory=TrainableConfig)
     optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
     objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
@@ -296,6 +303,8 @@ class PreprocessConfig(_StrictConfig):
     defaults). Opt-in step config lives with the step, not in an always-present block.
     """
 
+    optimize_orientation: bool = True
+    optimize_thickness: bool = True
     orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
     thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
 

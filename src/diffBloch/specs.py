@@ -29,6 +29,7 @@ __all__ = [
     "HexagonalSearch",
     "IntegrationGeometry",
     "Mosaicity",
+    "OrientationSelection",
     "RockingCurve",
     "ScoredHklSelection",
     "ThicknessGrid",
@@ -37,6 +38,26 @@ __all__ = [
     "TrialCoupling",
     "assert_grid_covers_coupling",
 ]
+
+
+@dataclass(frozen=True)
+class OrientationSelection:
+    """Original PETS rotation indices excluded from every downstream experiment stage.
+
+    Indices are zero-based in the source ``.cif_pets`` rotation order. Filtering happens before
+    the train/validation split, beam construction, orientation/thickness fitting, inference, and
+    structure refinement. Duplicate or negative indices are rejected so the recorded experiment
+    selection has one unambiguous identity; the experiment boundary checks the data-dependent upper
+    bound once the number of PETS rotations is known.
+    """
+
+    ignore_orientations: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if any(index < 0 for index in self.ignore_orientations):
+            raise ValueError("ignore_orientations indices must be non-negative")
+        if len(set(self.ignore_orientations)) != len(self.ignore_orientations):
+            raise ValueError("ignore_orientations must not contain duplicate indices")
 
 
 @dataclass(frozen=True)

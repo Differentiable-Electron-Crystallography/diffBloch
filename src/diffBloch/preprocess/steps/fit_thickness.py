@@ -100,7 +100,7 @@ def fit_thickness(
         return replace(plan, orientations=tuple(fitted))
 
     # method rides in the config digest (cfg.solver.refine); the grid is the step's own param.
-    return as_step("fit_thickness", grid, run)
+    return as_step("optimize_thickness", grid, run)
 
 
 def _fit_one(

@@ -48,6 +48,10 @@ def test_refine_experiment_threads_config_precision_to_engine(monkeypatch) -> No
         return SimpleNamespace(losses=torch.tensor([1.0]), best_loss=1.0, best_step=0)
 
     monkeypatch.setattr("diffBloch.app.program.run_refinement_model", fake_run_refinement_model)
+    monkeypatch.setattr(
+        "diffBloch.app.program._write_refinement_outputs",
+        lambda root, cfg, refinement, result: result,
+    )
 
     result = refine_experiment(Path("/experiment"), device="cuda", max_batch=7)
 

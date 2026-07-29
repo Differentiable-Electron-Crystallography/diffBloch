@@ -268,7 +268,16 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
 
     calls: list[int] = []
 
-    def stub(engine, fgb, plan, op, *, search, coupling, validate=True):  # type: ignore[no-untyped-def]
+    def stub(  # type: ignore[no-untyped-def]
+        engine,
+        fgb,
+        plan,
+        op,
+        *,
+        search,
+        coupling,
+        validate=True,
+    ):
         calls.append(1)
         time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
         return op, 0.5, 1, 1

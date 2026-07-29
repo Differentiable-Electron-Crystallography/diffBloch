@@ -356,14 +356,8 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     assert recoupled.alignment.hkl.tolist() == once.orientations[0].alignment.hkl.tolist()
 
 
-def test_fit_orientation_couples_and_reselects_per_trial() -> None:
-    """coupling=TrialCoupling re-couples + re-selects at every trial (the private's objective).
-
-    Two claims: (1) a coupled trial at a tilted orientation re-selects a *different* scored set than
-    at the seed -- the deliberately non-stationary objective the module docstring records; (2) the
-    seed is rebuilt through the coupled builder, so an opted-in fit returns a segmented plan. A
-    short search keeps the end-to-end run fast.
-    """
+def test_fit_orientation_recouples_solve_beams_but_pins_scored_hkl_per_trial() -> None:
+    """Coupled trials may change SOLVE beams but always compare the same scored reflections."""
     from diffBloch.preprocess.orientation import hexagonal_tilt
     from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
 
@@ -374,9 +368,14 @@ def test_fit_orientation_couples_and_reselects_per_trial() -> None:
     seed_trial = _coupled_trial(grid, op, seed_o, coupling)
     tilt_trial = _coupled_trial(grid, op, seed_o @ hexagonal_tilt(0.0, 3.0), coupling)
     assert isinstance(seed_trial, CoupledOrientationPlan)
-    # union AND scored set are re-derived per trial (the non-stationary objective)
+    # Additional SOLVE beams track the trial, but the objective domain stays fixed.
     assert seed_trial.beam_hkl.tolist() != tilt_trial.beam_hkl.tolist()
-    assert seed_trial.alignment.hkl.tolist() != tilt_trial.alignment.hkl.tolist()
+    assert seed_trial.alignment.hkl.tolist() == tilt_trial.alignment.hkl.tolist()
+    assert seed_trial.alignment.hkl.tolist() == op.alignment.hkl.tolist()
+    for trial in (seed_trial, tilt_trial):
+        for segment in trial.segments:
+            segment_hkl = {tuple(row) for row in segment.plan.beam_hkl.tolist()}
+            assert all(tuple(row) in segment_hkl for row in op.alignment.hkl.tolist())
 
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
     (fitted,) = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(

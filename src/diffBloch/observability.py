@@ -224,7 +224,7 @@ class ThicknessFitted:
     candidate (Angstrom). Emitted in plan order (the fit is sequential).
     """
 
-    channel: ClassVar[str] = "fit_thickness"
+    channel: ClassVar[str] = "optimize_thickness"
     index: int
     wr2: float
     thickness: float
@@ -347,6 +347,8 @@ class RefinementStep:
     iteration: int
     loss: float
     wr2: float | None = None
+    r_obs: float | None = None
+    diff_loss: float | None = None
     objective_total: float | None = None
     components: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
 
@@ -360,7 +362,16 @@ class RefinementStep:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {"wr2": self.wr2} if self.wr2 is not None else {"loss": self.loss}
+        values: dict[str, float] = {}
+        if self.wr2 is not None:
+            values["wr2"] = self.wr2
+        if self.r_obs is not None:
+            values["r_obs"] = self.r_obs
+        if self.diff_loss is not None:
+            values["diff_loss"] = self.diff_loss
+        if not values:
+            values["loss"] = self.loss
+        return values
 
 
 @dataclass(frozen=True)

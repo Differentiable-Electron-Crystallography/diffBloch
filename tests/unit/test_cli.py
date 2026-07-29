@@ -234,8 +234,8 @@ class _FakePlan:
     def __init__(self) -> None:
         self.orientations = (object(), object())
         self.provenance = (
-            SimpleNamespace(name="fit_orientation"),
-            SimpleNamespace(name="fit_thickness"),
+            SimpleNamespace(name="optimize_orientation"),
+            SimpleNamespace(name="optimize_thickness"),
         )
 
 
@@ -271,8 +271,10 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
     assert captured["checkpoint"] is True and captured["refresh"] is False
     assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
-    assert "preprocessed 2 rotations" in out
-    assert "fit_orientation, fit_thickness" in out  # recipe echoed; no R_obs (no scoring)
+    assert "PREPROCESS COMPLETE" in out
+    assert "Rotations              2" in out
+    assert "Optimize Orientation" in out
+    assert "Optimize Thickness" in out
     assert "R_obs" not in out
 
 
@@ -332,7 +334,23 @@ def test_run_preprocess_missing_experiment_reports_concise_error(
 
 def _fake_refinement_result() -> SimpleNamespace:
     """Minimal stand-in for a RefinementResult: enough for the CLI's summary line."""
-    return SimpleNamespace(losses=torch.tensor([2.0, 1.0]), best_loss=1.0, best_step=1)
+    history = [
+        SimpleNamespace(wr2=0.2, r_obs=0.3, diff_loss=2.0),
+        SimpleNamespace(wr2=0.1, r_obs=0.2, diff_loss=1.0),
+    ]
+    return SimpleNamespace(
+        losses=torch.tensor([2.0, 1.0]),
+        best_loss=1.0,
+        best_step=1,
+        history=history,
+        reflection_counts={
+            "matched": 12,
+            "matched_i_gt_3sigma": 8,
+            "matched_i_le_3sigma": 4,
+            "unmatched_observed": 3,
+        },
+        artifacts={"refined_structure": "/tmp/refined_structure.cif"},
+    )
 
 
 def test_run_refine_delegates_and_reports(
@@ -362,8 +380,14 @@ def test_run_refine_delegates_and_reports(
     assert captured["dir"] == "/some/experiment"
     assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     out = capsys.readouterr().out
-    assert "refined 2 steps" in out
-    assert "objective 2.000000 -> 1.000000 (best at step 1)" in out
+    assert "REFINEMENT COMPLETE" in out
+    assert "Best epoch             2" in out
+    assert "wR2                    0.1" in out
+    assert "R_obs                  0.2" in out
+    assert "Diffraction loss       1" in out
+    assert "HKLs (Observed/total)  8 / 12" in out
+    assert "Refined Structure" in out
+    assert "/tmp/refined_structure.cif" in out
 
 
 def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:

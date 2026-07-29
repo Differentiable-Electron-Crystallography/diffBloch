@@ -1,9 +1,10 @@
 """The default experiment runner the ``run infer`` CLI exposes.
 
 :func:`run_experiment` encodes the default recipe as one ordered ``Plan -> Plan`` pipeline:
-plan-shaping (``select_beams`` -> ``integrate_rocking_curve`` -> ``mosaicity``) followed by
-parameter fitting (``fit_orientation`` -> ``fit_thickness``), then ``run_inference`` evaluates it --
-so a caller with an experiment directory gets a full result in one call. It is a
+plan-shaping (``build_orientation_plans``, selecting coupled SOLVE beams from ``g_max``/``sg_max``
+and building rocking geometry plus its reduction) followed by
+the config-enabled parameter fitting stages (orientation, then thickness), then ``run_inference``
+evaluates it -- so a caller with an experiment directory gets a full result in one call. It is a
 *convenience*, not the only path: every step is ordinary public API, so a Python user who wants a
 different composition composes their own ``pipeline([...])`` with ``from_experiment`` +
 ``run_inference`` directly. The CLI stays thin by delegating here and holds no science.
@@ -21,9 +22,13 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 from pathlib import Path
+
+import gemmi
+import numpy as np
 
 from diffBloch.config import (
     ExperimentConfig,
@@ -47,7 +52,7 @@ from diffBloch.engine import (
 )
 from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
-from diffBloch.params import Device
+from diffBloch.params import Device, constrain
 from diffBloch.preprocess import (
     OPAQUE,
     ConvergenceTest,
@@ -59,8 +64,6 @@ from diffBloch.preprocess import (
     fit_thickness,
     fork,
     from_experiment,
-    integrate_rocking_curve,
-    mosaicity,
     pipeline,
     read_plan,
     resolve_recipe,
@@ -331,7 +334,7 @@ def refine_experiment(
     initial = refinement.params if device is None else refinement.params.to(device)
     model = build_refinement_model(initial=initial)
     problem = build_refinement_problem()
-    return run_refinement_model(
+    result = run_refinement_model(
         engine,
         model,
         problem,
@@ -341,6 +344,122 @@ def refine_experiment(
         lr=cfg.refinement.optimizer.lr,
         logger=logger,
     )
+    result = _write_refinement_outputs(root, cfg, refinement, result)
+    return result
+
+
+def _write_refinement_outputs(
+    root: Path,
+    cfg: ExperimentConfig,
+    refinement: RefinementSetup,
+    result: ModelRefinementResult,
+) -> ModelRefinementResult:
+    """Persist the best structure, raw parameter snapshot, and machine-readable summary."""
+    structure_path = (root / "refined_structure.cif").resolve()
+    params_path = (root / "refined_parameters.npz").resolve()
+    summary_path = (root / "refinement_summary.json").resolve()
+    state = constrain(result.best_params, refinement.spec)
+    source_path = root / cfg.inputs.structure
+    document = gemmi.cif.read_file(str(source_path))
+    block = document.sole_block()
+    structure = read_structure(source_path, load_hydrogens=cfg.inputs.load_hydrogens)
+    positions = state.positions.detach().cpu().numpy()
+    occupancies = state.occupancies.detach().cpu().numpy()
+    uij_star = state.uij_star.detach().cpu().numpy()
+    reciprocal_basis = refinement.spec.reciprocal_basis
+    assert reciprocal_basis is not None
+    reciprocal = reciprocal_basis.detach().cpu().numpy()
+    reciprocal_lengths = np.linalg.norm(reciprocal, axis=1)
+    reciprocal_metric = reciprocal @ reciprocal.T
+    atom_loop = block.find_loop("_atom_site_label").get_loop()
+    tags = list(atom_loop.tags)
+    label_column = tags.index("_atom_site_label")
+    atom_rows = {
+        atom_loop.values[row * atom_loop.width() + label_column]: row
+        for row in range(atom_loop.length())
+    }
+    for index, label in enumerate(structure.labels):
+        row = atom_rows[label]
+        updates = {
+            "_atom_site_fract_x": positions[index, 0],
+            "_atom_site_fract_y": positions[index, 1],
+            "_atom_site_fract_z": positions[index, 2],
+            "_atom_site_occupancy": occupancies[index],
+        }
+        if structure.adp.kind[index] == "Uiso":
+            updates["_atom_site_U_iso_or_equiv"] = np.sum(
+                uij_star[index] * reciprocal_metric
+            ) / np.sum(reciprocal_metric * reciprocal_metric)
+        for tag, value in updates.items():
+            if tag in tags:
+                column = tags.index(tag)
+                atom_loop.values[row * atom_loop.width() + column] = f"{float(value):.10g}"
+
+    aniso_column = block.find_loop("_atom_site_aniso_label")
+    if aniso_column:
+        aniso_loop = aniso_column.get_loop()
+        aniso_tags = list(aniso_loop.tags)
+        label_column = aniso_tags.index("_atom_site_aniso_label")
+        aniso_rows = {
+            aniso_loop.values[row * aniso_loop.width() + label_column]: row
+            for row in range(aniso_loop.length())
+        }
+        components = {
+            "_atom_site_aniso_U_11": (0, 0),
+            "_atom_site_aniso_U_22": (1, 1),
+            "_atom_site_aniso_U_33": (2, 2),
+            "_atom_site_aniso_U_12": (0, 1),
+            "_atom_site_aniso_U_13": (0, 2),
+            "_atom_site_aniso_U_23": (1, 2),
+        }
+        scale = reciprocal_lengths[:, None] * reciprocal_lengths[None, :]
+        for index, label in enumerate(structure.labels):
+            if structure.adp.kind[index] != "Uani" or label not in aniso_rows:
+                continue
+            row = aniso_rows[label]
+            uij_cif = uij_star[index] / scale
+            for tag, (i, j) in components.items():
+                if tag in aniso_tags:
+                    column = aniso_tags.index(tag)
+                    aniso_loop.values[row * aniso_loop.width() + column] = (
+                        f"{float(uij_cif[i, j]):.10g}"
+                    )
+    document.write_file(str(structure_path))
+
+    params = result.best_params
+    empty = np.empty((0,), dtype=np.float64)
+    np.savez_compressed(
+        str(params_path),
+        asu_positions=params.asu_positions.detach().cpu().numpy(),
+        uij_raw=empty if params.uij_raw is None else params.uij_raw.detach().cpu().numpy(),
+        u_iso_raw=(empty if params.u_iso_raw is None else params.u_iso_raw.detach().cpu().numpy()),
+        occupancy_raw=(
+            empty if params.occupancy_raw is None else params.occupancy_raw.detach().cpu().numpy()
+        ),
+    )
+
+    best = result.history[result.best_step]
+    artifacts: dict[str, str] = {
+        "refined_structure": str(structure_path),
+        "refined_parameters": str(params_path),
+        "summary": str(summary_path),
+        "plan": str((root / _PLAN_NPZ).resolve()),
+        "plan_lock": str((root / _PLAN_LOCK).resolve()),
+    }
+    summary = {
+        "best_epoch": result.best_step,
+        "objective": result.best_loss,
+        "wr2": best.wr2,
+        "r_obs": best.r_obs,
+        "diff_loss": best.diff_loss,
+        "total_hkl": (
+            f"{result.reflection_counts['matched_i_gt_3sigma']} / "
+            f"{result.reflection_counts['matched']}"
+        ),
+        "artifacts": artifacts,
+    }
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+    return replace(result, artifacts=artifacts)
 
 
 def _preprocess(
@@ -399,8 +518,10 @@ def _recipe_steps(
 ) -> list[PlanStep]:
     """The default recipe as an inspectable step list (its provenance keys the lock).
 
-    The orientation fit runs under per-trial coupling (:func:`_trial_coupling`). The tilt-independent
-    fit is not offered here; compose it directly if needed.
+    ``preprocess.optimize_orientation`` and ``preprocess.optimize_thickness`` select which fitting
+    stages join the fixed recipe order. When enabled, the orientation fit runs under per-trial
+    coupling (:func:`_trial_coupling`). The tilt-independent fit is not offered here; compose it
+    directly if needed.
 
     The fit tail is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large cell**
     (> ``_LARGE_CELL_THRESHOLD_A3``) takes the coarse fp32 search with the gather integrity checks
@@ -447,23 +568,31 @@ def _recipe_steps(
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
         )
 
-    return [
-        select_beams(cfg.blochwave.to_beam_selection(integration)),
-        build_orientation_plans(),
-        integrate_rocking_curve(cfg.blochwave.to_rocking_curve(integration)),
-        mosaicity(cfg.blochwave.mosaicity),
-        fork(
-            lambda grid: grid.cell_volume > _LARGE_CELL_THRESHOLD_A3,
-            when_true=[  # large cell: coarse fp32 search, integrity checks skipped
-                orientation_fit(precision="fp32", validate=False),
-                thickness_fit(precision="fp32"),
-            ],
-            when_false=[  # small cell: exact fp64 path
-                orientation_fit(precision="fp64", validate=True),
-                thickness_fit(precision="fp64"),
-            ],
+    steps: list[PlanStep] = [
+        build_orientation_plans(
+            cfg.blochwave.to_rocking_curve(integration),
+            cfg.blochwave.mosaicity,
+            coupling=cfg.blochwave.to_policy(),
+            scoring_selection=cfg.blochwave.to_beam_selection(integration),
         ),
     ]
+    small_cell_fits: list[PlanStep] = []
+    large_cell_fits: list[PlanStep] = []
+    if cfg.preprocess.optimize_orientation:
+        small_cell_fits.append(orientation_fit(precision="fp64", validate=True))
+        large_cell_fits.append(orientation_fit(precision="fp32", validate=False))
+    if cfg.preprocess.optimize_thickness:
+        small_cell_fits.append(thickness_fit(precision="fp64"))
+        large_cell_fits.append(thickness_fit(precision="fp32"))
+    if small_cell_fits:
+        steps.append(
+            fork(
+                lambda grid: grid.cell_volume > _LARGE_CELL_THRESHOLD_A3,
+                when_true=large_cell_fits,
+                when_false=small_cell_fits,
+            )
+        )
+    return steps
 
 
 def _trial_coupling(cfg: ExperimentConfig, integration: IntegrationGeometry) -> TrialCoupling:
