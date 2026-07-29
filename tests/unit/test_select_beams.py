@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from diffBloch.config import load_config
 from diffBloch.core.products import MosaicSmoothed
@@ -16,6 +17,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
+from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, SegmentedUnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -124,6 +126,22 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
     assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
     assert isinstance(built.tilt_reduction, MosaicSmoothed)
+
+
+def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:
+    with pytest.raises(ValueError, match="mosaicity requires"):
+        build_orientation_plans(mosaicity=Mosaicity(window=1))
+    with pytest.raises(ValueError, match="coupling requires"):
+        build_orientation_plans(coupling=SegmentedUnionCoupling())
+
+
+def test_build_orientation_plans_rejects_mosaic_window_larger_than_sampling() -> None:
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"),
+        sampling=2,
+    )
+    with pytest.raises(ValueError, match="exceeds"):
+        build_orientation_plans(rocking, Mosaicity(window=3))
 
 
 def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment() -> None:

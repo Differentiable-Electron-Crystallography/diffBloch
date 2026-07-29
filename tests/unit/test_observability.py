@@ -167,6 +167,21 @@ def test_console_logger_formats_refinement_epoch_metrics(
     )
 
 
+def test_console_logger_formats_preprocess_stage(caplog: pytest.LogCaptureFixture) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    event = PlanStepCompleted(
+        channel="build_orientation_plans",
+        index=0,
+        measurements={"n_orientations": 2.0},
+    )
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(event)
+
+    assert caplog.records[-1].getMessage() == (
+        "Preprocess stage  1 │ Build Orientation Plans     │ n_orientations=2"
+    )
+
+
 def test_console_logger_labels_orientation_refinement_index(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

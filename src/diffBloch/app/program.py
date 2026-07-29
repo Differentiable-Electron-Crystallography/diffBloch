@@ -393,7 +393,7 @@ def _write_refinement_outputs(
         for tag, value in updates.items():
             if tag in tags:
                 column = tags.index(tag)
-                atom_loop.values[row * atom_loop.width() + column] = f"{float(value):.10g}"
+                atom_loop[row, column] = f"{float(value):.10g}"
 
     aniso_column = block.find_loop("_atom_site_aniso_label")
     if aniso_column:
@@ -421,9 +421,7 @@ def _write_refinement_outputs(
             for tag, (i, j) in components.items():
                 if tag in aniso_tags:
                     column = aniso_tags.index(tag)
-                    aniso_loop.values[row * aniso_loop.width() + column] = (
-                        f"{float(uij_cif[i, j]):.10g}"
-                    )
+                    aniso_loop[row, column] = f"{float(uij_cif[i, j]):.10g}"
     document.write_file(str(structure_path))
 
     params = result.best_params
