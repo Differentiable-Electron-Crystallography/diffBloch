@@ -3,32 +3,29 @@ name: malik-2026-quartz-experimental
 
 inputs:
   structure: data/quartz/quartz_kinematical.cif
-  observations: data/quartz/experimental_data/quartz.cif_pets
+  exp_data: data/quartz/experimental_data/quartz.cif_pets
   load_hydrogens: false
 
 sample:
   thicknesses: [500.0]
 
-numerics:
+blochwave:
   g_max_refine: 1.6
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9
-  integration:
-    semiangle: 1.0
 
-solver:
-  inference: bloch_eigen
-  refine: matrix_exp
+  fixed_n_segments: 12
+  g_max: 2.0
+  sg_max: 0.01
 
-preprocess:
-  coupling:
-    fixed_n_segments: 12
-    g_max: 2.0
-    sg_max: 0.01
+  solver:
+    inference: bloch_eigen
+    refine: matrix_exp
 
 refinement:
   precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation
+

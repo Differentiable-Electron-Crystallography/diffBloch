@@ -116,7 +116,7 @@ class OrientationFitted:
     with the step's ``PlanStepCompleted`` summary line, like the refinement stream's events.
     """
 
-    channel: ClassVar[str] = "fit_orientation"
+    channel: ClassVar[str] = "orientation"
     index: int
     wr2: float
     n_matched_hkl: int

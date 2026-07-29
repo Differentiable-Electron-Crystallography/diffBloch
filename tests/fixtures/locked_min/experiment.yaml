@@ -2,7 +2,7 @@
 name: locked-min
 inputs:
   structure: enantiomer_1.cif
-  observations: exp_data.cif_pets
+  exp_data: exp_data.cif_pets
 refinement:
   optimizer:
     name: lbfgs

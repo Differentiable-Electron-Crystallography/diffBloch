@@ -101,7 +101,7 @@ from diffBloch.preprocess import from_experiment
 root = Path("examples/experiments/quartz-checkpoint")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
-observations = read_observations(root / cfg.inputs.observations)
+observations = read_observations(root / cfg.inputs.exp_data)
 
 setup = from_experiment(structure, observations, cfg)
 initial_plan = setup.plans.combined
@@ -152,7 +152,7 @@ from diffBloch.specs import BeamSelection
 root = Path("examples/experiments/quartz-checkpoint")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
-observations = read_observations(root / cfg.inputs.observations)
+observations = read_observations(root / cfg.inputs.exp_data)
 
 setup = from_experiment(structure, observations, cfg)
 base_plan = setup.plans.combined

@@ -3,32 +3,29 @@ name: malik-2026-paracetamol-synthetic
 
 inputs:
   structure: data/paracetamol_cr/synthetic_data/synthetic_structural_data_paper/paracetamol_02_displacement.cif
-  observations: data/paracetamol_cr/synthetic_data/synthetic_structural_data_paper/paracetamol_paper_data.cif_pets
+  exp_data: data/paracetamol_cr/synthetic_data/synthetic_structural_data_paper/paracetamol_paper_data.cif_pets
   load_hydrogens: true
 
 sample:
   thicknesses: [500.0]
 
-numerics:
+blochwave:
   g_max_refine: 2.0
   rocking_curve_sampling: 70
   dsg: 0.0015
   rsg: 0.9
-  integration:
-    semiangle: 1.4
 
-solver:
-  inference: bloch_eigen
-  refine: matrix_exp
+  fixed_n_segments: 12
+  g_max: 1.0
+  sg_max: 0.01
 
-preprocess:
-  coupling:
-    fixed_n_segments: 12
-    g_max: 1.0
-    sg_max: 0.01
+  solver:
+    inference: bloch_eigen
+    refine: matrix_exp
 
 refinement:
   precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation
+
