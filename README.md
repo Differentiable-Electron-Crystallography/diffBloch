@@ -64,8 +64,6 @@ See `examples/experiments/quartz/README.md` for the worked example and its expec
 
 - `examples/experiments` contains runnable example experiments for small and large compounds,
   including checkpointed runs that start from a committed `Plan`.
-- `examples/papers` contains paper implementations that demonstrate doing science with diffBloch via
-  richer Python API composition.
 
 ## Anchor trend
 
@@ -104,7 +102,7 @@ University.
 | IO | Parse CIF/PETS files into validated typed records. | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html) |
 | Config | Validate experiment settings and lock input/checkpoint identity. | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html), [Reproducibility](https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html) |
 | Preprocess | Build and improve the immutable `Plan` the simulator consumes. | [Preprocessing](https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html) |
-| Core | Deterministic crystallographic and Bloch-wave numerical kernels. | [Architecture](https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html) |
+| Core | Repeatable crystallographic and Bloch-wave numerical kernels. | [Architecture](https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html) |
 | Params | Differentiable structural parameters and physical constraints. | [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
 | Engine | Combine `Plan` + parameters, simulate, score, and refine. | [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
 | Observability | Track progress and debug refinements with typed events/loggers. | [Observability](https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html) |

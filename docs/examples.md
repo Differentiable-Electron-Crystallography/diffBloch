@@ -2,8 +2,7 @@
 
 The repository ships runnable experiment directories under `examples/`. The top-level
 `examples/experiments` entries are mostly baked-in demonstration runs: small or checkpointed
-experiments that exercise preprocessing, inference, and refinement paths. For layouts intended to be
-studied, copied, and modified as research starting points, use `examples/papers`.
+experiments that exercise preprocessing, inference, and refinement paths.
 
 ## Quick examples
 
@@ -52,7 +51,6 @@ highest-precision refinement path.
 | `examples/experiments/quartz-checkpoint` | Fast-start quartz run from a committed preprocess checkpoint. |
 | `examples/experiments/abiraterone-checkpoint` | Larger molecular example; good CUDA/refine demonstration. |
 | `examples/experiments/lta` | Larger zeolite example. |
-| `examples/papers/...` | Advanced research/composition examples. |
 
 ## Python API example
 
@@ -62,6 +60,3 @@ from diffBloch.app import run_experiment
 result = run_experiment("examples/experiments/quartz-checkpoint")
 print(result.n_evaluated, result.mean_r_obs)
 ```
-
-For advanced Python workflows, see
-[`examples/papers`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/papers).

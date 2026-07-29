@@ -85,7 +85,7 @@ def run_inference(
     refinement: RefinementSetup,
     *,
     prepare: PlanStep = identity,
-    method: SolverMethod = "bloch_eigen",
+    method: SolverMethod = "matrix_exp",
     device: Device | None = None,
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
@@ -113,7 +113,7 @@ def run_inference(
 
     ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block on the terminal solve;
     ``None`` lets the engine pick a memory-safe block per beam count. Execution-only (memory), like
-    ``device``; inert for the ``bloch_eigen`` default. See :func:`~diffBloch.engine.build_engine`.
+    ``device``. See :func:`~diffBloch.engine.build_engine`.
     """
     plan = prepare(plan)
     params = refinement.params if device is None else refinement.params.to(device)

@@ -24,13 +24,8 @@ blochwave:
   # couple_beams only inside the fit steps). Declared here so from_experiment derives the SF grid
   # (2 * 1.5 + 0.5 = 3.5) the coupled forward needs. g_max is the private post-#154 solve cutoff
   # (its structure_factor.g_max 1.5, no cap margin); fixed_n_segments from private union_splits=4.
-  fixed_n_segments: 4
   g_max: 1.5
   sg_max: 0.02
-  solver:
-    inference: bloch_eigen
-    refine: matrix_exp
-
 refinement:
   split:
     train: all_except_validation

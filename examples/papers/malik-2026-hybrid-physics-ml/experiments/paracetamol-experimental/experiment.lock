@@ -1,8 +1,0 @@
-structure:
-  ref: data/paracetamol_cr/experimental_data/paracetamol.cif
-  sha256: a6fbbfcd91c7f8c308bab9154e2d1947d0a141243f712ee1f9c4e009669bfdb6
-  bytes: 2381
-observations:
-  ref: data/paracetamol_cr/experimental_data/APAP_dyn_reference.cif_pets
-  sha256: 5fb766d1f7d3c7e1f8855cafe68c9b561c654e1213262baf79ed3f5363164b46
-  bytes: 1709021

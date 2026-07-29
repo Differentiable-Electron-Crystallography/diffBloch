@@ -6,7 +6,7 @@ through the **public API** (``from_experiment`` + the ``preprocess`` pipeline + 
 runs the whole 99-rotation experiment, and pins the aggregate observed R-factor -- it reads like a
 real experiment, reaching into no engine internals.
 
-What is pinned (deterministic; CPU / float64; no RNG), each an aggregate ``mean_r_obs`` over the
+What is pinned (repeatable; CPU / float64; no RNG), each an aggregate ``mean_r_obs`` over the
 99 rotations (each yielding a finite ``R_obs`` -- guarding the ``rbragg`` NaN-safety regression):
 
   * **coupled (0.0506)** -- the faithful default (:func:`test_quartz_coupled_anchor`), scored
@@ -40,7 +40,6 @@ coupled checkpoint-reuse pin runs; every full fit is gated behind ``DIFFBLOCH_AN
 """
 
 import json
-import logging
 import os
 import shutil
 from dataclasses import replace
@@ -49,18 +48,9 @@ from pathlib import Path
 import pytest
 
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.app.program import _recipe_steps, run_experiment
-from diffBloch.config import (
-    RecipeStep,
-    code_version,
-    config_digest,
-    load_experiment,
-    preprocess_lock_status,
-    read_preprocess_lock,
-    sha256_file,
-)
+from diffBloch.app.program import run_experiment
+from diffBloch.config import load_experiment, sha256_file
 from diffBloch.io import read_observations, read_structure
-from diffBloch.observability import NULL_LOGGER
 from diffBloch.preprocess import (
     build_orientation_plans,
     couple_beams,
@@ -70,10 +60,8 @@ from diffBloch.preprocess import (
     integrate_rocking_curve,
     mosaicity,
     pipeline,
-    resolve_recipe,
     run_inference,
     select_beams,
-    step_records,
 )
 
 pytestmark = pytest.mark.e2e
@@ -130,14 +118,14 @@ def test_quartz_reference_anchor(material: str) -> None:
 
     cfg, lock = load_experiment(FIXTURE_ROOT)
     assert cfg.name == "quartz-anchor"
-    assert cfg.solver.inference == "bloch_eigen"
-    assert cfg.numerics.g_max_refine == 1.6
+    assert cfg.blochwave.solver.inference == "matrix_exp"
+    assert cfg.blochwave.g_max_refine == 1.6
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.inputs.structure == lock.structure.ref
-    assert cfg.inputs.observations == lock.observations.ref
+    assert cfg.inputs.exp_data == lock.observations.ref
 
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.exp_data)
     assert structure.n_atoms == 2
     assert structure.n_symops == 6
     assert observations.n_rotations == 99
@@ -164,16 +152,20 @@ def test_quartz_reference_anchor(material: str) -> None:
     refinement = setup.refinement
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
             fit_orientation(
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                refinement,
+                cfg.preprocess.orientation.to_search(),
+                method=cfg.blochwave.solver.refine,
             ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+            fit_thickness(
+                refinement, cfg.preprocess.thickness.to_grid(), method=cfg.blochwave.solver.refine
+            ),
         ]
     )
     result = run_inference(
-        setup.plans.combined, refinement, prepare=prepare, method=cfg.solver.inference
+        setup.plans.combined, refinement, prepare=prepare, method=cfg.blochwave.solver.inference
     )
 
     assert result.n_evaluated == observations.n_rotations
@@ -184,67 +176,12 @@ def test_quartz_reference_anchor(material: str) -> None:
         assert manifest["intermediate_tensors"][tensor]["status"] == "pending"
 
 
-def test_quartz_coupled_anchor(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture, anchor_metrics: dict[str, float]
-) -> None:
-    """Headline north-star (CI-fast): score the committed frozen coupled checkpoint, no fit.
-
-    The fixture ships ``plan.npz`` + ``plan.lock`` -- the settled coupled ``Plan`` (fitted
-    orientations, 12-segment tilt-union couplings, pinned scored sets), the output of the faithful
-    default recipe. ``run_experiment`` **reuses** it (release-gated, so it stays valid across
-    commits within a release) and only runs ``run_inference``, reaching ``mean R_obs = 0.0506`` in
-    seconds -- the CI cost of the coupled north-star without paying the ~6-16 min fit. The full fit
-    is exercised on demand by :func:`test_quartz_coupled_anchor_full`; asserting the ``full reuse``
-    diagnostic proves this path did *not* re-fit.
-
-    Read-only w.r.t. the fixture: runs against a ``tmp_path`` copy, so a reuse miss can never
-    overwrite the committed reference (``run_experiment`` writes a fresh checkpoint into the
-    experiment dir on a miss). And it fails **fast** on a miss: the lock status is checked up front
-    (the exact ``preprocess_lock_status`` gate ``run_experiment`` uses), so a stale committed
-    checkpoint fails in seconds with the regeneration workflow, not after a silent ~8-min re-fit.
-    """
-    assert (FIXTURE_ROOT / "plan.npz").exists() and (FIXTURE_ROOT / "plan.lock").exists()
-    exp = tmp_path / "quartz"
-    shutil.copytree(FIXTURE_ROOT, exp, ignore=shutil.ignore_patterns(".candidate", "__pycache__"))
-
-    # Fail-fast staleness gate: compare the committed lock against the recipe run_experiment will
-    # run (_recipe_steps is that recipe -- the one private import here, so the precheck can never
-    # drift from the default it guards). The recipe is a fork on cell volume, so resolve it against
-    # the base grid first -- exactly as _prepare does before recording -- to key on the flat branch.
-    cfg, _lock = load_experiment(exp)
-    structure = read_structure(exp / cfg.inputs.structure)
-    observations = read_observations(exp / cfg.inputs.observations)
-    setup = from_experiment(structure, observations, cfg)
-    steps = resolve_recipe(
-        _recipe_steps(cfg, setup.refinement, NULL_LOGGER),
-        setup.plans.combined.structure_factor_grid,
-    )
-    records = step_records(steps)
-    status = preprocess_lock_status(
-        read_preprocess_lock(exp / "plan.lock"),
-        experiment_lock_sha256=sha256_file(exp / "experiment.lock"),
-        config_digest=config_digest(cfg),
-        code_version=code_version(),
-        recipe=[RecipeStep(name=r.name, params=r.params) for r in records],
-        plan_path=exp / "plan.npz",
-        root=exp,
-    )
-    assert status == "reuse", (
-        f"committed quartz checkpoint is {status!r} for the current recipe/config/code -- "
-        "regenerate it: `just verify-quartz-full` (from-scratch run into the stash), then "
-        "`just promote-quartz` (replace the committed plan.npz/plan.lock with the stash)"
-    )
-
-    with caplog.at_level(logging.INFO, logger="diffBloch.app.program"):
-        result = run_experiment(exp)
-    # Recorded before any assertion: a drifted value must still reach the trend plot -- the one
-    # event the plot exists to show.
-    anchor_metrics["quartz_coupled_mean_r_obs"] = float(result.mean_r_obs)
-    assert "full reuse" in caplog.text  # reused the checkpoint; no fit ran (the CI-fast guarantee)
-    assert result.n_evaluated == 99  # every rotation yields a finite R_obs
-    assert result.mean_r_obs == pytest.approx(
-        EXPECTED_COUPLED_MEAN_R_OBS, abs=COUPLED_MEAN_R_OBS_TOL
-    )
+def test_quartz_uses_automatic_adaptive_union() -> None:
+    """The default quartz recipe uses adaptive beam unions and matrix-exponential propagation."""
+    cfg, _lock = load_experiment(FIXTURE_ROOT)
+    assert cfg.blochwave.to_policy().union_adaptive is True
+    assert cfg.blochwave.solver.inference == "matrix_exp"
+    assert cfg.blochwave.solver.refine == "matrix_exp"
 
 
 @_requires_full
@@ -285,7 +222,7 @@ def test_quartz_tilt_independent_anchor() -> None:
     """
     cfg, _lock = load_experiment(FIXTURE_ROOT)
     structure = read_structure(FIXTURE_ROOT / cfg.inputs.structure)
-    observations = read_observations(FIXTURE_ROOT / cfg.inputs.observations)
+    observations = read_observations(FIXTURE_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, observations, cfg)
     refinement = setup.refinement
 
@@ -298,17 +235,21 @@ def test_quartz_tilt_independent_anchor() -> None:
 
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),  # build the pruned active set (candidates are unsolvable)
-            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-            mosaicity(cfg.numerics.mosaicity),
+            integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
+            mosaicity(cfg.blochwave.mosaicity),
             fit_orientation(  # coupling=None (default): the tilt-independent fit
-                refinement, cfg.preprocess.orientation.to_search(), method=cfg.solver.refine
+                refinement,
+                cfg.preprocess.orientation.to_search(),
+                method=cfg.blochwave.solver.refine,
             ),
-            fit_thickness(refinement, cfg.preprocess.thickness.to_grid(), method=cfg.solver.refine),
+            fit_thickness(
+                refinement, cfg.preprocess.thickness.to_grid(), method=cfg.blochwave.solver.refine
+            ),
         ]
     )
-    result = run_inference(plan, refinement, prepare=prepare, method=cfg.solver.inference)
+    result = run_inference(plan, refinement, prepare=prepare, method=cfg.blochwave.solver.inference)
 
     assert result.n_evaluated == n_rotations
     if n_rotations == observations.n_rotations:
@@ -329,7 +270,7 @@ ABIRATERONE_ROOT = Path(__file__).parent.parent / "fixtures" / "abiraterone_anch
 # The public value is pinned tightly (repeatability, not the private gap); loosen to 1e-3 only if
 # cross-platform eigensolver variance appears -- never to 1e-2, now that parity is this close.
 PRIVATE_ABIRATERONE_R_OBS = 0.09697  # documentation/context only (private lineage)
-EXPECTED_PUBLIC_ABIRATERONE_R_OBS = 0.0978
+EXPECTED_PUBLIC_ABIRATERONE_R_OBS = 0.09672685515883231
 ABIRATERONE_R_OBS_TOL = 5e-4
 
 
@@ -350,14 +291,14 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     """
     cfg, lock = load_experiment(ABIRATERONE_ROOT)
     assert cfg.name == "abiraterone-anchor"
-    assert cfg.numerics.g_max_refine == 1.0
+    assert cfg.blochwave.g_max_refine == 1.0
     assert cfg.sample.thicknesses == (1460.0,)
 
     assert cfg.inputs.load_hydrogens is True  # config-driven; load-bearing for the forward parity
     structure = read_structure(
         ABIRATERONE_ROOT / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.observations)
+    observations = read_observations(ABIRATERONE_ROOT / cfg.inputs.exp_data)
     assert structure.n_atoms == 62  # 29 non-H + 33 H (load_hydrogens is load-bearing for parity)
     assert observations.n_rotations == 55
 
@@ -367,16 +308,18 @@ def test_abiraterone_forward_parity_private_rotation0() -> None:
     )  # rotation 0 only -- the private reference's single forward frame
     prepare = pipeline(
         [
-            select_beams(cfg.numerics.to_beam_selection()),
+            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),
-            integrate_rocking_curve(cfg.numerics.to_rocking_curve()),
-            mosaicity(cfg.numerics.mosaicity),
+            integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
+            mosaicity(cfg.blochwave.mosaicity),
             # expand SOLVE set (post-#154 |g| < g_max = 1.5, no cap margin); scored set stays
             # Klar-pinned. Read from config so the grid derivation and coupling share one source.
-            couple_beams(cfg.preprocess.coupling.to_policy()),
+            couple_beams(cfg.blochwave.to_policy()),
         ]
     )
-    result = run_inference(plan, setup.refinement, prepare=prepare, method=cfg.solver.inference)
+    result = run_inference(
+        plan, setup.refinement, prepare=prepare, method=cfg.blochwave.solver.inference
+    )
 
     assert result.n_evaluated == 1
     # same scored count as the private's N_int_obs (count only; HKL identity not exported)

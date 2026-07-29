@@ -1,8 +1,0 @@
-structure:
-  ref: data/cspbbr3/synthetic_data/synthetic_structural_data_paper/cspbbr3_02_displacement.cif
-  sha256: 3d4e7585b1b1a7d020f03e7dafc0ef80baca373d7ddcfee29148a5e3e7d5ad12
-  bytes: 1195
-observations:
-  ref: data/cspbbr3/synthetic_data/synthetic_structural_data_paper/cspbbr3_paper_data.cif_pets
-  sha256: 91f17903c591346712ca63481899ae8e375a41bbafd4ae47b423219e55d5e66c
-  bytes: 1290699
