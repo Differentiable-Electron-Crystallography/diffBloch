@@ -112,7 +112,8 @@ class OrientationFitted:
     the search took to converge (the quantity ``HexagonalSearch.max_iterations`` caps), and
     ``pass_cap`` that cap itself -- carried per event so a plot can show each rotation's headroom
     (``n_passes`` vs ``pass_cap``) and flag any rotation that ran to the cap. With ``workers > 1``
-    events arrive in *completion* order (the plan itself stays ordered).
+    events arrive in *completion* order (the plan itself stays ordered). The channel is shared
+    with the step's ``PlanStepCompleted`` summary line, like the refinement stream's events.
     """
 
     channel: ClassVar[str] = "orientation"

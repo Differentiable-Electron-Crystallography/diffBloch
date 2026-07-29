@@ -57,7 +57,6 @@ class RefinableParams:
     uij_raw: Tensor | None = None
     u_iso_raw: Tensor | None = None
     occupancy_raw: Tensor | None = None
-    Fgb: Tensor | None = None
 
     def to(self, device: Device) -> RefinableParams:
         """Move every present parameter tensor to ``device`` (the device knob's single primitive).
@@ -78,7 +77,6 @@ class RefinableParams:
             uij_raw=move(self.uij_raw),
             u_iso_raw=move(self.u_iso_raw),
             occupancy_raw=move(self.occupancy_raw),
-            Fgb=move(self.Fgb),
         )
 
 
@@ -126,7 +124,6 @@ class PhysicalState:
     positions: Tensor
     uij_star: Tensor
     occupancies: Tensor
-    Fgb: Tensor | None = None
 
 
 def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
@@ -157,7 +154,6 @@ def constrain(params: RefinableParams, spec: ConstraintSpec) -> PhysicalState:
         ),
         uij_star=_constrain_adps(params, spec),
         occupancies=occupancies,
-        Fgb=params.Fgb,
     )
 
 

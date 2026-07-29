@@ -67,6 +67,16 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "mean_r_obs": 0.065,
     }
 
+    fitted = _fitted(index=5, wr2=0.12)
+    assert fitted.channel == "fit_orientation"  # shared with the step's PlanStepCompleted line
+    assert fitted.step == 5  # an orientation fit's step is its rotation index
+    assert fitted.measurements == {
+        "wr2": 0.12,
+        "n_trials": 10.0,
+        "n_passes": 3.0,
+        "pass_cap": 2000.0,
+    }
+
     thickness = ThicknessFitted(index=7, wr2=0.031, thickness=1460.0)
     assert thickness.channel == "fit_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
