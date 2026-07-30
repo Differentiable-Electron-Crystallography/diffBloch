@@ -20,8 +20,10 @@ The main numerical controls are:
 | `sg_max` | Maximum excitation-error magnitude for a beam to enter the simulation at a sampled tilt. |
 | `rocking_curve_sampling` | Number of tilt samples used to integrate each rocking curve. |
 
-Increasing `g_max` or `sg_max` increases the number of beams \(N\), with simulation cost scaling
-approximately as \(N^3\). Cost scales approximately linearly with `rocking_curve_sampling`.
+Increasing `g_max` or `sg_max` increases the number of beams {math}`N`, with simulation cost scaling
+approximately as {math}`N^3` (the propagator diagonalizes or exponentiates the {math}`N \times N`
+structure matrix once per orientation/thickness). Cost scales approximately linearly with
+`rocking_curve_sampling`.
 
 ## Convergence testing in diffBloch
 

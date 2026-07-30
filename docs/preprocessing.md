@@ -198,11 +198,12 @@ print(plan.structure_factor_grid.structure_factor_hkl.shape)
 
 ## Routing on cell size
 
-The coupled orientation search's cost scales roughly as \(N^3\) in the beam count \(N\), and \(N\)
-grows with unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity
-check in the search that costs proportionally more on a large coupled beam set, without changing the
-search itself — the fitted orientation is always re-scored under the full check once the search
-settles. Below the threshold (quartz, at \(\sim 113\ \text{Å}^3\), included) the check runs on every
+The coupled orientation search diagonalizes (or exponentiates) the structure matrix {math}`A` once
+per trial, an {math}`O(N^3)` operation in the beam count {math}`N`, and {math}`N` grows with
+unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity check in the
+search that costs proportionally more on a large coupled beam set, without changing the search
+itself — the fitted orientation is always re-scored under the full check once the search settles.
+Below the threshold (quartz, at {math}`\sim 113\ \text{Å}^3`, included) the check runs on every
 trial. This routing is built with {func}`diffBloch.preprocess.pipeline.fork`, which picks one of two
 step lists from the structure-factor grid before the recipe is checkpointed, so a committed `Plan` is
 unaffected by which branch produced it.
