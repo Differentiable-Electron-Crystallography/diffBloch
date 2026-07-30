@@ -37,12 +37,17 @@ uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device
 
 ## Catalog
 
-| Example | Purpose |
+The four bundled examples span the two axes that matter most for cost and behavior: unit-cell size
+(which sets the beam count, and with it the O(N³) eigensolve cost and whether the large-cell fork
+routes past it — see [Preprocessing](preprocessing.md#routing-on-cell-size)) and structural
+complexity (whether hydrogens and their riding-model treatment are in play).
+
+| Example | What it demonstrates |
 |---|---|
-| `examples/experiments/quartz` | Small full run from input files through preprocessing and refinement. |
-| `examples/experiments/quartz-checkpoint` | Fast-start quartz run from a committed preprocess checkpoint. |
-| `examples/experiments/abiraterone-checkpoint` | Larger molecular example; good CUDA/refine demonstration. |
-| `examples/experiments/lta` | Larger zeolite example. |
+| `examples/experiments/quartz` | Small unit cell (~113 Å³), no hydrogens; a full run from raw inputs, and the reproducibility anchor other changes are checked against. |
+| `examples/experiments/quartz-checkpoint` | Same structure, starting from a committed fitted `Plan` — the fast path once orientation/thickness are already settled. |
+| `examples/experiments/abiraterone-checkpoint` | A larger organic molecule with hydrogens, so the hydrogen riding-model constraint (see [Refinement](refinement.md#advanced-composition-constraints-restraints-and-learned-thickness)) is exercised; a CUDA/refine demonstration. |
+| `examples/experiments/lta` | A zeolite well above the large-cell threshold — routes through the faster orientation-search branch and benefits most from a GPU. |
 
 ## Python API example
 

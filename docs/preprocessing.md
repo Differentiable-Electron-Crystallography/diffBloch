@@ -120,8 +120,8 @@ print(refinement_setup.params.asu_positions.shape)
 
 ## `Plan -> Plan` steps
 
-Preprocessing is a composable `Plan -> Plan` pipeline. Any function with that shape receives a
-`Plan`, does one focused piece of work, and returns an updated `Plan`.
+Preprocessing is a sequence of small, focused steps, each taking a `Plan` and returning an updated
+one — one step builds the tilt geometry, another fits orientation, another fits thickness.
 
 The default app recipe begins with one displayed `build_orientation_plans` stage. It calculates the
 shared structure-factor support, constructs every central orientation and rocking sub-tilt,
@@ -138,13 +138,6 @@ Real steps include:
 - {func}`diffBloch.preprocess.steps.fit_orientation.fit_orientation` — search nearby orientations and keep the best-scoring one.
 - {func}`diffBloch.preprocess.steps.fit_thickness.fit_thickness` — search mean specimen thickness and keep the best-scoring value.
 - {func}`diffBloch.preprocess.driver.converge_numerics` — test convergence over `g_max`, `sg_max`, and `tilt_steps`.
-
-The pipeline also provides composition helpers such as {func}`diffBloch.preprocess.pipeline.fork`,
-{func}`diffBloch.preprocess.pipeline.iterate_until`, and
-{func}`diffBloch.preprocess.pipeline.stateful_plan_step` for conditional, repeated, or stateful
-preprocess logic. More advanced steps use the same contract: convergence sweeps repeatedly improve
-numerical plan values, while `fit_orientation` and `fit_thickness` score candidate plans and return
-the best updated `Plan`.
 
 ## API example: composing simple steps
 
@@ -203,68 +196,19 @@ print(len(orientations))
 print(plan.structure_factor_grid.structure_factor_hkl.shape)
 ```
 
-## API shape: branching, looping, and stateful drivers
+## Routing on cell size
 
-Advanced branching and looping pipelines can be composed with
-{func}`diffBloch.preprocess.pipeline.fork`,
-{func}`diffBloch.preprocess.pipeline.iterate_until`, and
-{func}`diffBloch.preprocess.pipeline.stateful_plan_step`.
+The coupled orientation search's cost scales roughly as \(N^3\) in the beam count \(N\), and \(N\)
+grows with unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity
+check in the search that costs proportionally more on a large coupled beam set, without changing the
+search itself — the fitted orientation is always re-scored under the full check once the search
+settles. Below the threshold (quartz, at \(\sim 113\ \text{Å}^3\), included) the check runs on every
+trial. This routing is built with {func}`diffBloch.preprocess.pipeline.fork`, which picks one of two
+step lists from the structure-factor grid before the recipe is checkpointed, so a committed `Plan` is
+unaffected by which branch produced it.
 
-`fork` constructs a {class}`diffBloch.preprocess.pipeline.Fork` value: the lowercase function is the
-user-facing combinator, while uppercase `Fork` is the returned dataclass/type used for recipe
-resolution. It chooses one of two step lists from the immutable structure-factor grid, so the chosen
-recipe can still be resolved before checkpointing; the default app recipe uses this shape to route
-large cells through a faster orientation-fit branch that skips per-trial gather integrity checks.
-`iterate_until` wraps a repeated
-`Plan -> Plan` improvement behind the same step shape.
-
-The convergence path is the stateful version of this idea. Its public pipeline surface is still a
-single `Plan -> Plan` step, but internally {func}`diffBloch.preprocess.driver.converge_numerics`
-varies `g_max`, `sg_max`, and `tilt_steps`, rebuilding the simulation at each setting. The generic
-shape is formalized as
-{data}`diffBloch.preprocess.pipeline.StatefulPlanStep`,
-{func}`diffBloch.preprocess.pipeline.stateful_pipeline`, and
-{func}`diffBloch.preprocess.pipeline.stateful_plan_step`: an explicit immutable state threaded
-between phases and dropped again at the `Plan -> Plan` boundary.
-
-```python
-from dataclasses import dataclass
-
-from diffBloch.preprocess import (
-    fork,
-    identity,
-    iterate_until,
-    stateful_pipeline,
-    stateful_plan_step,
-)
-
-large_cell_branch = fork(
-    lambda grid: grid.cell_volume > 1000.0,
-    when_true=[identity()],   # e.g. coarse/faster steps for large cells
-    when_false=[identity()],  # e.g. exact/default steps for small cells
-)
-
-repeat_until_stable = iterate_until(
-    identity(),
-    until=lambda previous, current: previous is current,
-    max_iterations=1,
-)
-
-@dataclass(frozen=True)
-class SearchState:
-    tried: int = 0
-
-
-def bump_trial_count(plan, state: SearchState):
-    # A real driver would rebuild a candidate Plan from state, score it, and return the new carry.
-    return plan, SearchState(tried=state.tried + 1)
-
-
-stateful_driver = stateful_plan_step(
-    init_state=lambda plan: SearchState(),
-    step=stateful_pipeline([bump_trial_count, bump_trial_count]),
-)
-```
-
-For real convergence, prefer the provided convergence steps and driver rather than the trivial
-`identity` placeholders above.
+Numerical convergence testing — sweeping `g_max`, `sg_max`, and rocking-curve sampling until the
+simulated intensities stop changing — uses the same `Plan -> Plan` step shape, built with
+{func}`diffBloch.preprocess.driver.converge_numerics`. See
+[Hyperparameter selection](hyperparameter-selection.md) for the physics behind that sweep and a
+runnable example.

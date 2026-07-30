@@ -1,38 +1,53 @@
 # Architecture
 
-diffBloch is organized around its core module: Bloch-wave simulation of multiple electron scattering.
-The surrounding layers prepare inputs, build reusable geometry, run optimization, and report
-progress without making those concerns part of the numerical core.
+Electrons interact with matter far more strongly than X-rays, so a crystal only a few tens to a few
+hundred nanometres thick already scatters a diffracted beam strongly enough to re-scatter again
+before it exits. That multiple-scattering — dynamical diffraction — means the intensity of a
+reflection is not simply proportional to \(|F_{hkl}|^2\) the way it is in the kinematical
+(single-scattering) approximation used for X-ray and neutron work. diffBloch simulates the full
+multiple-scattering problem with a Bloch-wave calculation, and makes that simulation differentiable
+so a structure can be refined against it directly, the same way X-ray refinement fits against a
+kinematical model.
 
-## End-to-end flow
+## What gets computed, in order
 
-The end-to-end flow is:
+1. A starting structure (`.cif`) and reduced rocking-curve diffraction data (`.cif_pets`) are read in.
+2. Because the Bloch-wave calculation is extremely sensitive to the exact crystal orientation and
+   specimen thickness at each rotation, both are fitted against the data before the structure is
+   touched — this is what diffBloch calls preprocessing, and its result is stored as a `Plan`.
+3. Structure factors \(F_{hkl}\) are computed from the current atomic positions, ADPs, and
+   occupancies.
+4. For each rotation, the beam set within the chosen resolution is propagated through the crystal
+   thickness — an eigenvalue problem for a static tilt, or a matrix exponential when refining, since
+   it stays stable under backpropagation — and the tilts spanning that rotation's rocking curve are
+   summed to give one simulated intensity per reflection.
+5. Simulated and observed intensities are compared with a scaling-optimized weighted R-factor.
+6. Gradients of that R-factor flow back through the whole calculation to the atomic parameters, and
+   an ordinary PyTorch optimizer (Adam or L-BFGS) updates them. Steps 3–6 repeat until the structure
+   converges.
 
-1. `.cif` + `.cif_pets` + config are parsed into typed records.
-2. Preprocessing turns those records into a reusable `Plan`.
-3. The `Plan` and differentiable structural parameters feed the Bloch-wave simulation.
-4. The simulated diffraction intensities are compared with experiment and loss is calculated. 
-5. Gradients from that loss update the differentiable structural parameters, then the loop repeats, improving the agreement between simulation and experiment.
+Preprocessing (step 2) and refinement (steps 3–6) are deliberately separate: a `Plan` is expensive to
+compute but describes only geometry, not the structure, so it can be checkpointed once and reused
+across many refinements of the same dataset. See [Preprocessing](preprocessing.md) for how orientation
+and thickness are fitted, and [Refinement](refinement.md) for the optimization loop itself.
 
-## Layers
+## Where each piece lives
 
-| Layer | Role | Guide |
+| Physical role | Code | Guide |
 |---|---|---|
-| [IO](api/io.md) | Parse CIF/PETS files into validated typed records. | [Inputs](inputs.md) |
-| [Config](api/config.md) | Validate experiment settings and lock input/checkpoint identity. | [Inputs](inputs.md), [Reproducibility](reproducibility.md) |
-| [Preprocess](api/preprocess.md) | Build and improve the immutable `Plan` the simulator consumes. | [Preprocessing](preprocessing.md) |
-| [Core](api/core.md) | Bloch-wave numerical kernels. | [Architecture](architecture.md), [Refinement](refinement.md) |
-| [Params](api/params.md) | Differentiable structural parameters and physical constraints. | [Refinement](refinement.md) |
-| [Engine](api/engine.md) | Combine `Plan` + parameters, simulate, score, and refine. | [Refinement](refinement.md) |
-| [Observability](api/observability.md) | Emit typed events without coupling the core to logger backends. | [Observability](observability-guide.md) |
-| [App](api/app.md) | CLI and default orchestration around the reusable API. | [Examples](examples.md), [Refinement](refinement.md) |
+| Parse `.cif` / `.cif_pets` into validated records | [`io`](api/io.md) | [Inputs](inputs.md) |
+| Validate `experiment.yaml`, pin input identity | [`config`](api/config.md) | [Inputs](inputs.md), [Reproducibility](reproducibility.md) |
+| Fit orientation and thickness, build the `Plan` | [`preprocess`](api/preprocess.md) | [Preprocessing](preprocessing.md) |
+| Structure factors and the Bloch-wave propagator | [`core`](api/core.md) | [Refinement](refinement.md) |
+| Atomic positions, ADPs, occupancies, and their crystallographic constraints | [`params`](api/params.md) | [Refinement](refinement.md) |
+| Simulate, score, and run the optimization loop | [`engine`](api/engine.md) | [Refinement](refinement.md) |
+| Report per-rotation R-factors and progress | [`observability`](api/observability.md) | [Observability](observability-guide.md) |
+| CLI and default recipes | [`app`](api/app.md) | [Examples](examples.md) |
 
-## API shape
+## Running the whole calculation from Python
 
-This pseudocode shows the declarative public API shape underneath the CLI: load typed inputs,
-compose a `Plan -> Plan` preprocessing recipe, build an engine from the settled `Plan`, then run the
-refinement model while typed progress events flow to loggers. The example is close to runnable code,
-but it is shown as API shape rather than a recipe to copy verbatim.
+The CLI (`diffbloch run refine ...`) is a thin wrapper over the same public functions shown below:
+read the inputs, fit orientation/thickness into a `Plan`, then simulate and refine against it.
 
 ```python
 from pathlib import Path
@@ -55,18 +70,18 @@ from diffBloch.specs import ScoredHklSelection, TrialCoupling
 
 root = Path("examples/experiments/quartz-checkpoint")
 
-# Boundary: parse experiment.yaml, verify experiment.lock, and read typed CIF/PETS records.
+# Read the starting structure and the rocking-curve observations.
 cfg, experiment_lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
 observations = read_observations(root / cfg.inputs.exp_data)
 
-# Effects stay at the edge: loggers consume typed events from preprocessing/refinement.
+# Progress (per-rotation wR2/R_obs, orientation-search steps, ...) streams to these loggers.
 logger = MultiLogger((ConsoleLogger(), CSVLogger(root / "events.csv")))
 
-# Initial construction: raw input records become a Plan scaffold plus structure-side params/specs.
+# Build the initial (unfitted) geometry scaffold and the differentiable structural parameters.
 setup = from_experiment(structure, observations, cfg)
 
-# Scientific choices are explicit typed values, not a string registry or hidden CLI behavior.
+# The beam set re-derived at every trial orientation during the search below.
 trial_coupling = TrialCoupling(
     policy=cfg.blochwave.to_policy(),
     scored=ScoredHklSelection(
@@ -75,7 +90,7 @@ trial_coupling = TrialCoupling(
     ),
 )
 
-# Preprocessing is declarative composition of Plan -> Plan steps.
+# Fit orientation, then specimen thickness, per rotation.
 prepare = pipeline(
     [
         build_orientation_plans(
@@ -102,7 +117,7 @@ prepare = pipeline(
 )
 plan = prepare(setup.plans.combined)
 
-# Inference is the terminal score-only path: same settled Plan, no optimizer updates.
+# Simulate and score the settled Plan without changing the structure.
 inference = run_inference(
     plan,
     setup.refinement,
@@ -110,7 +125,7 @@ inference = run_inference(
     logger=logger,
 )
 
-# Refinement composes a pure engine/context with model/problem values, then runs the optimizer shell.
+# Refine: simulate, compare with experiment, and update atomic parameters by gradient descent.
 engine = build_engine(
     plan,
     setup.refinement,
