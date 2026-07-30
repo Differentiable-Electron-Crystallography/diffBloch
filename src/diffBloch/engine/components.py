@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -164,63 +165,68 @@ def _orientation_angle_fraction(orientation: Tensor) -> Tensor:
 
 @dataclass(frozen=True)
 class ApparentThicknessNN:
-    """Bounded apparent-thickness neural-network component.
+    """Legacy apparent-thickness neural network from checkpoint-preprocess.
 
-    The network maps orientation angle to two outputs ``(mu, sigma_raw)`` through a small MLP, then
-    applies :class:`ThicknessBounds` to the mean. Only ``mu`` is consumed for the forward thickness;
-    the ``sigma`` output is not used, so the thickness is deterministic (no stochastic sampling).
+    The fixed ``1 -> 64 -> 64 -> 2`` tanh MLP consumes the PETS alpha angle after dataset-wide
+    min-max normalization to ``[-1, 1]``. Its first output is mapped affinely from that nominal
+    interval into ``bounds``; as in the legacy implementation this is not a hard bound. In sampling
+    mode the second output parameterizes a Gaussian width and the reparameterized, positive
+    thickness samples are passed to the Bloch solve.
+
+    Legacy code drew new random samples on every forward call. Here the standard-normal draws are
+    fixed by ``init_seed`` and source rotation index, retaining the same sampled model while keeping
+    the objective deterministic.
     """
 
     bounds: ThicknessBounds
+    normalized_alphas: tuple[float, ...]
     key: str = "apparent_thickness"
     form: Literal["min_thickness"] = "min_thickness"
-    hidden_width: int = 64
     sample_thickness: bool = False
-    num_samples: int = 1
+    num_samples: int = 40
     init_seed: int = 0
-    init_scale: float = 1.0e-3
 
     def __post_init__(self) -> None:
         if self.form != "min_thickness":
             raise ValueError("only form='min_thickness' is implemented")
-        if self.hidden_width < 1:
-            raise ValueError("hidden_width must be >= 1")
-        if self.sample_thickness:
-            raise ValueError("sample_thickness=True is not implemented")
-        if self.num_samples != 1:
-            raise ValueError("num_samples must be 1 until thickness sampling is implemented")
-        if self.init_scale <= 0:
-            raise ValueError("init_scale must be positive")
+        if not self.normalized_alphas:
+            raise ValueError("normalized_alphas must contain every source PETS rotation")
+        if any(not -1.0 <= alpha <= 1.0 for alpha in self.normalized_alphas):
+            raise ValueError("normalized_alphas must lie in [-1, 1]")
+        if self.num_samples < 1:
+            raise ValueError("num_samples must be >= 1")
 
     def initial_params(
         self,
         *,
         dtype: torch.dtype,
         device: torch.device,
-        initial_thickness: Tensor | float | None = None,
     ) -> Mapping[str, Tensor]:
         generator = torch.Generator(device="cpu")
         generator.manual_seed(self.init_seed)
 
-        def weight(shape: tuple[int, ...]) -> Tensor:
-            value = torch.randn(shape, generator=generator, dtype=dtype) * self.init_scale
-            return value.to(device)
+        def linear(out_features: int, in_features: int) -> tuple[Tensor, Tensor]:
+            # Match nn.Linear.reset_parameters exactly, including random-number consumption order.
+            bound = in_features**-0.5
+            weight = torch.empty((out_features, in_features), dtype=dtype)
+            torch.nn.init.kaiming_uniform_(
+                weight, a=math.sqrt(5), generator=generator
+            )
+            bias = torch.empty((out_features,), dtype=dtype).uniform_(
+                -bound, bound, generator=generator
+            )
+            return weight.to(device), bias.to(device)
 
-        def bias(shape: tuple[int, ...]) -> Tensor:
-            return torch.zeros(shape, dtype=dtype, device=device)
-
-        width = self.hidden_width
-        output_bias = bias((2,))
-        output_bias[0] = _initial_unconstrained_thickness(
-            self.bounds, initial_thickness, dtype=dtype, device=device
-        )
+        w0, b0 = linear(64, 1)
+        w1, b1 = linear(64, 64)
+        w2, b2 = linear(2, 64)
         return {
-            "layer0.weight": weight((width, 1)),
-            "layer0.bias": bias((width,)),
-            "layer1.weight": weight((width, width)),
-            "layer1.bias": bias((width,)),
-            "layer2.weight": weight((2, width)),
-            "layer2.bias": output_bias,
+            "layer0.weight": w0,
+            "layer0.bias": b0,
+            "layer1.weight": w1,
+            "layer1.bias": b1,
+            "layer2.weight": w2,
+            "layer2.bias": b2,
         }
 
     def forward_context(
@@ -243,13 +249,31 @@ class ApparentThicknessNN:
         if missing:
             raise ValueError(f"apparent thickness NN params tensors missing {missing!r}")
         w0 = params["layer0.weight"]
-        x = _orientation_angle_fraction(orientation.orientation.to(w0.device)).reshape(1, 1)
-        x = x.to(dtype=w0.dtype)
+        source_index = orientation.pattern.rotation_index
+        if source_index < 0 or source_index >= len(self.normalized_alphas):
+            raise ValueError("source rotation index is outside normalized_alphas")
+        x = w0.new_tensor(self.normalized_alphas[source_index]).reshape(1, 1)
         x = torch.tanh(F.linear(x, w0, params["layer0.bias"]))
         x = torch.tanh(F.linear(x, params["layer1.weight"], params["layer1.bias"]))
         output = F.linear(x, params["layer2.weight"], params["layer2.bias"])
         mu = output[0, 0]
-        return ForwardContext(thickness=self.bounds.transform(mu).reshape(1))
+        span = self.bounds.max_angstrom - self.bounds.min_angstrom
+        mu = self.bounds.min_angstrom + (mu + 1.0) * span / 2.0
+        if not self.sample_thickness:
+            return ForwardContext(thickness=mu.reshape(1))
+
+        log_sigma = output[0, 1]
+        sigma = torch.exp(log_sigma)
+        sigma = 1.0 + 199.0 * torch.sigmoid(sigma)
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(self.init_seed)
+        epsilon = torch.randn(
+            (len(self.normalized_alphas), self.num_samples),
+            generator=generator,
+            dtype=w0.dtype,
+        )[source_index].to(w0.device)
+        thickness = F.softplus(mu + sigma * epsilon)
+        return ForwardContext(thickness=thickness)
 
 
 def _positive_inverse(value: Tensor) -> Tensor:

@@ -26,7 +26,7 @@ blochwave:
 
   # Per-trial SOLVE-union coupling for the orientation fit. Declared explicitly because coupling has
   # no config default -- it determines the fit's physics. These are the faithful diffBloch_private
-  # values (SegmentedUnionCoupling defaults).
+  # values (UnionCoupling defaults).
   g_max: 2.25
   sg_max: 0.01
 preprocess:

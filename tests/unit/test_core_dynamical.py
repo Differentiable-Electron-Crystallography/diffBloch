@@ -28,6 +28,7 @@ from diffBloch.core.dynamical import (
     wavevector_magnitude,
 )
 from diffBloch.core.reciprocal import g_vectors
+from diffBloch.specs import Absorption
 
 
 def test_energy2wavelength_matches_textbook() -> None:
@@ -314,6 +315,14 @@ def test_structure_matrix_replaces_diagonal_at_origin_beam() -> None:
     assert a[0, 0].item() == 0
     # ...while that beam's off-diagonal (gather + scale) is not.
     assert a[0, 1].item() != 0
+
+
+def test_parameterized_absorption_adds_u0_prime_to_diagonal() -> None:
+    plan = _small_plan()
+    factors = _encoded_factors(_GRID_HKL).to(torch.complex128) + 0.05j
+    a = structure_matrix(plan, factors, Absorption(enabled=True))
+    assert torch.all(a.diagonal().imag > 0.0)
+    assert not torch.allclose(a, a.mH)
 
 
 def test_beam_plan_is_reusable_across_factors() -> None:

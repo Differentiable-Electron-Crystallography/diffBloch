@@ -21,8 +21,8 @@ from diffBloch.engine import (
     OrientationPlan,
     RefinementEngine,
     StructureFactorGrid,
-    scaled_w_rbragg_loss,
     w_rbragg_loss,
+    wr2_loss,
 )
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import (
@@ -172,7 +172,7 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     assert engine.numbers is refinement.numbers
     assert engine.orientations[0].thickness.tolist() == [300.0]
     # the refine objective defaults to the scale-normalised loss (calc<->obs on different scales)
-    assert engine.loss is scaled_w_rbragg_loss
+    assert engine.loss is wr2_loss
 
     scores = score_orientations(plan, refinement)
     assert len(scores) == len(plan.orientations)

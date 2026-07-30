@@ -60,7 +60,7 @@ class StructureFactorGrid:
     Three reciprocal-space radii are easy to conflate; they are distinct concerns:
 
     - **solve cutoff** -- the beams that couple in one Bloch solve (``|g| <= solve_g_max``; the
-      coupled fit's ``SegmentedUnionCoupling.g_max``).
+      coupled fit's ``UnionCoupling.g_max``).
     - **structure-factor support** -- the ``Fgb`` grid this class holds. It must cover every beam
       difference ``g_j - g_i``, which reaches ``2 * solve_g_max``, so the support radius is
       ``~2x`` the solve cutoff. :meth:`from_cell_for_beam_cutoff` derives it from the solve cutoff.

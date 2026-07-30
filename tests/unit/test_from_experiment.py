@@ -34,6 +34,20 @@ def test_from_experiment_builds_grid_sharing_train_val_split() -> None:
     assert len(train.orientations) + len(val.orientations) == observations.n_rotations
     assert len(val.orientations) == 9
     assert len(train.orientations) == 90
+    assert [op.pattern.rotation_index for op in train.orientations[:11]] == [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+    ]
+    assert [op.pattern.rotation_index for op in val.orientations[:2]] == [9, 19]
 
 
 def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
@@ -57,6 +71,8 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
         observations.omegas,
     )
     assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
+    assert setup.plans.train.orientations[0].pattern.rotation_index == 1
+    assert [op.pattern.rotation_index for op in setup.plans.validation.orientations[:2]] == [19, 29]
     assert not any(
         np.allclose(plan.orientation, expected[56]) for plan in setup.plans.combined.orientations
     )

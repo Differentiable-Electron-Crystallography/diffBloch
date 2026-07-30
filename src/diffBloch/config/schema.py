@@ -14,20 +14,23 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from diffBloch.core.solver import FloatFormat, SolverMethod
-from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
+from diffBloch.engine.losses import weighted_mse_loss, wr2_loss
 from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
 if TYPE_CHECKING:
     from diffBloch.engine.forward import LossFn
 from diffBloch.specs import (
+    Absorption,
+    ApparentThicknessNetwork,
     BeamSelection,
     HexagonalSearch,
     IntegrationGeometry,
     Mosaicity,
     OrientationSelection,
+    PerTiltCoupling,
     RockingCurve,
-    SegmentedUnionCoupling,
     ThicknessGrid,
+    UnionCoupling,
 )
 
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
@@ -37,6 +40,7 @@ from diffBloch.specs import (
 # in ``HexagonalSearch``).
 _HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
+_THICKNESS_NN_DEFAULTS = ApparentThicknessNetwork()
 
 
 class _StrictConfig(BaseModel):
@@ -79,17 +83,23 @@ class BlochwaveConfig(_StrictConfig):
     """
 
     solver: SolverConfig = Field(default_factory=SolverConfig)
+    absorption: bool = False
     g_max_refine: float = 1.6
     rsg: float = 0.9
     dsg: float = 0.0015
     rocking_curve_sampling: int = 42
     mosaicity: Mosaicity = Field(default_factory=Mosaicity)
     fixed_n_segments: int = 12
+    coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
     sg_max: float = 0.01
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
     ignore_orientations: tuple[int, ...] = ()
+
+    def to_absorption(self) -> Absorption:
+        """Parse the absorption switch into its typed scientific value."""
+        return Absorption(enabled=self.absorption)
 
     def to_beam_selection(self, integration: IntegrationGeometry) -> BeamSelection:
         """Assemble the ``select_beams`` value-type: the Klar cutoffs + the shared integration."""
@@ -103,9 +113,11 @@ class BlochwaveConfig(_StrictConfig):
         """
         return RockingCurve(sampling=self.rocking_curve_sampling, integration=integration)
 
-    def to_policy(self) -> SegmentedUnionCoupling:
-        """Assemble the segmented Bloch-wave beam-union policy."""
-        return SegmentedUnionCoupling(
+    def to_policy(self) -> UnionCoupling | PerTiltCoupling:
+        """Assemble the selected tilt-dependent Bloch-wave beam-coupling policy."""
+        if self.coupling_mode == "per_tilt":
+            return PerTiltCoupling(g_max=self.g_max, sg_max=self.sg_max)
+        return UnionCoupling(
             fixed_n_segments=self.fixed_n_segments,
             g_max=self.g_max,
             sg_max=self.sg_max,
@@ -125,6 +137,11 @@ class BlochwaveConfig(_StrictConfig):
             raise ValueError("rocking_curve_sampling must be >= 1")
         self.to_policy()
         self.to_orientation_selection()
+        self.to_absorption()
+        if self.absorption and (
+            self.solver.refine == "bloch_eigen" or self.solver.inference == "bloch_eigen"
+        ):
+            raise ValueError("absorption requires the non-Hermitian-safe 'matrix_exp' solver")
         return self
 
 
@@ -169,12 +186,12 @@ class ObjectiveConfig(_StrictConfig):
     composition, not config).
     """
 
-    data_term: Literal["scaled_weighted_r", "least_squares"] = "scaled_weighted_r"
+    data_term: Literal["wr2", "least_squares"] = "wr2"
 
     def to_loss(self) -> LossFn:
         """Parse the data term into the ``LossFn`` the engine scores with."""
         return {
-            "scaled_weighted_r": scaled_w_rbragg_loss,
+            "wr2": wr2_loss,
             "least_squares": weighted_mse_loss,
         }[self.data_term]
 
@@ -212,6 +229,27 @@ class TrainableConfig(_StrictConfig):
         )
 
 
+class ThicknessNNConfig(_StrictConfig):
+    """Recorded apparent-thickness neural network used by the default refinement path."""
+
+    enabled: bool = _THICKNESS_NN_DEFAULTS.enabled
+    num_samples: int = _THICKNESS_NN_DEFAULTS.num_samples
+    sample_thickness: bool = _THICKNESS_NN_DEFAULTS.sample_thickness
+    form: Literal["min_thickness"] = _THICKNESS_NN_DEFAULTS.form
+    min_thickness: float = _THICKNESS_NN_DEFAULTS.min_thickness
+    max_thickness: float = _THICKNESS_NN_DEFAULTS.max_thickness
+    init_seed: int = _THICKNESS_NN_DEFAULTS.init_seed
+
+    def to_spec(self) -> ApparentThicknessNetwork:
+        """Parse the YAML block into its validated value-type."""
+        return ApparentThicknessNetwork(**self.model_dump())
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> ThicknessNNConfig:
+        self.to_spec()
+        return self
+
+
 class RefinementConfig(_StrictConfig):
     """Stable execution knobs for the *default* single-stage app refinement (``run refine``).
 
@@ -232,6 +270,7 @@ class RefinementConfig(_StrictConfig):
     objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
     precision: FloatFormat = "fp64"
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)
+    thickness_nn: ThicknessNNConfig = Field(default_factory=ThicknessNNConfig)
 
 
 class OrientationFitConfig(_StrictConfig):
@@ -314,11 +353,14 @@ class Inputs(_StrictConfig):
 
     structure: str
     exp_data: str
+    orientations: str | None = None
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
-    @field_validator("structure", "exp_data")
+    @field_validator("structure", "exp_data", "orientations")
     @classmethod
-    def _relative_path_only(cls, value: str) -> str:
+    def _relative_path_only(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         path = Path(value)
         if path.is_absolute() or ".." in path.parts:
             raise ValueError(

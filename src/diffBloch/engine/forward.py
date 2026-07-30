@@ -43,7 +43,7 @@ from diffBloch.core.solver import (
 )
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
-from diffBloch.engine.losses import scaled_w_rbragg_loss
+from diffBloch.engine.losses import wr2_loss
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlanLike,
@@ -64,6 +64,7 @@ from diffBloch.engine.refine import (
 )
 from diffBloch.observability import NULL_LOGGER, Logger, RefinementCompleted, RefinementStep
 from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
+from diffBloch.specs import Absorption
 
 __all__ = [
     "ForwardContext",
@@ -113,6 +114,7 @@ class RefinementEngine:
     # materialize all at once. A positive int pins the block
     # for a specific device budget. Execution-only, like precision/method.
     max_batch: int | None = None
+    absorption: Absorption = Absorption()
 
     def _max_batch_for(self, n_beams: int) -> int:
         """The matrix_exp block cap for a solve over ``n_beams`` beams (explicit pin, else safe)."""
@@ -145,6 +147,26 @@ class RefinementEngine:
         scoring orientation. This is the objective ``fit_orientation`` minimises.
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
+
+    def score_orientation_r_obs(self, orientation: OrientationPlanLike, fgb: Tensor) -> Tensor:
+        """Return the best scaling-optimised R(obs) over this orientation's thicknesses."""
+        with torch.no_grad():
+            aligned = align(
+                self._solve(orientation, fgb, orientation.thickness),
+                orientation.pattern,
+                orientation.alignment,
+            )
+            return torch.stack(
+                [
+                    optimal_scale(
+                        aligned.calculated[t],
+                        aligned.observed[t],
+                        aligned.sigmas[t],
+                        metric=rbragg,
+                    )[1]
+                    for t in range(aligned.calculated.shape[0])
+                ]
+            ).min()
 
     def score_orientation_per_thickness(
         self, orientation: OrientationPlanLike, fgb: Tensor
@@ -304,6 +326,7 @@ class RefinementEngine:
             state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
+        wr2_values: list[float] = []
         r_obs_values: list[float] = []
         for rotation_index, orientation in enumerate(self.orientations):
             context = (
@@ -317,6 +340,19 @@ class RefinementEngine:
             solution = self._solve(orientation, fgb, thickness)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
+                wr2_scores = torch.stack(
+                    [
+                        optimal_scale(
+                            aligned.calculated[t].detach(),
+                            aligned.observed[t],
+                            aligned.sigmas[t],
+                        )[1]
+                        for t in range(aligned.calculated.shape[0])
+                    ]
+                )
+                finite_wr2 = wr2_scores[torch.isfinite(wr2_scores)]
+                if finite_wr2.numel():
+                    wr2_values.append(float(finite_wr2.min()))
                 scores = torch.stack(
                     [
                         optimal_scale(
@@ -345,6 +381,7 @@ class RefinementEngine:
         return ObjectiveValue(
             components,
             diagnostics={
+                "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
                 "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan"))
             },
         )
@@ -392,6 +429,8 @@ class RefinementEngine:
             reciprocal_basis=self.grid.reciprocal_basis.to(device),
             cell_volume=self.grid.cell_volume,
             g_max=self.grid.g_max,
+            absorption=self.absorption,
+            energy=self.orientations[0].energy,
         )
 
     def _solve(
@@ -406,7 +445,7 @@ class RefinementEngine:
         # Untilted (length 1): the static single solve.
         if len(orientation.beam_plans) == 1:
             amplitudes = propagate(
-                build_bloch_system(orientation.beam_plans[0], fgb),
+                build_bloch_system(orientation.beam_plans[0], fgb, self.absorption),
                 thicknesses,
                 method=self.method,
                 precision=self.precision,
@@ -419,7 +458,7 @@ class RefinementEngine:
         # integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.
         batch = stack_beam_plans(orientation.beam_plans)
         amplitudes = propagate(
-            build_bloch_systems(batch, fgb),
+            build_bloch_systems(batch, fgb, self.absorption),
             thicknesses,
             method=self.method,
             precision=self.precision,
@@ -452,7 +491,7 @@ class RefinementEngine:
         for segment in plan.segments:
             batch = stack_beam_plans(segment.plan.beam_plans)
             amplitudes = propagate(
-                build_bloch_systems(batch, fgb),
+                build_bloch_systems(batch, fgb, self.absorption),
                 thicknesses,
                 method=self.method,
                 precision=self.precision,
@@ -765,9 +804,7 @@ def run_refinement_model(
             iteration=step,
             loss=loss_value,
             wr2=(
-                diffraction_loss / len(engine.orientations)
-                if engine.loss is scaled_w_rbragg_loss
-                else None
+                reported_objective.diagnostics["wr2"] if engine.loss is wr2_loss else None
             ),
             r_obs=reported_objective.diagnostics["r_obs"],
             diff_loss=diffraction_loss,

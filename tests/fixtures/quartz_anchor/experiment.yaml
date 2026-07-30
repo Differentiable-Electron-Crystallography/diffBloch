@@ -12,7 +12,7 @@ blochwave:
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9
-  # The faithful diffBloch_private SOLVE-union coupling (SegmentedUnionCoupling defaults); declared
+  # The faithful diffBloch_private SOLVE-union coupling (UnionCoupling defaults); declared
   # explicitly because coupling has no config default -- it determines the fit's physics.
   g_max: 2.25
   sg_max: 0.01

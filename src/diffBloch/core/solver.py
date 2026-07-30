@@ -184,6 +184,10 @@ def _propagate_bloch_eigen(
     system: BlochSystem, thicknesses: Tensor, precision: FloatFormat
 ) -> Tensor:
     a = _at_precision(_complex_operator(system.a), precision)  # (..., N, N)
+    if not torch.allclose(a, a.mH):
+        raise ValueError(
+            "bloch_eigen requires a Hermitian structure matrix; use matrix_exp with absorption"
+        )
     # Co-locate the geometry-plan tensors onto the operator device (see _propagate_matrix_exp).
     mii = system.mii.to(device=a.device)  # (..., N)
     psi0 = system.psi0.to(device=a.device)  # (N,), shared across the batch

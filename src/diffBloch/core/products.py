@@ -215,10 +215,15 @@ class PatternBatch:
     hkl: Tensor
     intensities: Tensor
     sigmas: Tensor
+    rotation_index: int = 0
 
     @classmethod
     def from_observation_record(
-        cls, record: ObservationRecord, *, zone_axis_id: int | None = None
+        cls,
+        record: ObservationRecord,
+        *,
+        zone_axis_id: int | None = None,
+        rotation_index: int = 0,
     ) -> Self:
         """Tensorise observed reflections, optionally filtering to one ``zone_axis_id``."""
         select = slice(None)
@@ -233,6 +238,7 @@ class PatternBatch:
             hkl=torch.as_tensor(select_hkl, dtype=torch.int64),
             intensities=torch.as_tensor(select_i, dtype=torch.float64),
             sigmas=torch.as_tensor(select_s, dtype=torch.float64),
+            rotation_index=rotation_index,
         )
 
 

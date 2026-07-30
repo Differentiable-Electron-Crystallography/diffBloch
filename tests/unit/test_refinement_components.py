@@ -112,22 +112,27 @@ def test_refinement_model_records_component_params_as_read_only_mapping() -> Non
         model.component_params["other"] = {"value": value}  # type: ignore[index]
 
 
-def test_apparent_thickness_nn_rejects_unimplemented_sampling() -> None:
-    with pytest.raises(ValueError, match="sample_thickness"):
-        ApparentThicknessNN(bounds=ThicknessBounds(400.0, 1100.0), sample_thickness=True)
+def test_apparent_thickness_nn_validates_legacy_settings() -> None:
     with pytest.raises(ValueError, match="num_samples"):
-        ApparentThicknessNN(bounds=ThicknessBounds(400.0, 1100.0), num_samples=2)
+        ApparentThicknessNN(
+            bounds=ThicknessBounds(400.0, 1100.0), normalized_alphas=(0.0,), num_samples=0
+        )
     with pytest.raises(ValueError, match="form"):
-        ApparentThicknessNN(bounds=ThicknessBounds(400.0, 1100.0), form="quadratic")  # type: ignore[arg-type]
+        ApparentThicknessNN(
+            bounds=ThicknessBounds(400.0, 1100.0),
+            normalized_alphas=(0.0,),
+            form="quadratic",  # type: ignore[arg-type]
+        )
 
 
-def test_apparent_thickness_nn_seeds_from_initial_thickness_and_is_differentiable() -> None:
+def test_apparent_thickness_nn_legacy_mean_is_differentiable() -> None:
     engine = _engine()
-    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0))
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,)
+    )
     params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),
-        initial_thickness=mean_plan_thickness(engine.orientations),
     )
     leaves = {name: value.detach().clone().requires_grad_(True) for name, value in params.items()}
 
@@ -135,11 +140,8 @@ def test_apparent_thickness_nn_seeds_from_initial_thickness_and_is_differentiabl
         leaves, rotation_index=0, orientation=engine.orientations[0]
     )
     assert context.thickness is not None
-    assert torch.allclose(context.thickness, engine.orientations[0].thickness)
     context.thickness.sum().backward()
 
-    assert bool((context.thickness >= 200.0).all())
-    assert bool((context.thickness <= 800.0).all())
     for name in leaves:
         assert leaves[name].grad is not None
         assert torch.isfinite(leaves[name].grad).all()
@@ -147,14 +149,43 @@ def test_apparent_thickness_nn_seeds_from_initial_thickness_and_is_differentiabl
     assert leaves["layer2.bias"].grad[1] == 0
 
 
+def test_apparent_thickness_nn_legacy_gaussian_sampling_is_positive_and_deterministic() -> None:
+    engine = _engine()
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(100.0, 3500.0),
+        normalized_alphas=(0.25,),
+        sample_thickness=True,
+        num_samples=7,
+        init_seed=3,
+    )
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+    leaves = {name: value.detach().clone().requires_grad_(True) for name, value in params.items()}
+
+    first = component.forward_context(
+        leaves, rotation_index=0, orientation=engine.orientations[0]
+    ).thickness
+    second = component.forward_context(
+        leaves, rotation_index=0, orientation=engine.orientations[0]
+    ).thickness
+
+    assert first is not None and second is not None
+    assert first.shape == (7,)
+    assert bool((first > 0.0).all())
+    assert torch.equal(first, second)
+    first.sum().backward()
+    assert leaves["layer2.bias"].grad is not None
+    assert bool((leaves["layer2.bias"].grad.abs() > 0.0).all())
+
+
 def test_run_refinement_model_optimizes_apparent_thickness_nn_params() -> None:
     engine = _engine()
     structure_params = _params()
-    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0))
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,)
+    )
     component_params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),
-        initial_thickness=mean_plan_thickness(engine.orientations),
     )
     model = build_refinement_model(
         initial=structure_params,
@@ -235,7 +266,7 @@ def test_quadratic_thickness_profile_seeds_from_initial_thickness_and_is_differe
     assert torch.isfinite(coefficients.grad).all()
 
 
-def test_bounded_thickness_components_can_seed_denovo_at_bounds_midpoint() -> None:
+def test_bounded_quadratic_component_can_seed_denovo_at_bounds_midpoint() -> None:
     engine = _engine()
     bounds = ThicknessBounds(200.0, 800.0)
 
@@ -245,18 +276,11 @@ def test_bounded_thickness_components_can_seed_denovo_at_bounds_midpoint() -> No
         profile_params, rotation_index=0, orientation=engine.orientations[0]
     )
 
-    thickness_nn = ApparentThicknessNN(bounds=bounds)
-    nn_params = thickness_nn.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    nn_context = thickness_nn.forward_context(
-        nn_params, rotation_index=0, orientation=engine.orientations[0]
-    )
-
-    assert profile_context.thickness is not None and nn_context.thickness is not None
+    assert profile_context.thickness is not None
     assert torch.allclose(profile_context.thickness, torch.tensor([500.0], dtype=torch.float64))
-    assert torch.allclose(nn_context.thickness, torch.tensor([500.0], dtype=torch.float64))
 
 
-def test_bounded_thickness_components_reject_initial_thickness_outside_bounds() -> None:
+def test_bounded_quadratic_component_rejects_initial_thickness_outside_bounds() -> None:
     engine = _engine()
     initial_thickness = mean_plan_thickness(engine.orientations)
     profile = QuadraticThicknessProfile(bounds=ThicknessBounds(400.0, 800.0))
@@ -266,15 +290,6 @@ def test_bounded_thickness_components_reject_initial_thickness_outside_bounds() 
             device=torch.device("cpu"),
             initial_thickness=initial_thickness,
         )
-
-    thickness_nn = ApparentThicknessNN(bounds=ThicknessBounds(400.0, 800.0))
-    with pytest.raises(ValueError, match="strictly inside ThicknessBounds"):
-        thickness_nn.initial_params(
-            dtype=torch.float64,
-            device=torch.device("cpu"),
-            initial_thickness=initial_thickness,
-        )
-
 
 def test_per_orientation_thickness_seeds_from_plan() -> None:
     engine = _engine()

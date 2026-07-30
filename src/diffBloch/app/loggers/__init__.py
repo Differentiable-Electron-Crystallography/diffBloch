@@ -104,9 +104,9 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, OrientationFitted):
-            label = f"orientation optimization[orientation_index={event.index}]"
+            label = f"orientation optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, ThicknessFitted):
-            label = f"thickness optimization[orientation_index={event.index}]"
+            label = f"thickness optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, RefinementStep):
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
             r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"

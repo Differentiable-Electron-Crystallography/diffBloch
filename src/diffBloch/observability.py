@@ -38,6 +38,7 @@ __all__ = [
     "MultiLogger",
     "NullLogger",
     "OrientationFitted",
+    "OrientationFitSummary",
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
@@ -186,8 +187,8 @@ class OrientationFitted:
     """One rotation's finished orientation search, emitted per rotation by ``fit_orientation``.
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
-    is the progress stream that makes it observable: ``index`` is the rotation's position in the
-    plan, ``wr2`` the final scaling-optimised objective at the fitted orientation, ``n_trials`` the
+    is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
+    PETS rotation index, ``wr2`` the final scaling-optimised objective, ``n_trials`` the
     number of trial orientations the search scored, ``n_passes`` the number of hexagonal-ring sweeps
     the search took to converge (the quantity ``HexagonalSearch.max_iterations`` caps), and
     ``pass_cap`` that cap itself -- carried per event so a plot can show each rotation's headroom
@@ -197,7 +198,7 @@ class OrientationFitted:
     """
 
     channel: ClassVar[str] = "orientation"
-    index: int
+    rotation_index: int
     wr2: float
     n_matched_hkl: int
     n_trials: int
@@ -206,11 +207,47 @@ class OrientationFitted:
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index
 
     @property
     def measurements(self) -> Mapping[str, float]:
         return {"wr2": self.wr2, "n_matched_hkl": float(self.n_matched_hkl)}
+
+
+@dataclass(frozen=True)
+class OrientationFitSummary:
+    """Aggregate statistics after every rotation's orientation fit has completed."""
+
+    n_orientations: int
+    mean_wr2: float
+    mean_r_obs: float
+    total_matched_hkl: int
+    total_strong_hkl: int
+    total_weak_hkl: int
+    total_observed_hkl: int
+    total_trials: int
+    max_passes: int
+
+    channel: ClassVar[str] = "orientation summary"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_orientations": float(self.n_orientations),
+            "mean_wr2": self.mean_wr2,
+            "mean_r_obs": self.mean_r_obs,
+            "total_matched_hkl": float(self.total_matched_hkl),
+            "total_strong_hkl": float(self.total_strong_hkl),
+            "total_weak_hkl": float(self.total_weak_hkl),
+            "total_observed_hkl": float(self.total_observed_hkl),
+            "total_unmatched_hkl": float(self.total_observed_hkl - self.total_matched_hkl),
+            "total_trials": float(self.total_trials),
+            "max_passes": float(self.max_passes),
+        }
 
 
 @dataclass(frozen=True)
@@ -219,19 +256,19 @@ class ThicknessFitted:
 
     The thickness fit is the memory-heavy tail phase (each rotation scores the whole
     ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationFitted` this makes it a
-    progress stream rather than a silent block: ``index`` is the rotation's position in the plan,
-    ``wr2`` the scaling-optimised objective at the baked thickness, and ``thickness`` that winning
-    candidate (Angstrom). Emitted in plan order (the fit is sequential).
+    progress stream rather than a silent block: ``rotation_index`` is the original zero-based PETS
+    rotation index, ``wr2`` the scaling-optimised objective at the baked thickness, and
+    ``thickness`` that winning candidate (Angstrom). Emitted in plan order (the fit is sequential).
     """
 
     channel: ClassVar[str] = "optimize_thickness"
-    index: int
+    rotation_index: int
     wr2: float
     thickness: float
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index
 
     @property
     def measurements(self) -> Mapping[str, float]:

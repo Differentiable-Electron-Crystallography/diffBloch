@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, NullLogger
+from diffBloch.observability import MultiLogger, NullLogger, OrientationFitted
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -232,7 +232,16 @@ class _FakePlan:
     """Minimal stand-in for a settled Plan: enough for the CLI's summary line."""
 
     def __init__(self) -> None:
-        self.orientations = (object(), object())
+        self.orientations = (
+            SimpleNamespace(
+                pattern=SimpleNamespace(hkl=torch.empty((3, 3))),
+                alignment=SimpleNamespace(hkl=torch.empty((2, 3))),
+            ),
+            SimpleNamespace(
+                pattern=SimpleNamespace(hkl=torch.empty((4, 3))),
+                alignment=SimpleNamespace(hkl=torch.empty((3, 3))),
+            ),
+        )
         self.provenance = (
             SimpleNamespace(name="optimize_orientation"),
             SimpleNamespace(name="optimize_thickness"),
@@ -260,6 +269,26 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         captured["refresh"] = refresh
         captured["device"] = device
         captured["workers"] = workers
+        logger.report(
+            OrientationFitted(
+                rotation_index=3,
+                wr2=0.25,
+                n_matched_hkl=2,
+                n_trials=10,
+                n_passes=3,
+                pass_cap=2000,
+            )
+        )
+        logger.report(
+            OrientationFitted(
+                rotation_index=8,
+                wr2=0.5,
+                n_matched_hkl=3,
+                n_trials=10,
+                n_passes=3,
+                pass_cap=2000,
+            )
+        )
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
@@ -267,12 +296,15 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
+    assert isinstance(captured["logger"], MultiLogger)
     assert captured["checkpoint"] is True and captured["refresh"] is False
     assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
     assert "PREPROCESS COMPLETE" in out
     assert "Rotations              2" in out
+    assert "Total HKLs             7" in out
+    assert "Matched HKLs           5" in out
+    assert "Mean wR2               0.375" in out
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
     assert "R_obs" not in out

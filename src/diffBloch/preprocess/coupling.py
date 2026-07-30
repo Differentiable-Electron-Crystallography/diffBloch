@@ -7,7 +7,7 @@ instead partitions the tilts into contiguous chunks and couples, within each chu
 the excited-beam sets at the chunk's two boundary tilts.
 
 This module is the pure geometry of that partition: given a
-:class:`~diffBloch.specs.SegmentedUnionCoupling`
+:class:`~diffBloch.specs.UnionCoupling`
 policy and the rotation's tilt geometry, it returns the ordered :class:`Segment` list (each a beam
 set + the disjoint tilt indices it covers). It computes the excitation mask
 (``|Sg| < sg_max`` and ``|g| < g_max``) from which the union sets are built,
@@ -26,7 +26,7 @@ from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import excitation_errors
-from diffBloch.specs import SegmentedUnionCoupling
+from diffBloch.specs import PerTiltCoupling, UnionCoupling
 
 __all__ = [
     "Segment",
@@ -114,7 +114,7 @@ def _adaptive_segment_ranges(
 
 
 def build_coupling_segments(
-    policy: SegmentedUnionCoupling,
+    policy: UnionCoupling | PerTiltCoupling,
     candidate_beam_hkl: NDArray[np.int64],
     *,
     cell: NDArray[np.float64],
@@ -176,6 +176,15 @@ def build_coupling_segments(
         mask = np.abs(sg) < policy.sg_max  # |g| < g_max already guaranteed by the pool
         _mask_cache[tilt_index] = mask
         return mask
+
+    if isinstance(policy, PerTiltCoupling):
+        return tuple(
+            Segment(
+                union_hkl=pool[excited_mask(i)].copy(),
+                covered_tilt_indices=(i,),
+            )
+            for i in range(n_tilts)
+        )
 
     if policy.union_adaptive:
         # Adaptive boundaries by recursive bisection (fixed_n_segments ignored). Each segment's beam

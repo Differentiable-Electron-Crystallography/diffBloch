@@ -8,7 +8,7 @@ Real 3D electron-diffraction data for **abiraterone acetate**, a molecular organ
    (`tests/e2e/test_anchor.py::test_abiraterone_forward_parity_private_rotation0`): public `0.0978`
    vs private `0.09697` (Δ < 0.001);
 2. a **refinement positive control** — the well-conditioned counterpart to LTA, to check that the
-   scale-normalised refinement objective (`scaled_w_rbragg_loss`) actually lowers `R_obs` where the
+   scale-normalised refinement objective (`wr2_loss`) actually lowers `R_obs` where the
    physics is well-conditioned (run on-accelerator, not committed).
 
 ## Source & lineage

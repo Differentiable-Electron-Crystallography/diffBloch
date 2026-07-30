@@ -7,12 +7,14 @@ The form-factor golden values are the Lobato-Van Dyck (2014) parametrization as 
 import pytest
 import torch
 
+from diffBloch.core.absorption import absorptive_form_factors
 from diffBloch.core.scattering import (
     debye_waller_factor,
     lobato_form_factors,
     structure_factor_cutoff,
     structure_factors,
 )
+from diffBloch.specs import Absorption
 
 # abTEM oracle for f_e(g**2) at g = [0, 0.5, 1, 2] (cross-checked against diffsims).
 _REFERENCE = {
@@ -20,6 +22,25 @@ _REFERENCE = {
     14: [5.836000, 1.967708, 0.742909, 0.270509],  # Si
 }
 _G = torch.tensor([0.0, 0.5, 1.0, 2.0], dtype=torch.float64)
+
+
+def test_absorptive_form_factors_match_legacy_paper_oracle() -> None:
+    factors = absorptive_form_factors(
+        torch.tensor([1, 14, 55, 103]),
+        torch.tensor([0.0, 0.25, 0.75], dtype=torch.float64),
+        torch.tensor([0.1, 0.8, 1.7, 4.0], dtype=torch.float64),
+        energy=200_000.0,
+    )
+    expected = torch.tensor(
+        [
+            [0.000115650270652303, 0.00010488221302328136, 0.00006743805816084504],
+            [0.05028876677584426, 0.04484278559044578, 0.027551326431258846],
+            [0.758564306580739, 0.6834398173724344, 0.3728305399278465],
+            [2.5639759769437473, 2.3220945980764203, 0.9222574807272947],
+        ],
+        dtype=torch.float64,
+    )
+    assert torch.allclose(factors, expected, rtol=1e-12, atol=1e-14)
 
 
 def test_lobato_form_factors_match_reference() -> None:
@@ -105,3 +126,27 @@ def test_structure_factors_rejects_mismatched_adp_count() -> None:
             cell_volume=113.3,
             g_max=2.0,
         )
+
+
+def test_parameterized_absorption_is_complex_and_differentiable() -> None:
+    positions = torch.tensor([[0.13, 0.27, 0.31]], dtype=torch.float64, requires_grad=True)
+    numbers = torch.tensor([14])
+    occupancies = torch.ones(1, dtype=torch.float64, requires_grad=True)
+    uij = (torch.eye(3, dtype=torch.float64) * 0.01).unsqueeze(0).clone().requires_grad_(True)
+    factors = structure_factors(
+        positions,
+        numbers,
+        occupancies,
+        uij,
+        hkl=torch.tensor([[0, 0, 0], [1, 0, 0]]),
+        reciprocal_basis=torch.eye(3, dtype=torch.float64),
+        cell_volume=100.0,
+        g_max=2.0,
+        absorption=Absorption(enabled=True),
+        energy=200_000.0,
+    )
+    assert factors[0].imag > 0.0
+    factors.abs().sum().backward()
+    assert positions.grad is not None and torch.isfinite(positions.grad).all()
+    assert occupancies.grad is not None and torch.isfinite(occupancies.grad).all()
+    assert uij.grad is not None and torch.isfinite(uij.grad).all()

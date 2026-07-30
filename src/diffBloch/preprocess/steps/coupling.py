@@ -5,7 +5,7 @@ discriminated union rather than a boolean toggle:
 
 - :class:`~diffBloch.specs.TiltIndependent` -- the default: one beam set (the ``select_beams``
   active set) shared across every tilt. A no-op here (the shared set is already on the plan).
-- :class:`~diffBloch.specs.SegmentedUnionCoupling` -- a policy that partitions
+- :class:`~diffBloch.specs.UnionCoupling` -- a policy that partitions
   the tilts into contiguous chunks and gives each its own boundary-union beam set
   (:func:`~diffBloch.preprocess.coupling.build_coupling_segments`), replacing each
   :class:`~diffBloch.engine.plan.OrientationPlan` with a
@@ -42,7 +42,7 @@ from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, S
 from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.pipeline import PlanStep, as_step, identity
 from diffBloch.preprocess.plan import Plan, require_built_plans
-from diffBloch.specs import CouplingPolicy, SegmentedUnionCoupling, TiltIndependent
+from diffBloch.specs import CouplingPolicy, PerTiltCoupling, TiltIndependent, UnionCoupling
 
 __all__ = ["couple_beams"]
 
@@ -52,7 +52,7 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
     ``policy`` is a :class:`~diffBloch.specs.CouplingPolicy` selected by construction:
     :class:`~diffBloch.specs.TiltIndependent` yields the identity (the shared beam set is kept), and
-    :class:`~diffBloch.specs.SegmentedUnionCoupling` replaces each rotation with its per-chunk
+    :class:`~diffBloch.specs.UnionCoupling` replaces each rotation with its per-chunk
     :class:`~diffBloch.engine.plan.CoupledOrientationPlan`. Pre-validated, so this never
     re-validates its bounds.
     """
@@ -61,7 +61,7 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
             # A no-op on the plan, but recorded as couple_beams(TiltIndependent) so provenance
             # records the coupling decision (distinct from a plain unrecorded identity).
             return as_step("couple_beams", policy, identity.run)
-        case SegmentedUnionCoupling():
+        case UnionCoupling() | PerTiltCoupling():
 
             def run(plan: Plan) -> Plan:
                 orientations = tuple(
@@ -74,7 +74,9 @@ def couple_beams(policy: CouplingPolicy) -> PlanStep:
 
 
 def _couple_one(
-    grid: StructureFactorGrid, op: OrientationPlanLike, policy: SegmentedUnionCoupling
+    grid: StructureFactorGrid,
+    op: OrientationPlanLike,
+    policy: UnionCoupling | PerTiltCoupling,
 ) -> CoupledOrientationPlan:
     """Partition one rotation's rocking curve into boundary-union segments at its orientation.
 
@@ -87,7 +89,7 @@ def _couple_one(
     tilts = np.asarray(op.tilts, dtype=np.float64)
     if tilts.shape[0] < 2:
         raise ValueError(
-            "couple_beams(SegmentedUnionCoupling) requires a rocking-curve tilt set; compose "
+            "couple_beams(UnionCoupling) requires a rocking-curve tilt set; compose "
             f"integrate_rocking_curve first (found {tilts.shape[0]} tilt)"
         )
     segments = build_coupling_segments(
