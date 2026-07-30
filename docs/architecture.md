@@ -1,35 +1,66 @@
 # Architecture
 
-Electrons interact with matter far more strongly than X-rays, so a crystal only a few tens to a few
-hundred nanometres thick already scatters a diffracted beam strongly enough to re-scatter again
-before it exits. That multiple-scattering — dynamical diffraction — means the intensity of a
-reflection is not simply proportional to \(|F_{hkl}|^2\) the way it is in the kinematical
-(single-scattering) approximation used for X-ray and neutron work. diffBloch simulates the full
-multiple-scattering problem with a Bloch-wave calculation, and makes that simulation differentiable
-so a structure can be refined against it directly, the same way X-ray refinement fits against a
-kinematical model.
+Electron scattering cross sections are orders of magnitude larger than X-ray cross sections, so a
+diffracted beam in a crystal only tens to a few hundred nanometres thick re-scatters before it exits
+— dynamical, multiple-beam diffraction rather than the kinematical (first Born, single-scattering)
+regime X-ray refinement relies on. The measured intensity of reflection {math}`hkl` is not
+{math}`\propto |F_{hkl}|^2`; it depends on the full coupled system of every beam excited at that
+orientation and thickness. diffBloch solves that coupled system directly (a Bloch-wave calculation)
+and backpropagates through it, so a structure can be refined against the dynamical intensities rather
+than a kinematical approximation of them.
 
-## What gets computed, in order
+## The forward model
 
-1. A starting structure (`.cif`) and reduced rocking-curve diffraction data (`.cif_pets`) are read in.
-2. Because the Bloch-wave calculation is extremely sensitive to the exact crystal orientation and
-   specimen thickness at each rotation, both are fitted against the data before the structure is
-   touched — this is what diffBloch calls preprocessing, and its result is stored as a `Plan`.
-3. Structure factors \(F_{hkl}\) are computed from the current atomic positions, ADPs, and
-   occupancies.
-4. For each rotation, the beam set within the chosen resolution is propagated through the crystal
-   thickness — an eigenvalue problem for a static tilt, or a matrix exponential when refining, since
-   it stays stable under backpropagation — and the tilts spanning that rotation's rocking curve are
-   summed to give one simulated intensity per reflection.
-5. Simulated and observed intensities are compared with a scaling-optimized weighted R-factor.
-6. Gradients of that R-factor flow back through the whole calculation to the atomic parameters, and
-   an ordinary PyTorch optimizer (Adam or L-BFGS) updates them. Steps 3–6 repeat until the structure
-   converges.
+For one crystal orientation, the excited beam set {math}`\{g\}` obeys the coupled dynamical
+diffraction equation
 
-Preprocessing (step 2) and refinement (steps 3–6) are deliberately separate: a `Plan` is expensive to
-compute but describes only geometry, not the structure, so it can be checkpointed once and reused
-across many refinements of the same dataset. See [Preprocessing](preprocessing.md) for how orientation
-and thickness are fitted, and [Refinement](refinement.md) for the optimization loop itself.
+```{math}
+\frac{d\boldsymbol{\psi}}{dz} = \frac{i\pi}{k_n} A\,\boldsymbol{\psi}, \qquad \boldsymbol{\psi}(0) = \boldsymbol{\psi}_0,
+```
+
+where {math}`\boldsymbol{\psi}` is the vector of beam amplitudes, {math}`k_n` is the wavevector
+magnitude corrected for the mean inner potential, {math}`\boldsymbol{\psi}_0` is unity on the
+transmitted (000) beam and zero elsewhere, and the structure matrix {math}`A` is built from the
+structure factors {math}`F_{g-h}` off-diagonal and the excitation error {math}`S_g` on the diagonal:
+{math}`A_{gh} = \pi F_{g-h} / (k_n \Omega)` for {math}`g \neq h`, {math}`A_{gg} = 2 k_n S_g`. With
+absorption, {math}`F` is complex (`Sec. Absorption` below); without it, {math}`A` is Hermitian and
+the propagator is unitary — flux is conserved between beams, not lost. Solving this at a fixed
+thickness {math}`t` is a matrix exponential, {math}`\boldsymbol{\psi}(t) = \exp(i\pi t A / k_n)\,\boldsymbol{\psi}_0`,
+evaluated either by diagonalizing {math}`A` once per orientation (cheap for many thicknesses, but its
+gradient is ill-conditioned near degenerate eigenvalues) or directly as a matrix exponential (the
+refinement-safe default).
+
+Each experimental rotation is not one orientation but a narrow angular range — a **virtual frame**
+([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)) — so the forward model sums
+{math}`|\boldsymbol{\psi}(t)|^2` over sampled tilts spanning that range before comparing to the
+integrated experimental intensity. See [Preprocessing](preprocessing.md) for how the tilt sampling,
+orientation, and {math}`t` are fitted, and [Hyperparameter selection](hyperparameter-selection.md)
+for how many beams and tilts are enough.
+
+## Absorption
+
+Thermal diffuse scattering removes flux from the coherent beams without literally absorbing it —
+electrons are redistributed into a diffuse background rather than destroyed, unlike X-ray photon
+absorption. It is modelled as an imaginary addition to the structure factor,
+{math}`F^{\text{tot}}_g = F_g + iF'_g`, with {math}`F'_g` the absorptive form factor (Lobato/Thomas
+parametrization) evaluated per atom from its equivalent isotropic Debye–Waller factor. This makes
+{math}`A` non-Hermitian, so `matrix_exp` (not the eigendecomposition path) is required whenever
+absorption is enabled.
+
+## Refinement
+
+Comparing calculated to observed intensities uses the same residuals reported in the crystallographic
+literature: the Bragg {math}`R_{\mathrm{obs}}`,
+
+```{math}
+R_{\mathrm{obs}} = \frac{\sum_{I_{\mathrm{obs}} > 3\sigma} \left| \sqrt{I_{\mathrm{obs}}} - \sqrt{I_{\mathrm{calc}}} \right|}{\sum_{I_{\mathrm{obs}} > 3\sigma} \sqrt{I_{\mathrm{obs}}}},
+```
+
+and the scaling-optimized weighted {math}`wR_2` of Klar *et al.* (2023), the default refinement
+objective. Gradients of {math}`wR_2` with respect to atomic positions, ADPs, and occupancies flow
+back through the structure-factor sum and the matrix exponential to a PyTorch optimizer (Adam or
+L-BFGS). See [Refinement](refinement.md) for the trainable-parameter groups and
+[Observability](observability-guide.md) for what gets reported per step.
 
 ## Where each piece lives
 
@@ -38,7 +69,7 @@ and thickness are fitted, and [Refinement](refinement.md) for the optimization l
 | Parse `.cif` / `.cif_pets` into validated records | [`io`](api/io.md) | [Inputs](inputs.md) |
 | Validate `experiment.yaml`, pin input identity | [`config`](api/config.md) | [Inputs](inputs.md), [Reproducibility](reproducibility.md) |
 | Fit orientation and thickness, build the `Plan` | [`preprocess`](api/preprocess.md) | [Preprocessing](preprocessing.md) |
-| Structure factors and the Bloch-wave propagator | [`core`](api/core.md) | [Refinement](refinement.md) |
+| Structure factors and the Bloch-wave propagator | [`core`](api/core.md) | this page |
 | Atomic positions, ADPs, occupancies, and their crystallographic constraints | [`params`](api/params.md) | [Refinement](refinement.md) |
 | Simulate, score, and run the optimization loop | [`engine`](api/engine.md) | [Refinement](refinement.md) |
 | Report per-rotation R-factors and progress | [`observability`](api/observability.md) | [Observability](observability-guide.md) |

@@ -1,14 +1,20 @@
 # Refinement
 
-Refinement is the optimization loop around the repeatable Bloch-wave simulation. It holds a
-settled `Plan` fixed, exposes selected structural quantities as differentiable parameters, simulates
-diffraction, compares calculated and observed intensities, and updates the parameters with a PyTorch
-optimizer.
+Refinement holds a settled `Plan` (fitted orientation, tilts, thickness — see
+[Preprocessing](preprocessing.md)) fixed and minimizes the scaling-optimized weighted {math}`wR_2`
+of [Klar *et al.* (2023)](https://doi.org/10.1038/s41557-023-01186-1) over the differentiable
+structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
+dynamical calculation described in [Architecture](architecture.md#refinement). `R_obs`, the Bragg
+{math}`R`-factor restricted to {math}`I_{\mathrm{obs}} > 3\sigma` reflections, is reported alongside
+{math}`wR_2` at every step as the conventional crystallographic residual, but is not itself the
+optimized quantity.
 
 ## `infer` vs `refine`
 
-- `infer` simulates and scores a settled plan. It does not update parameters.
-- `refine` runs the optimization loop and updates differentiable structural parameters.
+- `infer` runs the forward simulation and reports {math}`wR_2`/{math}`R_{\mathrm{obs}}` for a settled
+  `Plan`. It does not update parameters.
+- `refine` runs the optimization loop: simulate, differentiate {math}`wR_2` back to the structural
+  parameters, step the optimizer, repeat.
 
 ## Refinable groups
 
