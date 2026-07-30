@@ -39,10 +39,10 @@ from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     HexagonalSearch,
     ScoredHklSelection,
-    SegmentedUnionCoupling,
     ThicknessGrid,
     TiltIndependent,
     TrialCoupling,
+    UnionCoupling,
 )
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
@@ -175,7 +175,7 @@ def test_couple_beams_requires_a_rocking_curve_tilt_set() -> None:
     op = OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
     with pytest.raises(ValueError, match="requires a rocking-curve tilt set"):
-        couple_beams(SegmentedUnionCoupling())(Plan(structure_factor_grid=grid, orientations=(op,)))
+        couple_beams(UnionCoupling())(Plan(structure_factor_grid=grid, orientations=(op,)))
 
 
 def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
@@ -345,7 +345,7 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     reproduce the union and the pinned scored set (``op.alignment.hkl``) of the first coupling.
     """
     grid, op, _refinement_unused = _quartz_rot13()
-    policy = SegmentedUnionCoupling()
+    policy = UnionCoupling()
     once = couple_beams(policy)(Plan(structure_factor_grid=grid, orientations=(op,)))
 
     twice = couple_beams(policy)(once)  # re-couple a segmented plan (previously a TypeError)
@@ -362,7 +362,7 @@ def test_fit_orientation_recouples_solve_beams_but_pins_scored_hkl_per_trial() -
     from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
 
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
 
     seed_o = np.asarray(op.orientation, dtype=np.float64)
     seed_trial = _coupled_trial(grid, op, seed_o, coupling)
@@ -394,7 +394,7 @@ def test_coupled_trial_gather_cache_reuses_identical_beam_sets() -> None:
     from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
 
     grid, op, _refinement_unused = _quartz_rot13()
-    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
     seed_o = np.asarray(op.orientation, dtype=np.float64)
 
     cache: dict = {}
@@ -416,7 +416,7 @@ def test_fit_orientation_workers_match_sequential() -> None:
     (shared engine/fgb are read-only; the gather cache is per-rotation and thread-local).
     """
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
     plan = Plan(structure_factor_grid=grid, orientations=(op, op))
 
@@ -440,7 +440,7 @@ def test_fit_orientation_emits_progress_events() -> None:
     from diffBloch.observability import OrientationFitted, RecordingLogger
 
     grid, op, refinement = _quartz_rot13()
-    coupling = TrialCoupling(policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
+    coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
     recorder = RecordingLogger()
     search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
 
@@ -449,7 +449,7 @@ def test_fit_orientation_emits_progress_events() -> None:
     )
 
     fits = [e for e in recorder.events if isinstance(e, OrientationFitted)]
-    assert sorted(e.index for e in fits) == [0, 1]
+    assert [e.rotation_index for e in fits] == [op.pattern.rotation_index] * 2
     assert all(e.n_trials >= 1 and e.wr2 >= 0.0 for e in fits)
     # n_passes is the capped quantity and must be observable within its cap for calibration.
     assert all(1 <= e.n_passes <= e.pass_cap == search.max_iterations for e in fits)

@@ -19,9 +19,10 @@ from __future__ import annotations
 from torch import Tensor
 
 from diffBloch.core.solver import FloatFormat, SolverMethod
-from diffBloch.engine import LossFn, RefinementEngine, scaled_w_rbragg_loss
+from diffBloch.engine import LossFn, RefinementEngine, wr2_loss
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
+from diffBloch.specs import NO_ABSORPTION, Absorption
 
 __all__ = ["build_engine", "score_orientations"]
 
@@ -30,10 +31,11 @@ def build_engine(
     plan: Plan,
     refinement: RefinementSetup,
     *,
-    loss: LossFn = scaled_w_rbragg_loss,
+    loss: LossFn = wr2_loss,
     method: SolverMethod = "matrix_exp",
     precision: FloatFormat = "fp64",
     max_batch: int | None = None,
+    absorption: Absorption = NO_ABSORPTION,
 ) -> RefinementEngine:
     """Wire a geometry ``plan`` and a structure ``refinement`` into a runnable engine (no compute).
 
@@ -43,7 +45,7 @@ def build_engine(
     ASU atomic numbers) is static structure context. ``build_engine`` is the single place that
     rejoins them when a simulation is actually needed; both ``score_orientations``
     here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
-    minimise; it defaults to :func:`~diffBloch.engine.scaled_w_rbragg_loss` (wR2 after matching
+    minimise; it defaults to :func:`~diffBloch.engine.wr2_loss` (wR2 after matching
     calculated total intensity to observed -- calc and obs are on different scales, so the raw
     metric would be flat/gradient-free). It is irrelevant to :meth:`RefinementEngine.fgb` /
     :meth:`RefinementEngine.score_orientation`, which apply their own scaling-optimised wR2.
@@ -68,6 +70,7 @@ def build_engine(
         method=method,
         precision=precision,
         max_batch=max_batch,
+        absorption=absorption,
     )
 
 

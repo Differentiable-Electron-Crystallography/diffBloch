@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 __all__ = [
+    "Absorption",
+    "ApparentThicknessNetwork",
+    "NO_ABSORPTION",
     "BeamSelection",
     "ConvergenceTest",
     "ConvergenceTolerance",
@@ -30,14 +33,48 @@ __all__ = [
     "IntegrationGeometry",
     "Mosaicity",
     "OrientationSelection",
+    "PerTiltCoupling",
     "RockingCurve",
     "ScoredHklSelection",
     "ThicknessGrid",
     "TiltIndependent",
-    "SegmentedUnionCoupling",
+    "UnionCoupling",
     "TrialCoupling",
     "assert_grid_covers_coupling",
 ]
+
+
+@dataclass(frozen=True)
+class ApparentThicknessNetwork:
+    """Legacy apparent-thickness MLP settings used by the default refinement path."""
+
+    enabled: bool = False
+    num_samples: int = 40
+    sample_thickness: bool = False
+    form: Literal["min_thickness"] = "min_thickness"
+    min_thickness: float = 100.0
+    max_thickness: float = 3500.0
+    init_seed: int = 0
+
+    def __post_init__(self) -> None:
+        if self.num_samples < 1:
+            raise ValueError("thickness NN num_samples must be >= 1")
+        if self.form != "min_thickness":
+            raise ValueError("thickness NN only supports form='min_thickness'")
+        if self.min_thickness <= 0.0:
+            raise ValueError("thickness NN min_thickness must be positive")
+        if self.max_thickness <= self.min_thickness:
+            raise ValueError("thickness NN max_thickness must exceed min_thickness")
+
+
+@dataclass(frozen=True)
+class Absorption:
+    """Enable the element/B-factor-dependent absorptive Bloch-wave model."""
+
+    enabled: bool = False
+
+
+NO_ABSORPTION = Absorption()
 
 
 @dataclass(frozen=True)
@@ -276,7 +313,7 @@ class Mosaicity:
 
 
 @dataclass(frozen=True)
-class SegmentedUnionCoupling:
+class UnionCoupling:
     """Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.
 
     The coupling policy for rocking-curve integration: it partitions the
@@ -323,7 +360,24 @@ class SegmentedUnionCoupling:
             raise ValueError("union_max_new_beams_pct must be in (0, 1]")
 
 
-def assert_grid_covers_coupling(policy: SegmentedUnionCoupling, grid_g_max: float) -> None:
+@dataclass(frozen=True)
+class PerTiltCoupling:
+    """Independent beam selection and Bloch basis for every rocking-curve tilt.
+
+    For each individual sub-tilt, recompute ``Sg`` over the radial ``g_max`` pool, retain only
+    ``|Sg| < sg_max``, and build a structure-factor gather and structure matrix for that tilt's
+    exact beam set. No beam set is shared or unioned across tilts.
+    """
+
+    g_max: float = 2.25
+    sg_max: float = 0.01
+
+    def __post_init__(self) -> None:
+        if self.g_max <= 0.0 or self.sg_max <= 0.0:
+            raise ValueError("g_max and sg_max must be positive")
+
+
+def assert_grid_covers_coupling(policy: UnionCoupling | PerTiltCoupling, grid_g_max: float) -> None:
     """Guarantee the ``|g| <= grid_g_max`` grid sphere spans every coupled beam difference (O(1)).
 
     A coupled solve union admits only beams with ``|g| < g_max``, so any pairwise difference is
@@ -360,10 +414,10 @@ class TiltIndependent:
 
 
 # How a rocking curve couples beams across its tilts: one shared set (:class:`TiltIndependent`) or
-# per-tilt-chunk boundary unions (:class:`SegmentedUnionCoupling`). A discriminated union the
+# per-tilt-chunk boundary unions (:class:`UnionCoupling`). A discriminated union the
 # ``couple_beams`` step matches on, not a boolean toggle -- the tilt-dependent policy carries its
 # own parameters, the default carries none.
-CouplingPolicy = TiltIndependent | SegmentedUnionCoupling
+CouplingPolicy = TiltIndependent | UnionCoupling | PerTiltCoupling
 
 
 @dataclass(frozen=True)
@@ -406,7 +460,7 @@ class TrialCoupling:
     unrepresentable, so the fit takes one optional parameter with no cross-parameter guard.
     """
 
-    policy: SegmentedUnionCoupling  # SOLVE: the per-tilt-segment excitation union
+    policy: UnionCoupling | PerTiltCoupling
     scored: ScoredHklSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
 
 

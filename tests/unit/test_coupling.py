@@ -4,7 +4,7 @@ The parity fixture (``tests/fixtures/quartz_anchor/parity_replay/``) carries the
 ``diffBloch_private`` reference's per-rotation coupling: the split boundaries and, per segment, the
 union beam set (``seg{k}_hkl``) and covered tilt indices (``seg{k}_cover``), dumped straight from
 ``BlochNet.forward``. These fixtures are **pre-#154** (coupling cap ``|g| < g_max - 0.2 = 2.05``).
-These tests recompute the coupling from the :class:`~diffBloch.specs.SegmentedUnionCoupling` policy
+These tests recompute the coupling from the :class:`~diffBloch.specs.UnionCoupling` policy
 alone: the split boundaries and covers still match exactly, but the post-#154 policy (cap
 ``|g| < g_max``,
 the ``- 0.2`` margin dropped) widens each segment's beam set, so the beam-set test asserts
@@ -27,7 +27,7 @@ from diffBloch.preprocess.coupling import (
     Segment,
     build_coupling_segments,
 )
-from diffBloch.specs import SegmentedUnionCoupling, assert_grid_covers_coupling
+from diffBloch.specs import PerTiltCoupling, UnionCoupling, assert_grid_covers_coupling
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 REPLAY_ROOT = FIXTURE_ROOT / "parity_replay"
@@ -47,7 +47,7 @@ def _compute(rotation: int) -> tuple[tuple[Segment, ...], np.lib.npyio.NpzFile]:
     grid, tilts = _grid_and_tilts()
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     segments = build_coupling_segments(
-        SegmentedUnionCoupling(union_adaptive=False),
+        UnionCoupling(union_adaptive=False),
         np.asarray(grid.structure_factor_hkl),
         cell=np.asarray(grid.cell),
         orientation=d["orientation"],
@@ -93,13 +93,31 @@ def test_fixed_segment_ranges_match_private() -> None:
     from diffBloch.preprocess.coupling import _fixed_segment_ranges
 
     d = np.load(REPLAY_ROOT / "rot_61.npz")
-    boundaries = _fixed_segment_ranges(42, SegmentedUnionCoupling().fixed_n_segments)
+    boundaries = _fixed_segment_ranges(42, UnionCoupling().fixed_n_segments)
     assert list(boundaries) == [int(b) for b in d["split_idx"]]
+
+
+def test_per_tilt_coupling_builds_one_independent_basis_per_tilt() -> None:
+    grid, tilts = _grid_and_tilts()
+    d = np.load(REPLAY_ROOT / "rot_61.npz")
+    segments = build_coupling_segments(
+        PerTiltCoupling(g_max=2.25, sg_max=0.01),
+        np.asarray(grid.structure_factor_hkl),
+        cell=np.asarray(grid.cell),
+        orientation=d["orientation"],
+        tilts=tilts,
+        energy=ENERGY_EV,
+        u0=float(d["u0"]),
+    )
+    assert len(segments) == len(tilts)
+    assert [segment.covered_tilt_indices for segment in segments] == [
+        (i,) for i in range(len(tilts))
+    ]
 
 
 def test_policy_rejects_nonpositive_g_max() -> None:
     with pytest.raises(ValueError, match="g_max and sg_max must be positive"):
-        SegmentedUnionCoupling(g_max=0.0)
+        UnionCoupling(g_max=0.0)
 
 
 # --- adaptive tilt-segment union (recursive bisection) --------------------------------------------
@@ -107,9 +125,9 @@ def test_policy_rejects_nonpositive_g_max() -> None:
 
 def test_policy_rejects_out_of_range_union_pct() -> None:
     with pytest.raises(ValueError, match="union_max_new_beams_pct"):
-        SegmentedUnionCoupling(union_max_new_beams_pct=0.0)
+        UnionCoupling(union_max_new_beams_pct=0.0)
     with pytest.raises(ValueError, match="union_max_new_beams_pct"):
-        SegmentedUnionCoupling(union_max_new_beams_pct=1.5)
+        UnionCoupling(union_max_new_beams_pct=1.5)
 
 
 def _drifting_mask(n_beams: int) -> Callable[[int], np.ndarray]:
@@ -161,7 +179,7 @@ def test_adaptive_coupling_tiles_tilts_and_keeps_transmitted_beam(rotation: int)
     grid, tilts = _grid_and_tilts()
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     segments = build_coupling_segments(
-        SegmentedUnionCoupling(union_adaptive=True),
+        UnionCoupling(union_adaptive=True),
         np.asarray(grid.structure_factor_hkl),
         cell=np.asarray(grid.cell),
         orientation=d["orientation"],
@@ -182,18 +200,18 @@ def test_adaptive_coupling_tiles_tilts_and_keeps_transmitted_beam(rotation: int)
 
 def test_coverage_guard_passes_for_the_faithful_recipe() -> None:
     """Faithful quartz coupling (g_max 2.25) needs a grid >= 4.5, which the derived grid is."""
-    assert_grid_covers_coupling(SegmentedUnionCoupling(), grid_g_max=4.5)  # does not raise
+    assert_grid_covers_coupling(UnionCoupling(), grid_g_max=4.5)  # does not raise
 
 
 def test_coverage_guard_accepts_the_exact_boundary() -> None:
     """2*g_max == grid_g_max is sufficient (differences are strictly < 2*g_max), so equality ok."""
-    policy = SegmentedUnionCoupling()
+    policy = UnionCoupling()
     assert_grid_covers_coupling(policy, grid_g_max=2.0 * policy.g_max)  # does not raise
 
 
 def test_coverage_guard_raises_when_the_grid_is_too_small() -> None:
     """A grid g_max below 2*g_max would let a coupled difference fall outside the sphere -> silent
     zero under validate=False. The guard turns that into a loud, actionable error at setup."""
-    policy = SegmentedUnionCoupling()  # g_max 2.25 -> needs grid g_max >= 4.5
+    policy = UnionCoupling()  # g_max 2.25 -> needs grid g_max >= 4.5
     with pytest.raises(ValueError, match=r"grid g_max.*4\.5|silently gather zeros"):
         assert_grid_covers_coupling(policy, grid_g_max=4.0)

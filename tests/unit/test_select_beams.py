@@ -17,7 +17,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
-from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, SegmentedUnionCoupling
+from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -132,7 +132,7 @@ def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking()
     with pytest.raises(ValueError, match="mosaicity requires"):
         build_orientation_plans(mosaicity=Mosaicity(window=1))
     with pytest.raises(ValueError, match="coupling requires"):
-        build_orientation_plans(coupling=SegmentedUnionCoupling())
+        build_orientation_plans(coupling=UnionCoupling())
 
 
 def test_build_orientation_plans_rejects_mosaic_window_larger_than_sampling() -> None:

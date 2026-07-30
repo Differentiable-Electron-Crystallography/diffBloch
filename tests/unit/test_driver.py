@@ -12,11 +12,11 @@ from diffBloch.specs import (
     ConvergenceTolerance,
     IntegrationGeometry,
     RockingCurve,
-    SegmentedUnionCoupling,
+    UnionCoupling,
 )
 
 _ROCKING = RockingCurve(sampling=3, integration=IntegrationGeometry(semiangle=0.5))
-_SIMULATION = SegmentedUnionCoupling(
+_SIMULATION = UnionCoupling(
     fixed_n_segments=2,
     g_max=0.5,
     sg_max=0.01,

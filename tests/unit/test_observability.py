@@ -25,6 +25,7 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
+    OrientationFitSummary,
     OrientationFitted,
     PlanStepCompleted,
     RecordingLogger,
@@ -38,7 +39,7 @@ from diffBloch.observability import (
 
 def _fitted(index: int, wr2: float) -> OrientationFitted:
     return OrientationFitted(
-        index=index,
+        rotation_index=index,
         wr2=wr2,
         n_matched_hkl=42,
         n_trials=10,
@@ -63,10 +64,34 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "mean_r_obs": 0.065,
     }
 
-    thickness = ThicknessFitted(index=7, wr2=0.031, thickness=1460.0)
+    thickness = ThicknessFitted(rotation_index=7, wr2=0.031, thickness=1460.0)
     assert thickness.channel == "optimize_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
+
+    orientation_summary = OrientationFitSummary(
+        n_orientations=2,
+        mean_wr2=0.03,
+        mean_r_obs=0.04,
+        total_matched_hkl=80,
+        total_strong_hkl=60,
+        total_weak_hkl=20,
+        total_observed_hkl=100,
+        total_trials=50,
+        max_passes=8,
+    )
+    assert orientation_summary.measurements == {
+        "n_orientations": 2.0,
+        "mean_wr2": 0.03,
+        "mean_r_obs": 0.04,
+        "total_matched_hkl": 80.0,
+        "total_strong_hkl": 60.0,
+        "total_weak_hkl": 20.0,
+        "total_observed_hkl": 100.0,
+        "total_unmatched_hkl": 20.0,
+        "total_trials": 50.0,
+        "max_passes": 8.0,
+    }
 
     coupled = RotationCoupling(
         index=2,
@@ -192,7 +217,7 @@ def test_console_logger_labels_orientation_refinement_index(
     assert (
         caplog.records[-1]
         .getMessage()
-        .startswith("orientation optimization[orientation_index=10] wr2=0.025 n_matched_hkl=42")
+        .startswith("orientation optimization[rotation_index=10] wr2=0.025 n_matched_hkl=42")
     )
 
 
@@ -201,10 +226,10 @@ def test_console_logger_labels_thickness_refinement_index(
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(ThicknessFitted(index=10, wr2=0.025, thickness=820.0))
+        logger.report(ThicknessFitted(rotation_index=10, wr2=0.025, thickness=820.0))
 
     assert caplog.records[-1].getMessage() == (
-        "thickness optimization[orientation_index=10] wr2=0.025 thickness=820"
+        "thickness optimization[rotation_index=10] wr2=0.025 thickness=820"
     )
 
 

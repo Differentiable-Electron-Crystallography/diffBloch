@@ -38,6 +38,7 @@ class ExperimentLock(BaseModel):
 
     structure: InputLock
     observations: InputLock
+    orientations: InputLock | None = None
 
 
 class ArtifactHash(BaseModel):
@@ -133,6 +134,13 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
     _verify_input(root, cfg.inputs.exp_data, lock.observations)
+    if cfg.inputs.orientations is None:
+        if lock.orientations is not None:
+            raise ValueError("experiment.lock declares orientations but config does not")
+    else:
+        if lock.orientations is None:
+            raise ValueError("experiment.lock is missing the configured orientations input")
+        _verify_input(root, cfg.inputs.orientations, lock.orientations)
     return cfg, lock
 
 

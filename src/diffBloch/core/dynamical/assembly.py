@@ -28,6 +28,7 @@ from diffBloch.core.dynamical.primitives import (
     wavevector_magnitude,
 )
 from diffBloch.core.reciprocal import g_vectors, ravel_hkl
+from diffBloch.specs import NO_ABSORPTION, Absorption
 
 type IntArray = NDArray[np.int64]
 type FloatArray = NDArray[np.float64]
@@ -288,7 +289,9 @@ def build_beam_plan(
     )
 
 
-def structure_matrix(plan: BeamPlan, structure_factors: Tensor) -> Tensor:
+def structure_matrix(
+    plan: BeamPlan, structure_factors: Tensor, absorption: Absorption = NO_ABSORPTION
+) -> Tensor:
     """Assemble the Bloch structure matrix ``A`` from a plan and structure factors ``Fgb``.
 
     Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (gathered, then
@@ -296,10 +299,16 @@ def structure_matrix(plan: BeamPlan, structure_factors: Tensor) -> Tensor:
     Differentiable in ``structure_factors`` (the diagonal is a geometry constant). Returns a complex
     ``(N, N)`` tensor in the dtype of ``structure_factors``.
     """
-    off = gather_structure_factors(plan.gather, structure_factors)
+    gathered = gather_structure_factors(plan.gather, structure_factors)
+    off = gathered
     mii = plan.mii.to(device=off.device, dtype=off.real.dtype)
     off = off * (plan.prefactor * mii[None] * mii[:, None])
-    return _fill_diagonal(off, plan.diagonal.to(device=off.device, dtype=off.dtype))
+    diagonal = plan.diagonal.to(device=off.device, dtype=off.dtype)
+    if absorption.enabled:
+        f0_imag = torch.diagonal(gathered).imag.mean()
+        u0_prime = plan.prefactor * f0_imag
+        diagonal = diagonal + 1.0j * u0_prime * mii
+    return _fill_diagonal(off, diagonal)
 
 
 def _fill_diagonal(matrix: Tensor, diagonal: Tensor) -> Tensor:
@@ -345,7 +354,9 @@ class BlochSystem:
     mask: Tensor
 
 
-def build_bloch_system(plan: BeamPlan, structure_factors: Tensor) -> BlochSystem:
+def build_bloch_system(
+    plan: BeamPlan, structure_factors: Tensor, absorption: Absorption = NO_ABSORPTION
+) -> BlochSystem:
     """Assemble the closed Bloch system for a beam plan and structure factors ``Fgb``.
 
     ``A`` is built from the differentiable ``Fgb`` (so the system is differentiable in ``Fgb``); the
@@ -354,7 +365,7 @@ def build_bloch_system(plan: BeamPlan, structure_factors: Tensor) -> BlochSystem
     :func:`core.solver.propagate`.
     """
     return BlochSystem(
-        a=structure_matrix(plan, structure_factors),
+        a=structure_matrix(plan, structure_factors, absorption),
         mii=plan.mii,
         psi0=plan.psi0,
         k_n=plan.k_n,
@@ -425,7 +436,11 @@ def stack_beam_plans(plans: Sequence[BeamPlan]) -> BeamPlanBatch:
     )
 
 
-def build_bloch_systems(batch: BeamPlanBatch, structure_factors: Tensor) -> BlochSystem:
+def build_bloch_systems(
+    batch: BeamPlanBatch,
+    structure_factors: Tensor,
+    absorption: Absorption = NO_ABSORPTION,
+) -> BlochSystem:
     """Assemble the batched Bloch system for a beam-plan batch and structure factors ``Fgb``.
 
     Gathers ``Fgb`` **once** onto the shared ``(N, N)`` off-diagonal grid, then scales it per tilt
@@ -434,8 +449,13 @@ def build_bloch_systems(batch: BeamPlanBatch, structure_factors: Tensor) -> Bloc
     (``a`` ``(B, N, N)``, ``mii`` ``(B, N)``); :func:`core.solver.propagate` is rank-polymorphic
     over it. Differentiable in ``Fgb`` (the shared gather feeds every tilt).
     """
-    off = gather_structure_factors(batch.gather, structure_factors)  # (N, N), shared across tilts
-    mii = batch.mii.to(device=off.device, dtype=off.real.dtype)  # (B, N)
-    off = off[None] * (batch.prefactor * mii[:, None, :] * mii[:, :, None])  # (B, N, N)
-    a = _fill_diagonal(off, batch.diagonal.to(device=off.device, dtype=off.dtype))
+    gathered = gather_structure_factors(batch.gather, structure_factors)
+    mii = batch.mii.to(device=gathered.device, dtype=gathered.real.dtype)  # (B, N)
+    off = gathered[None] * (batch.prefactor * mii[:, None, :] * mii[:, :, None])
+    diagonal = batch.diagonal.to(device=off.device, dtype=off.dtype)
+    if absorption.enabled:
+        f0_imag = torch.diagonal(gathered).imag.mean()
+        u0_prime = batch.prefactor * f0_imag
+        diagonal = diagonal + 1.0j * u0_prime[..., None] * mii
+    a = _fill_diagonal(off, diagonal)
     return BlochSystem(a=a, mii=batch.mii, psi0=batch.psi0, k_n=batch.k_n, mask=batch.mask)

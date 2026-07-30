@@ -12,15 +12,18 @@ from diffBloch.config.schema import (
     TrainableConfig,
 )
 from diffBloch.engine import AtomSelection, TrainableSpec
-from diffBloch.engine.losses import scaled_w_rbragg_loss, weighted_mse_loss
+from diffBloch.engine.losses import weighted_mse_loss, wr2_loss
 from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
+    Absorption,
+    ApparentThicknessNetwork,
     HexagonalSearch,
     IntegrationGeometry,
     OrientationSelection,
+    PerTiltCoupling,
     RockingCurve,
-    SegmentedUnionCoupling,
     ThicknessGrid,
+    UnionCoupling,
 )
 
 
@@ -38,10 +41,12 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
-    assert cfg.refinement.objective.data_term == "scaled_weighted_r"
+    assert cfg.refinement.objective.data_term == "wr2"
     assert cfg.refinement.precision == "fp64"
+    assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
     assert cfg.refinement.split.validation == "every_10th_rotation"
     assert cfg.blochwave.ignore_orientations == ()
+    assert cfg.blochwave.to_absorption() == Absorption()
     assert cfg.preprocess.optimize_orientation is True
     assert cfg.preprocess.optimize_thickness is True
 
@@ -52,6 +57,60 @@ def test_solver_method_must_be_a_known_method() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):
         ExperimentConfig.model_validate({**base, "blochwave": {"solver": {"refine": "nope"}}})
+
+
+def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    cfg = ExperimentConfig.model_validate({**base, "blochwave": {"absorption": True}})
+    assert cfg.blochwave.to_absorption() == Absorption(enabled=True)
+    with pytest.raises(ValidationError, match="absorption requires"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "blochwave": {
+                    "absorption": True,
+                    "solver": {"refine": "bloch_eigen"},
+                },
+            }
+        )
+
+
+def test_refinement_thickness_nn_config_is_typed_and_validated() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    cfg = ExperimentConfig.model_validate(
+        {
+            **base,
+            "refinement": {
+                "thickness_nn": {
+                    "enabled": True,
+                    "num_samples": 12,
+                    "sample_thickness": True,
+                    "min_thickness": 1000.0,
+                    "max_thickness": 3000.0,
+                }
+            },
+        }
+    )
+    assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork(
+        enabled=True,
+        num_samples=12,
+        sample_thickness=True,
+        min_thickness=1000.0,
+        max_thickness=3000.0,
+    )
+    with pytest.raises(ValidationError, match="max_thickness must exceed"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "refinement": {
+                    "thickness_nn": {
+                        "enabled": True,
+                        "min_thickness": 1000.0,
+                        "max_thickness": 1000.0,
+                    }
+                },
+            }
+        )
 
 
 def test_missing_required_input_fails_fast() -> None:
@@ -128,7 +187,7 @@ def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
 
 
 def test_objective_data_term_parses_to_loss() -> None:
-    assert ObjectiveConfig(data_term="scaled_weighted_r").to_loss() is scaled_w_rbragg_loss
+    assert ObjectiveConfig(data_term="wr2").to_loss() is wr2_loss
     assert ObjectiveConfig(data_term="least_squares").to_loss() is weighted_mse_loss
 
 
@@ -241,7 +300,7 @@ def test_blochwave_has_one_complete_default() -> None:
     cfg = ExperimentConfig.model_validate(
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
-    assert cfg.blochwave.to_policy() == SegmentedUnionCoupling()
+    assert cfg.blochwave.to_policy() == UnionCoupling()
 
 
 def test_coupling_policy_override_parses() -> None:
@@ -252,9 +311,18 @@ def test_coupling_policy_override_parses() -> None:
             "blochwave": {"fixed_n_segments": 4, "g_max": 1.5, "sg_max": 0.02},
         }
     )
-    assert cfg.blochwave.to_policy() == SegmentedUnionCoupling(
-        fixed_n_segments=4, g_max=1.5, sg_max=0.02
+    assert cfg.blochwave.to_policy() == UnionCoupling(fixed_n_segments=4, g_max=1.5, sg_max=0.02)
+
+
+def test_per_tilt_coupling_policy_parses_without_union_settings() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "paper",
+            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
+            "blochwave": {"coupling_mode": "per_tilt", "g_max": 2.5, "sg_max": 0.01},
+        }
     )
+    assert cfg.blochwave.to_policy() == PerTiltCoupling(g_max=2.5, sg_max=0.01)
 
 
 def test_coupling_adaptive_fields_default_off_and_thread_through() -> None:

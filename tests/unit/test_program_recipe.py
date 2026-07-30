@@ -47,7 +47,7 @@ def test_fork_predicate_routes_at_the_threshold() -> None:
 def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     """A ``blochwave`` override reaches the fit's recorded per-trial policy.
 
-    The recipe reads its coupling from config (not a hardcoded ``SegmentedUnionCoupling()``), so a
+    The recipe reads its coupling from config (not a hardcoded ``UnionCoupling()``), so a
     config that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the
     mechanism that lets abiraterone's ``fixed_n_segments=4`` coupling be expressed through the
     standard config path.

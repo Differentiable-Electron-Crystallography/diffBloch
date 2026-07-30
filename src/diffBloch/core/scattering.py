@@ -22,6 +22,9 @@ from typing import Literal
 import torch
 from torch import Tensor
 
+from diffBloch.core.absorption import absorptive_form_factors, equivalent_isotropic_b
+from diffBloch.specs import NO_ABSORPTION, Absorption
+
 type StructureFactorCutoff = Literal["hard", "taper"]
 
 
@@ -119,8 +122,10 @@ def structure_factors(
     g_max: float,
     cutoff: StructureFactorCutoff = "hard",
     extinction_threshold: float = 1e-12,
+    absorption: Absorption = NO_ABSORPTION,
+    energy: float | None = None,
 ) -> Tensor:
-    """Vectorised electron structure factors ``Fgb`` (elastic).
+    """Vectorised electron structure factors ``Fgb``, optionally including absorption.
 
     ``Fgb(h) = (1/V) sum_atoms f_e * DWF * occ * cutoff * exp(2 pi i r . h)``. ``|g|`` is derived
     internally from ``hkl`` and ``reciprocal_basis`` (no separate ``g`` argument to keep in sync).
@@ -142,11 +147,19 @@ def structure_factors(
     form_factors = lobato_form_factors(numbers, g)
     dwf = debye_waller_factor(hkl, uij_star)
     cutoff_window = structure_factor_cutoff(g, g_max, mode=cutoff)
-    per_atom = (form_factors * dwf * occupancies[:, None]) * cutoff_window[None, :]
+    atomic_factors = form_factors
+    if absorption.enabled:
+        if energy is None:
+            raise ValueError("energy is required for parameterized absorption")
+        b_iso = equivalent_isotropic_b(uij_star, reciprocal_basis)
+        atomic_factors = torch.complex(
+            form_factors,
+            absorptive_form_factors(numbers, g / 2.0, b_iso, energy=energy),
+        )
+    per_atom = (atomic_factors * dwf * occupancies[:, None]) * cutoff_window[None, :]
 
     phase = torch.exp(2.0j * torch.pi * (positions @ hkl.to(positions.dtype).transpose(0, 1)))
     unmasked = (per_atom.to(phase.dtype) * phase).sum(dim=0)
-
     real = torch.where(
         unmasked.real.abs() >= extinction_threshold, unmasked.real, torch.zeros_like(unmasked.real)
     )

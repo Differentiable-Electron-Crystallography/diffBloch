@@ -54,7 +54,12 @@ from diffBloch.core.dynamical import (
 from diffBloch.core.solver import FloatFormat, SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
-from diffBloch.observability import NULL_LOGGER, Logger, OrientationFitted
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Logger,
+    OrientationFitSummary,
+    OrientationFitted,
+)
 from diffBloch.params import Device
 from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
@@ -62,7 +67,13 @@ from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import HexagonalSearch, TrialCoupling, assert_grid_covers_coupling
+from diffBloch.specs import (
+    NO_ABSORPTION,
+    Absorption,
+    HexagonalSearch,
+    TrialCoupling,
+    assert_grid_covers_coupling,
+)
 
 __all__ = ["fit_orientation"]
 
@@ -79,6 +90,7 @@ def fit_orientation(
     device: Device | None = None,
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
+    absorption: Absorption = NO_ABSORPTION,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
 
@@ -161,12 +173,17 @@ def fit_orientation(
         if coupling is not None:
             assert_grid_covers_coupling(coupling.policy, plan.structure_factor_grid.g_max)
         engine = build_engine(
-            plan, refinement, method=method, precision=precision, max_batch=max_batch
+            plan,
+            refinement,
+            method=method,
+            precision=precision,
+            max_batch=max_batch,
+            absorption=absorption,
         )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
 
-        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
+        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, float, int, int]:
             return _refine_one(
                 engine,
                 fgb,
@@ -178,26 +195,35 @@ def fit_orientation(
             )
 
         built = require_built_plans(plan)
-        fitted_by_index: dict[int, OrientationPlanLike] = {}
+        results_by_index: dict[int, tuple[OrientationPlanLike, float, float, int, int]] = {}
         cap = search.max_iterations
+
+        def report(
+            index: int,
+            result: tuple[OrientationPlanLike, float, float, int, int],
+        ) -> None:
+            fitted, wr2, _r_obs, n_trials, n_passes = result
+            results_by_index[index] = result
+            pattern_index = fitted.alignment.pattern_index
+            n_matched = int(pattern_index.shape[0])
+            logger.report(
+                OrientationFitted(
+                    rotation_index=fitted.pattern.rotation_index,
+                    wr2=wr2,
+                    n_matched_hkl=n_matched,
+                    n_trials=n_trials,
+                    n_passes=n_passes,
+                    pass_cap=cap,
+                )
+            )
+
         if workers > 1:
             pool = ThreadPoolExecutor(max_workers=workers)
             try:
                 futures = {pool.submit(refine, op): index for index, op in enumerate(built)}
                 for future in as_completed(futures):  # emit progress as searches finish
                     index = futures[future]
-                    fitted, wr2, n_trials, n_passes = future.result()
-                    fitted_by_index[index] = fitted
-                    logger.report(
-                        OrientationFitted(
-                            index=index,
-                            wr2=wr2,
-                            n_matched_hkl=int(fitted.alignment.hkl.shape[0]),
-                            n_trials=n_trials,
-                            n_passes=n_passes,
-                            pass_cap=cap,
-                        )
-                    )
+                    report(index, future.result())
             finally:
                 # An early abort surfaces as a logger.report() raising mid-loop. Cancel the
                 # not-yet-started searches and don't block on the in-flight ones, so the abort
@@ -209,25 +235,46 @@ def fit_orientation(
                 pool.shutdown(wait=False, cancel_futures=True)
         else:
             for index, op in enumerate(built):
-                fitted, wr2, n_trials, n_passes = refine(op)
-                fitted_by_index[index] = fitted
-                logger.report(
-                    OrientationFitted(
-                        index=index,
-                        wr2=wr2,
-                        n_matched_hkl=int(fitted.alignment.hkl.shape[0]),
-                        n_trials=n_trials,
-                        n_passes=n_passes,
-                        pass_cap=cap,
-                    )
-                )
-        ordered = tuple(fitted_by_index[i] for i in range(len(built)))
+                report(index, refine(op))
+        ordered_results = tuple(results_by_index[i] for i in range(len(built)))
+        ordered = tuple(result[0] for result in ordered_results)
+        fitted_events = [
+            (
+                result,
+                int(result[0].alignment.pattern_index.shape[0]),
+                int(
+                    (
+                        result[0].pattern.intensities[result[0].alignment.pattern_index]
+                        > 3.0 * result[0].pattern.sigmas[result[0].alignment.pattern_index]
+                    ).sum()
+                ),
+                int(result[0].pattern.hkl.shape[0]),
+            )
+            for result in ordered_results
+        ]
+        logger.report(
+            OrientationFitSummary(
+                n_orientations=len(fitted_events),
+                mean_wr2=sum(item[0][1] for item in fitted_events) / len(fitted_events),
+                mean_r_obs=sum(item[0][2] for item in fitted_events) / len(fitted_events),
+                total_matched_hkl=sum(item[1] for item in fitted_events),
+                total_strong_hkl=sum(item[2] for item in fitted_events),
+                total_weak_hkl=sum(item[1] - item[2] for item in fitted_events),
+                total_observed_hkl=sum(item[3] for item in fitted_events),
+                total_trials=sum(item[0][3] for item in fitted_events),
+                max_passes=max(item[0][4] for item in fitted_events),
+            )
+        )
         return replace(plan, orientations=ordered)
 
     # search rides in the config digest too, but coupling is a composition-site kwarg (not config),
     # so it MUST be in the recipe identity; workers/logger/device are execution-only (device shifts
     # output only to solver tolerance -- see the docstring -- so it stays out of the identity).
-    return as_step("optimize_orientation", {"search": search, "coupling": coupling}, run)
+    return as_step(
+        "optimize_orientation",
+        {"search": search, "coupling": coupling, "absorption": absorption},
+        run,
+    )
 
 
 def _refine_one(
@@ -239,7 +286,7 @@ def _refine_one(
     search: HexagonalSearch,
     coupling: TrialCoupling | None,
     validate: bool = True,
-) -> tuple[OrientationPlanLike, float, int, int]:
+) -> tuple[OrientationPlanLike, float, float, int, int]:
     """Palatinus hexagonal search over one orientation.
 
     Returns ``(fitted, wr2, n_trials, n_passes)``: the best-scoring plan, its final
@@ -277,7 +324,8 @@ def _refine_one(
     n_passes = 0
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
-            return current, current_score, n_trials, n_passes
+            r_obs = float(engine.score_orientation_r_obs(current, fgb))
+            return current, current_score, r_obs, n_trials, n_passes
         n_passes += 1  # noqa: SIM113 -- not enumerate: the floor-check iteration above returns before this, so this counts executed sweeps only
         improved = False
         for n in range(search.n_steps):

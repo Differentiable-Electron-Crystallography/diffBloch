@@ -12,14 +12,14 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg, weighted_mse
 from diffBloch.core.products import AlignedIntensities
 
 __all__ = [
     "l1_loss",
     "mse_loss",
     "rbragg_loss",
-    "scaled_w_rbragg_loss",
+    "wr2_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",
 ]
@@ -49,30 +49,26 @@ def w_rbragg_loss(aligned: AlignedIntensities) -> Tensor:
     """Per-orientation weighted-R2 term (default ``mu``), summed over thicknesses to a scalar.
 
     Raw: no calc<->obs scaling. Correct only where the caller has already put calculated on the
-    observed scale; for the refinement objective use :func:`scaled_w_rbragg_loss`, which is the
+    observed scale; for the refinement objective use :func:`wr2_loss`, which is the
     :func:`~diffBloch.preprocess.scoring.build_engine` default.
     """
     return w_rbragg(aligned.calculated, aligned.observed, aligned.sigmas).sum()
 
 
-def scaled_w_rbragg_loss(aligned: AlignedIntensities) -> Tensor:
-    """Weighted-R2 after matching calculated total intensity to observed -- the refine objective.
+def wr2_loss(aligned: AlignedIntensities) -> Tensor:
+    """Scaling-optimised weighted-R2 -- the refinement and orientation-search objective.
 
     The calculated intensities come off the dynamical solve on an arbitrary structure-factor scale,
     while the observed are PETS intensities on their own scale. Compared raw
     (:func:`w_rbragg_loss`), wR2 is denominator-dominated and parks near ~1 with a vanishing
-    gradient, so a gradient
-    refinement cannot descend it. Here calculated is first rescaled to the observed total intensity
-    per thickness -- an **analytic** ratio ``observed.sum()/calculated.sum()`` (smooth and
-    differentiable, unlike :func:`~diffBloch.core.losses.optimal_scale`'s grid argmin, which is for
-    ``no_grad`` scoring) -- so the loss sees the *relative* intensity distribution, which is what
-    carries the structural gradient. Consequently it is invariant to any constant rescaling of
-    ``calculated``. ``clamp_min`` guards a degenerate near-zero ``calculated.sum()`` from exploding
-    the scale (matching the ``1e-12`` floor in :func:`~diffBloch.core.losses.w_rbragg`). Summed over
-    the thickness axis, like the sibling losses.
+    gradient, so a gradient refinement cannot descend it. Every call therefore re-fits the
+    multiplicative intensity scale independently for every thickness through
+    :func:`~diffBloch.core.losses.optimal_scale`, exactly as orientation preprocessing does. The
+    selected grid branch remains differentiable in its calculated intensities (``torch.min`` routes
+    the gradient through the winning candidate); only a boundary where the winning grid point
+    changes is piecewise-smooth. Summed over the thickness axis, like the sibling losses.
     """
     calc, obs = aligned.calculated, aligned.observed
-    eps = torch.as_tensor(1e-12, dtype=calc.dtype, device=calc.device)
-    denom = calc.sum(dim=-1, keepdim=True).clamp_min(eps)  # per-thickness; guard tiny calc
-    scale = obs.sum(dim=-1, keepdim=True) / denom
-    return w_rbragg(scale * calc, obs, aligned.sigmas).sum()
+    return torch.stack(
+        [optimal_scale(calc[t], obs[t], aligned.sigmas[t])[1] for t in range(calc.shape[0])]
+    ).sum()

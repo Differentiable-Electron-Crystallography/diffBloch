@@ -45,12 +45,14 @@ from diffBloch.config import (
 )
 from diffBloch.core.solver import FloatFormat
 from diffBloch.engine import (
+    ApparentThicknessNN,
     ModelRefinementResult,
+    ThicknessBounds,
     build_refinement_model,
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_observations, read_orientation_matrices, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import Device, constrain
 from diffBloch.preprocess import (
@@ -126,7 +128,20 @@ def converge_experiment(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
     observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    initial_orientations = (
+        None
+        if cfg.inputs.orientations is None
+        else read_orientation_matrices(
+            root / cfg.inputs.orientations,
+            n_rotations=observations.n_rotations,
+        )
+    )
+    setup = from_experiment(
+        structure,
+        observations,
+        cfg,
+        initial_orientations=initial_orientations,
+    )
     refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
     combined = setup.plans.combined
     if n_orientations < 1:
@@ -277,6 +292,7 @@ def run_experiment(
         device=device,
         max_batch=max_batch,
         logger=logger,
+        absorption=cfg.blochwave.to_absorption(),
     )
 
 
@@ -330,9 +346,35 @@ def refine_experiment(
         method=cfg.blochwave.solver.refine,
         precision=cfg.refinement.precision,
         max_batch=max_batch,
+        absorption=cfg.blochwave.to_absorption(),
     )
     initial = refinement.params if device is None else refinement.params.to(device)
-    model = build_refinement_model(initial=initial)
+    thickness_spec = cfg.refinement.thickness_nn.to_spec()
+    if thickness_spec.enabled:
+        observations = read_observations(root / cfg.inputs.exp_data)
+        thickness_nn = ApparentThicknessNN(
+            bounds=ThicknessBounds(
+                thickness_spec.min_thickness,
+                thickness_spec.max_thickness,
+            ),
+            normalized_alphas=_normalized_pets_alphas(observations.alphas),
+            form=thickness_spec.form,
+            sample_thickness=thickness_spec.sample_thickness,
+            num_samples=thickness_spec.num_samples,
+            init_seed=thickness_spec.init_seed,
+        )
+        model = build_refinement_model(
+            initial=initial,
+            components=(thickness_nn,),
+            component_params={
+                thickness_nn.key: thickness_nn.initial_params(
+                    dtype=initial.asu_positions.dtype,
+                    device=initial.asu_positions.device,
+                )
+            },
+        )
+    else:
+        model = build_refinement_model(initial=initial)
     problem = build_refinement_problem()
     result = run_refinement_model(
         engine,
@@ -348,6 +390,19 @@ def refine_experiment(
     return result
 
 
+def _normalized_pets_alphas(alphas: np.ndarray) -> tuple[float, ...]:
+    """Legacy MinMaxScaler ``[-1, 1]`` normalization for the PETS alpha coordinate."""
+    values = np.asarray(alphas, dtype=np.float64)
+    if values.ndim != 1 or values.size == 0 or not np.all(np.isfinite(values)):
+        raise ValueError("PETS alphas must be a finite non-empty 1-D array")
+    minimum = float(values.min())
+    span = float(values.max() - minimum)
+    if span == 0.0:
+        return tuple(-1.0 for _ in values)
+    normalized = -1.0 + 2.0 * (values - minimum) / span
+    return tuple(float(value) for value in normalized)
+
+
 def _write_refinement_outputs(
     root: Path,
     cfg: ExperimentConfig,
@@ -357,6 +412,7 @@ def _write_refinement_outputs(
     """Persist the best structure, raw parameter snapshot, and machine-readable summary."""
     structure_path = (root / "refined_structure.cif").resolve()
     params_path = (root / "refined_parameters.npz").resolve()
+    components_path = (root / "refined_components.npz").resolve()
     summary_path = (root / "refinement_summary.json").resolve()
     state = constrain(result.best_params, refinement.spec)
     source_path = root / cfg.inputs.structure
@@ -435,6 +491,13 @@ def _write_refinement_outputs(
             empty if params.occupancy_raw is None else params.occupancy_raw.detach().cpu().numpy()
         ),
     )
+    component_arrays = {
+        f"{component_key}__{parameter_name}": parameter.detach().cpu().numpy()
+        for component_key, parameters in result.best_model.component_params.items()
+        for parameter_name, parameter in parameters.items()
+    }
+    if component_arrays:
+        np.savez_compressed(str(components_path), **component_arrays)  # type: ignore[arg-type]
 
     best = result.history[result.best_step]
     artifacts: dict[str, str] = {
@@ -444,6 +507,8 @@ def _write_refinement_outputs(
         "plan": str((root / _PLAN_NPZ).resolve()),
         "plan_lock": str((root / _PLAN_LOCK).resolve()),
     }
+    if component_arrays:
+        artifacts["refined_components"] = str(components_path)
     summary = {
         "best_epoch": result.best_step,
         "objective": result.best_loss,
@@ -482,7 +547,20 @@ def _preprocess(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
     observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    initial_orientations = (
+        None
+        if cfg.inputs.orientations is None
+        else read_orientation_matrices(
+            root / cfg.inputs.orientations,
+            n_rotations=observations.n_rotations,
+        )
+    )
+    setup = from_experiment(
+        structure,
+        observations,
+        cfg,
+        initial_orientations=initial_orientations,
+    )
     steps = _recipe_steps(
         cfg,
         setup.refinement,
@@ -553,6 +631,7 @@ def _recipe_steps(
             max_batch=max_batch,
             workers=workers,
             logger=logger,  # per-rotation fit progress (the run's long phase)
+            absorption=cfg.blochwave.to_absorption(),
         )
 
     def thickness_fit(*, precision: FloatFormat) -> PlanStep:
@@ -564,6 +643,7 @@ def _recipe_steps(
             device=device,
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
+            absorption=cfg.blochwave.to_absorption(),
         )
 
     steps: list[PlanStep] = [

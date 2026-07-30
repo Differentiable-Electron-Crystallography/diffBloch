@@ -33,6 +33,7 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, identity
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
+from diffBloch.specs import NO_ABSORPTION, Absorption
 
 __all__ = [
     "InferenceResult",
@@ -88,6 +89,7 @@ def run_inference(
     method: SolverMethod = "matrix_exp",
     device: Device | None = None,
     max_batch: int | None = None,
+    absorption: Absorption = NO_ABSORPTION,
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
@@ -117,7 +119,9 @@ def run_inference(
     """
     plan = prepare(plan)
     params = refinement.params if device is None else refinement.params.to(device)
-    engine = build_engine(plan, refinement, method=method, max_batch=max_batch)
+    engine = build_engine(
+        plan, refinement, method=method, max_batch=max_batch, absorption=absorption
+    )
     with torch.no_grad():
         solutions = engine.simulate(params)
     rows = tuple(

@@ -26,8 +26,9 @@ from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
     ConvergenceTest,
     ConvergenceTolerance,
+    PerTiltCoupling,
     RockingCurve,
-    SegmentedUnionCoupling,
+    UnionCoupling,
 )
 
 __all__ = ["ConvergenceState", "converge_numerics", "run_convergence"]
@@ -45,7 +46,7 @@ class ConvergenceState:
 def converge_numerics(
     test: ConvergenceTest,
     rocking: RockingCurve,
-    simulation: SegmentedUnionCoupling,
+    simulation: UnionCoupling | PerTiltCoupling,
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
     *,
@@ -90,7 +91,7 @@ def run_convergence(
     state: ConvergenceState,
     test: ConvergenceTest,
     rocking: RockingCurve,
-    simulation: SegmentedUnionCoupling,
+    simulation: UnionCoupling | PerTiltCoupling,
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
     *,

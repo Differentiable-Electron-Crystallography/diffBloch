@@ -55,6 +55,9 @@ def _assert_round_trips(plan: Plan, tmp_path) -> Plan:
     assert len(loaded.orientations) == len(plan.orientations)
     torch.testing.assert_close(_simulated(loaded), _simulated(plan))  # byte-identical forward
     assert loaded.provenance == plan.provenance
+    assert [op.pattern.rotation_index for op in loaded.orientations] == [
+        op.pattern.rotation_index for op in plan.orientations
+    ]
     return loaded
 
 
@@ -93,7 +96,7 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     plan = Plan(
         structure_factor_grid=grid,
         orientations=(op,),
-        provenance=(StepRecord("couple_beams", {"__type__": "SegmentedUnionCoupling"}),),
+        provenance=(StepRecord("couple_beams", {"__type__": "UnionCoupling"}),),
     )
     loaded = _assert_round_trips(plan, tmp_path)
 

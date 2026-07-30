@@ -7,6 +7,8 @@ known thickness, so the grid search has a ground truth to recover.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 import torch
@@ -148,6 +150,7 @@ def test_fit_thickness_emits_one_thicknessfitted_per_rotation() -> None:
     """The progress stream: one ThicknessFitted per rotation, in plan order, tied to the result."""
     grid, asu_plan, spec, numbers = _silicon()
     observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    observed = replace(observed, rotation_index=42)
     op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
     plan = Plan(structure_factor_grid=grid, orientations=(op, op))  # two rotations -> indices 0, 1
 
@@ -159,7 +162,7 @@ def test_fit_thickness_emits_one_thicknessfitted_per_rotation() -> None:
     )(plan)
 
     events = [event for event in log.events if isinstance(event, ThicknessFitted)]
-    assert [event.index for event in events] == [0, 1]
+    assert [event.rotation_index for event in events] == [42, 42]
     # each event's thickness is the value baked onto the matching returned orientation
     for index, event in enumerate(events):
         assert event.thickness == float(fitted.orientations[index].thickness[0])

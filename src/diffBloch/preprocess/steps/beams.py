@@ -35,7 +35,13 @@ from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
-from diffBloch.specs import BeamSelection, Mosaicity, RockingCurve, SegmentedUnionCoupling
+from diffBloch.specs import (
+    BeamSelection,
+    Mosaicity,
+    PerTiltCoupling,
+    RockingCurve,
+    UnionCoupling,
+)
 
 __all__ = ["build_orientation_plans", "klar_beam_mask", "reseed_pool", "select_beams"]
 
@@ -70,7 +76,7 @@ def build_orientation_plans(
     rocking: RockingCurve | None = None,
     mosaicity: Mosaicity | None = None,
     *,
-    coupling: SegmentedUnionCoupling | None = None,
+    coupling: UnionCoupling | PerTiltCoupling | None = None,
     scoring_selection: BeamSelection | None = None,
 ) -> PlanStep:
     """Build each candidate's final tilted Bloch geometry and intensity reduction.
@@ -171,7 +177,7 @@ def _build_coupled_candidate(
     candidate: CandidatePlan,
     tilts: NDArray[np.float64],
     reduction: TiltReduction,
-    coupling: SegmentedUnionCoupling,
+    coupling: UnionCoupling | PerTiltCoupling,
     *,
     scoring_selection: BeamSelection | None,
 ) -> CoupledOrientationPlan:

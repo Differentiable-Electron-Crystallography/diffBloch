@@ -38,9 +38,9 @@ from diffBloch.engine.losses import (
     l1_loss,
     mse_loss,
     rbragg_loss,
-    scaled_w_rbragg_loss,
     w_rbragg_loss,
     weighted_mse_loss,
+    wr2_loss,
 )
 from diffBloch.engine.penalties import BondLengthPenalty, perceive_bond_length_penalty
 from diffBloch.engine.plan import (
@@ -98,7 +98,7 @@ __all__ = [
     "rbragg_loss",
     "run_refinement",
     "run_refinement_model",
-    "scaled_w_rbragg_loss",
+    "wr2_loss",
     "w_rbragg_loss",
     "weighted_mse_loss",
     "with_hydrogen_riding",

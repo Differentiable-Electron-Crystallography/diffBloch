@@ -10,7 +10,7 @@ import torch
 
 from diffBloch.app.program import _write_refinement_outputs, refine_experiment
 from diffBloch.config.schema import ExperimentConfig
-from diffBloch.engine import ModelRefinementResult, build_refinement_model
+from diffBloch.engine import ApparentThicknessNN, ModelRefinementResult, build_refinement_model
 from diffBloch.io import read_structure
 from diffBloch.observability import RefinementStep
 from diffBloch.preprocess import RefinementSetup
@@ -21,10 +21,18 @@ def test_refine_experiment_threads_config_precision_to_engine(monkeypatch) -> No
         {
             "name": "q",
             "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
-            "refinement": {"precision": "fp32"},
+            "refinement": {
+                "precision": "fp32",
+                "thickness_nn": {
+                    "enabled": True,
+                    "min_thickness": 1000.0,
+                    "max_thickness": 3000.0,
+                },
+            },
         }
     )
-    refinement = SimpleNamespace(params=SimpleNamespace(to=lambda device: "moved"))
+    moved = SimpleNamespace(asu_positions=torch.zeros((1, 3), dtype=torch.float64))
+    refinement = SimpleNamespace(params=SimpleNamespace(to=lambda device: moved))
     prepared = object()
     seen: dict[str, object] = {}
 
@@ -33,20 +41,28 @@ def test_refine_experiment_threads_config_precision_to_engine(monkeypatch) -> No
         "diffBloch.app.program._preprocess",
         lambda *args, **kwargs: (refinement, prepared),
     )
+    monkeypatch.setattr(
+        "diffBloch.app.program.read_observations",
+        lambda path: SimpleNamespace(alphas=np.array([-1.0, 1.0])),
+    )
 
-    def fake_build_engine(plan, setup, *, loss, method, precision, max_batch):
+    def fake_build_engine(plan, setup, *, loss, method, precision, max_batch, absorption):
         seen["plan"] = plan
         seen["setup"] = setup
         seen["method"] = method
         seen["precision"] = precision
         seen["max_batch"] = max_batch
+        seen["absorption"] = absorption
         return "engine"
 
     monkeypatch.setattr("diffBloch.app.program.build_engine", fake_build_engine)
-    monkeypatch.setattr(
-        "diffBloch.app.program.build_refinement_model",
-        lambda *, initial: SimpleNamespace(initial=initial),
-    )
+
+    def fake_build_refinement_model(*, initial, components=(), component_params=None):
+        seen["components"] = components
+        seen["component_params"] = component_params
+        return SimpleNamespace(initial=initial)
+
+    monkeypatch.setattr("diffBloch.app.program.build_refinement_model", fake_build_refinement_model)
     monkeypatch.setattr("diffBloch.app.program.build_refinement_problem", lambda: "problem")
 
     def fake_run_refinement_model(engine, model, problem, **kwargs):
@@ -68,8 +84,12 @@ def test_refine_experiment_threads_config_precision_to_engine(monkeypatch) -> No
     assert seen["method"] == "matrix_exp"
     assert seen["precision"] == "fp32"
     assert seen["max_batch"] == 7
+    assert seen["absorption"] == cfg.blochwave.to_absorption()
     assert seen["engine"] == "engine"
-    assert seen["initial"] == "moved"
+    assert seen["initial"] is moved
+    assert len(seen["components"]) == 1
+    assert isinstance(seen["components"][0], ApparentThicknessNN)
+    assert set(seen["component_params"]) == {"apparent_thickness"}
 
 
 def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path: Path) -> None:

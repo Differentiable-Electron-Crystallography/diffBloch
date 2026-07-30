@@ -11,6 +11,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import ValidationError
@@ -24,7 +25,14 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config, pack_run
-from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
+from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Logger,
+    MultiLogger,
+    OrientationFitted,
+    RecordingLogger,
+)
 
 
 def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
@@ -182,9 +190,16 @@ def main(argv: list[str] | None = None) -> int:
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
+            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
+            summary_logger = RecordingLogger()
+            logger: Logger = (
+                summary_logger
+                if progress_logger is NULL_LOGGER
+                else MultiLogger((progress_logger, summary_logger))
+            )
             plan = preprocess_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -197,11 +212,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         print()
+        built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
+        total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
+        matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
+        fitted = [event for event in summary_logger.events if isinstance(event, OrientationFitted)]
+        mean_loss = (
+            f"{sum(event.wr2 for event in fitted) / len(fitted):.6g}"
+            if fitted
+            else "n/a (checkpoint reused)"
+        )
         _print_summary_box(
             "PREPROCESS COMPLETE",
             (
                 ("Rotations", str(len(plan.orientations))),
                 ("Stages", str(len(plan.provenance))),
+                ("Total HKLs", str(total_hkl)),
+                ("Matched HKLs", str(matched_hkl)),
+                ("Mean wR2", mean_loss),
             ),
         )
         print()

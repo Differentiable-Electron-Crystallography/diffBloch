@@ -31,8 +31,8 @@ from diffBloch.specs import (
     BeamSelection,
     HexagonalSearch,
     ScoredHklSelection,
-    SegmentedUnionCoupling,
     TrialCoupling,
+    UnionCoupling,
 )
 
 _ENERGY = 200e3
@@ -227,7 +227,7 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
     grid, asu_plan, spec, numbers = _silicon()  # g_max = 0.45
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     coupling = TrialCoupling(
-        policy=SegmentedUnionCoupling(), scored=ScoredHklSelection(klar=BeamSelection(), g_max=0.3)
+        policy=UnionCoupling(), scored=ScoredHklSelection(klar=BeamSelection(), g_max=0.3)
     )
     with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
         fit_orientation(_refinement(asu_plan, spec, numbers), HexagonalSearch(), coupling=coupling)(
@@ -280,7 +280,7 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     ):
         calls.append(1)
         time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return op, 0.5, 1, 1
+        return op, 0.5, 0.4, 1, 1
 
     monkeypatch.setattr(fo, "_refine_one", stub)
     grid, asu_plan, spec, numbers = _silicon()

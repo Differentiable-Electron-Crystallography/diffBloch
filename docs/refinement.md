@@ -150,15 +150,18 @@ penalties = (
     ),
 )
 
-# Train a bounded apparent-thickness component alongside the structural parameters. This overrides
-# each Plan orientation's baked fixed thickness through ForwardContext.thickness.
-thickness_nn = ApparentThicknessNN(bounds=ThicknessBounds(100.0, 2000.0))
+# Train the legacy apparent-thickness component alongside the structural parameters. The input is
+# the PETS alpha coordinate normalized over the full experiment to [-1, 1].
+thickness_nn = ApparentThicknessNN(
+    bounds=ThicknessBounds(100.0, 2000.0),
+    normalized_alphas=(-1.0, 0.0, 1.0),
+    sample_thickness=False,
+)
 initial = refinement.params.to(device)
 component_params = {
     thickness_nn.key: thickness_nn.initial_params(
         dtype=initial.asu_positions.dtype,
         device=device,
-        initial_thickness=mean_plan_thickness(engine.orientations),
     )
 }
 

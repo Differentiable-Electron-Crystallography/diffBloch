@@ -39,7 +39,7 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import ThicknessGrid
+from diffBloch.specs import NO_ABSORPTION, Absorption, ThicknessGrid
 
 __all__ = ["fit_thickness"]
 
@@ -53,6 +53,7 @@ def fit_thickness(
     device: Device | None = None,
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
+    absorption: Absorption = NO_ABSORPTION,
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
 
@@ -85,7 +86,12 @@ def fit_thickness(
 
     def run(plan: Plan) -> Plan:
         engine = build_engine(
-            plan, refinement, method=method, precision=precision, max_batch=max_batch
+            plan,
+            refinement,
+            method=method,
+            precision=precision,
+            max_batch=max_batch,
+            absorption=absorption,
         )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
@@ -93,14 +99,20 @@ def fit_thickness(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
         fitted = []
-        for index, op in enumerate(require_built_plans(plan)):
+        for op in require_built_plans(plan):
             orientation, wr2, thickness = _fit_one(engine, fgb, op, candidates)
-            logger.report(ThicknessFitted(index=index, wr2=wr2, thickness=thickness))
+            logger.report(
+                ThicknessFitted(
+                    rotation_index=orientation.pattern.rotation_index,
+                    wr2=wr2,
+                    thickness=thickness,
+                )
+            )
             fitted.append(orientation)
         return replace(plan, orientations=tuple(fitted))
 
     # method rides in the config digest (cfg.solver.refine); the grid is the step's own param.
-    return as_step("optimize_thickness", grid, run)
+    return as_step("optimize_thickness", {"grid": grid, "absorption": absorption}, run)
 
 
 def _fit_one(
