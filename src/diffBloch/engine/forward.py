@@ -382,7 +382,7 @@ class RefinementEngine:
             components,
             diagnostics={
                 "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
-                "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan"))
+                "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan")),
             },
         )
 
@@ -803,9 +803,7 @@ def run_refinement_model(
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
-            wr2=(
-                reported_objective.diagnostics["wr2"] if engine.loss is wr2_loss else None
-            ),
+            wr2=(reported_objective.diagnostics["wr2"] if engine.loss is wr2_loss else None),
             r_obs=reported_objective.diagnostics["r_obs"],
             diff_loss=diffraction_loss,
             objective_total=_scalar_float(reported_objective.total),

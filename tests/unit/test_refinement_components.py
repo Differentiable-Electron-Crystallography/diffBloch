@@ -127,9 +127,7 @@ def test_apparent_thickness_nn_validates_legacy_settings() -> None:
 
 def test_apparent_thickness_nn_legacy_mean_is_differentiable() -> None:
     engine = _engine()
-    component = ApparentThicknessNN(
-        bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,)
-    )
+    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,))
     params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),
@@ -180,9 +178,7 @@ def test_apparent_thickness_nn_legacy_gaussian_sampling_is_positive_and_determin
 def test_run_refinement_model_optimizes_apparent_thickness_nn_params() -> None:
     engine = _engine()
     structure_params = _params()
-    component = ApparentThicknessNN(
-        bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,)
-    )
+    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,))
     component_params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),
@@ -290,6 +286,7 @@ def test_bounded_quadratic_component_rejects_initial_thickness_outside_bounds() 
             device=torch.device("cpu"),
             initial_thickness=initial_thickness,
         )
+
 
 def test_per_orientation_thickness_seeds_from_plan() -> None:
     engine = _engine()

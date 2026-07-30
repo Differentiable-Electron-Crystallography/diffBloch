@@ -195,9 +195,7 @@ def fit_orientation(
             )
 
         built = require_built_plans(plan)
-        results_by_index: dict[
-            int, tuple[OrientationPlanLike, float, float, int, int]
-        ] = {}
+        results_by_index: dict[int, tuple[OrientationPlanLike, float, float, int, int]] = {}
         cap = search.max_iterations
 
         def report(

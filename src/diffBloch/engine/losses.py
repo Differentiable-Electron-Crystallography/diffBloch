@@ -70,8 +70,5 @@ def wr2_loss(aligned: AlignedIntensities) -> Tensor:
     """
     calc, obs = aligned.calculated, aligned.observed
     return torch.stack(
-        [
-            optimal_scale(calc[t], obs[t], aligned.sigmas[t])[1]
-            for t in range(calc.shape[0])
-        ]
+        [optimal_scale(calc[t], obs[t], aligned.sigmas[t])[1] for t in range(calc.shape[0])]
     ).sum()

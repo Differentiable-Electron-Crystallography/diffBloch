@@ -209,9 +209,7 @@ class ApparentThicknessNN:
             # Match nn.Linear.reset_parameters exactly, including random-number consumption order.
             bound = in_features**-0.5
             weight = torch.empty((out_features, in_features), dtype=dtype)
-            torch.nn.init.kaiming_uniform_(
-                weight, a=math.sqrt(5), generator=generator
-            )
+            torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5), generator=generator)
             bias = torch.empty((out_features,), dtype=dtype).uniform_(
                 -bound, bound, generator=generator
             )
