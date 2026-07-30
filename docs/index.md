@@ -27,13 +27,13 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 
 | Guide | What it covers |
 |---|---|
-| [Architecture](architecture.md) | Code Structure. |
-| [Inputs](inputs.md) | Data needed to refine a structure. |
-| [Preprocessing](preprocessing.md) | Initial steps before refinement. |
+| [Architecture](architecture.md) | Why dynamical diffraction needs a Bloch-wave simulation, and how the pieces fit together. |
+| [Inputs](inputs.md) | The starting structure and rocking-curve data a refinement needs. |
+| [Preprocessing](preprocessing.md) | Fitting crystal orientation and specimen thickness before the structure is touched. |
 | [Hyperparameter selection](hyperparameter-selection.md) | Choosing beam and rocking-curve settings using convergence tests. |
-| [Refinement](refinement.md) | Optimizing crystal structure |
-| [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` let later runs verify and reuse expensive preprocessing results. |
-| [Observability](observability-guide.md) | How to track progress and debug refinements. |
+| [Refinement](refinement.md) | The optimization loop: constraints, restraints, and thickness models alongside the structure. |
+| [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` pin a fitted `Plan` so a result can be reproduced exactly. |
+| [Observability](observability-guide.md) | Tracking wR2, R_obs, and diffraction loss as a run progresses. |
 | [Examples](examples.md) | Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch. |
 
 For day-to-day use, start with the CLI quickstart below. For custom scientific workflows, the same

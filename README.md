@@ -13,15 +13,17 @@
 
 Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
 
-diffBloch refines crystal structures against continuous-rotation 3DED observations: diffraction
-frames collected as the crystal is tilted/rocked through reciprocal space and reduced upstream by
-PETS2 into `.cif_pets`. Because the diffraction is dynamical — a multiple-scattering problem —
-diffBloch uses a Bloch-wave simulation rather than a kinematical approximation.
+Electrons scatter far more strongly than X-rays, so even a submicron crystal re-scatters a
+diffracted beam before it exits — dynamical, multiple-scattering diffraction rather than the
+kinematical single-scattering approximation X-ray refinement relies on. diffBloch refines crystal
+structures directly against that dynamical simulation, using continuous-rotation 3DED observations:
+diffraction frames collected as the crystal is tilted/rocked through reciprocal space and reduced
+upstream by PETS2 into `.cif_pets`.
 
-The central model is a raw crystal structure plus a settled `Plan`: the structure supplies the
-differentiable crystallographic parameters, while the `Plan` supplies the reusable geometry/data
-scaffold around them. The refinement engine iteratively minimizes a scalar R-loss so simulated and
-observed diffraction intensities agree.
+Because the Bloch-wave calculation is extremely sensitive to the exact orientation and thickness at
+each rotation, diffBloch fits both against the data first and freezes the result into a `Plan`, then
+refines the structure — atomic positions, ADPs, occupancies — against that fixed geometry by
+gradient descent on a scaling-optimized weighted R-factor.
 
 📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
 
@@ -100,15 +102,13 @@ This work is funded by [Schmidt Sciences](https://www.schmidtsciences.org/) and 
 the [Scientific Software Engineering Center (SSEC)](https://ai.jhu.edu/ssec/) at Johns Hopkins
 University.
 
-## Layers
+## What happens where
 
-| Layer | Role | Guide |
-|---|---|---|
-| IO | Parse CIF/PETS files into validated typed records. | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html) |
-| Config | Validate experiment settings and lock input/checkpoint identity. | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html), [Reproducibility](https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html) |
-| Preprocess | Build and improve the immutable `Plan` the simulator consumes. | [Preprocessing](https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html) |
-| Core | Repeatable crystallographic and Bloch-wave numerical kernels. | [Architecture](https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html) |
-| Params | Differentiable structural parameters and physical constraints. | [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
-| Engine | Combine `Plan` + parameters, simulate, score, and refine. | [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
-| Observability | Track progress and debug refinements with typed events/loggers. | [Observability](https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html) |
-| App | CLI and default orchestration around the reusable API. | [Examples](https://differentiable-electron-crystallography.github.io/diffBloch/examples.html) |
+| Physical role | Guide |
+|---|---|
+| Read the starting structure and rocking-curve data | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html) |
+| Fit orientation and thickness into a `Plan` | [Preprocessing](https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html) |
+| Choose beam/rocking-curve resolution by convergence testing | [Hyperparameter selection](https://differentiable-electron-crystallography.github.io/diffBloch/hyperparameter-selection.html) |
+| Structure factors, the Bloch-wave propagator, and the refinement loop | [Architecture](https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html), [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
+| Pin a fitted `Plan` so a result reproduces exactly | [Reproducibility](https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html) |
+| Track wR2/R_obs/loss as a run progresses | [Observability](https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html) |

@@ -1,15 +1,20 @@
 # Reproducibility and checkpoints
 
-diffBloch separates input identity from generated artifacts.
+Fitting orientation and thickness (see [Preprocessing](preprocessing.md)) is a greedy, local search
+over a bumpy objective — the coupled wR2 landscape has many nearby local minima, so a small
+floating-point difference between two runs can occasionally send the search into a different basin
+and change the fitted orientation, and with it the reported R-factor. Reproducing a specific result
+therefore means more than reproducing the code: it means starting from the exact same fitted `Plan`,
+not merely re-running the same search and hoping it lands in the same place. diffBloch checkpoints
+that fitted geometry and locks it to everything that determined it, so a later run can either verify
+it is reusing the identical starting point or refuse to.
 
 - `experiment.lock` pins the input structure and observation files by content hash.
 - `plan.lock` ties a `plan.npz` checkpoint to the input lock, resolved preprocess-determining config,
   ordered preprocess recipe, producing code version, and checkpoint artifact hash.
 
-This gives inference and refinement a verifiable starting point: a reused `plan.npz` is known to
-match the inputs and preprocessing recipe that produced it. In committed examples, `plan.npz` and
-`.cif_pets` files are Git LFS artifacts; `plan.lock` verifies the realized file bytes after LFS
-checkout, not the small pointer file.
+In committed examples, `plan.npz` and `.cif_pets` files are Git LFS artifacts; `plan.lock` verifies
+the realized file bytes after LFS checkout, not the small pointer file.
 
 ## What this guarantees
 
@@ -22,9 +27,11 @@ A valid preprocess checkpoint verifies:
 
 ## What this does not guarantee
 
-The locks do not claim hardware-independent optimizer determinism. Device, thread scheduling,
-precision, and optimizer implementation details can still affect floating-point trajectories,
-especially for refinement. The lock guarantees the identity of the preprocessed starting point.
+The lock guarantees the identity of the fitted starting point, not hardware-independent optimizer
+determinism downstream of it. Device, thread scheduling, and optimizer implementation details can
+still shift the refinement's floating-point trajectory — most consequentially for a fresh orientation
+search, since that is exactly the bumpy-landscape case above; a *reused* checkpoint sidesteps it
+entirely, since the search was already run and its result is frozen.
 
 ## API example
 

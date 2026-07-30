@@ -72,23 +72,26 @@ print(result.history[result.best_step].wr2)
 print(result.history[result.best_step].r_obs)
 ```
 
-## Advanced composition: constraints, penalties, and learned thickness
+## Advanced composition: constraints, restraints, and learned thickness
 
 The default CLI refinement is intentionally conservative: it refines selected structural parameter
-groups against diffraction. The lower-level API also supports richer composition:
+groups against diffraction alone. Real structures often need more of the machinery familiar from
+X-ray least-squares refinement, and the lower-level Python API exposes it directly:
 
-- **crystallographic constraints** are built into `RefinementSetup.from_structure(...)`; special-
-  position coordinates and ADP equality constraints are always enforced by the parameter
-  `constrain(...)` path;
-- **hard molecular constraints** are per-atom/structure transforms applied after crystallographic
-  constraints, such as hydrogen riding, where H atoms stay in the forward scattering but ride on
-  their parent heavy atoms;
-- **soft penalties** are additive objective terms across atoms, such as bond-length penalties;
-- **components** are trainable non-structural model pieces that provide dependent forward-model
-  values, such as apparent thickness, alongside the structural parameters.
+- **special-position and ADP symmetry constraints** are enforced automatically wherever
+  `RefinementSetup.from_structure(...)` builds the parameters — an atom on a special position never
+  acquires an unphysical degree of freedom, and symmetry-equivalent ADPs never drift apart;
+- **hard constraints** fix the geometric relationship between atoms exactly, e.g. a riding model
+  where hydrogens keep contributing to the calculated scattering but move rigidly with their parent
+  heavy atom rather than refining independent coordinates;
+- **restraints** (soft penalties) pull a quantity toward a target without fixing it, e.g. keeping a
+  bond length close to a chemically reasonable value; the optimizer can still trade the restraint off
+  against the diffraction fit, unlike a hard constraint;
+- **thickness models** treat the apparent specimen thickness at each tilt as a trainable quantity
+  alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.
 
-Compose a structure component, optional hard constraints, optional soft penalties, and optional
-forward-model components, then optimize all selected leaves through one objective.
+Compose a structure, optional hard constraints, optional restraints, and an optional thickness model,
+then refine every selected parameter through one objective.
 
 ```python
 from pathlib import Path

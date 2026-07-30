@@ -24,11 +24,14 @@ Bundled binary artifacts such as `.cif_pets` observations and committed `plan.np
 tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
 examples so these files are present as real data rather than LFS pointer files.
 
-## Typed IO boundary
+## Reading the structure and the observations
 
-diffBloch does not pass parser output directly into numerical kernels. It parses CIF/PETS inputs
-into typed Pydantic records first, so unsupported shapes, units, missing fields, or invalid values
-fail at the boundary.
+Reading a CIF gives fractional atomic coordinates, ADPs (isotropic or anisotropic, per atom), site
+occupancies, and the space-group symmetry operations. Reading a `.cif_pets` gives the reduced
+rocking-curve data: the UB matrix, cell parameters, per-rotation goniometer angles, and the observed
+hkl/intensity/sigma triples. Both are parsed into validated records before anything numerical touches
+them, so a malformed CIF, an unsupported ADP type, or a unit mismatch fails immediately at read time
+rather than surfacing later as a silently wrong simulation.
 
 The public records are:
 

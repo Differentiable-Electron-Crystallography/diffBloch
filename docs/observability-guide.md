@@ -1,13 +1,16 @@
 # Observability and loggers
 
-diffBloch reports progress by emitting typed events. A logger is any object with one method:
+A refinement run reports the quantities that matter to a crystallographer as it goes: wR2 and R_obs
+per rotation during orientation fitting, thickness and its residual per rotation during thickness
+fitting, and the epoch-by-epoch loss, wR2, and R_obs during structure refinement. diffBloch keeps
+that reporting separate from the simulation itself — the numerical core never decides how or whether
+a value gets displayed, it just hands out plain event objects, and whatever loggers you attach decide
+what to do with them: print to the console, write a CSV row, or send to an experiment tracker such as
+Weights & Biases. A logger is any object with one method:
 
 ```python
 def report(event): ...
 ```
-
-The scientific core hands loggers plain event objects; logger backends decide whether to print,
-write CSV rows, or send values to an experiment tracker.
 
 ## Built-in loggers
 
@@ -42,6 +45,9 @@ print(result.mean_r_obs)
 
 ## API example: custom logger
 
+A minimal logger that just remembers the last event — enough to inspect, e.g., the final epoch's wR2
+after a run:
+
 ```python
 from dataclasses import dataclass, field
 
@@ -61,6 +67,6 @@ Every event exposes:
 
 - `channel` — e.g. `rotation`, `coupling`, `refinement`;
 - `step` — a rotation index, refinement iteration, or `None` for run-level summaries;
-- `measurements` — numeric values suitable for plotting or logging.
+- `measurements` — numeric values such as wR2, R_obs, or diffraction loss.
 
 See the [observability API](api/observability.md) for the event classes.
