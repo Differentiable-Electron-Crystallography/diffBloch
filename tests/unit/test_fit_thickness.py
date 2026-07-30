@@ -193,7 +193,7 @@ def test_fit_thickness_cuda_matches_cpu() -> None:
     matches exactly. The ``==`` assumes that separation (it holds for this clean synthetic): a
     genuine near-tie between adjacent candidates could let the ~1e-11 cross-device score shift pick
     the neighbour -- search-path divergence under FP perturbation, not a device bug, and harmless
-    (the fp64 terminal re-scores whatever the fit bakes; reproducibility is anchored at the
+    (the terminal re-scores whatever the fit bakes; reproducibility is anchored at the
     checkpoint boundary, not here).
     """
     grid, asu_plan, spec, numbers = _silicon()

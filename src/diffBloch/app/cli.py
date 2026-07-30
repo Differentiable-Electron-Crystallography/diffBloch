@@ -80,9 +80,9 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         metavar="N",
         type=int,
         default=1,
-        help="fan the per-rotation orientation search over N threads (default 1); cap host threads "
-        "to 1 (OMP_NUM_THREADS/MKL_NUM_THREADS/TORCH_NUM_THREADS, or torch.set_num_threads(1)) or "
-        "the node-sized BLAS/torch pools oversubscribe the cores",
+        help="fan orientation-plan builds and per-rotation searches over N threads (default 1); "
+        "cap host threads to 1 (OMP_NUM_THREADS/MKL_NUM_THREADS/TORCH_NUM_THREADS, or "
+        "torch.set_num_threads(1)) or the node-sized BLAS/torch pools oversubscribe the cores",
     )
     parser.add_argument(
         "--max-batch",
@@ -120,6 +120,26 @@ def main(argv: list[str] | None = None) -> int:
         "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
     )
     _add_run_flags(p_refine)
+    p_refine.add_argument(
+        "--verbose-refinement",
+        action="store_true",
+        help="also report per-rotation wR2/R_obs/diffraction-loss every step, not just the epoch "
+        "mean (n_orientations x louder; a diagnosis tool, off by default)",
+    )
+    p_refine.add_argument(
+        "--profile",
+        action="store_true",
+        help="log per-phase wall time (structure factors, each rotation's solve, backward, "
+        "optimizer step) via stdlib diagnostics logging; forces a CUDA sync per measured block "
+        "(real overhead) so use only to diagnose one run, not routinely",
+    )
+    p_refine.add_argument(
+        "--no-checkpoint-activations",
+        action="store_true",
+        help="do not gradient-checkpoint each per-orientation/per-segment solve; trades a full "
+        "forward recompute on backward for higher peak memory (gradients are unaffected either "
+        "way) -- try this if backward is much slower than forward and you have memory headroom",
+    )
     p_converge = run_sub.add_parser(
         "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
     )
@@ -255,6 +275,9 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
+                verbose=args.verbose_refinement,
+                profile=args.profile,
+                checkpoint_activations=not args.no_checkpoint_activations,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

@@ -163,7 +163,9 @@ def build_coupling_segments(
     # per-tilt variation and NOT an orthonormality bug -- coupling in the experimental-cell metric
     # is the physically correct cut.
     g_nominal = candidate_beam_hkl @ orientation_basis(cell, orientation)  # constant across tilts
-    pool = candidate_beam_hkl[np.linalg.norm(g_nominal, axis=1) < policy.g_max]
+    radial_mask = np.linalg.norm(g_nominal, axis=1) < policy.g_max
+    pool = candidate_beam_hkl[radial_mask]
+    pool_g_nominal = g_nominal[radial_mask]
 
     _mask_cache: dict[int, NDArray[np.bool_]] = {}
 
@@ -171,8 +173,11 @@ def build_coupling_segments(
         cached = _mask_cache.get(tilt_index)
         if cached is not None:
             return cached
-        basis = orientation_basis(cell, tilts[tilt_index] @ orientation)
-        sg = excitation_errors(pool @ basis, energy, u0=u0)
+        # ``tilt`` is orthogonal, so
+        # reciprocal(cell @ (tilt @ orientation).T) == reciprocal(cell @ orientation.T) @ tilt.T.
+        # Rotate the already-materialised nominal g-vectors instead of repeating a pseudoinverse
+        # and the full HKL @ basis product for every queried sub-tilt.
+        sg = excitation_errors(pool_g_nominal @ tilts[tilt_index].T, energy, u0=u0)
         mask = np.abs(sg) < policy.sg_max  # |g| < g_max already guaranteed by the pool
         _mask_cache[tilt_index] = mask
         return mask

@@ -42,6 +42,7 @@ __all__ = [
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
+    "RefinementOrientationStep",
     "RefinementStep",
     "RotationCoupling",
     "RotationScored",
@@ -408,6 +409,42 @@ class RefinementStep:
             values["diff_loss"] = self.diff_loss
         if not values:
             values["loss"] = self.loss
+        return values
+
+
+@dataclass(frozen=True)
+class RefinementOrientationStep:
+    """One rotation's wR2/R_obs/diffraction-loss diagnostics within a refinement epoch.
+
+    The per-orientation companion to :class:`RefinementStep`'s epoch mean:
+    ``run_refinement_model`` emits one of these per rotation per step only when its ``verbose``
+    flag is set (the "verbose refinement" reporting mode) -- the per-rotation stream is
+    ``n_orientations``x louder than the epoch summary, so it is a diagnosis tool, not the default
+    reporting shape. ``iteration`` places it on the same x-axis as :class:`RefinementStep`;
+    ``rotation_index`` (the original zero-based PETS rotation index) is this event's ``step``,
+    matching the per-rotation convention of :class:`RotationScored` / :class:`OrientationFitted`.
+    """
+
+    channel: ClassVar[str] = "refinement orientation"
+    iteration: int
+    rotation_index: int
+    wr2: float | None = None
+    r_obs: float | None = None
+    diff_loss: float | None = None
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        values: dict[str, float] = {"iteration": float(self.iteration)}
+        if self.wr2 is not None:
+            values["wr2"] = self.wr2
+        if self.r_obs is not None:
+            values["r_obs"] = self.r_obs
+        if self.diff_loss is not None:
+            values["diff_loss"] = self.diff_loss
         return values
 
 

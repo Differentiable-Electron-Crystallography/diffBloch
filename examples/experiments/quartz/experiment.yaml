@@ -33,7 +33,6 @@ preprocess:
   optimize_orientation: true
   optimize_thickness: false
 refinement:
-  precision: fp32
   split:
     train: all_except_validation
     validation: every_10th_rotation

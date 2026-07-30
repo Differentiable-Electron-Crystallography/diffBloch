@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal, Protocol
@@ -157,17 +157,23 @@ class ObjectiveValue:
 
     ``total`` is computed from component contributions so reporting and optimization cannot silently
     drift. ``components`` is a read-only mapping whose values retain both raw diagnostics and
-    weights for future penalty reporting.
+    weights for future penalty reporting. ``per_rotation`` is optional per-rotation diagnostics
+    (``rotation_index``/``wr2``/``r_obs``/``diff_loss``) for verbose per-orientation reporting;
+    empty for an objective with no rotation structure. It is plain data, computed unconditionally
+    alongside the existing epoch-mean diagnostics (no extra forward cost) -- whether it is actually
+    reported is an execution-only choice made at the refinement loop, not here.
     """
 
     total: Tensor
     components: Mapping[str, ObjectiveComponent]
     diagnostics: Mapping[str, float]
+    per_rotation: tuple[Mapping[str, float], ...]
 
     def __init__(
         self,
         components: Mapping[str, ObjectiveComponent],
         diagnostics: Mapping[str, float] = MappingProxyType({}),
+        per_rotation: Sequence[Mapping[str, float]] = (),
     ) -> None:
         if not components:
             raise ValueError("at least one objective component is required")
@@ -186,6 +192,11 @@ class ObjectiveValue:
         object.__setattr__(self, "total", total)
         object.__setattr__(self, "components", MappingProxyType(copied))
         object.__setattr__(self, "diagnostics", MappingProxyType(dict(diagnostics)))
+        object.__setattr__(
+            self,
+            "per_rotation",
+            tuple(MappingProxyType(dict(entry)) for entry in per_rotation),
+        )
 
 
 class PenaltyTerm(Protocol):

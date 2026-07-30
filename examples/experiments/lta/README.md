@@ -20,8 +20,8 @@ big enough to exercise `diffbloch`'s large-cell GPU path.
 ## Run
 
 LTA's cell is above the large-cell threshold, so the recipe routes the coupled orientation search to
-the **coarse fp32 branch** (halved eigensolve, gather integrity checks skipped behind the coverage
-guard); the fp64 terminal re-scores for the reported number. The O(N³) eigensolve wants a GPU, and
+the **fast branch** (gather integrity checks skipped behind the coverage
+guard); the terminal re-scores for the reported number. The O(N³) eigensolve wants a GPU, and
 the per-trial cost is host-bound, so parallelise rotations and **cap host BLAS/OpenMP threads** (in a
 pod the node-sized thread pools otherwise oversubscribe the cores). From the repository root, on a
 CUDA box:
@@ -38,4 +38,4 @@ gitignored here). Recompute from scratch with `--refresh`, or skip the checkpoin
 produces the representative mean, it does not assert against a published value.
 
 See also: the `gpu_fit_performance`, `large_cell_gpu_path`, and `coupling_coverage_guard` tutorials
-for the thread-cap / fp32-fork / coverage-guard machinery this run exercises.
+for the thread-cap / large-cell-fork / coverage-guard machinery this run exercises.

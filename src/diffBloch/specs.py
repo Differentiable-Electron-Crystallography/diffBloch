@@ -48,12 +48,12 @@ __all__ = [
 class ApparentThicknessNetwork:
     """Legacy apparent-thickness MLP settings used by the default refinement path."""
 
-    enabled: bool = False
+    enabled: bool = True
     num_samples: int = 40
     sample_thickness: bool = False
     form: Literal["min_thickness"] = "min_thickness"
     min_thickness: float = 100.0
-    max_thickness: float = 3500.0
+    max_thickness: float = 2000.0
     init_seed: int = 0
 
     def __post_init__(self) -> None:

@@ -30,6 +30,7 @@ from diffBloch.observability import (
     PlanStepCompleted,
     RecordingLogger,
     RefinementCompleted,
+    RefinementOrientationStep,
     RefinementStep,
     RotationCoupling,
     RotationScored,
@@ -138,6 +139,18 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     )
     assert structured_refinement.measurements == {"wr2": 0.05}
 
+    orientation_step = RefinementOrientationStep(
+        iteration=5, rotation_index=3, wr2=0.04, r_obs=0.05, diff_loss=0.02
+    )
+    assert orientation_step.channel == "refinement orientation"
+    assert orientation_step.step == 3  # a refinement orientation step's step is its rotation_index
+    assert orientation_step.measurements == {
+        "iteration": 5.0,
+        "wr2": 0.04,
+        "r_obs": 0.05,
+        "diff_loss": 0.02,
+    }
+
     refinement_done = RefinementCompleted(n_steps=20, best_step=17, best_loss=0.3)
     assert refinement_done.channel == "refinement"  # shares the stream's channel
     assert refinement_done.step is None  # separated from the stream by step, not channel
@@ -189,6 +202,20 @@ def test_console_logger_formats_refinement_epoch_metrics(
 
     assert caplog.records[-1].getMessage() == (
         "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a"
+    )
+
+
+def test_console_logger_formats_refinement_orientation_step(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementOrientationStep(iteration=7, rotation_index=3, wr2=0.05, r_obs=0.09)
+        )
+
+    assert caplog.records[-1].getMessage() == (
+        "  epoch   8 rotation   3 │ wR2 0.050000 │ R_obs 0.090000 │ diffraction loss n/a"
     )
 
 

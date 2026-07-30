@@ -35,19 +35,6 @@ A larger compound; use an accelerator when available.
 uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
 ```
 
-## Example precision
-
-The example YAMLs choose:
-
-```yaml
-refinement:
-  precision: fp32
-  steps: 40
-```
-
-That makes example refines faster and lighter. Switch to `fp64` for the conservative
-highest-precision refinement path.
-
 ## Catalog
 
 | Example | Purpose |

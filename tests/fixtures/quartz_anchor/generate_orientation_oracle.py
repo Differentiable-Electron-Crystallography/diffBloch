@@ -1,7 +1,7 @@
 """Regenerate ``orientation_oracle.npz`` — the quartz per-orientation excitation-error golden.
 
 The GOLDEN is the *private* geometry path (``reciprocal_cell`` of the rotated real cell -> ``g`` ->
-``excitation_errors``) evaluated on real quartz orientation matrices from ``optim_orientation.csv``
+``excitation_errors``) evaluated on real quartz orientation matrices from ``optim_orientation.json``
 (co-located); the INPUT (cellpar, hkl, M) is shared so the public test
 (``tests/unit/test_orientation_oracle.py``) can reconstruct it natively and pin its own geometry
 against this golden. Oracle independence lives in the golden, so this script must run under a
@@ -16,7 +16,6 @@ Writes ``orientation_oracle.npz`` + ``orientation_oracle_provenance.json`` next 
 
 from __future__ import annotations
 
-import csv
 import json
 from datetime import date
 from pathlib import Path
@@ -29,22 +28,19 @@ from ase.geometry import cellpar_to_cell
 from diffBloch.utils import excitation_errors, reciprocal_cell
 
 FIXTURE = Path(__file__).resolve().parent
-CSV = FIXTURE / "optim_orientation.csv"
+ORIENTATIONS = FIXTURE / "optim_orientation.json"
 OUT = FIXTURE / "orientation_oracle.npz"
 PROV = FIXTURE / "orientation_oracle_provenance.json"
 
 CELLPAR = [4.92260, 4.92260, 5.40030, 90.0, 90.0, 120.0]  # enantiomer_1.cif
 ENERGY = 200e3  # eV (quartz config.yml)
 G_MAX_REFINE = 1.6  # beam selection cutoff (untilted)
-ROTATIONS = [10, 52, 78]  # first three rotation_idx in optim_orientation.csv
+ROTATIONS = [10, 52, 78]  # first three rotation_idx in optim_orientation.json
 
 
 def load_orientation(rotation_idx: int) -> np.ndarray:
-    with CSV.open() as f:
-        for row in csv.DictReader(f):
-            if int(row["Rotation Index"]) == rotation_idx:
-                return np.array(json.loads(row["Orientation Matrix"]), dtype=np.float64)
-    raise KeyError(rotation_idx)
+    data = json.loads(ORIENTATIONS.read_text())
+    return np.array(data[str(rotation_idx)], dtype=np.float64)
 
 
 def beam_hkl(recip: np.ndarray) -> np.ndarray:
@@ -112,7 +108,7 @@ def main() -> None:
                     "g_max_refine": G_MAX_REFINE,
                     "rotation_idx": ROTATIONS,
                     "orientation_source": (
-                        "optim_orientation.csv (orientation = R_goni . UB . B^-1)"
+                        "optim_orientation.json (orientation = R_goni . UB . B^-1)"
                     ),
                     "cell_convention": "ASE cellpar_to_cell == native cell_matrix_from_parameters",
                 },

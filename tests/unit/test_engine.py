@@ -28,12 +28,14 @@ from diffBloch.engine import (
     build_refinement_model,
     mse_loss,
     run_refinement_model,
+    wr2_loss,
 )
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
     RecordingLogger,
     RefinementCompleted,
+    RefinementOrientationStep,
     RefinementStep,
 )
 from diffBloch.params import PhysicalState, RefinableParams
@@ -165,7 +167,9 @@ def test_simulate_returns_a_solution_per_orientation() -> None:
     assert isinstance(solution, BlochSolution)
     assert solution.intensities.shape == (1, _BEAM_HKL.shape[0])  # (T=1, N=3)
     # matrix_exp is unitary on this Hermitian system -> incident flux conserved
-    assert torch.allclose(solution.intensities.sum(dim=1), torch.ones(1, dtype=torch.float64))
+    assert torch.allclose(
+        solution.intensities.sum(dim=1), torch.ones(1, dtype=solution.intensities.dtype), atol=1e-5
+    )
 
 
 def test_simulate_sums_intensities_over_rocking_curve_tilts() -> None:
@@ -239,6 +243,56 @@ def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> Non
 
     assert result.losses.shape == (6,)
     assert result.losses[-1] < result.losses[0]
+
+
+def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
+    """``verbose`` ("verbose refinement") adds one per-rotation event per step, off by default."""
+    engine = _engine(loss=wr2_loss)  # wr2 loss so RefinementStep.wr2 is populated to compare against
+    model = build_refinement_model(initial=_params())
+    logger = RecordingLogger()
+
+    run_refinement_model(
+        engine,
+        model,
+        RefinementProblem(),
+        trainable=TrainableSpec.positions_and_adp(),
+        steps=3,
+        optimizer="adam",
+        lr=1e-3,
+        logger=logger,
+        verbose=True,
+    )
+
+    epoch_events = [e for e in logger.events if isinstance(e, RefinementStep)]
+    orientation_events = [e for e in logger.events if isinstance(e, RefinementOrientationStep)]
+    assert len(epoch_events) == 3
+    # one engine orientation -> one RefinementOrientationStep per step, matching the epoch mean.
+    assert len(orientation_events) == 3
+    for epoch, orientation_event in zip(epoch_events, orientation_events, strict=True):
+        assert orientation_event.iteration == epoch.iteration
+        assert orientation_event.rotation_index == 0
+        assert orientation_event.wr2 == pytest.approx(epoch.wr2)
+        assert orientation_event.r_obs == pytest.approx(epoch.r_obs)
+        assert orientation_event.diff_loss == pytest.approx(epoch.diff_loss)
+
+
+def test_run_refinement_model_default_omits_per_rotation_steps() -> None:
+    engine = _engine(loss=mse_loss)
+    model = build_refinement_model(initial=_params())
+    logger = RecordingLogger()
+
+    run_refinement_model(
+        engine,
+        model,
+        RefinementProblem(),
+        trainable=TrainableSpec.positions_and_adp(),
+        steps=2,
+        optimizer="adam",
+        lr=1e-3,
+        logger=logger,
+    )
+
+    assert not [e for e in logger.events if isinstance(e, RefinementOrientationStep)]
 
 
 @dataclasses.dataclass(frozen=True)

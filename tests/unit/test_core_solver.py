@@ -44,7 +44,7 @@ def test_propagate_conserves_flux_for_hermitian_system(method: str) -> None:
     psi = propagate(_system(), torch.tensor([0.0, 1.0, 8.0, 42.0]), method=method)
     flux = psi.abs().square().sum(dim=1)
 
-    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-12, rtol=1e-12)
+    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-6, rtol=1e-6)
 
 
 def test_matrix_exp_and_bloch_eigen_agree_for_hermitian_system() -> None:
@@ -54,8 +54,8 @@ def test_matrix_exp_and_bloch_eigen_agree_for_hermitian_system() -> None:
     assert torch.allclose(
         propagate(system, thicknesses, method="matrix_exp"),
         propagate(system, thicknesses, method="bloch_eigen"),
-        atol=1e-12,
-        rtol=1e-12,
+        atol=1e-6,
+        rtol=1e-6,
     )
 
 
@@ -83,7 +83,7 @@ def test_batched_propagate_matches_the_per_tilt_loop(method: str) -> None:
 
     assert batched.shape == looped.shape
     assert batched.shape == (len(plans), thicknesses.shape[0], _BEAM_HKL.shape[0])
-    assert torch.allclose(batched, looped, atol=1e-13, rtol=0.0)
+    assert torch.allclose(batched, looped, atol=1e-6, rtol=0.0)
 
 
 def test_stack_beam_plans_rejects_unrelated_beam_sets() -> None:
@@ -117,32 +117,18 @@ def test_propagate_is_differentiable_in_structure_factors(method: str) -> None:
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_fp64_is_byte_identical_to_default(method: str) -> None:
-    # "fp64" must be a pure identity on today's path: same bits as omitting precision entirely.
+def test_propagate_runs_in_complex64(method: str) -> None:
     system = _system()
     thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
-    default = propagate(system, thicknesses, method=method)
-    explicit_fp64 = propagate(system, thicknesses, method=method, precision="fp64")
-    assert default.dtype == torch.complex128
-    assert torch.equal(default, explicit_fp64)
+    psi = propagate(system, thicknesses, method=method)
+    assert psi.dtype == torch.complex64  # the eigensolve/matrix-exp always runs in single
 
 
 @pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_fp32_runs_in_complex64_and_tracks_fp64(method: str) -> None:
-    system = _system()
-    thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
-    fp32 = propagate(system, thicknesses, method=method, precision="fp32")
-    fp64 = propagate(system, thicknesses, method=method, precision="fp64")
-    assert fp32.dtype == torch.complex64  # the eigensolve/matrix-exp ran in single
-    # Same physics to single-precision tolerance (the point of the coarse knob).
-    assert torch.allclose(fp32, fp64.to(torch.complex64), atol=1e-4, rtol=1e-4)
-
-
-@pytest.mark.parametrize("method", ["matrix_exp", "bloch_eigen"])
-def test_precision_fp32_still_flows_gradient_to_structure_factors(method: str) -> None:
+def test_propagate_still_flows_gradient_to_structure_factors_at_complex64(method: str) -> None:
     # The complex64 cast is differentiable: autograd casts the incoming grad back to complex128.
     factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex128, requires_grad=True)
-    psi = propagate(_system(factors), [1.0, 8.0], method=method, precision="fp32")
+    psi = propagate(_system(factors), [1.0, 8.0], method=method)
     psi[:, 1].abs().square().sum().backward()
     assert factors.grad is not None
     assert factors.grad.dtype == torch.complex128
@@ -169,7 +155,7 @@ def test_max_batch_matches_unbounded_to_machine_precision_batched(max_batch: int
     thicknesses = torch.tensor([0.0, 12.0, 55.0, 137.0], dtype=torch.float64)  # T = 4 -> B*T = 12
     unbounded = propagate(system, thicknesses, max_batch=None)
     chunked = propagate(system, thicknesses, max_batch=max_batch)
-    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-13)
+    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-6)
 
 
 @pytest.mark.parametrize("max_batch", [1, 3, 999])
@@ -179,14 +165,14 @@ def test_max_batch_matches_unbounded_for_single_system(max_batch: int) -> None:
     thicknesses = torch.tensor([0.0, 1.0, 8.0, 42.0], dtype=torch.float64)
     unbounded = propagate(system, thicknesses, max_batch=None)
     chunked = propagate(system, thicknesses, max_batch=max_batch)
-    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-13)
+    assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-6)
 
 
-def test_max_batch_matches_unbounded_under_fp32() -> None:
+def test_max_batch_matches_unbounded_at_complex64() -> None:
     system = _batched_system((1.0, 1.002, 0.998))
     thicknesses = torch.tensor([0.0, 12.0, 55.0, 137.0], dtype=torch.float64)
-    unbounded = propagate(system, thicknesses, precision="fp32", max_batch=None)
-    chunked = propagate(system, thicknesses, precision="fp32", max_batch=2)
+    unbounded = propagate(system, thicknesses, max_batch=None)
+    chunked = propagate(system, thicknesses, max_batch=2)
     assert chunked.dtype == torch.complex64
     assert torch.allclose(chunked, unbounded, rtol=0.0, atol=1e-5)
 
@@ -215,18 +201,16 @@ def test_propagate_rejects_nonpositive_max_batch(bad: int) -> None:
         propagate(_system(), [1.0], max_batch=bad)
 
 
-def test_memory_safe_max_batch_shrinks_with_beam_count_and_precision() -> None:
-    # The bound adapts to N (cubically heavier propagator -> smaller block) and to the field width
-    # (complex64 is half complex128, so fp32 permits a larger block at the same budget).
-    small = memory_safe_max_batch(40, "fp64")
-    large = memory_safe_max_batch(640, "fp64")
+def test_memory_safe_max_batch_shrinks_with_beam_count() -> None:
+    # The bound adapts to N: a cubically heavier propagator gets a proportionally smaller block.
+    small = memory_safe_max_batch(40)
+    large = memory_safe_max_batch(640)
     assert small > large >= 1
-    assert memory_safe_max_batch(640, "fp32") > memory_safe_max_batch(640, "fp64")
 
 
 def test_memory_safe_max_batch_floors_at_one() -> None:
     # A single matrix wider than the whole budget is still attempted (returns 1, never 0).
-    assert memory_safe_max_batch(4000, "fp64", budget_bytes=1) == 1
+    assert memory_safe_max_batch(4000, budget_bytes=1) == 1
 
 
 def test_propagate_rejects_bad_method() -> None:
@@ -259,7 +243,9 @@ def _system_from(npz: Path):
 
 def test_propagate_matches_private_oracle_zone() -> None:
     # Zone axis (Mii == 1), Friedel-symmetric Fgb -> A Hermitian. The two propagators agree to
-    # machine precision here, and matrix_exp conserves flux.
+    # single-precision tolerance here (the solve always runs at complex64), and matrix_exp
+    # conserves flux. The golden fixtures were computed at float64; rtol/atol are widened to the
+    # complex64 noise floor.
     system, data = _system_from(_ORACLE_ZONE)
     g = g_vectors(data["beam_hkl"], data["reciprocal_basis"])
     assert np.allclose(mii_factors(g, float(data["energy"]), u0=float(data["u0"])), 1.0)
@@ -267,12 +253,16 @@ def test_propagate_matches_private_oracle_zone() -> None:
     thicknesses = torch.tensor(data["thicknesses"])
     psi_me = propagate(system, thicknesses, method="matrix_exp")
     psi_be = propagate(system, thicknesses, method="bloch_eigen")
-    assert torch.allclose(psi_me, torch.tensor(data["psi_matrix_exp"]), rtol=1e-10, atol=1e-12)
-    assert torch.allclose(psi_be, torch.tensor(data["psi_bloch_eigen"]), rtol=1e-10, atol=1e-12)
+    assert torch.allclose(
+        psi_me, torch.tensor(data["psi_matrix_exp"]).to(torch.complex64), rtol=1e-4, atol=1e-5
+    )
+    assert torch.allclose(
+        psi_be, torch.tensor(data["psi_bloch_eigen"]).to(torch.complex64), rtol=1e-4, atol=1e-5
+    )
     # Hermitian + Mii == 1: matrix_exp is unitary and the methods coincide.
     flux = psi_me.abs().square().sum(1)
-    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-12)
-    assert torch.allclose(psi_me, psi_be, atol=1e-10)
+    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-4)
+    assert torch.allclose(psi_me, psi_be, atol=1e-4)
 
 
 def test_propagate_matches_private_oracle_oblique() -> None:
@@ -287,10 +277,14 @@ def test_propagate_matches_private_oracle_oblique() -> None:
     thicknesses = torch.tensor(data["thicknesses"])
     psi_me = propagate(system, thicknesses, method="matrix_exp")
     psi_be = propagate(system, thicknesses, method="bloch_eigen")
-    assert torch.allclose(psi_me, torch.tensor(data["psi_matrix_exp"]), rtol=1e-10, atol=1e-12)
-    assert torch.allclose(psi_be, torch.tensor(data["psi_bloch_eigen"]), rtol=1e-10, atol=1e-12)
+    assert torch.allclose(
+        psi_me, torch.tensor(data["psi_matrix_exp"]).to(torch.complex64), rtol=1e-4, atol=1e-5
+    )
+    assert torch.allclose(
+        psi_be, torch.tensor(data["psi_bloch_eigen"]).to(torch.complex64), rtol=1e-4, atol=1e-5
+    )
     # matrix_exp stays unitary; the two methods are close but NOT equal off zone axis.
     flux = psi_me.abs().square().sum(1)
-    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-12)
+    assert torch.allclose(flux, torch.ones_like(flux), atol=1e-5)
     gap = (psi_me - psi_be).abs().max().item()
-    assert 1e-9 < gap < 1e-2  # obliquity-scale disagreement, not machine noise
+    assert 1e-5 < gap < 1e-2  # obliquity-scale disagreement, not complex64 noise

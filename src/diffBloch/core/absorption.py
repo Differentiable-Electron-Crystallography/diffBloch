@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import torch
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 
 from diffBloch.core.absorptive_parameters import ABSORPTIVE_B_VALUES, ABSORPTIVE_PARAMETERS
 
 __all__ = ["absorptive_form_factors", "equivalent_isotropic_b"]
 
 _ELECTRON_REST_ENERGY_EV = 510_998.95
+_MAX_REFLECTIONS_PER_CHUNK = 4096
 
 
 def equivalent_isotropic_b(uij_star: Tensor, reciprocal_basis: Tensor) -> Tensor:
@@ -55,8 +57,57 @@ def absorptive_form_factors(
     dtype, device = s.dtype, s.device
     knots = ABSORPTIVE_B_VALUES.to(device=device, dtype=dtype)
     table = ABSORPTIVE_PARAMETERS.to(device=device, dtype=dtype)[numbers.to(device).long() - 1]
-    values = _curves(s, table)
+    spacing = torch.diff(knots)
+    b = b_iso.to(device=device, dtype=dtype).clamp(0.1, 4.0)
+    upper = torch.searchsorted(knots, b, right=False).clamp(1, knots.numel() - 1)
+    lower = upper - 1
+    atom = torch.arange(numbers.numel(), device=device)
+    width = spacing[lower]
 
+    def evaluate(s_chunk: Tensor, b_chunk: Tensor) -> Tensor:
+        # ``b_chunk`` is deliberately an input even though the closure has the same value: the
+        # checkpoint boundary must retain the gradient route from the interpolant to U*/ADPs.
+        values = _curves(s_chunk, table)
+        slopes = torch.diff(values, dim=1) / spacing[None, :, None]
+        weights = torch.abs(slopes[:, 1:] - slopes[:, :-1]) + 1e-10
+        interior = (weights * slopes[:, :-1] + weights.flip(1) * slopes[:, 1:]) / (
+            weights + weights.flip(1)
+        )
+        derivatives = torch.cat((slopes[:, :1], interior, slopes[:, -1:]), dim=1)
+        local_t = (b_chunk - knots[lower]) / width
+        local_t2, local_t3 = local_t.square(), local_t.square() * local_t
+        y0, y1 = values[atom, lower], values[atom, upper]
+        d0, d1 = derivatives[atom, lower], derivatives[atom, upper]
+        return (
+            (2 * local_t3 - 3 * local_t2 + 1)[:, None] * y0
+            + ((local_t3 - 2 * local_t2 + local_t) * width)[:, None] * d0
+            + (-2 * local_t3 + 3 * local_t2)[:, None] * y1
+            + ((local_t3 - local_t2) * width)[:, None] * d1
+        )
+
+    chunks = []
+    for start in range(0, s.numel(), _MAX_REFLECTIONS_PER_CHUNK):
+        s_chunk = s[start : start + _MAX_REFLECTIONS_PER_CHUNK]
+        if torch.is_grad_enabled() and b.requires_grad:
+            chunks.append(checkpoint(evaluate, s_chunk, b, use_reentrant=False))
+        else:
+            chunks.append(evaluate(s_chunk, b))
+    interpolated = torch.cat(chunks, dim=1)
+
+    gamma = 1.0 + energy / _ELECTRON_REST_ENERGY_EV
+    c_over_v = 1.0 / (1.0 - gamma**-2) ** 0.5
+    result: Tensor = c_over_v * interpolated.clamp_min(0.0)
+    return result
+
+
+def _unchunked_absorptive_form_factors(
+    numbers: Tensor, s: Tensor, b_iso: Tensor, *, energy: float
+) -> Tensor:
+    """Reference implementation retained privately for chunk-parity tests."""
+    dtype, device = s.dtype, s.device
+    knots = ABSORPTIVE_B_VALUES.to(device=device, dtype=dtype)
+    table = ABSORPTIVE_PARAMETERS.to(device=device, dtype=dtype)[numbers.to(device).long() - 1]
+    values = _curves(s, table)
     spacing = torch.diff(knots)
     slopes = torch.diff(values, dim=1) / spacing[None, :, None]
     weights = torch.abs(slopes[:, 1:] - slopes[:, :-1]) + 1e-10

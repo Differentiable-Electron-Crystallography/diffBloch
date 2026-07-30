@@ -43,7 +43,6 @@ from diffBloch.config import (
     sha256_file,
     write_preprocess_lock,
 )
-from diffBloch.core.solver import FloatFormat
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
@@ -52,7 +51,7 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import read_observations, read_orientation_matrices, read_structure
+from diffBloch.io import read_observations, read_structure
 from diffBloch.observability import NULL_LOGGER, Logger
 from diffBloch.params import Device, constrain
 from diffBloch.preprocess import (
@@ -92,19 +91,17 @@ _log = logging.getLogger(__name__)
 _PLAN_NPZ = "plan.npz"
 _PLAN_LOCK = "plan.lock"
 
-# Above this unit-cell volume the coupled orientation search runs its coarse pass in fp32 with the
+# Above this unit-cell volume the coupled orientation search runs its coarse pass with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
-# exact fp64 path. The eigensolve is O(N^3) in the beam count
-# and N grows with cell volume, so the fp32 throughput win only pays off for large cells; a
-# small cell (quartz ~113 A^3) fits in seconds at fp64 and gains nothing from the coarser search.
+# exact, fully-validated path. The eigensolve is O(N^3) in the beam count
+# and N grows with cell volume, so skipping the O(N^2) integrity checks only pays off for large
+# cells; a small cell (quartz ~113 A^3) fits in seconds and gains nothing from skipping them.
 # A deliberately wide heuristic gap separates the known regimes -- quartz ~113 vs zeolites
 # ~1861 A^3 -- so classification is unambiguous; it is not a sharp physical boundary. Kept a code
 # constant, NOT a config field: a config field would enter config_digest and restale the committed
-# quartz checkpoint. It only selects which precision the *search* uses, and the fp64 terminal always
-# re-scores the found orientation, so the threshold never affects the reported score's fidelity.
-# It is NOT free of accuracy consequence, though: the coarse fp32 search can converge to a different
-# -- possibly worse -- basin than fp64 would on the bumpy coupled landscape. A search-robustness
-# trade, not a scoring one.
+# quartz checkpoint. It only selects whether the *search* validates its gathers, and the terminal
+# always re-scores the found orientation, so the threshold never affects the reported score's
+# fidelity.
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
@@ -128,20 +125,7 @@ def converge_experiment(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
     observations = read_observations(root / cfg.inputs.exp_data)
-    initial_orientations = (
-        None
-        if cfg.inputs.orientations is None
-        else read_orientation_matrices(
-            root / cfg.inputs.orientations,
-            n_rotations=observations.n_rotations,
-        )
-    )
-    setup = from_experiment(
-        structure,
-        observations,
-        cfg,
-        initial_orientations=initial_orientations,
-    )
+    setup = from_experiment(structure, observations, cfg)
     refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
     combined = setup.plans.combined
     if n_orientations < 1:
@@ -305,6 +289,9 @@ def refine_experiment(
     device: Device | None = None,
     workers: int = 1,
     max_batch: int | None = None,
+    verbose: bool = False,
+    profile: bool = False,
+    checkpoint_activations: bool = True,
 ) -> ModelRefinementResult:
     """Settle the coupled ``Plan`` and gradient-refine the structure against the observed data.
 
@@ -312,7 +299,7 @@ def refine_experiment(
     recipe and ``checkpoint``/``refresh``/``device``/``workers`` semantics), then run the
     **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs
     path: the data term (:meth:`~diffBloch.config.schema.ObjectiveConfig.to_loss`), the trainable
-    selection (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), the solve precision, and
+    selection (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and
     the optimizer/step budget all come from ``experiment.yaml``. It composes no hard constraints or
     penalties -- scientific
     composition (hydrogen riding, freeze-H, penalties, multi-stage) is a Python/API concern, built
@@ -326,6 +313,19 @@ def refine_experiment(
 
     ``device`` places the refinement solve on the accelerator: the seed params move there and the
     forward co-locates onto them (as in the preprocess fits).
+
+    ``verbose`` ("verbose refinement") reports one per-rotation wR2/R_obs/diffraction-loss line per
+    step in addition to the epoch mean; see :func:`~diffBloch.engine.run_refinement_model`.
+    Execution-only, like ``logger``.
+
+    ``profile`` logs per-phase wall time (structure factors, each rotation's solve, backward,
+    optimizer step) via stdlib diagnostics logging; see :func:`~diffBloch.engine.run_refinement_model`
+    and :func:`~diffBloch.preprocess.scoring.build_engine`. Execution-only and off by default.
+
+    ``checkpoint_activations`` (default ``True``) trades peak memory for one extra forward
+    recompute per solve on backward; disabling it removes that recompute at the cost of retaining
+    solve intermediates until backward. Execution-only -- gradients are unaffected. See
+    :class:`~diffBloch.engine.RefinementEngine`.
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -344,9 +344,10 @@ def refine_experiment(
         refinement,
         loss=cfg.refinement.objective.to_loss(),
         method=cfg.blochwave.solver.refine,
-        precision=cfg.refinement.precision,
         max_batch=max_batch,
         absorption=cfg.blochwave.to_absorption(),
+        profile=profile,
+        checkpoint_activations=checkpoint_activations,
     )
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
@@ -385,6 +386,8 @@ def refine_experiment(
         optimizer=cfg.refinement.optimizer.name,
         lr=cfg.refinement.optimizer.lr,
         logger=logger,
+        verbose=verbose,
+        profile=profile,
     )
     result = _write_refinement_outputs(root, cfg, refinement, result)
     return result
@@ -547,20 +550,7 @@ def _preprocess(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
     observations = read_observations(root / cfg.inputs.exp_data)
-    initial_orientations = (
-        None
-        if cfg.inputs.orientations is None
-        else read_orientation_matrices(
-            root / cfg.inputs.orientations,
-            n_rotations=observations.n_rotations,
-        )
-    )
-    setup = from_experiment(
-        structure,
-        observations,
-        cfg,
-        initial_orientations=initial_orientations,
-    )
+    setup = from_experiment(structure, observations, cfg)
     steps = _recipe_steps(
         cfg,
         setup.refinement,
@@ -599,18 +589,20 @@ def _recipe_steps(
     coupling (:func:`_trial_coupling`). The tilt-independent fit is not offered here; compose it
     directly if needed.
 
-    The fit tail is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large cell**
-    (> ``_LARGE_CELL_THRESHOLD_A3``) takes the coarse fp32 search with the gather integrity checks
-    skipped (``validate=False``, made sound by ``fit_orientation``'s coupled coverage guard); a
-    **small cell** takes the exact fp64 path. The predicate
+    The orientation fit is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large
+    cell** (> ``_LARGE_CELL_THRESHOLD_A3``) skips the per-trial gather integrity checks
+    (``validate=False``, made sound by ``fit_orientation``'s coupled coverage guard); a
+    **small cell** takes the exact, fully-validated path. The predicate
     reads only the pipeline-invariant grid, so :func:`~diffBloch.preprocess.resolve_recipe` compiles
-    the fork to a flat branch before the lock sees it (the branch is fixed per experiment). fp32 /
-    ``validate`` are execution-only and stay out of the step identity, so the resolved small-cell
-    branch keys the same either way -- the committed quartz checkpoint is untouched.
+    the fork to a flat branch before the lock sees it (the branch is fixed per experiment).
+    ``validate`` is execution-only and stays out of the step identity, so the resolved branch keys
+    the same either way -- the committed quartz checkpoint is untouched. The thickness fit has no
+    such split and always runs the same path regardless of cell size.
 
     Both ``device`` and ``workers`` are execution-only -- neither alters the recipe identity.
     ``device`` is threaded to *both* fits (so the coupled eigensolve runs on the same accelerator as
-    the terminal); ``workers`` fans only the orientation search (the run's long phase) over threads.
+    the terminal); ``workers`` fans both the independent initial rotation-plan builds and the
+    orientation searches over threads.
     ``max_batch`` (also execution-only) is threaded to both fits: it caps the ``matrix_exp``
     propagator block so a wide coupled segment x the thickness grid can't materialize the whole
     propagator at once; ``None`` picks a memory-safe block.
@@ -619,13 +611,12 @@ def _recipe_steps(
     thickness_grid = cfg.preprocess.thickness.to_grid()
     coupling = _trial_coupling(cfg, integration)
 
-    def orientation_fit(*, precision: FloatFormat, validate: bool) -> PlanStep:
+    def orientation_fit(*, validate: bool) -> PlanStep:
         return fit_orientation(
             refinement,
             search,
             method=cfg.blochwave.solver.refine,
             coupling=coupling,
-            precision=precision,
             validate=validate,
             device=device,
             max_batch=max_batch,
@@ -634,12 +625,11 @@ def _recipe_steps(
             absorption=cfg.blochwave.to_absorption(),
         )
 
-    def thickness_fit(*, precision: FloatFormat) -> PlanStep:
+    def thickness_fit() -> PlanStep:
         return fit_thickness(
             refinement,
             thickness_grid,
             method=cfg.blochwave.solver.refine,
-            precision=precision,
             device=device,
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
@@ -652,24 +642,19 @@ def _recipe_steps(
             cfg.blochwave.mosaicity,
             coupling=cfg.blochwave.to_policy(),
             scoring_selection=cfg.blochwave.to_beam_selection(integration),
+            workers=workers,
         ),
     ]
-    small_cell_fits: list[PlanStep] = []
-    large_cell_fits: list[PlanStep] = []
     if cfg.preprocess.optimize_orientation:
-        small_cell_fits.append(orientation_fit(precision="fp64", validate=True))
-        large_cell_fits.append(orientation_fit(precision="fp32", validate=False))
-    if cfg.preprocess.optimize_thickness:
-        small_cell_fits.append(thickness_fit(precision="fp64"))
-        large_cell_fits.append(thickness_fit(precision="fp32"))
-    if small_cell_fits:
         steps.append(
             fork(
                 lambda grid: grid.cell_volume > _LARGE_CELL_THRESHOLD_A3,
-                when_true=large_cell_fits,
-                when_false=small_cell_fits,
+                when_true=[orientation_fit(validate=False)],
+                when_false=[orientation_fit(validate=True)],
             )
         )
+    if cfg.preprocess.optimize_thickness:
+        steps.append(thickness_fit())
     return steps
 
 

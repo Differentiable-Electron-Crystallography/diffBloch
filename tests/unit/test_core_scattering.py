@@ -7,7 +7,10 @@ The form-factor golden values are the Lobato-Van Dyck (2014) parametrization as 
 import pytest
 import torch
 
-from diffBloch.core.absorption import absorptive_form_factors
+from diffBloch.core.absorption import (
+    _unchunked_absorptive_form_factors,
+    absorptive_form_factors,
+)
 from diffBloch.core.scattering import (
     debye_waller_factor,
     lobato_form_factors,
@@ -41,6 +44,23 @@ def test_absorptive_form_factors_match_legacy_paper_oracle() -> None:
         dtype=torch.float64,
     )
     assert torch.allclose(factors, expected, rtol=1e-12, atol=1e-14)
+
+
+def test_chunked_absorptive_form_factors_preserve_values_and_adp_gradients() -> None:
+    numbers = torch.tensor([1, 14, 55, 103])
+    s = torch.linspace(0.0, 2.1, 5000, dtype=torch.float64)
+    b_chunked = torch.tensor([0.2, 0.8, 1.7, 3.9], dtype=torch.float64, requires_grad=True)
+    b_reference = b_chunked.detach().clone().requires_grad_(True)
+
+    chunked = absorptive_form_factors(numbers, s, b_chunked, energy=200_000.0)
+    reference = _unchunked_absorptive_form_factors(numbers, s, b_reference, energy=200_000.0)
+    assert torch.equal(chunked, reference)
+
+    chunked.sum().backward()
+    reference.sum().backward()
+    assert b_chunked.grad is not None
+    assert b_reference.grad is not None
+    assert torch.allclose(b_chunked.grad, b_reference.grad, rtol=1e-12, atol=1e-12)
 
 
 def test_lobato_form_factors_match_reference() -> None:

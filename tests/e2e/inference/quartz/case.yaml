@@ -1,5 +1,5 @@
 fixture: tests/fixtures/quartz_anchor
-orientation_csv: tests/fixtures/quartz_anchor/optim_orientation.csv
+orientation_file: tests/fixtures/quartz_anchor/optim_orientation.json
 thickness: 820.0
 seed: 42
 compare_n_rotations: 10

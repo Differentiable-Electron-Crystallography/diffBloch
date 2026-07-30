@@ -42,7 +42,6 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.refinement.objective.data_term == "wr2"
-    assert cfg.refinement.precision == "fp64"
     assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
     assert cfg.refinement.split.validation == "every_10th_rotation"
     assert cfg.blochwave.ignore_orientations == ()
@@ -230,12 +229,12 @@ def test_refinement_trainable_replaces_string_targets() -> None:
         ExperimentConfig.model_validate({**base, "refinement": {"trainable": {"thickness": "all"}}})
 
 
-def test_refinement_precision_parses_and_rejects_unknown_values() -> None:
+def test_refinement_precision_is_not_a_config_field() -> None:
+    # precision was removed as a selectable knob: the solve always runs at fp32/complex64, so
+    # a stray "precision" key must be rejected by the allowlist guard, not silently accepted.
     base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
-    cfg = ExperimentConfig.model_validate({**base, "refinement": {"precision": "fp32"}})
-    assert cfg.refinement.precision == "fp32"
-    with pytest.raises(ValidationError, match="Input should be"):
-        ExperimentConfig.model_validate({**base, "refinement": {"precision": "bf16"}})
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate({**base, "refinement": {"precision": "fp32"}})
 
 
 def test_optimizer_and_objective_values_are_enumerated() -> None:
