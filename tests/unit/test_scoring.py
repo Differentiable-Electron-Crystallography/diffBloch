@@ -6,8 +6,6 @@ synthetic silicon system (mirroring ``test_engine``'s setup so no heavy fixture 
 
 from __future__ import annotations
 
-import inspect
-
 import numpy as np
 import pytest
 import torch
@@ -179,6 +177,25 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     assert all(torch.isfinite(s) and s.shape == () for s in scores)
 
 
+def test_build_engine_computes_only_structure_factors_referenced_by_solve_gathers() -> None:
+    plan, refinement = _silicon_plan()
+    compact = build_engine(plan, refinement)
+    full = build_engine(plan, refinement, compact_structure_factors=False)
+
+    assert compact.active_structure_factor_indices is not None
+    assert (
+        compact.active_structure_factor_indices.numel()
+        < plan.structure_factor_grid.structure_factor_hkl.shape[0]
+    )
+    compact_fgb = compact.fgb(refinement.params)
+    full_fgb = full.fgb(refinement.params)
+    active = compact.active_structure_factor_indices
+    assert torch.equal(compact_fgb.index_select(0, active), full_fgb.index_select(0, active))
+    compact_solution = compact.simulate(refinement.params)[0]
+    full_solution = full.simulate(refinement.params)[0]
+    assert torch.equal(compact_solution.intensities, full_solution.intensities)
+
+
 def _silicon_plan() -> tuple[Plan, RefinementSetup]:
     grid, asu_plan, spec, numbers = _silicon()
     orientation, _ = _self_consistent_orientation(grid, asu_plan, spec, numbers)
@@ -192,42 +209,24 @@ def _silicon_plan() -> tuple[Plan, RefinementSetup]:
     return plan, refinement
 
 
-def test_fp32_scores_end_to_end_through_build_engine() -> None:
-    """The coarse knob works through the full build_engine -> simulate -> wR2 path, not just solver.
+def test_scores_end_to_end_through_build_engine_at_complex64() -> None:
+    """The solve works through the full build_engine -> simulate -> wR2 path, not just solver.
 
-    Guards the feature's actual purpose: a ``precision="fp32"`` engine reaches the O(N^3) solve in
+    Guards the feature's actual purpose: the engine reaches the O(N^3) solve in
     complex64 (exit amplitudes complex64 -> intensities float32), and the cheap scoring tail still
     yields a finite score -- observed intensities/sigmas are float64, so type-promotion upcasts the
-    reduction back to double (confining fp32 to the expensive solve). A stray complex128 constant
-    mid-solve, or a promotion that errored instead, would trip this.
+    reduction back to double (confining complex64 to the expensive solve). A stray complex128
+    constant mid-solve, or a promotion that errored instead, would trip this.
     """
     plan, refinement = _silicon_plan()
-    engine = build_engine(plan, refinement, precision="fp32")
-    assert engine.precision == "fp32"
+    engine = build_engine(plan, refinement)
 
     (solution,) = engine.simulate(refinement.params)
-    assert solution.amplitudes.dtype == torch.complex64  # fp32 reached the solve
+    assert solution.amplitudes.dtype == torch.complex64
     assert solution.intensities.dtype == torch.float32
 
     score = engine.score_orientation(engine.orientations[0], engine.fgb(refinement.params))
     assert score.shape == () and torch.isfinite(score)
-
-
-def test_terminal_defaults_fp64_and_inference_exposes_no_precision_knob() -> None:
-    """The default terminal engine is fp64; inference exposes no coarse precision knob.
-
-    The default engine is fp64 -- the solve produces complex128 / float64, so existing callers keep
-    the exact path. ``run_inference`` exposes no ``precision`` parameter, so a coarse preprocess
-    search cannot leak into terminal inference by construction. App refinement has its own explicit
-    config opt-in, covered in the app-layer tests.
-    """
-    plan, refinement = _silicon_plan()
-    engine = build_engine(plan, refinement)  # no precision -> fp64
-    assert engine.precision == "fp64"
-
-    (solution,) = engine.simulate(refinement.params)
-    assert solution.amplitudes.dtype == torch.complex128
-    assert solution.intensities.dtype == torch.float64
 
 
 # --- device knob (place the forward solve on an accelerator; params.device is authoritative) ------
@@ -255,16 +254,16 @@ def test_run_inference_cuda_matches_cpu_within_tolerance() -> None:
 
     Skipped locally (this Mac has no complex-capable GPU); the real assertion runs on the SSEC A100
     cluster, where it pins that placing params on ``"cuda"`` carries the whole eigensolve there and
-    the terminal ``R_obs`` still matches the fp64 CPU reference.
+    the terminal ``R_obs`` still matches the complex64 CPU reference.
     """
     plan, refinement = _silicon_plan()
     cpu = run_inference(plan, refinement, device="cpu")
     cuda = run_inference(plan, refinement, device="cuda")
     for c, g in zip(cpu.per_rotation, cuda.per_rotation, strict=True):
-        assert abs(c.r_obs - g.r_obs) < 1e-6
+        assert abs(c.r_obs - g.r_obs) < 1e-4
 
 
-# --- fp32 on the integrating solve paths (the coverage gap that shipped a broken segmented path) --
+# --- integrating solve paths at complex64 (the coverage gap that shipped a broken segmented path) --
 
 
 def _dummy_pattern() -> PatternBatch:
@@ -301,7 +300,7 @@ def _segmented_orientation() -> CoupledOrientationPlan:
     )
 
 
-def _engine_over(orientation: OrientationPlan | CoupledOrientationPlan, *, precision: str):
+def _engine_over(orientation: OrientationPlan | CoupledOrientationPlan) -> RefinementEngine:
     grid, asu_plan, spec, numbers = _silicon()
     return RefinementEngine(
         spec=spec,
@@ -310,33 +309,32 @@ def _engine_over(orientation: OrientationPlan | CoupledOrientationPlan, *, preci
         grid=grid,
         orientations=(orientation,),
         loss=w_rbragg_loss,
-        precision=precision,  # type: ignore[arg-type]
     )
 
 
-def test_fp32_scores_through_the_segmented_coupled_path() -> None:
-    """The test that would have caught the shipped bug: fp32 on the segmented (coupled) solve.
+def test_scores_through_the_segmented_coupled_path_at_complex64() -> None:
+    """The test that would have caught the shipped bug: complex64 on the segmented (coupled) solve.
 
-    ``_solve_segmented`` allocated its rocking-curve buffer from ``thicknesses.dtype`` (float64) and
-    scattered float32 segment intensities into it -- a dtype mismatch that raised on the fp32
-    coupled path (never exercised, as phase 1 tested only the static/single-system path). fp32 must
-    now run the coupled solve in complex64 -> float32 intensities and still score finite.
+    ``_solve_segmented`` once allocated its rocking-curve buffer from ``thicknesses.dtype``
+    (float64) and scattered float32 segment intensities into it -- a dtype mismatch that raised on
+    the coupled path (never exercised, as phase 1 tested only the static/single-system path). The
+    coupled solve must run in complex64 -> float32 intensities and still score finite.
     """
     orientation = _segmented_orientation()
-    engine = _engine_over(orientation, precision="fp32")
+    engine = _engine_over(orientation)
 
     (solution,) = engine.simulate(_params())
     assert solution.intensities.dtype == torch.float32
-    assert solution.amplitudes.dtype == torch.complex64  # matches the static/batched fp32 paths
+    assert solution.amplitudes.dtype == torch.complex64  # matches the static/batched paths
 
     score = engine.score_orientation(orientation, engine.fgb(_params()))
     assert score.shape == () and torch.isfinite(score)
 
 
-def test_fp32_scores_through_the_batched_tilt_path() -> None:
-    """Confirm the rocking (batched, non-segmented) path really is fine at fp32, not just likely."""
+def test_scores_through_the_batched_tilt_path_at_complex64() -> None:
+    """Confirm the rocking (batched, non-segmented) path really is fine at complex64, not just likely."""
     orientation = _rocking_orientation()
-    engine = _engine_over(orientation, precision="fp32")
+    engine = _engine_over(orientation)
 
     (solution,) = engine.simulate(_params())
     assert solution.intensities.dtype == torch.float32
@@ -344,17 +342,3 @@ def test_fp32_scores_through_the_batched_tilt_path() -> None:
 
     score = engine.score_orientation(orientation, engine.fgb(_params()))
     assert score.shape == () and torch.isfinite(score)
-
-
-@pytest.mark.parametrize("build", [_rocking_orientation, _segmented_orientation])
-def test_fp64_keeps_the_integrating_paths_in_double(build) -> None:
-    """fp64 (the default) casts thicknesses to float64 -- a no-op -- so the solve stays complex128 /
-    float64 on both integrating paths. (Byte-identity to the pre-fix output is locked by the
-    existing default-precision forward tests in test_engine / test_plan_serialize.)"""
-    orientation = build()
-    (solution,) = _engine_over(orientation, precision="fp64").simulate(_params())
-    assert solution.intensities.dtype == torch.float64
-    assert solution.amplitudes.dtype == torch.complex128
-    assert torch.isfinite(solution.intensities).all()
-
-    assert "precision" not in inspect.signature(run_inference).parameters

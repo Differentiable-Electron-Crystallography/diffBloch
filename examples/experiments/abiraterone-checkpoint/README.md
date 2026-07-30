@@ -34,8 +34,9 @@ diffbloch run refine examples/experiments/abiraterone-checkpoint                
 ```
 
 The unit cell (~2186 Å³) is above the large-cell threshold, so the orientation search runs on the
-coarse fp32 fast path; the fp64 terminal re-scores the fitted orientation, so the reported score
-keeps full fidelity. Generating the checkpoint uses a CUDA device (`--device cuda`); the committed
+fast path (per-trial gather integrity checks skipped); the terminal re-scores the fitted
+orientation, so the reported score keeps full fidelity. Generating the checkpoint uses a CUDA
+device (`--device cuda`); the committed
 checkpoint is then reused on CPU or GPU alike.
 
 ## Refinement

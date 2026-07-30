@@ -149,7 +149,7 @@ the best updated `Plan`.
 ## API example: composing simple steps
 
 This example mirrors the default geometry-build shape. The app additionally handles checkpointing,
-device/precision choices, optional fitting stages, and logging.
+device choices, optional fitting stages, and logging.
 
 ```python
 from pathlib import Path
@@ -214,7 +214,8 @@ Advanced branching and looping pipelines can be composed with
 user-facing combinator, while uppercase `Fork` is the returned dataclass/type used for recipe
 resolution. It chooses one of two step lists from the immutable structure-factor grid, so the chosen
 recipe can still be resolved before checkpointing; the default app recipe uses this shape to route
-large cells through a coarser fp32 orientation/thickness-fit branch. `iterate_until` wraps a repeated
+large cells through a faster orientation-fit branch that skips per-trial gather integrity checks.
+`iterate_until` wraps a repeated
 `Plan -> Plan` improvement behind the same step shape.
 
 The convergence path is the stateful version of this idea. Its public pipeline surface is still a

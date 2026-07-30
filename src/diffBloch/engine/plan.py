@@ -179,6 +179,7 @@ class OrientationPlan:
         tilt_reduction: TiltReduction = PLAIN_SUM,
         gather: StructureFactorGather | None = None,
         validate: bool = True,
+        build_alignment: bool = True,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -245,8 +246,10 @@ class OrientationPlan:
             tilt_mats = np.asarray(tilts, dtype=np.float64)
             if tilt_mats.ndim != 3 or tilt_mats.shape[1:] != (3, 3):
                 raise ValueError(f"tilts must have shape (N, 3, 3), got {tilt_mats.shape}")
-            cell = np.asarray(grid.cell)
-            bases = [orientation_basis(cell, tilt @ rotation) for tilt in tilt_mats]
+            # Rocking-curve tilts are orthogonal.  For A = cell @ rotation.T,
+            # pinv(A @ tilt.T).T == pinv(A).T @ tilt.T, so derive the nominal reciprocal basis once
+            # and rotate it instead of performing one pseudoinverse per sub-tilt.
+            bases = [nominal_basis @ tilt.T for tilt in tilt_mats]
         beam_plans = tuple(
             build_beam_plan(
                 beam_hkl,
@@ -269,7 +272,15 @@ class OrientationPlan:
             beam_hkl=beam_hkl_t,
             beam_plans=beam_plans,
             pattern=pattern,
-            alignment=build_alignment_plan(beam_hkl_t, pattern.hkl),
+            alignment=(
+                build_alignment_plan(beam_hkl_t, pattern.hkl)
+                if build_alignment
+                else AlignmentPlan(
+                    hkl=torch.empty((0, 3), dtype=torch.int64),
+                    solution_index=torch.empty(0, dtype=torch.int64),
+                    pattern_index=torch.empty(0, dtype=torch.int64),
+                )
+            ),
             tilt_reduction=tilt_reduction,
         )
 
@@ -411,12 +422,22 @@ class CoupledOrientationPlan:
             raise ValueError("a segmented plan needs at least one segment")
 
         beam_sets = [np.asarray(hkl, dtype=np.int64) for hkl, _ in segments]
-        union_hkl = np.unique(np.concatenate(beam_sets, axis=0), axis=0)  # sorted, deduplicated
-        union_pos = {tuple(int(c) for c in row): i for i, row in enumerate(union_hkl)}
+        beam_counts = [len(beam_set) for beam_set in beam_sets]
+        union_hkl, concatenated_union_indices = np.unique(
+            np.concatenate(beam_sets, axis=0), axis=0, return_inverse=True
+        )
+        per_segment_union_indices = np.split(
+            concatenated_union_indices, np.cumsum(beam_counts[:-1])
+        )
 
         segment_plans = []
-        for seg_i, (beam_hkl, cover) in enumerate(
-            zip(beam_sets, [cover for _, cover in segments], strict=True)
+        for seg_i, (beam_hkl, cover, union_indices) in enumerate(
+            zip(
+                beam_sets,
+                [cover for _, cover in segments],
+                per_segment_union_indices,
+                strict=True,
+            )
         ):
             cover_idx = np.asarray(cover, dtype=np.int64)
             sub = OrientationPlan.build(
@@ -430,10 +451,12 @@ class CoupledOrientationPlan:
                 tilts=tilt_mats[cover_idx],
                 gather=None if gathers is None else gathers[seg_i],
                 validate=validate,
+                # Segment solutions are reassembled onto the parent union before scoring.  Their
+                # local alignment is never consumed, so avoid repeatedly matching the full PETS
+                # pattern in this hot construction loop; the parent alignment below is authoritative.
+                build_alignment=False,
             )
-            union_beam_index = torch.tensor(
-                [union_pos[tuple(int(c) for c in row)] for row in beam_hkl], dtype=torch.int64
-            )
+            union_beam_index = torch.as_tensor(union_indices, dtype=torch.int64)
             segment_plans.append(
                 SegmentPlan(
                     plan=sub,

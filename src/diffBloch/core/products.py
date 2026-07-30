@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import torch
+from numpy.typing import NDArray
 from torch import Tensor
 
 if TYPE_CHECKING:
@@ -280,25 +281,30 @@ def build_alignment_plan(
     if pattern.ndim != 2 or pattern.shape[1] != 3:
         raise ValueError(f"pattern_hkl must have shape (M, 3), got {pattern.shape}")
 
-    allowed: set[tuple[int, ...]] | None = None
+    scored: NDArray[np.int64] | None = None
     if restrict_to is not None:
         scored = np.asarray(torch.as_tensor(restrict_to, dtype=torch.int64))
         if scored.ndim != 2 or scored.shape[1] != 3:
             raise ValueError(f"restrict_to must have shape (S, 3), got {scored.shape}")
-        allowed = {tuple(int(c) for c in row) for row in scored}
 
-    by_hkl = {tuple(int(c) for c in row): i for i, row in enumerate(solution)}
-    sol_idx, pat_idx = [], []
-    for pattern_pos, row in enumerate(pattern):
-        key = tuple(int(c) for c in row)
-        if allowed is not None and key not in allowed:
-            continue
-        solution_pos = by_hkl.get(key)
-        if solution_pos is not None:
-            sol_idx.append(solution_pos)
-            pat_idx.append(pattern_pos)
-    solution_index = torch.tensor(sol_idx, dtype=torch.int64)
-    pattern_index = torch.tensor(pat_idx, dtype=torch.int64)
+    arrays = [solution, pattern] if scored is None else [solution, pattern, scored]
+    _, inverse = np.unique(np.concatenate(arrays, axis=0), axis=0, return_inverse=True)
+    n_solution = len(solution)
+    n_pattern = len(pattern)
+    solution_codes = inverse[:n_solution]
+    pattern_codes = inverse[n_solution : n_solution + n_pattern]
+    lookup = np.full(int(inverse.max(initial=-1)) + 1, -1, dtype=np.int64)
+    lookup[solution_codes] = np.arange(n_solution, dtype=np.int64)
+    keep = lookup[pattern_codes] >= 0
+    if scored is not None:
+        scored_codes = inverse[n_solution + n_pattern :]
+        allowed = np.zeros_like(lookup, dtype=np.bool_)
+        allowed[scored_codes] = True
+        keep &= allowed[pattern_codes]
+    pat_idx = np.flatnonzero(keep)
+    sol_idx = lookup[pattern_codes[pat_idx]]
+    solution_index = torch.as_tensor(sol_idx, dtype=torch.int64)
+    pattern_index = torch.as_tensor(pat_idx, dtype=torch.int64)
     return AlignmentPlan(
         hkl=torch.as_tensor(pattern[pat_idx], dtype=torch.int64),
         solution_index=solution_index,

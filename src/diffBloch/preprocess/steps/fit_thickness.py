@@ -30,7 +30,7 @@ from dataclasses import replace
 import torch
 from torch import Tensor
 
-from diffBloch.core.solver import FloatFormat, SolverMethod
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import NULL_LOGGER, Logger, ThicknessFitted
@@ -49,7 +49,6 @@ def fit_thickness(
     grid: ThicknessGrid,
     *,
     method: SolverMethod = "matrix_exp",
-    precision: FloatFormat = "fp64",
     device: Device | None = None,
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
@@ -63,9 +62,7 @@ def fit_thickness(
     rotation is then assigned the lowest-wR2 of ``grid.n_steps`` candidate thicknesses spaced evenly
     from ``grid.min_thickness`` to ``grid.max_thickness`` (inclusive, Angstroms). ``grid`` is a
     pre-validated :class:`~diffBloch.specs.ThicknessGrid` (invalid bounds are unrepresentable, so
-    this function never re-validates); ``method`` configures the engine's solver. ``precision``
-    (default ``"fp64"``) selects the solve's numeric field -- ``"fp32"`` (complex64) is the
-    coarse search-time knob, never for a terminal estimator (see :func:`fit_orientation`).
+    this function never re-validates); ``method`` configures the engine's solver.
 
     ``device`` (default ``None`` = CPU) places the grid search's forward solve on the given
     accelerator by moving the seed params there; the engine co-locates every invariant onto the
@@ -89,7 +86,6 @@ def fit_thickness(
             plan,
             refinement,
             method=method,
-            precision=precision,
             max_batch=max_batch,
             absorption=absorption,
         )

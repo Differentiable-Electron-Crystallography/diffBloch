@@ -16,6 +16,8 @@ preprocessing has already selected.
 from __future__ import annotations
 
 import dataclasses
+import logging
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -23,8 +25,14 @@ from typing import Protocol
 
 import torch
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 
-from diffBloch.core.dynamical import build_bloch_system, build_bloch_systems, stack_beam_plans
+from diffBloch.core.dynamical import (
+    BeamPlanBatch,
+    build_bloch_system,
+    build_bloch_systems,
+    stack_beam_plans,
+)
 from diffBloch.core.losses import optimal_scale, rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
@@ -35,10 +43,8 @@ from diffBloch.core.products import (
 )
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import (
-    FloatFormat,
     SolverMethod,
     memory_safe_max_batch,
-    precision_dtypes,
     propagate,
 )
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
@@ -62,7 +68,13 @@ from diffBloch.engine.refine import (
     _scalar_float,
     _to_trainable_params,
 )
-from diffBloch.observability import NULL_LOGGER, Logger, RefinementCompleted, RefinementStep
+from diffBloch.observability import (
+    NULL_LOGGER,
+    Logger,
+    RefinementCompleted,
+    RefinementOrientationStep,
+    RefinementStep,
+)
 from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
 from diffBloch.specs import Absorption
 
@@ -84,6 +96,41 @@ __all__ = [
 # The engine sums these per-orientation terms into the scalar objective refinement minimises.
 type LossFn = Callable[[AlignedIntensities], Tensor]
 
+_log = logging.getLogger(__name__)
+
+
+class _Timer:
+    """A no-op-unless-``enabled`` wall-clock timer, logged via stdlib diagnostics.
+
+    CUDA kernels queue asynchronously, so an accurate boundary needs ``torch.cuda.synchronize()``
+    around the measured block -- itself real overhead, so it (and the ``perf_counter`` call) only
+    runs when profiling is explicitly requested. Never on by default; this is diagnostics
+    (``logging``), not a domain-observation :class:`~diffBloch.observability.Event`.
+    """
+
+    __slots__ = ("label", "device", "enabled", "_start")
+
+    def __init__(self, label: str, device: torch.device, enabled: bool) -> None:
+        self.label = label
+        self.device = device
+        self.enabled = enabled
+        self._start = 0.0
+
+    def __enter__(self) -> _Timer:
+        if self.enabled:
+            if self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
+            self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        if self.enabled:
+            if self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
+            _log.info(
+                "profile: %-28s %8.1f ms", self.label, (time.perf_counter() - self._start) * 1e3
+            )
+
 
 @dataclass(frozen=True)
 class RefinementEngine:
@@ -102,25 +149,31 @@ class RefinementEngine:
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     method: SolverMethod = "matrix_exp"
-    # Solve numeric field. "fp64" (complex128) everywhere by default. "fp32"
-    # (complex64) is a speed/precision knob: preprocess uses it only for transient coarse-search
-    # engines, and the default refine path stays fp64 unless config opts in. See
-    # core.solver.propagate.
-    precision: FloatFormat = "fp64"
     # matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a
     # rounding-level ~1 ulp shift, never accuracy). None (default) lets each
     # solve pick a memory-safe block from its beam count (memory_safe_max_batch), which bounds the
     # (B, T, N, N) propagator that a wide coupled segment x a thickness grid would otherwise
     # materialize all at once. A positive int pins the block
-    # for a specific device budget. Execution-only, like precision/method.
+    # for a specific device budget. Execution-only, like method.
     max_batch: int | None = None
     absorption: Absorption = Absorption()
+    active_structure_factor_indices: Tensor | None = None
+    # Execution-only diagnostics switch (like method): logs per-phase wall time
+    # (structure factors, each rotation's solve) via stdlib logging. Off by default -- zero cost.
+    profile: bool = False
+    # Execution-only memory/compute tradeoff (like max_batch): checkpoint each per-orientation /
+    # per-segment solve so its intermediates (including every matrix_exp block) are freed after
+    # forward and recomputed on backward, bounding peak memory at the cost of a second forward pass.
+    # On by default (the memory-safe choice for the wide coupled-union solves this was added for);
+    # disabling it trades that memory headroom for one fewer full recompute per step. Gradients are
+    # identical either way -- checkpointing changes only what is retained, never any value.
+    checkpoint_activations: bool = True
 
     def _max_batch_for(self, n_beams: int) -> int:
         """The matrix_exp block cap for a solve over ``n_beams`` beams (explicit pin, else safe)."""
         if self.max_batch is not None:
             return self.max_batch
-        return memory_safe_max_batch(n_beams, self.precision)
+        return memory_safe_max_batch(n_beams)
 
     def simulate(self, params: RefinableParams) -> tuple[BlochSolution, ...]:
         """Return the calculated :class:`BlochSolution` for every orientation (no loss)."""
@@ -136,6 +189,11 @@ class RefinementEngine:
         orientations (e.g. when scoring many trial orientations of one structure).
         """
         return self._structure_factors(params)
+
+    def structure_factor_values(self, params: RefinableParams, indices: Tensor) -> Tensor:
+        """Calculate ``Fgb`` only for selected rows of the shared support grid."""
+        state = self.physical_state(params)
+        return self._structure_factor_values_from_state(state, indices)
 
     def score_orientation(self, orientation: OrientationPlanLike, fgb: Tensor) -> Tensor:
         """Scaling-optimised weighted-R2 (wR2) for one orientation against its observed pattern.
@@ -328,6 +386,7 @@ class RefinementEngine:
         total = params.asu_positions.new_zeros(())
         wr2_values: list[float] = []
         r_obs_values: list[float] = []
+        per_rotation: list[dict[str, float]] = []
         for rotation_index, orientation in enumerate(self.orientations):
             context = (
                 ForwardContext()
@@ -337,7 +396,8 @@ class RefinementEngine:
             thickness = context.thickness
             if thickness is None:
                 thickness = self._thickness_for(orientation, params)
-            solution = self._solve(orientation, fgb, thickness)
+            with _Timer(f"solve[rotation={rotation_index}]", fgb.device, self.profile):
+                solution = self._solve(orientation, fgb, thickness)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
                 wr2_scores = torch.stack(
@@ -351,8 +411,9 @@ class RefinementEngine:
                     ]
                 )
                 finite_wr2 = wr2_scores[torch.isfinite(wr2_scores)]
+                rotation_wr2 = float(finite_wr2.min()) if finite_wr2.numel() else float("nan")
                 if finite_wr2.numel():
-                    wr2_values.append(float(finite_wr2.min()))
+                    wr2_values.append(rotation_wr2)
                 scores = torch.stack(
                     [
                         optimal_scale(
@@ -365,12 +426,21 @@ class RefinementEngine:
                     ]
                 )
                 finite = scores[torch.isfinite(scores)]
+                rotation_r_obs = float(finite.min()) if finite.numel() else float("nan")
                 if finite.numel():
-                    r_obs_values.append(float(finite.min()))
+                    r_obs_values.append(rotation_r_obs)
             term = self.loss(aligned)
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
             total = total + term
+            per_rotation.append(
+                {
+                    "rotation_index": float(rotation_index),
+                    "wr2": rotation_wr2,
+                    "r_obs": rotation_r_obs,
+                    "diff_loss": float(term.detach()),
+                }
+            )
         components = {"diffraction": ObjectiveComponent(raw=total)}
         for penalty in penalties:
             if penalty.name in components:
@@ -384,6 +454,7 @@ class RefinementEngine:
                 "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
                 "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan")),
             },
+            per_rotation=per_rotation,
         )
 
     def _thickness_for(self, orientation: OrientationPlanLike, params: RefinableParams) -> Tensor:
@@ -410,6 +481,17 @@ class RefinementEngine:
         return self._structure_factors_from_state(state)
 
     def _structure_factors_from_state(self, state: PhysicalState) -> Tensor:
+        with _Timer("structure_factors", state.positions.device, self.profile):
+            active = self.active_structure_factor_indices
+            if active is None:
+                return self._structure_factor_values_from_state(state, None)
+            values = self._structure_factor_values_from_state(state, active)
+            full = values.new_zeros(self.grid.structure_factor_hkl.shape[0])
+            return full.index_copy(0, active.to(device=values.device), values)
+
+    def _structure_factor_values_from_state(
+        self, state: PhysicalState, indices: Tensor | None
+    ) -> Tensor:
         device = state.positions.device  # the active (params) device; co-locate invariants here
         expanded = expand_asu(
             self.asu_plan,
@@ -420,12 +502,16 @@ class RefinementEngine:
         )
         assert expanded.numbers is not None and expanded.uij is not None
         assert expanded.occupancies is not None
+        hkl = self.grid.structure_factor_hkl.to(device)
+        if indices is not None:
+            indices = indices.to(device=device)
+            hkl = hkl.index_select(0, indices)
         return structure_factors(
             expanded.positions,
             expanded.numbers,
             expanded.occupancies,
             expanded.uij,
-            hkl=self.grid.structure_factor_hkl.to(device),
+            hkl=hkl,
             reciprocal_basis=self.grid.reciprocal_basis.to(device),
             cell_volume=self.grid.cell_volume,
             g_max=self.grid.g_max,
@@ -439,8 +525,7 @@ class RefinementEngine:
         if isinstance(orientation, CoupledOrientationPlan):
             return self._solve_segmented(orientation, fgb, thicknesses)
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
-        real_dtype, _ = precision_dtypes(self.precision)
-        thicknesses = thicknesses.to(device=device, dtype=real_dtype)
+        thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         beam_hkl = orientation.beam_hkl.to(device)
         # Untilted (length 1): the static single solve.
         if len(orientation.beam_plans) == 1:
@@ -448,7 +533,6 @@ class RefinementEngine:
                 build_bloch_system(orientation.beam_plans[0], fgb, self.absorption),
                 thicknesses,
                 method=self.method,
-                precision=self.precision,
                 max_batch=self._max_batch_for(beam_hkl.shape[0]),
             )
             return BlochSolution.from_propagation(amplitudes, beam_hkl, thicknesses)
@@ -457,12 +541,21 @@ class RefinementEngine:
         # path). The engine then reduces |psi|^2 over the tilt axis (incoherent rotation-frame
         # integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.
         batch = stack_beam_plans(orientation.beam_plans)
-        amplitudes = propagate(
-            build_bloch_systems(batch, fgb, self.absorption),
-            thicknesses,
-            method=self.method,
-            precision=self.precision,
-            max_batch=self._max_batch_for(beam_hkl.shape[0]),
+
+        def solve_batch(fgb_: Tensor, thicknesses_: Tensor) -> Tensor:
+            return propagate(
+                build_bloch_systems(batch, fgb_, self.absorption),
+                thicknesses_,
+                method=self.method,
+                max_batch=self._max_batch_for(beam_hkl.shape[0]),
+            )
+
+        amplitudes = (
+            checkpoint(solve_batch, fgb, thicknesses, use_reentrant=False)
+            if self.checkpoint_activations
+            and torch.is_grad_enabled()
+            and (fgb.requires_grad or thicknesses.requires_grad)
+            else solve_batch(fgb, thicknesses)
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
             amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
@@ -482,20 +575,35 @@ class RefinementEngine:
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
         """
         device = fgb.device
-        real_dtype, _ = precision_dtypes(self.precision)
-        thicknesses = thicknesses.to(device=device, dtype=real_dtype)
+        thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         n_tilts = int(plan.tilts.shape[0])
         n_union = int(plan.beam_hkl.shape[0])
         n_thick = int(thicknesses.shape[0])
         curve = fgb.new_zeros((n_tilts, n_thick, n_union), dtype=thicknesses.dtype)
         for segment in plan.segments:
             batch = stack_beam_plans(segment.plan.beam_plans)
-            amplitudes = propagate(
-                build_bloch_systems(batch, fgb, self.absorption),
-                thicknesses,
-                method=self.method,
-                precision=self.precision,
-                max_batch=self._max_batch_for(segment.union_beam_index.shape[0]),
+            n_segment_beams = int(segment.union_beam_index.shape[0])
+
+            def solve_segment(
+                fgb_: Tensor,
+                thicknesses_: Tensor,
+                *,
+                batch_: BeamPlanBatch = batch,
+                n_segment_beams_: int = n_segment_beams,
+            ) -> Tensor:
+                return propagate(
+                    build_bloch_systems(batch_, fgb_, self.absorption),
+                    thicknesses_,
+                    method=self.method,
+                    max_batch=self._max_batch_for(n_segment_beams_),
+                )
+
+            amplitudes = (
+                checkpoint(solve_segment, fgb, thicknesses, use_reentrant=False)
+                if self.checkpoint_activations
+                and torch.is_grad_enabled()
+                and (fgb.requires_grad or thicknesses.requires_grad)
+                else solve_segment(fgb, thicknesses)
             )  # (C, T, n_seg)
             cover = segment.cover.to(device)
             union_beam_index = segment.union_beam_index.to(device)
@@ -504,11 +612,10 @@ class RefinementEngine:
             curve[cover] = block
         total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
         # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
-        # store the magnitude sqrt(total) in the solve's complex format (complex128 under fp64,
-        # complex64 under fp32, matching the static/batched paths).
-        _, complex_dtype = precision_dtypes(self.precision)
+        # store the magnitude sqrt(total) in the solve's complex64 format (matching the
+        # static/batched paths).
         return BlochSolution(
-            total.sqrt().to(complex_dtype), total, plan.beam_hkl.to(device), thicknesses
+            total.sqrt().to(torch.complex64), total, plan.beam_hkl.to(device), thicknesses
         )
 
 
@@ -747,8 +854,28 @@ def run_refinement_model(
     optimizer: OptimizerName = "lbfgs",
     lr: float = 1e-3,
     logger: Logger = NULL_LOGGER,
+    verbose: bool = False,
+    profile: bool = False,
 ) -> ModelRefinementResult:
-    """Optimize a refinement model against the supplied engine/static context and problem terms."""
+    """Optimize a refinement model against the supplied engine/static context and problem terms.
+
+    ``verbose`` ("verbose refinement") additionally reports one
+    :class:`~diffBloch.observability.RefinementOrientationStep` per rotation per step (wr2/r_obs/
+    diff_loss), for diagnosing which orientations drive the epoch mean reported by the ordinary
+    :class:`~diffBloch.observability.RefinementStep`. Off by default: the per-rotation stream is
+    ``n_orientations``x louder and is a diagnosis tool, not the default reporting shape. It is
+    execution-only, like ``logger`` itself -- it changes what gets reported, never the objective or
+    the optimizer trajectory, so it is a function argument / CLI flag, not an ``experiment.yaml``
+    field (a config field would enter the preprocess/refinement identity for no scientific reason).
+
+    ``profile`` logs per-phase wall time (structure factors, each rotation's solve, backward,
+    optimizer step) via stdlib diagnostics logging (``logging.getLogger(__name__)``, level INFO,
+    the ``"profile: "``-prefixed lines) -- see ``diffBloch.engine.forward._Timer``. Execution-only
+    and off by default: it forces a CUDA sync around every measured block, which is itself real
+    overhead, so it is a diagnosis tool for one run, not something to leave on. ``engine.profile``
+    must also be set (:func:`~diffBloch.preprocess.scoring.build_engine` threads it through) for the
+    structure-factor/solve breakdown; this flag alone only times backward/optimizer-step.
+    """
     if steps < 1:
         raise ValueError("steps must be >= 1")
     trainable_params = _to_trainable_params(
@@ -762,6 +889,7 @@ def run_refinement_model(
         lr,
     )
     reported_objective: ObjectiveValue | None = None
+    profile_device = model.structure.initial.asu_positions.device
 
     def current_model() -> RefinementModel:
         return dataclasses.replace(
@@ -773,13 +901,15 @@ def run_refinement_model(
     def closure() -> float:
         nonlocal reported_objective
         opt.zero_grad()
-        current_objective = engine.objective_value_model(
-            current_model(), penalties=problem.penalties
-        )
+        with _Timer("forward (total)", profile_device, profile):
+            current_objective = engine.objective_value_model(
+                current_model(), penalties=problem.penalties
+            )
         if reported_objective is None:
             reported_objective = current_objective
         loss = current_objective.total
-        loss.backward()  # type: ignore[no-untyped-call]
+        with _Timer("backward", profile_device, profile):
+            loss.backward()  # type: ignore[no-untyped-call]
         for leaf in [*trainable_params.leaves, *component_params.leaves]:
             if leaf.grad is not None and not leaf.grad.is_contiguous():
                 leaf.grad = leaf.grad.contiguous()
@@ -793,7 +923,8 @@ def run_refinement_model(
     for step in range(steps):
         snapshot = _detach_model(current_model())
         reported_objective = None
-        loss_value = opt.step(closure)
+        with _Timer(f"epoch {step} (total)", profile_device, profile):
+            loss_value = opt.step(closure)
         assert loss_value is not None
         loss_value = float(loss_value)
         if reported_objective is None:
@@ -811,6 +942,17 @@ def run_refinement_model(
         )
         history.append(event)
         logger.report(event)
+        if verbose:
+            for entry in reported_objective.per_rotation:
+                logger.report(
+                    RefinementOrientationStep(
+                        iteration=step,
+                        rotation_index=int(entry["rotation_index"]),
+                        wr2=entry["wr2"],
+                        r_obs=entry["r_obs"],
+                        diff_loss=entry["diff_loss"],
+                    )
+                )
         if loss_value < best_loss:
             best_loss, best_step, best_model = loss_value, step, snapshot
     logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))

@@ -67,8 +67,8 @@ These make the numerical core trustworthy. Treat a change that violates one as a
 
 - **Differentiability.** The forward path is autograd-differentiable end to end. A change that produces the correct value but breaks or NaNs the gradient — an in-place op on a leaf, a stray `.item()`/`detach`, non-differentiable indexing — is a defect. Preserve gradient flow to the source leaves and keep gradients finite.
 - **Determinism.** Same inputs produce the same outputs; the simulation carries no hidden state.
-- **Precision is a boundary, not a sprinkle.** `fp64`/complex128 is the schema default; `fp32` is a solve-only downcast that examples may opt into. Precision is selected at a boundary, never threaded ad hoc through individual kernels.
-- **Device/dtype preserving.** Kernels preserve the incoming device and dtype. `params.asu_positions.device` is the authoritative forward device, and invariants co-locate onto it at the use site. Only a boundary selects a device/precision policy.
+- **Precision is a boundary, not a sprinkle.** The Bloch solve always runs at fp32/complex64 (`core.solver.propagate`), never threaded ad hoc through individual kernels.
+- **Device/dtype preserving.** Kernels preserve the incoming device and dtype. `params.asu_positions.device` is the authoritative forward device, and invariants co-locate onto it at the use site. Only a boundary selects a device policy.
 - **Strategy-as-value.** `SolverMethod` is a literal; `matrix_exp` and `bloch_eigen` are swappable over one `BlochSystem`. Do not duplicate geometry logic per solver.
 - **Cache geometry, not gradients.** Geometry-only caches such as `StructureFactorGather` integer lookup geometry and `BeamPlan` constants are allowed; never cache differentiable values that can go stale. `Fgb` stays live.
 
@@ -270,7 +270,7 @@ This guide stands alone; do not cite files outside the repository as implementat
 - `docs/architecture.md` — user-facing architecture.
 - `docs/inputs.md` — experiment directory, CIF/PETS inputs, typed records.
 - `docs/preprocessing.md` — `Plan`, beam sets, rocking curve, composition.
-- `docs/refinement.md` — infer/refine, precision, constraints, penalties, components.
+- `docs/refinement.md` — infer/refine, constraints, penalties, components.
 - `docs/reproducibility.md` — lock/checkpoint guarantees and limits.
 - `docs/observability-guide.md` — event/logger behaviour.
 - `docs/examples.md` — runnable experiments and paper-style composition examples.

@@ -1,7 +1,7 @@
 """The default recipe's large-cell fork (``_recipe_steps``): routing + checkpoint transparency.
 
-The fit tail forks on unit-cell volume -- a large cell takes a coarse fp32 search with the gather
-integrity checks skipped; a small cell takes the exact fp64 path. Two properties matter and are
+The orientation fit forks on unit-cell volume -- a large cell skips the per-trial gather
+integrity checks; a small cell takes the exact, fully-validated path. Two properties matter and are
 pinned here: (1) the fork routes at ``_LARGE_CELL_THRESHOLD_A3``, and (2) it is *transparent to the
 recipe identity* -- both branches record the same step names/params, so resolving it (as
 ``_prepare`` does) never changes the lock. Property (2) keeps the committed quartz checkpoint valid.
@@ -69,11 +69,11 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
 def test_fork_is_transparent_to_recipe_identity() -> None:
     """For one config, the small-cell and large-cell branches resolve to the *same* records.
 
-    Resolving the *same* recipe against a below-threshold vs above-threshold grid takes the fp64 vs
-    fp32 branch, yet both record identical step names *and* params: fp32 / validate live only in the
-    branch closures (execution-only), never in the step identity. This is the property that keeps
-    the committed quartz checkpoint reusable after the fork lands (the fork is invisible to the
-    lock).
+    Resolving the *same* recipe against a below-threshold vs above-threshold grid takes the
+    validated vs fast-path branch, yet both record identical step names *and* params: ``validate``
+    lives only in the branch closures (execution-only), never in the step identity. This is the
+    property that keeps the committed quartz checkpoint reusable after the fork lands (the fork is
+    invisible to the lock).
     """
     steps = _steps("quartz_anchor")
     small = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
@@ -84,7 +84,7 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
         "optimize_thickness",
     ]
     assert [r.name for r in small] == names == [r.name for r in large]
-    # identical params too (fit_orientation records only {search, coupling}; no precision/validate)
+    # identical params too (fit_orientation records only {search, coupling}; no validate)
     assert [r.params for r in small] == [r.params for r in large]
 
 

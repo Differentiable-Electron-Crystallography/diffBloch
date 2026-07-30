@@ -116,7 +116,6 @@ engine = build_engine(
     setup.refinement,
     loss=cfg.refinement.objective.to_loss(),
     method=cfg.blochwave.solver.refine,
-    precision=cfg.refinement.precision,
 )
 model = build_refinement_model(initial=setup.refinement.params)
 problem = build_refinement_problem()

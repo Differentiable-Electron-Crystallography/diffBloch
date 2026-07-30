@@ -31,6 +31,7 @@ from diffBloch.observability import (
     Logger,
     OrientationFitted,
     PlanStepCompleted,
+    RefinementOrientationStep,
     RefinementStep,
     ThicknessFitted,
 )
@@ -115,6 +116,20 @@ class ConsoleLogger:
                 self.level,
                 "Refinement epoch %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
                 event.iteration + 1,
+                wr2,
+                r_obs,
+                diff_loss,
+            )
+            return
+        elif isinstance(event, RefinementOrientationStep):
+            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
+            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
+            _log.log(
+                self.level,
+                "  epoch %3d rotation %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
+                event.iteration + 1,
+                event.rotation_index,
                 wr2,
                 r_obs,
                 diff_loss,

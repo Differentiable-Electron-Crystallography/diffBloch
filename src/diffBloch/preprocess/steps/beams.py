@@ -19,14 +19,22 @@ the distance from the beam. The frame convention has the beam along ``-z`` and t
 
 from __future__ import annotations
 
+from _thread import LockType
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from threading import Lock
 from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
-from diffBloch.core.dynamical import excitation_errors
+from diffBloch.core.dynamical import (
+    StructureFactorGather,
+    build_structure_factor_gather,
+    excitation_errors,
+    grid_source_indices,
+)
 from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
@@ -41,6 +49,7 @@ from diffBloch.specs import (
     PerTiltCoupling,
     RockingCurve,
     UnionCoupling,
+    assert_grid_covers_coupling,
 )
 
 __all__ = ["build_orientation_plans", "klar_beam_mask", "reseed_pool", "select_beams"]
@@ -78,6 +87,7 @@ def build_orientation_plans(
     *,
     coupling: UnionCoupling | PerTiltCoupling | None = None,
     scoring_selection: BeamSelection | None = None,
+    workers: int = 1,
 ) -> PlanStep:
     """Build each candidate's final tilted Bloch geometry and intensity reduction.
 
@@ -98,12 +108,16 @@ def build_orientation_plans(
     alignment intersects the resulting simulator HKLs with the PETS observations.
     ``scoring_selection`` optionally applies the former Klar ``rsg``/``dsg``/semiangle filter to
     the candidate scoring pool before that intersection; it does not alter the coupled SOLVE beams.
+    ``workers`` fans independent rotation builds over threads while preserving input order. It is
+    execution-only and therefore intentionally absent from the step's provenance record.
     Omitting ``coupling`` preserves the simple builder used by focused APIs/tests.
     """
     if mosaicity is not None and rocking is None:
         raise ValueError("mosaicity requires rocking-curve geometry")
     if coupling is not None and rocking is None:
         raise ValueError("coupling requires rocking-curve geometry")
+    if workers < 1:
+        raise ValueError("workers must be >= 1")
     tilts = (
         None
         if rocking is None
@@ -143,17 +157,31 @@ def build_orientation_plans(
         else:
             assert tilts is not None
             grid = plan.structure_factor_grid
-            built = tuple(
-                _build_coupled_candidate(
+            assert_grid_covers_coupling(coupling, grid.g_max)
+            structure_factor_hkl = np.asarray(grid.structure_factor_hkl, dtype=np.int64)
+            source = grid_source_indices(structure_factor_hkl, grid.gpts)
+            gather_cache: dict[bytes, StructureFactorGather] = {}
+            gather_cache_lock = Lock()
+
+            def build_one(candidate: CandidatePlan) -> CoupledOrientationPlan:
+                return _build_coupled_candidate(
                     grid,
-                    cp,
+                    candidate,
                     tilts,
                     reduction,
                     coupling,
                     scoring_selection=scoring_selection,
+                    structure_factor_hkl=structure_factor_hkl,
+                    structure_factor_indices=source,
+                    gather_cache=gather_cache,
+                    gather_cache_lock=gather_cache_lock,
                 )
-                for cp in candidates
-            )
+
+            if workers == 1:
+                built = tuple(build_one(candidate) for candidate in candidates)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    built = tuple(pool.map(build_one, candidates))
         return replace(plan, orientations=built)
 
     return as_step(
@@ -180,6 +208,10 @@ def _build_coupled_candidate(
     coupling: UnionCoupling | PerTiltCoupling,
     *,
     scoring_selection: BeamSelection | None,
+    structure_factor_hkl: NDArray[np.int64],
+    structure_factor_indices: NDArray[np.int64],
+    gather_cache: dict[bytes, StructureFactorGather],
+    gather_cache_lock: LockType,
 ) -> CoupledOrientationPlan:
     """Build one simulator plan from geometric coupling only; alignment handles observations."""
     segments = build_coupling_segments(
@@ -199,6 +231,22 @@ def _build_coupled_candidate(
             dtype=np.int64,
         )
     )
+    gathers: list[StructureFactorGather] = []
+    for segment in segments:
+        key = np.ascontiguousarray(segment.union_hkl).tobytes()
+        with gather_cache_lock:
+            gather = gather_cache.get(key)
+        if gather is None:
+            candidate_gather = build_structure_factor_gather(
+                structure_factor_hkl,
+                segment.union_hkl,
+                grid.gpts,
+                validate=False,
+                structure_factor_indices=structure_factor_indices,
+            )
+            with gather_cache_lock:
+                gather = gather_cache.setdefault(key, candidate_gather)
+        gathers.append(gather)
     return CoupledOrientationPlan.build(
         grid,
         [(segment.union_hkl, segment.covered_tilt_indices) for segment in segments],
@@ -210,6 +258,7 @@ def _build_coupled_candidate(
         tilts=tilts,
         tilt_reduction=reduction,
         scored_hkl=scored_hkl,
+        gathers=gathers,
     )
 
 

@@ -20,19 +20,6 @@ The default config exposes whole-group selections for:
 
 The schema default keeps positions and ADPs trainable, and leaves occupancies frozen.
 
-## Precision
-
-`refinement.precision` controls the Bloch solve precision used by the app refinement path:
-
-```yaml
-refinement:
-  precision: fp32  # faster/lower-memory solve path
-```
-
-The schema default is `fp64` for the conservative complex128 path. The bundled examples opt into
-`fp32` for faster iteration. This knob downcasts the solve path; it does not make every trainable
-parameter or every structure-factor calculation float32.
-
 ## CLI examples
 
 ```bash
@@ -129,7 +116,7 @@ cfg = load_config(root / "experiment.yaml")
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=True)
 refinement = RefinementSetup.from_structure(structure)
 plan = read_plan(root / "plan.npz")
-engine = build_engine(plan, refinement, precision=cfg.refinement.precision)
+engine = build_engine(plan, refinement)
 
 # Start from the config's structural trainable groups, then freeze H optimizer leaves and add a
 # hard hydrogen-riding transform when hydrogens are present.

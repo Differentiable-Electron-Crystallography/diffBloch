@@ -153,8 +153,6 @@ def from_experiment(
     structure: StructureRecord,
     observations: ObservationRecord,
     config: ExperimentConfig,
-    *,
-    initial_orientations: NDArray[np.float64] | None = None,
 ) -> ExperimentSetup:
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
 
@@ -185,22 +183,13 @@ def from_experiment(
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
     energy = wavelength2energy(observations.wavelength)
     beam_hkl = seed_beam_hkl(grid, g_max_refine=config.blochwave.g_max_refine)
-    if initial_orientations is None:
-        orientations = orientation_matrices(
-            observations.ub_matrix,
-            observations.cell_parameters,
-            observations.alphas,
-            observations.betas,
-            observations.omegas,
-        )
-    else:
-        orientations = np.asarray(initial_orientations, dtype=np.float64)
-        expected_shape = (observations.n_rotations, 3, 3)
-        if orientations.shape != expected_shape or not np.all(np.isfinite(orientations)):
-            raise ValueError(
-                f"initial_orientations must be finite shape {expected_shape}, "
-                f"got {orientations.shape}"
-            )
+    orientations = orientation_matrices(
+        observations.ub_matrix,
+        observations.cell_parameters,
+        observations.alphas,
+        observations.betas,
+        observations.omegas,
+    )
     all_plans = tuple(
         CandidatePlan.seed(
             beam_hkl,

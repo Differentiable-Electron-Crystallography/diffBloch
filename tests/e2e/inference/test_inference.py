@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import math
 import os
@@ -50,7 +49,7 @@ class Case:
     """One material's self-contained e2e execution settings."""
 
     fixture: Path
-    orientation_csv: Path
+    orientation_file: Path
     thickness: float
     seed: int
     compare_n_rotations: int
@@ -68,7 +67,7 @@ def _load_case(material: str) -> Case:
     raw = yaml.safe_load((_material_dir(material) / "case.yaml").read_text())
     return Case(
         fixture=PROJECT_ROOT / raw["fixture"],
-        orientation_csv=PROJECT_ROOT / raw["orientation_csv"],
+        orientation_file=PROJECT_ROOT / raw["orientation_file"],
         thickness=float(raw["thickness"]),
         seed=int(raw["seed"]),
         compare_n_rotations=int(raw["compare_n_rotations"]),
@@ -80,14 +79,8 @@ def _load_case(material: str) -> Case:
 
 
 def _orientations(path: Path) -> dict[int, np.ndarray[Any, np.dtype[np.float64]]]:
-    with path.open(newline="") as stream:
-        rows = csv.DictReader(stream)
-        return {
-            int(row["Rotation Index"]): np.asarray(
-                json.loads(row["Orientation Matrix"]), dtype=np.float64
-            )
-            for row in rows
-        }
+    data = json.loads(path.read_text())
+    return {int(index): np.asarray(matrix, dtype=np.float64) for index, matrix in data.items()}
 
 
 def _run_material(material: str, *, count: int) -> dict[str, Any]:
@@ -108,7 +101,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
     if not 1 <= count <= len(case.rotation_indices):
         raise ValueError(f"rotation count must be in 1..{len(case.rotation_indices)}, got {count}")
     indices = case.rotation_indices[:count]
-    optimized = _orientations(case.orientation_csv)
+    optimized = _orientations(case.orientation_file)
     sampled = replace(
         setup.plans.combined,
         orientations=tuple(

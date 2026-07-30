@@ -27,9 +27,9 @@ beams at every trial while pinning the SCORED set to the seed alignment. Pinning
 valid greedy comparison: otherwise a trial can lower wR2 merely by deleting reflections and reach
 the degenerate one-reflection ``wr2=0`` minimum. The seed is rebuilt through the same builder, and
 the last accepted trial is already the coupled-at-fitted-orientation plan -- no separate
-``couple_beams`` step is needed. It is affordable because the atomic ``F_gb`` is
-computed once and every segment's structure-factor matrix is a cheap gather-index into it, not a
-re-derivation.
+``couple_beams`` step is needed. Atomic ``F_gb`` values are cached lazily by support-grid row:
+each trial computes only previously unseen beam differences, while every segment's structure
+matrix remains a cheap gather-index into that cache.
 
 With ``coupling=None`` (the default) each trial is ``current.with_orientation(...)``, defined on
 both the tilt-independent :class:`OrientationPlan` and the
@@ -39,10 +39,12 @@ its frozen union.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
@@ -51,7 +53,7 @@ from diffBloch.core.dynamical import (
     build_structure_factor_gather,
     grid_source_indices,
 )
-from diffBloch.core.solver import FloatFormat, SolverMethod
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import (
@@ -66,7 +68,7 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import hexagonal_tilt
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
-from diffBloch.preprocess.scoring import build_engine
+from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
 from diffBloch.specs import (
     NO_ABSORPTION,
     Absorption,
@@ -83,7 +85,6 @@ def fit_orientation(
     search: HexagonalSearch,
     *,
     method: SolverMethod = "matrix_exp",
-    precision: FloatFormat = "fp64",
     coupling: TrialCoupling | None = None,
     validate: bool = True,
     workers: int = 1,
@@ -108,11 +109,6 @@ def fit_orientation(
     at every trial orientation (see the module docstring for the non-stationary-objective nuance).
     ``None`` keeps the tilt-independent fit (one fixed beam set across the search).
 
-    ``precision`` (default ``"fp64"``) configures the scoring engine's numeric field. ``"fp32"``
-    (complex64) roughly halves the per-trial O(N^3) eigensolve for large cells at the cost of a
-    coarser, basin-sensitive search -- acceptable here because the fit is re-scored by the
-    fp64 terminal; it must never be used for a terminal ``run_inference`` / ``refine``.
-
     ``validate`` (default ``True``) forwards to the per-trial coupled gather rebuild
     (:func:`~diffBloch.core.dynamical.build_structure_factor_gather`). ``False`` skips its O(N^2)
     integrity checks -- the dominant per-trial cost over a large coupled union -- for the large-cell
@@ -125,8 +121,7 @@ def fit_orientation(
     ``device`` (default ``None`` = CPU) places the search's forward solve on the given accelerator:
     the seed params are moved there and ``engine.fgb`` is computed on-device, so every per-trial
     ``score_orientation`` co-locates onto the param-derived ``fgb.device`` at the use site (the CPU
-    trial rebuilds are cheap numpy; only their tensors reach the device). This is the fp32 search's
-    device wiring (pair it with ``precision="fp32"`` for the large-cell fork). Kept out of the
+    trial rebuilds are cheap numpy; only their tensors reach the device). Kept out of the
     recipe identity like ``workers``/``logger`` -- but unlike those it is not bit-exact: the
     solve shifts ~1e-11 cross-device, and because the greedy search accepts on a threshold, that
     shift can flip a near-tie into a full-radius orientation difference (a well-conditioned fit
@@ -176,7 +171,6 @@ def fit_orientation(
             plan,
             refinement,
             method=method,
-            precision=precision,
             max_batch=max_batch,
             absorption=absorption,
         )
@@ -184,9 +178,29 @@ def fit_orientation(
         fgb = engine.fgb(params)
 
         def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, float, int, int]:
+            trial_fgb: Tensor | Callable[[OrientationPlanLike], Tensor] = fgb
+            if coupling is not None:
+                cached = fgb.clone()
+                known = torch.zeros(cached.shape[0], dtype=torch.bool, device=cached.device)
+                assert engine.active_structure_factor_indices is not None
+                known[engine.active_structure_factor_indices.to(device=known.device)] = True
+
+                def lazy_fgb(candidate: OrientationPlanLike) -> Tensor:
+                    indices = active_structure_factor_indices(
+                        (candidate,), plan.structure_factor_grid.gpts
+                    ).to(device=cached.device)
+                    missing = indices[~known.index_select(0, indices)]
+                    if missing.numel():
+                        with torch.no_grad():
+                            values = engine.structure_factor_values(params, missing)
+                            cached.index_copy_(0, missing, values)
+                            known[missing] = True
+                    return cached
+
+                trial_fgb = lazy_fgb
             return _refine_one(
                 engine,
-                fgb,
+                trial_fgb,
                 plan,
                 op,
                 search=search,
@@ -279,7 +293,7 @@ def fit_orientation(
 
 def _refine_one(
     engine: RefinementEngine,
-    fgb: Tensor,
+    fgb: Tensor | Callable[[OrientationPlanLike], Tensor],
     plan: Plan,
     op: OrientationPlanLike,
     *,
@@ -319,12 +333,14 @@ def _refine_one(
             gather_cache,
             validate=validate,
         )
-    current_score = float(engine.score_orientation(current, fgb))
+    current_fgb = fgb(current) if callable(fgb) else fgb
+    current_score = float(engine.score_orientation(current, current_fgb))
     search_angle = search.max_search_angle
     n_passes = 0
     for _ in range(search.max_iterations):
         if search_angle <= search.min_search_angle:
-            r_obs = float(engine.score_orientation_r_obs(current, fgb))
+            current_fgb = fgb(current) if callable(fgb) else fgb
+            r_obs = float(engine.score_orientation_r_obs(current, current_fgb))
             return current, current_score, r_obs, n_trials, n_passes
         n_passes += 1  # noqa: SIM113 -- not enumerate: the floor-check iteration above returns before this, so this counts executed sweeps only
         improved = False
@@ -340,7 +356,8 @@ def _refine_one(
                     grid, op, orientation, coupling, gather_cache, validate=validate
                 )
             n_trials += 1
-            trial_score = float(engine.score_orientation(trial, fgb))
+            trial_fgb = fgb(trial) if callable(fgb) else fgb
+            trial_score = float(engine.score_orientation(trial, trial_fgb))
             accepted = trial_score < current_score
             if accepted:  # greedy first-improvement; restart at this radius
                 current, current_score = trial, trial_score

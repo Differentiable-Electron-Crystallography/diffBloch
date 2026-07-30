@@ -399,6 +399,9 @@ def test_run_refine_delegates_and_reports(
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        verbose: bool = False,
+        profile: bool = False,
+        checkpoint_activations: bool = True,
     ) -> SimpleNamespace:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -434,20 +437,35 @@ def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        verbose: bool = False,
+        profile: bool = False,
+        checkpoint_activations: bool = True,
     ) -> SimpleNamespace:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
         seen["device"] = device
         seen["workers"] = workers
+        seen["verbose"] = verbose
+        seen["profile"] = profile
+        seen["checkpoint_activations"] = checkpoint_activations
         return _fake_refinement_result()
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
     rc = main(
         ["run", "refine", "x"]
         + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
+        + ["--verbose-refinement", "--profile", "--no-checkpoint-activations"]
     )
     assert rc == 0
-    assert seen == {"checkpoint": False, "refresh": True, "device": "cuda", "workers": 4}
+    assert seen == {
+        "checkpoint": False,
+        "refresh": True,
+        "device": "cuda",
+        "workers": 4,
+        "verbose": True,
+        "profile": True,
+        "checkpoint_activations": False,
+    }
 
 
 def test_run_refine_missing_experiment_reports_concise_error(

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 from diffBloch.config import load_config
 from diffBloch.core.products import MosaicSmoothed
@@ -158,3 +160,33 @@ def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment(
     simulated = {tuple(row) for row in built.beam_hkl.tolist()}
     assert scored == observed & simulated
     assert (0, 0, 0) in simulated
+
+
+def test_build_orientation_plans_workers_preserve_exact_coupled_geometry() -> None:
+    """Parallel rotation construction is an execution choice, not a scientific input."""
+    plan, config, integration = _quartz_train_plan()
+    plan = replace(plan, orientations=plan.orientations * 3)
+    rocking = config.blochwave.to_rocking_curve(integration)
+    mosaicity = config.blochwave.mosaicity
+    coupling = config.blochwave.to_policy()
+    sequential = build_orientation_plans(rocking, mosaicity, coupling=coupling, workers=1)(plan)
+    threaded = build_orientation_plans(rocking, mosaicity, coupling=coupling, workers=3)(plan)
+
+    for expected, actual in zip(sequential.orientations, threaded.orientations, strict=True):
+        assert torch.equal(expected.beam_hkl, actual.beam_hkl)
+        assert torch.equal(expected.alignment.hkl, actual.alignment.hkl)
+        for expected_segment, actual_segment in zip(
+            expected.segments, actual.segments, strict=True
+        ):
+            assert torch.equal(expected_segment.cover, actual_segment.cover)
+            assert torch.equal(expected_segment.union_beam_index, actual_segment.union_beam_index)
+            for expected_beam, actual_beam in zip(
+                expected_segment.plan.beam_plans,
+                actual_segment.plan.beam_plans,
+                strict=True,
+            ):
+                assert torch.equal(expected_beam.diagonal, actual_beam.diagonal)
+                assert torch.equal(
+                    expected_beam.gather.beam_difference_indices,
+                    actual_beam.gather.beam_difference_indices,
+                )
