@@ -127,7 +127,9 @@ class _Timer:
         if self.enabled:
             if self.device.type == "cuda":
                 torch.cuda.synchronize(self.device)
-            _log.info("profile: %-28s %8.1f ms", self.label, (time.perf_counter() - self._start) * 1e3)
+            _log.info(
+                "profile: %-28s %8.1f ms", self.label, (time.perf_counter() - self._start) * 1e3
+            )
 
 
 @dataclass(frozen=True)

@@ -247,7 +247,9 @@ def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> Non
 
 def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
     """``verbose`` ("verbose refinement") adds one per-rotation event per step, off by default."""
-    engine = _engine(loss=wr2_loss)  # wr2 loss so RefinementStep.wr2 is populated to compare against
+    engine = _engine(
+        loss=wr2_loss
+    )  # wr2 loss so RefinementStep.wr2 is populated to compare against
     model = build_refinement_model(initial=_params())
     logger = RecordingLogger()
 
