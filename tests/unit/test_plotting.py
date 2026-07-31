@@ -1,11 +1,19 @@
-"""``ThicknessPlotLogger`` (the ``diffBloch[plot]`` matplotlib backend)."""
+"""``ThicknessPlotLogger`` (the ``diffBloch[plot]`` matplotlib backend).
+
+Skipped whole-module when ``matplotlib`` isn't installed (the ``diffBloch[plot]`` extra is
+optional, exactly like the ``wandb``/``comet`` backends), rather than failing.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from diffBloch.app.loggers.plotting import ThicknessPlotLogger
-from diffBloch.observability import OrientationOptimized, ThicknessOptimized
+import pytest
+
+pytest.importorskip("matplotlib")
+
+from diffBloch.app.loggers.plotting import ThicknessPlotLogger  # noqa: E402
+from diffBloch.observability import OrientationOptimized, ThicknessOptimized  # noqa: E402
 
 _EVENT = ThicknessOptimized(
     rotation_index=3,
