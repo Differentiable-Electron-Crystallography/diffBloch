@@ -38,11 +38,13 @@ __all__ = [
     "MultiLogger",
     "NullLogger",
     "OrientationOptimized",
+    "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
     "RefinementOrientationStep",
+    "RefinementStarted",
     "RefinementStep",
     "RotationCoupling",
     "RotationScored",
@@ -181,6 +183,30 @@ class RotationScored:
             "n_observed": float(self.n_observed),
             "n_beams": float(self.n_beams),
         }
+
+
+@dataclass(frozen=True)
+class OrientationOptimizationStarted:
+    """The rotation count ``optimize_orientation`` is about to search, emitted once before any of it.
+
+    Exists so a progress display can show a countdown (``n_seen / total_rotations``) against
+    :class:`OrientationOptimized` without needing to know the plan size in advance -- the plan is
+    only assembled deep inside the step itself. Deliberately a distinct channel from
+    ``OrientationOptimized`` (not merely a different type) -- a consumer such as
+    :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
+    not mistake this for a per-rotation result.
+    """
+
+    channel: ClassVar[str] = "orientation_started"
+    total_rotations: int
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"total_rotations": float(self.total_rotations)}
 
 
 @dataclass(frozen=True)
@@ -378,6 +404,28 @@ class InferenceCompleted:
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
         }
+
+
+@dataclass(frozen=True)
+class RefinementStarted:
+    """The epoch budget ``run_refinement_model`` is about to run, emitted once before the loop.
+
+    Exists so a progress display can show a countdown (``iteration / total_steps``) against
+    :class:`RefinementStep` without needing the config's ``refinement.steps`` passed in separately.
+    Deliberately a distinct channel from ``RefinementStep`` (not merely a different type) -- a
+    consumer that filters by ``event.channel`` alone must not mistake this for a per-epoch result.
+    """
+
+    channel: ClassVar[str] = "refinement_started"
+    total_steps: int
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"total_steps": float(self.total_steps)}
 
 
 @dataclass(frozen=True)

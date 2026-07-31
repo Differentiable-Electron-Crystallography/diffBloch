@@ -22,6 +22,7 @@ from diffBloch.core.dynamical import (
     grid_source_indices,
     kappa,
     mii_factors,
+    snap_to_standard_energy,
     structure_matrix,
     structure_matrix_prefactor,
     wavelength2energy,
@@ -54,6 +55,17 @@ def test_wavelength2energy_inverts_energy2wavelength() -> None:
 def test_wavelength2energy_rejects_nonpositive() -> None:
     with pytest.raises(ValueError, match="wavelength must be positive"):
         wavelength2energy(0.0)
+
+
+def test_snap_to_standard_energy_snaps_pets_rounding_noise() -> None:
+    # PETS's 4-5 sig-fig wavelength inverts to an energy a few hundred eV off nominal.
+    assert snap_to_standard_energy(wavelength2energy(0.02510)) == pytest.approx(200e3)
+    assert snap_to_standard_energy(wavelength2energy(0.01970)) == pytest.approx(300e3)
+
+
+def test_snap_to_standard_energy_leaves_a_non_standard_voltage_unchanged() -> None:
+    # 120 kV is a real, common TEM voltage but not one of the three snap targets.
+    assert snap_to_standard_energy(120e3) == pytest.approx(120e3)
 
 
 def test_wavevector_magnitude_is_inverse_wavelength_without_correction() -> None:

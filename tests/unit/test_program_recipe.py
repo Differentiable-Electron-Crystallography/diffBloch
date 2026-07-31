@@ -160,7 +160,7 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
     )
     plot_dir = tmp_path / "thickness_optim"
 
-    refinement, plan = _preprocess(
+    refinement, _integration, plan = _preprocess(
         root,
         cfg,
         logger=NULL_LOGGER,

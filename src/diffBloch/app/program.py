@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import gemmi
@@ -46,9 +48,11 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
+from diffBloch.core.crystal import cell_volume
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
+    RefinementEngine,
     ThicknessBounds,
     build_refinement_model,
     build_refinement_problem,
@@ -119,9 +123,13 @@ def converge_experiment(
 ) -> ConvergenceState:
     """Run the standard numerical-convergence test for an experiment.
 
-    Starting from the experiment's configured simulation settings, sweep ``g_max``, ``sg_max``,
-    and rocking-curve tilt steps using the defaults owned by :class:`ConvergenceTest` and
-    :class:`ConvergenceTolerance`. Return the smallest settled values found by the sweep.
+    Starting ``g_max`` prefers the PETS file's own ``dstarmax`` (its processing-resolution cutoff,
+    :attr:`~diffBloch.io.record.ExperimentalRecord.dstar_max`) when present; a PETS version that
+    doesn't record it (or a file where the tag is otherwise absent) falls back to the experiment's
+    configured ``blochwave.g_max``, the previous manual-only behaviour. ``sg_max`` and rocking-curve
+    tilt steps still start from the configured simulation settings. The sweep then follows the
+    defaults owned by :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the
+    smallest settled values found.
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
@@ -146,6 +154,9 @@ def converge_experiment(
     )
     rocking = cfg.blochwave.to_rocking_curve(setup.integration)
     simulation = cfg.blochwave.to_policy()
+    starting_g_max = (
+        experimental_data.dstar_max if experimental_data.dstar_max is not None else simulation.g_max
+    )
     plan = pipeline(
         [
             select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
@@ -156,7 +167,7 @@ def converge_experiment(
     _plan, settled = run_convergence(
         plan,
         ConvergenceState(
-            g_max=simulation.g_max,
+            g_max=starting_g_max,
             sg_max=simulation.sg_max,
             tilt_steps=rocking.sampling,
         ),
@@ -246,7 +257,7 @@ def preprocess_experiment(
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    _refinement, prepared = _preprocess(
+    _refinement, _integration, prepared = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -288,7 +299,7 @@ def run_experiment(
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    refinement, prepared = _preprocess(
+    refinement, _integration, prepared = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -366,9 +377,10 @@ def refine_experiment(
     solve intermediates until backward. Execution-only -- gradients are unaffected. See
     :class:`~diffBloch.engine.RefinementEngine`.
     """
+    started = time.perf_counter()
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    refinement, prepared = _preprocess(
+    refinement, integration, prepared = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -393,8 +405,11 @@ def refine_experiment(
     )
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
+    thickness_nn: ApparentThicknessNN | None = None
+    raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
         experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+        raw_alphas = experimental_data.alphas
         thickness_nn = ApparentThicknessNN(
             bounds=ThicknessBounds(
                 thickness_spec.min_thickness,
@@ -431,7 +446,19 @@ def refine_experiment(
         verbose=verbose,
         profile=profile,
     )
+    elapsed_seconds = time.perf_counter() - started
     result = _write_refinement_outputs(root, cfg, refinement, result)
+    report_path = _write_refinement_report(
+        root,
+        cfg,
+        integration,
+        engine,
+        result,
+        elapsed_seconds=elapsed_seconds,
+        thickness_nn=thickness_nn,
+        raw_alphas=raw_alphas,
+    )
+    result = replace(result, artifacts={**result.artifacts, "refinement_report": str(report_path)})
     return result
 
 
@@ -563,8 +590,8 @@ def _write_refinement_outputs(
                 plan_lock_sha256=sha256_file(plan_lock_path),
                 refinement_config_digest=refinement_config_digest(cfg),
                 code_version=code_version(),
-                refined_structure=artifact_hash_for(structure_path, root=root),
-                refined_parameters=artifact_hash_for(params_path, root=root),
+                refined_structure=artifact_hash_for(structure_path, root=root.resolve()),
+                refined_parameters=artifact_hash_for(params_path, root=root.resolve()),
             ),
         )
         artifacts["refinement_lock"] = str(lock_path)
@@ -584,6 +611,196 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
+def _ascii_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Column-aligned plain-text table: a header row, a rule, then the data rows."""
+    widths = [
+        max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))
+    ]
+
+    def fmt(cells: list[str]) -> str:
+        return "  ".join(cell.ljust(width) for cell, width in zip(cells, widths, strict=True))
+
+    lines = [fmt(headers), "  ".join("-" * width for width in widths)]
+    lines.extend(fmt(row) for row in rows)
+    return "\n".join(lines)
+
+
+def _format_cif_loop_as_table(block: gemmi.cif.Block, first_tag: str) -> str | None:
+    """Render a CIF loop (identified by its first column tag) as a plain aligned ASCII table.
+
+    ``None`` if the loop is absent (e.g. no ``_atom_site_aniso_*`` loop when every ADP is Uiso).
+    """
+    column = block.find_loop(first_tag)
+    if not column:
+        return None
+    loop = column.get_loop()
+    tags = list(loop.tags)
+    width = loop.width()
+    rows = [
+        [loop.values[row * width + col] for col in range(width)] for row in range(loop.length())
+    ]
+    return _ascii_table(tags, rows)
+
+
+def _write_refinement_report(
+    root: Path,
+    cfg: ExperimentConfig,
+    integration: IntegrationGeometry,
+    engine: RefinementEngine,
+    result: ModelRefinementResult,
+    *,
+    elapsed_seconds: float,
+    thickness_nn: ApparentThicknessNN | None = None,
+    raw_alphas: np.ndarray | None = None,
+) -> Path:
+    """Write ``refinement_report.txt``: paper-table-ready stats, no prose, tables/loops only.
+
+    Reads the just-written ``refined_structure.cif`` back (rather than recomputing its atom-site
+    values a second time) so the reported unit cell / space group / atom-site tables are guaranteed
+    byte-for-byte consistent with the committed CIF -- this function runs after
+    :func:`_write_refinement_outputs`.
+    """
+    blochwave = cfg.blochwave
+    best = result.history[result.best_step] if result.history else None
+    structure_path = root / "refined_structure.cif"
+    document = gemmi.cif.read_file(str(structure_path))
+    block = document.sole_block()
+    structure = read_structure(structure_path)
+    volume = cell_volume(structure.unit_cell)
+
+    lines: list[str] = []
+
+    def banner(title: str) -> None:
+        lines.append("=" * 78)
+        lines.append(f" {title}")
+        lines.append("=" * 78)
+
+    def rule(title: str) -> None:
+        lines.append("")
+        lines.append(f"--- {title} " + "-" * max(0, 74 - len(title)))
+
+    banner(f"diffBloch refinement report -- {root.name}")
+    lines.append(f" structure   : {cfg.inputs.structure}")
+    lines.append(f" exp_data    : {cfg.inputs.exp_data}")
+    lines.append(f" generated   : {datetime.now(UTC).isoformat(timespec='seconds')}")
+    lines.append(f" elapsed     : {elapsed_seconds:.1f} s ({elapsed_seconds / 60.0:.2f} min)")
+
+    rule("Simulation / refinement parameters")
+    r_obs_pct = f"{100.0 * best.r_obs:.2f}" if best and best.r_obs is not None else "n/a"
+    wr2_pct = f"{100.0 * best.wr2:.2f}" if best and best.wr2 is not None else "n/a"
+    counts = result.reflection_counts
+    hkls_matched = f"{counts['matched_i_gt_3sigma']} / {counts['matched']}"
+    param_rows = [
+        ["Integration semiangle (deg)", f"{integration.semiangle:g}"],
+        ["Rocking-curve sampling", f"{blochwave.rocking_curve_sampling:g}"],
+        ["D_sg", f"{blochwave.dsg:g}"],
+        ["R_sg", f"{blochwave.rsg:g}"],
+        ["g_max (solve cutoff, A^-1)", f"{blochwave.g_max:g}"],
+        ["structure-factor support (2 x g_max, A^-1)", f"{2.0 * blochwave.g_max:g}"],
+        ["sg_max (A^-1)", f"{blochwave.sg_max:g}"],
+        ["Absorption (T/F)", "T" if blochwave.absorption else "F"],
+        ["Seed thickness (A)", ", ".join(f"{t:g}" for t in cfg.sample.thicknesses)],
+        ["Epochs (configured)", f"{cfg.refinement.steps:g}"],
+        ["Best epoch", f"{result.best_step + 1:g}"],
+        ["Optimizer", cfg.refinement.optimizer.name],
+        ["Learning rate", f"{cfg.refinement.optimizer.lr:g}"],
+        ["R_obs (%)", r_obs_pct],
+        ["wR2 (%)", wr2_pct],
+        ["HKLs (Observed/total)", hkls_matched],
+    ]
+    lines.append(_ascii_table(["Parameter", "Value"], param_rows))
+
+    rule("Crystallographic parameters")
+    a, b, c, alpha, beta, gamma = (float(v) for v in structure.cell_parameters)
+    cell_rows = [
+        ["Space group", f"{structure.spacegroup_hm} (#{structure.spacegroup_number})"],
+        ["a, b, c (A)", f"{a:.4f}, {b:.4f}, {c:.4f}"],
+        ["alpha, beta, gamma (deg)", f"{alpha:.2f}, {beta:.2f}, {gamma:.2f}"],
+        ["Volume (A^3)", f"{volume:.1f}"],
+        ["N atoms (ASU)", f"{len(structure.labels)}"],
+    ]
+    lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
+
+    rule("Per-rotation wR2 / R_obs (final refined model)")
+    per_rotation = engine.per_rotation_metrics(result.best_model)
+    lines.append(
+        _ascii_table(
+            ["Rotation", "wR2", "R_obs", "N matched"],
+            [
+                [
+                    str(row.rotation_index),
+                    f"{row.wr2:.6f}",
+                    f"{row.r_obs:.6f}",
+                    str(row.n_matched),
+                ]
+                for row in per_rotation
+            ],
+        )
+    )
+    finite_wr2 = [row.wr2 for row in per_rotation if row.wr2 == row.wr2]  # drop NaN
+    finite_r_obs = [row.r_obs for row in per_rotation if row.r_obs == row.r_obs]
+    lines.append("")
+    lines.append(
+        f" mean wR2   = {sum(finite_wr2) / len(finite_wr2):.6f}"
+        if finite_wr2
+        else " mean wR2   = n/a"
+    )
+    lines.append(
+        f" mean R_obs = {sum(finite_r_obs) / len(finite_r_obs):.6f}"
+        if finite_r_obs
+        else " mean R_obs = n/a"
+    )
+
+    rule("Thickness NN")
+    if thickness_nn is not None and raw_alphas is not None:
+        component_params = result.best_model.component_params[thickness_nn.key]
+        shape_rows: list[list[str]] = []
+        plot_rows: list[tuple[float, float]] = []
+        for orientation in engine.orientations:
+            index = orientation.pattern.rotation_index
+            context = thickness_nn.forward_context(
+                component_params, rotation_index=index, orientation=orientation
+            )
+            assert context.thickness is not None
+            thickness = float(context.thickness.reshape(-1)[0])
+            angle = float(raw_alphas[index])
+            shape_rows.append([str(index), f"{angle:.4f}", f"{thickness:.2f}"])
+            plot_rows.append((angle, thickness))
+        lines.append(
+            f" enabled: yes ({thickness_nn.form}, bounds "
+            f"[{thickness_nn.bounds.min_angstrom:g}, {thickness_nn.bounds.max_angstrom:g}] A)"
+        )
+        lines.append("")
+        lines.append(_ascii_table(["Rotation", "alpha (degrees)", "Thickness (A)"], shape_rows))
+        plot_path = root / "thickness_nn_shape.png"
+        try:
+            from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
+
+            plot_thickness_nn_shape(plot_rows, plot_path)
+            lines.append("")
+            lines.append(f" plot: {plot_path.name}")
+        except ModuleNotFoundError:
+            lines.append("")
+            lines.append(
+                " plot: skipped (matplotlib not installed -- see the diffBloch[plot] extra)"
+            )
+    else:
+        lines.append(" enabled: no (preprocess-baked per-rotation thickness only)")
+
+    rule("Refined structure -- atom_site")
+    atom_table = _format_cif_loop_as_table(block, "_atom_site_label")
+    if atom_table is not None:
+        lines.append(atom_table)
+    aniso_table = _format_cif_loop_as_table(block, "_atom_site_aniso_label")
+    if aniso_table is not None:
+        lines.append("")
+        lines.append(aniso_table)
+
+    report_path = (root / "refinement_report.txt").resolve()
+    report_path.write_text("\n".join(lines) + "\n")
+    return report_path
+
+
 def _preprocess(
     root: Path,
     cfg: ExperimentConfig,
@@ -597,11 +814,12 @@ def _preprocess(
     orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[RefinementSetup, Plan]:
+) -> tuple[RefinementSetup, IntegrationGeometry, Plan]:
     """Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.
 
-    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs)
-    alongside the settled ``Plan``, so :func:`preprocess_experiment` can drop the setup and
+    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs) and the
+    ``IntegrationGeometry`` (the PETS-derived integration semiangle, for reporting) alongside the
+    settled ``Plan``, so :func:`preprocess_experiment` can drop the setup and
     :func:`run_experiment` can score with it -- neither loads the inputs twice. Hydrogen sites are
     loaded per ``inputs.load_hydrogens``.
 
@@ -653,7 +871,7 @@ def _preprocess(
         refresh=refresh,
         logger=logger,
     )
-    return setup.refinement, prepared
+    return setup.refinement, setup.integration, prepared
 
 
 def _recipe_steps(

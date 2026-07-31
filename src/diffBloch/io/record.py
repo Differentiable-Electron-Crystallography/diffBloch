@@ -196,6 +196,10 @@ class ExperimentalRecord(BaseModel):
     cell_parameters: FloatArray
     cell_parameters_su: FloatArray
     wavelength: float
+    # PETS2's own processing-resolution cutoff (Angstrom^-1), parsed from the free-text
+    # _diffrn_measurement_details block when present; None if that field is absent or the PETS
+    # version that wrote this file doesn't record it (a manual/config g_max is then the only option).
+    dstar_max: float | None = None
     ub_matrix: FloatArray
     zone_axis_ids: IntArray
     zone_axes: FloatArray

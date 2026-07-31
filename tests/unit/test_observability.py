@@ -15,7 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, EarlyAbortLogger, FitAbortedError
+from diffBloch.app.loggers import (
+    ConsoleLogger,
+    CSVLogger,
+    EarlyAbortLogger,
+    FitAbortedError,
+    _format_eta,
+)
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
@@ -25,12 +31,14 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
+    OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
     PlanStepCompleted,
     RecordingLogger,
     RefinementCompleted,
     RefinementOrientationStep,
+    RefinementStarted,
     RefinementStep,
     RotationCoupling,
     RotationScored,
@@ -99,6 +107,18 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "total_trials": 50.0,
         "max_passes": 8.0,
     }
+
+    refinement_started = RefinementStarted(total_steps=40)
+    assert refinement_started.channel == "refinement_started"
+    assert refinement_started.step is None
+    assert refinement_started.measurements == {"total_steps": 40.0}
+    assert refinement_started.channel != RefinementStep(iteration=0, loss=0.0).channel
+
+    orientation_started = OrientationOptimizationStarted(total_rotations=52)
+    assert orientation_started.channel == "orientation_started"
+    assert orientation_started.step is None
+    assert orientation_started.measurements == {"total_rotations": 52.0}
+    assert orientation_started.channel != _fitted(index=0, wr2=0.0).channel
 
     coupled = RotationCoupling(
         index=2,
@@ -272,6 +292,74 @@ def test_console_logger_labels_thickness_refinement_index(
     assert caplog.records[-1].getMessage() == (
         "thickness optimization[rotation_index=10] wr2=0.025 thickness=820"
     )
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0.0, "0:00"),
+        (45.0, "0:45"),
+        (75.0, "1:15"),
+        (3661.0, "1:01:01"),
+    ],
+)
+def test_format_eta(seconds: float, expected: str) -> None:
+    assert _format_eta(seconds) == expected
+
+
+def test_console_logger_renders_a_refinement_progress_bar_on_a_tty(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    logger = ConsoleLogger(level=logging.INFO)
+
+    logger.report(RefinementStarted(total_steps=4))
+    logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.05, r_obs=0.06))
+    logger.report(RefinementStep(iteration=3, loss=0.5, wr2=0.03, r_obs=0.04))
+
+    out = capsys.readouterr().out
+    assert "1/4" in out and "4/4" in out
+    assert "eta" in out  # mid-run (1/4): an ETA is extrapolated from the observed rate
+    assert out.count("\r") == 2  # one write per RefinementStep, no per-event logging fallback
+    assert out.endswith("\n")  # the completed (current >= total) bar ends the line
+    assert "eta" not in out.rsplit("\r", 1)[-1]  # the final (4/4, complete) line has none
+
+
+def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    logger = ConsoleLogger(level=logging.INFO)
+
+    logger.report(OrientationOptimizationStarted(total_rotations=2))
+    logger.report(_fitted(index=5, wr2=0.05))
+    logger.report(_fitted(index=9, wr2=0.02))
+
+    out = capsys.readouterr().out
+    assert "1/2" in out and "2/2" in out
+    assert out.endswith("\n")
+
+
+def test_console_logger_falls_back_to_plain_lines_off_a_tty(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The default (non-tty, e.g. piped/CI) path is untouched: no ``*Started`` event required."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(RefinementStarted(total_steps=4))
+        logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.05, r_obs=0.06))
+
+    assert caplog.records[-1].getMessage().startswith("Refinement epoch   1")
+
+
+def test_early_abort_logger_ignores_the_started_events(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression: OrientationOptimizationStarted shares no channel with OrientationOptimized, so
+    a channel-filtering consumer like EarlyAbortLogger must not try to read its (absent) wr2."""
+    logger = EarlyAbortLogger(wr2_ceiling=0.6, patience=5)
+    logger.report(OrientationOptimizationStarted(total_rotations=52))  # must not raise
+    logger.report(RefinementStarted(total_steps=40))  # must not raise
 
 
 def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:
