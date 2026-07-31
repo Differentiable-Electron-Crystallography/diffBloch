@@ -20,6 +20,8 @@ from __future__ import annotations
 import csv
 import logging
 import math
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,9 +32,11 @@ from diffBloch.observability import (
     ConvergenceTrial,
     Event,
     Logger,
+    OrientationOptimizationStarted,
     OrientationOptimized,
     PlanStepCompleted,
     RefinementOrientationStep,
+    RefinementStarted,
     RefinementStep,
     ThicknessOptimized,
 )
@@ -62,6 +66,37 @@ def namespaced_measurements(event: Event) -> dict[str, float]:
     return {f"{event.channel}/{name}": value for name, value in event.measurements.items()}
 
 
+_BAR_WIDTH = 30
+
+
+def _format_eta(seconds: float) -> str:
+    """``H:MM:SS``/``M:SS`` for a non-negative duration (tqdm-style, no fractional seconds)."""
+    total = max(0, int(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _render_progress_bar(current: int, total: int, elapsed: float, suffix: str) -> None:
+    """Write an in-place (``\\r``-updated) progress bar + ETA to stdout; newline once it completes.
+
+    ETA is extrapolated linearly from the observed rate so far (``elapsed / current``) -- a rough
+    estimate, not a scheduler guarantee, but the standard tqdm-style approach and good enough for a
+    console progress indicator.
+    """
+    fraction = min(1.0, current / total) if total > 0 else 0.0
+    filled = int(_BAR_WIDTH * fraction)
+    bar = "#" * filled + "-" * (_BAR_WIDTH - filled)
+    eta = ""
+    if current > 0 and current < total:
+        remaining = (elapsed / current) * (total - current)
+        eta = f" eta {_format_eta(remaining)}"
+    sys.stdout.write(f"\r[{bar}] {current}/{total} ({100.0 * fraction:.0f}%){eta} {suffix}")
+    sys.stdout.flush()
+    if current >= total:
+        sys.stdout.write("\n")
+
+
 @dataclass
 class ConsoleLogger:
     """Log each event to stdlib ``logging`` at ``level`` (console/file handlers attached by app).
@@ -69,11 +104,55 @@ class ConsoleLogger:
     The bridge from the domain-observation channel to the diagnostics channel: handy for a live
     scroll of per-rotation ``R_obs`` while chasing a residual. Attach a handler (or call
     :func:`logging.basicConfig`) at the app boundary to see it.
+
+    On a real terminal (``sys.stdout.isatty()``), refinement epochs and orientation-search rotations
+    render as an in-place progress bar (with a linearly-extrapolated ETA) instead of one scrolling
+    line per event -- their respective ``*Started`` event supplies the total up front. Off a
+    terminal (piped to a file, CI logs) this falls back to the plain per-event line, since
+    ``\\r``-based in-place updates are meaningless there and would just corrupt a log file with
+    control characters.
     """
 
     level: int = logging.INFO
+    _refinement_total: int = field(default=0, init=False, repr=False)
+    _refinement_started_at: float = field(default=0.0, init=False, repr=False)
+    _orientation_total: int = field(default=0, init=False, repr=False)
+    _orientation_seen: int = field(default=0, init=False, repr=False)
+    _orientation_started_at: float = field(default=0.0, init=False, repr=False)
 
     def report(self, event: Event) -> None:
+        if isinstance(event, RefinementStarted):
+            self._refinement_total = event.total_steps
+            self._refinement_started_at = time.perf_counter()
+            return
+        if isinstance(event, OrientationOptimizationStarted):
+            self._orientation_total = event.total_rotations
+            self._orientation_seen = 0
+            self._orientation_started_at = time.perf_counter()
+            return
+        if (
+            isinstance(event, OrientationOptimized)
+            and self._orientation_total > 0
+            and sys.stdout.isatty()
+        ):
+            self._orientation_seen += 1
+            _render_progress_bar(
+                self._orientation_seen,
+                self._orientation_total,
+                time.perf_counter() - self._orientation_started_at,
+                f"rotation {event.rotation_index} │ wR2 {event.wr2:.6f}",
+            )
+            return
+        if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
+            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
+            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            _render_progress_bar(
+                event.iteration + 1,
+                self._refinement_total,
+                time.perf_counter() - self._refinement_started_at,
+                f"epoch │ wR2 {wr2} │ R_obs {r_obs}",
+            )
+            return
         if isinstance(event, ConvergencePassStarted):
             _log.log(
                 self.level,

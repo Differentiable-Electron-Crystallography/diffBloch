@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import gemmi
@@ -11,6 +12,8 @@ from numpy.typing import NDArray
 from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_float
 from diffBloch.io.record import ExperimentalRecord
+
+_DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
 
 
 def read_experimental_data(path: str | Path) -> ExperimentalRecord:
@@ -38,6 +41,7 @@ def parse_experimental_block(
         cell_parameters=cellpar,
         cell_parameters_su=cellpar_su,
         wavelength=required_float(block, "_diffrn_radiation_wavelength"),
+        dstar_max=_dstar_max(block),
         ub_matrix=_ub_matrix(block),
         zone_axis_ids=np.asarray(
             [int(row["_diffrn_zone_axis_id"]) for row in zone_rows], dtype=np.int64
@@ -90,6 +94,21 @@ def parse_experimental_block(
             [int(row["_refln_zone_axis_id"]) for row in reflection_rows], dtype=np.int64
         ),
     )
+
+
+def _dstar_max(block: gemmi.cif.Block) -> float | None:
+    """PETS2's processing-resolution cutoff (Å⁻¹) from the free-text ``_diffrn_measurement_details``.
+
+    That tag is PETS2's own semicolon-delimited text block (``dstarmax:  1.800`` among other
+    informal ``key: value`` lines), not a structured CIF field, so this greps rather than parses it
+    as CIF. Returns ``None`` when the tag is absent or a PETS version that doesn't record
+    ``dstarmax`` wrote the file.
+    """
+    text = block.find_value("_diffrn_measurement_details")
+    if text is None:
+        return None
+    match = _DSTAR_MAX.search(str(text))
+    return float(match.group(1)) if match else None
 
 
 def _ub_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:

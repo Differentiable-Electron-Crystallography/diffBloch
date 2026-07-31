@@ -67,6 +67,29 @@ def wavelength2energy(wavelength: float) -> float:
     return float(charge_energy / _ELEMENTARY_CHARGE)
 
 
+# Common TEM accelerating voltages. PETS records wavelength to 4-5 significant figures
+# (e.g. 0.02510 A), so inverting it exactly recovers an energy a few hundred eV off the
+# microscope's actual nominal voltage rather than landing on it.
+STANDARD_MICROSCOPE_ENERGIES_EV: Final[tuple[float, ...]] = (100_000.0, 200_000.0, 300_000.0)
+# 0.5% relative: comfortably covers PETS's wavelength rounding (observed up to ~0.1% at 300 kV)
+# while staying well clear of other real voltages (80/120/150/400 kV are all >20% away).
+_STANDARD_ENERGY_RELATIVE_TOLERANCE = 0.005
+
+
+def snap_to_standard_energy(energy: float) -> float:
+    """Snap ``energy`` (eV) onto the nearest standard TEM voltage if it's close enough.
+
+    Returns ``energy`` unchanged when it is not within
+    :data:`_STANDARD_ENERGY_RELATIVE_TOLERANCE` of any :data:`STANDARD_MICROSCOPE_ENERGIES_EV`
+    entry (a genuinely non-standard voltage), so this only removes PETS's wavelength-rounding
+    noise, never silently reassigns a real, different accelerating voltage.
+    """
+    nearest = min(STANDARD_MICROSCOPE_ENERGIES_EV, key=lambda candidate: abs(candidate - energy))
+    if abs(nearest - energy) <= _STANDARD_ENERGY_RELATIVE_TOLERANCE * nearest:
+        return nearest
+    return energy
+
+
 def energy2sigma(energy: float) -> float:
     """Electron interaction parameter ``sigma`` in 1/(angstrom*eV) for a beam ``energy`` in eV.
 

@@ -33,7 +33,7 @@ from diffBloch.core.dynamical import (
     build_bloch_systems,
     stack_beam_plans,
 )
-from diffBloch.core.losses import optimal_scale, rbragg
+from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
     BlochSolution,
@@ -73,6 +73,7 @@ from diffBloch.observability import (
     Logger,
     RefinementCompleted,
     RefinementOrientationStep,
+    RefinementStarted,
     RefinementStep,
 )
 from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
@@ -82,6 +83,7 @@ __all__ = [
     "ForwardContext",
     "LossFn",
     "ModelComponent",
+    "RotationMetrics",
     "StructureComponent",
     "RefinementEngine",
     "RefinementModel",
@@ -130,6 +132,22 @@ class _Timer:
             _log.info(
                 "profile: %-28s %8.1f ms", self.label, (time.perf_counter() - self._start) * 1e3
             )
+
+
+@dataclass(frozen=True)
+class RotationMetrics:
+    """One rotation's scaling-optimised wR2/R_obs for a settled model snapshot.
+
+    Report/plot use (:meth:`RefinementEngine.per_rotation_metrics`), not the objective: each metric
+    independently re-optimises its own intensity scale (:func:`diffBloch.core.losses.optimal_scale`),
+    exactly as ``refinement_metrics``/the training objective do, so ``wr2``/``r_obs`` here match what
+    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index.
+    """
+
+    rotation_index: int
+    wr2: float
+    r_obs: float
+    n_matched: int
 
 
 @dataclass(frozen=True)
@@ -364,6 +382,64 @@ class RefinementEngine:
                 n_unmatched += int(orientation.pattern.hkl.shape[0]) - matched
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
         return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
+
+    def per_rotation_metrics(self, model: RefinementModel) -> tuple[RotationMetrics, ...]:
+        """Per-rotation wR2/R_obs for one refinement-model snapshot (report/plot use).
+
+        Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
+        rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
+        is reported but never optimised), returning every rotation's pair instead of an aggregate.
+        """
+        with torch.no_grad():
+            state = self.physical_state(model.structure.initial)
+            for constraint in model.structure.constraints:
+                state = constraint.apply(state)
+            fgb = self._structure_factors_from_state(state)
+            rows = []
+            for rotation_index, orientation in enumerate(self.orientations):
+                context = _forward_context(
+                    model, rotation_index=rotation_index, orientation=orientation
+                )
+                thickness = context.thickness
+                if thickness is None:
+                    thickness = self._thickness_for(orientation, model.structure.initial)
+                aligned = align(
+                    self._solve(orientation, fgb, thickness),
+                    orientation.pattern,
+                    orientation.alignment,
+                )
+                wr2_scores = torch.stack(
+                    [
+                        optimal_scale(
+                            aligned.calculated[t],
+                            aligned.observed[t],
+                            aligned.sigmas[t],
+                            metric=w_rbragg,
+                        )[1]
+                        for t in range(aligned.calculated.shape[0])
+                    ]
+                )
+                r_obs_scores = torch.stack(
+                    [
+                        optimal_scale(
+                            aligned.calculated[t],
+                            aligned.observed[t],
+                            aligned.sigmas[t],
+                            metric=rbragg,
+                        )[1]
+                        for t in range(aligned.calculated.shape[0])
+                    ]
+                )
+                best_t = int(torch.argmin(wr2_scores))
+                rows.append(
+                    RotationMetrics(
+                        rotation_index=orientation.pattern.rotation_index,
+                        wr2=float(wr2_scores[best_t]),
+                        r_obs=float(r_obs_scores[best_t]),
+                        n_matched=int(aligned.observed.shape[-1]),
+                    )
+                )
+        return tuple(rows)
 
     def _objective_value(
         self,
@@ -920,6 +996,7 @@ def run_refinement_model(
     best_loss = float("inf")
     best_step = 0
     best_model = _detach_model(current_model())
+    logger.report(RefinementStarted(total_steps=steps))
     for step in range(steps):
         snapshot = _detach_model(current_model())
         reported_objective = None

@@ -24,7 +24,13 @@ from torch import Tensor
 from diffBloch.config.schema import DataSplitConfig, ExperimentConfig
 from diffBloch.core.adp import cholesky_raw_from_adp
 from diffBloch.core.crystal import reciprocal_cell
-from diffBloch.core.dynamical import energy2sigma, energy2wavelength, kappa, wavelength2energy
+from diffBloch.core.dynamical import (
+    energy2sigma,
+    energy2wavelength,
+    kappa,
+    snap_to_standard_energy,
+    wavelength2energy,
+)
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.scattering import structure_factors
@@ -162,8 +168,10 @@ def from_experiment(
     hand-declared: :func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff`
     sizes it
     to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The beam energy is derived
-    from the PETS
-    wavelength; one :class:`CandidatePlan` per rotation carries its crystal orientation matrix
+    from the PETS wavelength and snapped onto the nearest standard TEM voltage when close
+    (:func:`~diffBloch.core.dynamical.snap_to_standard_energy`) -- PETS records wavelength to only
+    4-5 significant figures, so the exact inverse lands a few hundred eV off 100/200/300 kV rather
+    than on it. One :class:`CandidatePlan` per rotation carries its crystal orientation matrix
     (native PETS derivation, no side-car file) and the observed pattern for that zone axis.
     Rotations split into ``train`` / ``validation`` plans sharing the grid.
 
@@ -181,7 +189,7 @@ def from_experiment(
     """
     solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
-    energy = wavelength2energy(experimental_data.wavelength)
+    energy = snap_to_standard_energy(wavelength2energy(experimental_data.wavelength))
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
     orientations = orientation_matrices(
         experimental_data.ub_matrix,

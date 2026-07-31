@@ -65,6 +65,7 @@ from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, S
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
+    OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
 )
@@ -214,6 +215,7 @@ def optimize_orientation(
             )
 
         built = require_built_plans(plan)
+        logger.report(OrientationOptimizationStarted(total_rotations=len(built)))
         results_by_index: dict[int, tuple[OrientationPlanLike, float, float, int, int]] = {}
         cap = search.max_iterations
 
