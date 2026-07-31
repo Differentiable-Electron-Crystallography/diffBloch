@@ -1,13 +1,12 @@
 """Observables and typed product objects bridging propagation to losses.
 
-``intensities`` is the pure observable ``|psi|^2`` (private ``dynamical.py`` ``torch.abs(psi)**2``,
-lines 737/802). On top of it sit three frozen, tensor-carrying product objects that retire the
-private ``DiffractionDataset``:
+``intensities`` is the pure observable ``|psi|^2``. On top of it sit three frozen, tensor-carrying
+product objects:
 
 - :class:`BlochSolution` -- the *calculated* side: amplitudes/intensities per thickness over a beam
   set (built from a :func:`core.solver.propagate` output).
 - :class:`PatternBatch` -- the *observed* side: measured intensities/sigmas per reflection (built
-  from an ``io.ObservationRecord``).
+  from an ``io.ExperimentalRecord``).
 - :class:`AlignmentPlan` -- the precomputed hkl bridge between the two (mirrors ``BeamPlan``: built
   once from geometry, reused every step), consumed by :func:`align` to put calculated and observed
   on a common reflection axis ready for ``core.losses``.
@@ -28,7 +27,7 @@ from torch import Tensor
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from diffBloch.io.record import ObservationRecord
+    from diffBloch.io.record import ExperimentalRecord
 
 __all__ = [
     "AlignedIntensities",
@@ -209,7 +208,7 @@ class BlochSolution:
 class PatternBatch:
     """Observed diffraction intensities: ``hkl`` ``(M, 3)``, ``intensities``/``sigmas`` ``(M,)``.
 
-    Build with :meth:`from_observation_record` from a validated ``io.ObservationRecord`` (optionally
+    Build with :meth:`from_experimental_record` from a validated ``io.ExperimentalRecord`` (optionally
     restricted to one PETS zone-axis row).
     """
 
@@ -219,9 +218,9 @@ class PatternBatch:
     rotation_index: int = 0
 
     @classmethod
-    def from_observation_record(
+    def from_experimental_record(
         cls,
-        record: ObservationRecord,
+        record: ExperimentalRecord,
         *,
         zone_axis_id: int | None = None,
         rotation_index: int = 0,

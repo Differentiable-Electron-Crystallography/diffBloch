@@ -17,7 +17,7 @@ import yaml
 
 from diffBloch.config import load_experiment
 from diffBloch.core.solver import SolverMethod
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
     couple_beams,
@@ -90,13 +90,13 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         case.fixture / cfg.inputs.structure,
         load_hydrogens=cfg.inputs.load_hydrogens,
     )
-    observations = read_observations(case.fixture / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(case.fixture / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     train = iter(require_candidate_plans(setup.plans.train))
     validation = iter(require_candidate_plans(setup.plans.validation))
     candidates = tuple(
         next(validation) if (index + 1) % 10 == 0 else next(train)
-        for index in range(observations.n_rotations)
+        for index in range(experimental_data.n_rotations)
     )
     if not 1 <= count <= len(case.rotation_indices):
         raise ValueError(f"rotation count must be in 1..{len(case.rotation_indices)}, got {count}")

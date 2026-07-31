@@ -29,9 +29,9 @@ __all__ = [
     "ConvergenceTest",
     "ConvergenceTolerance",
     "FrameSelection",
-    "HexagonalSearch",
     "IntegrationGeometry",
     "Mosaicity",
+    "NelderMeadSearch",
     "OrientationSelection",
     "PerTiltCoupling",
     "RockingCurve",
@@ -217,54 +217,32 @@ class ConvergenceTest:
 
 
 @dataclass(frozen=True)
-class HexagonalSearch:
-    """Validated bounds for the ``fit_orientation`` hexagonal search (degrees, Palatinus et al. 2013).
+class NelderMeadSearch:
+    """Bounds for the ``optimize_orientation`` local Nelder-Mead search (degrees).
 
-    ``max_iterations`` is a runaway guard on an otherwise uncapped search: the search terminates on
-    its own by monotone wR2 descent plus the radius floor, and the cap only catches a genuine
-    non-terminating case. Its default of ``2000`` is **calibrated on the quartz anchor under the
-    integrated recipe**: every one of its 99 rotations still terminates by
-    the radius floor, but the bumpier rocking-curve-integrated landscape needs many more passes than
-    the static fit -- the slowest legitimate search took 1288 passes (526 without integration), so
-    2000 leaves cross-platform headroom while still catching a genuine runaway. A dataset with
-    shallower minima may need a larger cap -- raise it via
-    ``preprocess.orientation.max_iterations``.
-
-    **Recalibrating for another compound.** The cap is a runaway guard, so set it comfortably above
-    the slowest *legitimate* search on that compound, measured under the production recipe:
-
-    1. Run ``fit_orientation`` under the **integrated recipe** you will use in production (the
-       rocking-curve-integrated landscape is bumpier and needs far more passes than a static fit --
-       calibrating on the static fit under-sizes the cap), on **all** rotations, with a generous cap
-       (e.g. ``10_000``) and a :class:`~diffBloch.observability.RecordingLogger`.
-    2. Read the per-rotation :class:`~diffBloch.observability.OrientationFitted` events. Each
-       carries ``n_passes`` (the sweeps that search took) and ``pass_cap`` (the cap in force).
-    3. **Confirm every rotation converged by the radius floor, not by the cap** -- i.e. no
-       rotation raised, and ``max(n_passes) < pass_cap`` with margin. A rotation that runs to the
-       cap is *signal*: either a genuinely (near-)degenerate landscape to investigate, or a cap
-       that is still too low -- never silently raise the cap to make it disappear.
-    4. Set ``max_iterations = ceil(headroom * max(n_passes))`` with ``headroom`` ~1.5 (quartz:
-       ``1288 -> 2000``). Record the calibrating dataset + recipe alongside the value.
-
-    Steps 1-4 are mechanical and can be automated: run the search, plot the per-rotation
-    ``n_passes`` distribution against ``pass_cap``, flag any cap-hitters, and read off the
-    recommended cap.
+    Optimizes the three goniometer-correction angles ``(alpha, beta, omega)`` (see
+    :func:`~diffBloch.preprocess.orientation.goniometer_rotation`) directly with
+    ``scipy.optimize.minimize(method="Nelder-Mead")``, seeded from a fixed initial simplex of edge
+    length ``step_size`` around the seed orientation (``(0, 0, 0)``) -- pick ``step_size``
+    comfortably larger than the expected misorientation of the seed (PETS-derived) orientation.
     """
 
-    max_search_angle: float = 0.4  # largest tilt radius the search starts from
-    min_search_angle: float = 0.001  # radius floor that terminates the search
-    n_steps: int = 6  # hexagonal azimuths per ring (6 -> 0, 60, ..., 300 deg)
-    max_iterations: int = 2000  # runaway guard: max search passes (integrated quartz max 1288)
+    step_size: float = 0.05  # degrees; initial simplex edge length around (0, 0, 0)
+    max_iterations: int = 60  # scipy `maxiter`
+    x_tolerance: float = 1e-3  # scipy `xatol`: convergence tolerance on (alpha, beta, omega)
+    f_tolerance: float = 1e-3  # scipy `fatol`: convergence tolerance on wR2
+    # On by default: under a coupling that re-selects the scored set per trial, a trial can
+    # otherwise win by matching a smaller, easier reflection subset rather than by fitting better.
+    # True divides each trial's wR2 by its matched-reflection count before comparing.
+    penalize_fewer_reflections: bool = True
 
     def __post_init__(self) -> None:
-        if self.min_search_angle <= 0.0 or self.max_search_angle <= 0.0:
-            raise ValueError("search angles must be positive")
-        if self.max_search_angle <= self.min_search_angle:
-            raise ValueError("max_search_angle must exceed min_search_angle")
-        if self.n_steps < 1:
-            raise ValueError("n_steps must be >= 1")
+        if self.step_size <= 0.0:
+            raise ValueError("step_size must be positive")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be >= 1")
+        if self.x_tolerance <= 0.0 or self.f_tolerance <= 0.0:
+            raise ValueError("x_tolerance and f_tolerance must be positive")
 
 
 @dataclass(frozen=True)
@@ -452,7 +430,7 @@ class TrialCoupling:
     trial orientation: it re-couples the SOLVE union (the excitation coupling of ``policy``) *and*
     re-selects the SCORED set (``scored``) from that fresh union, so both sets track the trial
     orientation rather than staying pinned to the seed. Passed to
-    :func:`~diffBloch.preprocess.steps.fit_orientation.fit_orientation` (``coupling=...``) to opt a
+    :func:`~diffBloch.preprocess.steps.optimize_orientation.optimize_orientation` (``coupling=...``) to opt a
     fit into that behaviour; its absence (``None``) keeps the tilt-independent fit (one fixed beam
     set across the search).
 
@@ -466,9 +444,9 @@ class TrialCoupling:
 
 @dataclass(frozen=True)
 class ThicknessGrid:
-    """Validated grid of candidate thicknesses for ``fit_thickness`` (Angstroms).
+    """Validated grid of candidate thicknesses for ``optimize_thickness`` (Angstroms).
 
-    ``fit_thickness`` evaluates ``n_steps`` candidates spaced evenly from ``min_thickness`` to
+    ``optimize_thickness`` evaluates ``n_steps`` candidates spaced evenly from ``min_thickness`` to
     ``max_thickness`` (inclusive) and keeps the lowest-wR2 one. The defaults span 5 A to 2000 A in
     100 steps.
     """

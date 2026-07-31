@@ -1,8 +1,8 @@
-"""``fit_thickness``: per-rotation specimen-thickness calibration by grid search.
+"""``optimize_thickness``: per-rotation specimen-thickness calibration by grid search.
 
-A ``Plan -> Plan`` step that replaces each rotation's thickness with the value that best fits its
+A ``Plan -> Plan`` step that replaces each rotation's thickness with the value that best matches its
 observed pattern. The specimen's 3D shape is irregular, so each orientation presents a different
-beam path length; this fits that length per rotation rather than assuming one shared thickness.
+beam path length; this optimizes that length per rotation rather than assuming one shared thickness.
 
 For each orientation it evaluates ``n_steps`` candidate thicknesses spaced evenly from
 ``min_thickness`` to ``max_thickness`` and keeps the candidate with the lowest scaling-optimised
@@ -20,7 +20,7 @@ candidate thicknesses, per-candidate wR2 via the scaling factor, then the per-ro
 Plan-agnostic: ``replace(op, thickness=...)`` swaps the thickness on either an
 :class:`OrientationPlan` or a :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (whose
 ``_solve_segmented`` reads the top-level thickness, ignoring the stale sub-plan copies), so a
-coupled plan is fit unchanged.
+coupled plan is optimized unchanged.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from torch import Tensor
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import OrientationPlanLike
-from diffBloch.observability import NULL_LOGGER, Logger, ThicknessFitted
+from diffBloch.observability import NULL_LOGGER, Logger, ThicknessOptimized
 from diffBloch.params import Device
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
@@ -41,10 +41,10 @@ from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import NO_ABSORPTION, Absorption, ThicknessGrid
 
-__all__ = ["fit_thickness"]
+__all__ = ["optimize_thickness"]
 
 
-def fit_thickness(
+def optimize_thickness(
     refinement: RefinementSetup,
     grid: ThicknessGrid,
     *,
@@ -54,7 +54,7 @@ def fit_thickness(
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
 ) -> PlanStep:
-    """Return a ``Plan -> Plan`` step fitting each rotation's thickness by grid search.
+    """Return a ``Plan -> Plan`` step optimizing each rotation's thickness by grid search.
 
     ``refinement`` (constraint spec, ASU expansion, atomic numbers, seeded params) is captured
     read-only and rejoined to the geometry ``Plan`` via :func:`build_engine`; the
@@ -67,7 +67,7 @@ def fit_thickness(
     ``device`` (default ``None`` = CPU) places the grid search's forward solve on the given
     accelerator by moving the seed params there; the engine co-locates every invariant onto the
     param device at the use site. Execution-only (kept out of the recipe identity), exactly as in
-    :func:`fit_orientation`.
+    :func:`optimize_orientation`.
 
     ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block. ``None`` lets each
     solve derive a memory-safe block from its beam count -- it matters most here because the grid
@@ -76,9 +76,9 @@ def fit_thickness(
     The bound matches the unbounded solve to machine precision (memory only) and is execution-only,
     like ``device``.
 
-    ``logger`` (default the null sink) receives a :class:`~diffBloch.observability.ThicknessFitted`
+    ``logger`` (default the null sink) receives a :class:`~diffBloch.observability.ThicknessOptimized`
     per rotation as its grid search completes -- the progress stream for this phase (mirroring
-    ``fit_orientation``); the memory-heavy thickness fit is otherwise silent under a console logger.
+    ``optimize_orientation``); the memory-heavy thickness search is otherwise silent under a console logger.
     """
 
     def run(plan: Plan) -> Plan:
@@ -94,14 +94,17 @@ def fit_thickness(
         candidates = torch.linspace(
             grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
         )
+        candidate_thicknesses = tuple(float(value) for value in candidates.tolist())
         fitted = []
         for op in require_built_plans(plan):
-            orientation, wr2, thickness = _fit_one(engine, fgb, op, candidates)
+            orientation, wr2, thickness, scores = _fit_one(engine, fgb, op, candidates)
             logger.report(
-                ThicknessFitted(
+                ThicknessOptimized(
                     rotation_index=orientation.pattern.rotation_index,
                     wr2=wr2,
                     thickness=thickness,
+                    candidate_thicknesses=candidate_thicknesses,
+                    candidate_wr2=scores,
                 )
             )
             fitted.append(orientation)
@@ -116,13 +119,15 @@ def _fit_one(
     fgb: Tensor,
     op: OrientationPlanLike,
     candidates: Tensor,
-) -> tuple[OrientationPlanLike, float, float]:
+) -> tuple[OrientationPlanLike, float, float, tuple[float, ...]]:
     """Score every candidate thickness for one orientation; bake the lowest-wR2 winner.
 
-    Returns the baked orientation plus the winner's ``(wr2, thickness)`` for the progress event.
+    Returns the baked orientation, the winner's ``(wr2, thickness)``, and every candidate's wR2 (same
+    order as ``candidates``) for the progress event.
     """
     trial = replace(op, thickness=candidates)  # geometry unchanged; only the (T,) thickness swaps
     scores = engine.score_orientation_per_thickness(trial, fgb)  # one pass over all candidates
     best = int(torch.argmin(scores))
     baked = replace(op, thickness=candidates[best : best + 1])  # (1,) baked thickness
-    return baked, float(scores[best]), float(candidates[best])
+    all_scores = tuple(float(value) for value in scores.tolist())
+    return baked, float(scores[best]), float(candidates[best]), all_scores

@@ -1,9 +1,9 @@
 """Real-orientation excitation-error anchor: per-orientation reciprocal-basis geometry.
 
 Pins the native geometry path (``reciprocal_cell(cell @ orientation.T)`` -> ``g`` -> ``Sg``) against
-a golden extracted from the ``diffBloch_private`` implementation on real quartz orientation matrices
-(``tests/fixtures/quartz_anchor/orientation_oracle.npz``; regenerate via the co-located
-``generate_orientation_oracle.py``, provenance in ``orientation_oracle_provenance.json``).
+a golden on real quartz orientation matrices (``tests/fixtures/quartz_anchor/orientation_oracle.npz``;
+regenerate via the co-located ``generate_orientation_oracle.py``, provenance in
+``orientation_oracle_provenance.json``).
 
 The orientation matrices are non-orthonormal (they fold a ~1% anisotropic measured-vs-ideal cell
 correction), so ``orientation^-1 != orientation^T`` and the convention is observable on real data:
@@ -30,7 +30,7 @@ def _oracle() -> dict[str, np.ndarray]:
     return {k: data[k] for k in data.files}
 
 
-def test_native_per_orientation_excitation_matches_private_golden() -> None:
+def test_native_per_orientation_excitation_matches_golden() -> None:
     o = _oracle()
     cell = cell_matrix_from_parameters(o["cellpar"])
     energy = float(o["energy"])

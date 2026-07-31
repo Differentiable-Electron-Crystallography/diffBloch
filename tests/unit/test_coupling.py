@@ -1,15 +1,14 @@
-"""Unit tests for :mod:`diffBloch.preprocess.coupling` against the vendored private segments.
+"""Unit tests for :mod:`diffBloch.preprocess.coupling` against the vendored parity fixture.
 
-The parity fixture (``tests/fixtures/quartz_anchor/parity_replay/``) carries the
-``diffBloch_private`` reference's per-rotation coupling: the split boundaries and, per segment, the
-union beam set (``seg{k}_hkl``) and covered tilt indices (``seg{k}_cover``), dumped straight from
-``BlochNet.forward``. These fixtures are **pre-#154** (coupling cap ``|g| < g_max - 0.2 = 2.05``).
-These tests recompute the coupling from the :class:`~diffBloch.specs.UnionCoupling` policy
-alone: the split boundaries and covers still match exactly, but the post-#154 policy (cap
-``|g| < g_max``,
-the ``- 0.2`` margin dropped) widens each segment's beam set, so the beam-set test asserts
-**containment** (post-#154 ⊇ pre-#154, no beam dropped), not equality. Restoring equality needs a
-regenerated post-#154 private replay -- a private-reference comparison tracked in KNOWN_ISSUES.
+The parity fixture (``tests/fixtures/quartz_anchor/parity_replay/``) carries a reference
+per-rotation coupling: the split boundaries and, per segment, the union beam set (``seg{k}_hkl``)
+and covered tilt indices (``seg{k}_cover``). These fixtures are **pre-#154** (coupling cap
+``|g| < g_max - 0.2 = 2.05``). These tests recompute the coupling from the
+:class:`~diffBloch.specs.UnionCoupling` policy alone: the split boundaries and covers still match
+exactly, but the post-#154 policy (cap ``|g| < g_max``, the ``- 0.2`` margin dropped) widens each
+segment's beam set, so the beam-set test asserts **containment** (post-#154 ⊇ pre-#154, no beam
+dropped), not equality. Restoring equality needs a regenerated post-#154 replay, tracked in
+KNOWN_ISSUES.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from diffBloch.specs import PerTiltCoupling, UnionCoupling, assert_grid_covers_c
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 REPLAY_ROOT = FIXTURE_ROOT / "parity_replay"
-ENERGY_EV = 200_000.0  # the private's exact beam energy (see the parity fixture README)
+ENERGY_EV = 200_000.0  # exact beam energy (see the parity fixture README)
 ROTATIONS = (13, 27, 60, 61, 64)
 
 
@@ -63,7 +62,7 @@ def _as_set(hkl: np.ndarray) -> set[tuple[int, int, int]]:
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
-def test_segment_count_and_covers_match_private(rotation: int) -> None:
+def test_segment_count_and_covers_match_fixture(rotation: int) -> None:
     segments, d = _compute(rotation)
     assert len(segments) == int(d["n_segments"])
     for k, segment in enumerate(segments):
@@ -74,12 +73,12 @@ def test_segment_count_and_covers_match_private(rotation: int) -> None:
 
 
 @pytest.mark.parametrize("rotation", ROTATIONS)
-def test_segment_beam_sets_contain_private(rotation: int) -> None:
-    # The replay goldens are the private's PRE-#154 segment beam sets, coupled at |g| < g_max - 0.2
-    # (cap 2.05). Post-#154 drops that margin, so the coupling cap is the physical g_max (2.25) and
-    # each segment admits MORE beams -- a strict superset of the private set, dropping none. We
-    # assert containment (no private beam lost) rather than equality; the exact post-#154 set is a
-    # private-reference comparison pending a private post-#154 replay.
+def test_segment_beam_sets_contain_fixture(rotation: int) -> None:
+    # The replay goldens are PRE-#154 segment beam sets, coupled at |g| < g_max - 0.2 (cap 2.05).
+    # Post-#154 drops that margin, so the coupling cap is the physical g_max (2.25) and each
+    # segment admits MORE beams -- a strict superset of the fixture set, dropping none. We assert
+    # containment (no beam lost) rather than equality; the exact post-#154 set is pending a
+    # regenerated post-#154 replay.
     segments, d = _compute(rotation)
     for k, segment in enumerate(segments):
         # Beam ordering is eigensolver-invariant, so the coupling is the beam *set* per segment.
@@ -89,7 +88,7 @@ def test_segment_beam_sets_contain_private(rotation: int) -> None:
         assert (0, 0, 0) in _as_set(segment.union_hkl)
 
 
-def test_fixed_segment_ranges_match_private() -> None:
+def test_fixed_segment_ranges_match_fixture() -> None:
     from diffBloch.preprocess.coupling import _fixed_segment_ranges
 
     d = np.load(REPLAY_ROOT / "rot_61.npz")

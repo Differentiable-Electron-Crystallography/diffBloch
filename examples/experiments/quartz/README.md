@@ -22,7 +22,7 @@ uv run diffbloch run preprocess examples/experiments/quartz --refresh
 ```
 
 The recipe selects coupled SOLVE beams from `g_max`/`sg_max`, builds the final rocking-curve plans
-(including the configured mosaic reduction), then matches simulator HKLs to PETS observations and
+(including the configured mosaic reduction), then matches simulator HKLs to PETS experimental data and
 runs orientation optimization. Thickness optimization is disabled in `experiment.yaml`.
 The orientation fit writes a preprocess checkpoint
 (`plan.npz` + `plan.lock`) into this directory; a second identical run reuses it in seconds. Both

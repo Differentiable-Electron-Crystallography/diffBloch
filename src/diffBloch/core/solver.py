@@ -34,7 +34,7 @@ _MATRIX_EXP_LIVE_COPIES = 8
 # The default per-block budget the engine bounds a `matrix_exp` call to when no explicit `max_batch`
 # is given. A guardrail, not a tuned value: ~2 GiB is a no-op for ordinary solves (their whole
 # operator stack is far smaller) yet caps the wide-segment / many-thickness stacks that would
-# otherwise materialize tens of GiB at once (the adaptive-union fit_thickness OOM). Override
+# otherwise materialize tens of GiB at once (the adaptive-union optimize_thickness OOM). Override
 # `max_batch` explicitly for a specific device budget.
 DEFAULT_MATRIX_EXP_BUDGET_BYTES = 2 * 1024**3
 
@@ -156,7 +156,7 @@ def _propagate_bloch_eigen(system: BlochSystem, thicknesses: Tensor) -> Tensor:
     v, eigvecs = torch.linalg.eigh(a)  # v (..., N), eigvecs (..., N, N)
     gamma = v / (2.0 * system.k_n)
     # Un-symmetrise: A was Mii-symmetrised to be Hermitian, so divide the eigenvectors' diagonal
-    # back to recover the physical Bloch coefficients (private dynamical.py:877).
+    # back to recover the physical Bloch coefficients.
     physical_diag = torch.diagonal(eigvecs, dim1=-2, dim2=-1) / mii.to(eigvecs.dtype)
     c = _fill_diagonal(eigvecs, physical_diag)
     alpha = torch.conj(c.mT) @ psi0.to(c.dtype)  # decompose psi0 onto the Bloch waves, (..., N)

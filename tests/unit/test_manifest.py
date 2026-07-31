@@ -9,6 +9,7 @@ import pytest
 from diffBloch.config import (
     PreprocessLock,
     RecipeStep,
+    RefinementLock,
     RunManifest,
     artifact_hash_for,
     code_version,
@@ -18,8 +19,11 @@ from diffBloch.config import (
     pack_run,
     preprocess_lock_status,
     read_preprocess_lock,
+    read_refinement_lock,
+    refinement_config_digest,
     sha256_file,
     write_preprocess_lock,
+    write_refinement_lock,
     write_run_manifest,
 )
 
@@ -144,11 +148,7 @@ def test_config_digest_is_stable_and_value_sensitive() -> None:
     assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
     # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
     bumped = cfg.model_copy(
-        update={
-            "blochwave": cfg.blochwave.model_copy(
-                update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
-            )
-        }
+        update={"blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})}
     )
     assert config_digest(bumped) != config_digest(cfg)
 
@@ -199,6 +199,155 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
         )
         != base
     )
+
+
+def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -> None:
+    """orientation/thickness sub-config only counts when the matching optimize_* flag runs it."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    assert cfg.preprocess.optimize_orientation is True
+    assert cfg.preprocess.optimize_thickness is True
+
+    off = cfg.model_copy(
+        update={
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            )
+        }
+    )
+    base = config_digest(off)
+
+    bumped_orientation = off.model_copy(
+        update={
+            "preprocess": off.preprocess.model_copy(
+                update={
+                    "orientation": off.preprocess.orientation.model_copy(
+                        update={
+                            "nelder_mead": off.preprocess.orientation.nelder_mead.model_copy(
+                                update={
+                                    "step_size": off.preprocess.orientation.nelder_mead.step_size
+                                    + 1.0
+                                }
+                            )
+                        }
+                    )
+                }
+            )
+        }
+    )
+    assert config_digest(bumped_orientation) == base  # step never runs -> can't have mattered
+
+    bumped_thickness = off.model_copy(
+        update={
+            "preprocess": off.preprocess.model_copy(
+                update={
+                    "thickness": off.preprocess.thickness.model_copy(
+                        update={"n_steps": off.preprocess.thickness.n_steps + 1}
+                    )
+                }
+            )
+        }
+    )
+    assert config_digest(bumped_thickness) == base  # step never runs -> can't have mattered
+
+    # flip the flags back on: now the same edits DO restale the digest
+    on = off.model_copy(
+        update={
+            "preprocess": off.preprocess.model_copy(
+                update={"optimize_orientation": True, "optimize_thickness": True}
+            )
+        }
+    )
+    on_base = config_digest(on)
+    on_bumped = on.model_copy(
+        update={
+            "preprocess": on.preprocess.model_copy(
+                update={
+                    "thickness": on.preprocess.thickness.model_copy(
+                        update={"n_steps": on.preprocess.thickness.n_steps + 1}
+                    )
+                }
+            )
+        }
+    )
+    assert config_digest(on_bumped) != on_base
+
+
+def test_config_digest_excludes_thickness_plot() -> None:
+    """thickness.plot only selects PNG output; it never touches the fitted Plan."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    assert cfg.preprocess.optimize_thickness is True
+    base = config_digest(cfg)
+
+    plotted = cfg.model_copy(
+        update={
+            "preprocess": cfg.preprocess.model_copy(
+                update={"thickness": cfg.preprocess.thickness.model_copy(update={"plot": True})}
+            )
+        }
+    )
+    assert config_digest(plotted) == base
+
+
+def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
+    """refinement_config_digest tracks exactly what config_digest excludes, and nothing else."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    base = refinement_config_digest(cfg)
+
+    # included -- these determine the gradient-refined result on top of a settled Plan
+    bumped_steps = cfg.model_copy(
+        update={"refinement": cfg.refinement.model_copy(update={"steps": cfg.refinement.steps + 1})}
+    )
+    assert refinement_config_digest(bumped_steps) != base
+    bumped_optimizer = cfg.model_copy(
+        update={
+            "refinement": cfg.refinement.model_copy(
+                update={"optimizer": cfg.refinement.optimizer.model_copy(update={"name": "adam"})}
+            )
+        }
+    )
+    assert refinement_config_digest(bumped_optimizer) != base
+
+    # excluded -- split shapes the Plan itself and is already covered by config_digest
+    bumped_split = cfg.model_copy(
+        update={
+            "refinement": cfg.refinement.model_copy(
+                update={
+                    "split": cfg.refinement.split.model_copy(
+                        update={"validation": "every_5th_rotation"}
+                    )
+                }
+            )
+        }
+    )
+    assert refinement_config_digest(bumped_split) == base
+
+    # excluded -- preprocess-only config never enters the refinement-stage digest
+    bumped_blochwave = cfg.model_copy(
+        update={"blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})}
+    )
+    assert refinement_config_digest(bumped_blochwave) == base
+
+
+def test_refinement_lock_round_trips(tmp_path: Path) -> None:
+    lock = RefinementLock(
+        plan_lock_sha256="ab" * 32,
+        refinement_config_digest="cd" * 32,
+        code_version=code_version(),
+        refined_structure=artifact_hash_for(
+            _write(tmp_path / "refined_structure.cif", "data"), root=tmp_path
+        ),
+        refined_parameters=artifact_hash_for(
+            _write(tmp_path / "refined_parameters.npz", "data"), root=tmp_path
+        ),
+    )
+    path = tmp_path / "refinement.lock"
+    write_refinement_lock(path, lock)
+    assert read_refinement_lock(path) == lock
+
+
+def _write(path: Path, text: str) -> Path:
+    path.write_text(text)
+    return path
 
 
 def test_code_version_carries_the_package_version() -> None:
@@ -258,9 +407,7 @@ def test_config_change_is_stale(tmp_path: Path) -> None:
     args["config_digest"] = config_digest(
         cfg.model_copy(
             update={
-                "blochwave": cfg.blochwave.model_copy(
-                    update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
-                )
+                "blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})
             }
         )
     )

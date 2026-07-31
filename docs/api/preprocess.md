@@ -38,11 +38,11 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 ```
 
 ```{eval-rst}
-.. automodule:: diffBloch.preprocess.steps.fit_orientation
+.. automodule:: diffBloch.preprocess.steps.optimize_orientation
 ```
 
 ```{eval-rst}
-.. automodule:: diffBloch.preprocess.steps.fit_thickness
+.. automodule:: diffBloch.preprocess.steps.optimize_thickness
 ```
 
 ```{eval-rst}

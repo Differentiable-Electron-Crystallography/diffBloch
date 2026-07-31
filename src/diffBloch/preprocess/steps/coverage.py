@@ -15,8 +15,8 @@ no new match -- the minimal beam set that still covers the data.
   build while the objective strictly increases, return the last build at the first non-increase, or
   raise at a hard cap. The match-count analogue of
   :func:`~diffBloch.preprocess.steps.convergence.converge_scalar`.
-- :func:`cover_beams` / :func:`cover_pool` -- the ``Plan -> Plan`` adapters for the two beam levers
-  (Klar window ``integration_semiangle`` and seed pool ``g_max_refine``).
+- :func:`cover_beams` -- the ``Plan -> Plan`` adapter for the Klar window
+  (``integration_semiangle``) lever.
 
 The two convergence operations are two kinds of objective: coverage maximises *observed matches*
 (sequential per-knob sweeps, accepting a candidate only while the match count increases, capped),
@@ -34,14 +34,12 @@ from diffBloch.preprocess.pipeline import PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
-    reseed_pool,
     select_beams,
 )
 from diffBloch.specs import BeamSelection
 
 __all__ = [
     "cover_beams",
-    "cover_pool",
     "maximize_scalar",
     "plan_coverage",
 ]
@@ -121,42 +119,6 @@ def cover_beams(selection: BeamSelection, *, step: float, max_iterations: int = 
             build,
             plan_coverage,
             start=selection.integration.semiangle,
-            step=step,
-            max_iterations=max_iterations,
-        )
-
-    return run
-
-
-def cover_pool(
-    selection: BeamSelection,
-    *,
-    start_g_max_refine: float,
-    step: float,
-    max_iterations: int = 100,
-) -> PlanStep:
-    """Return a ``Plan -> Plan`` step: widen the ``g_max_refine`` seed pool to maximise coverage.
-
-    The pool lever of the coverage sweep: each candidate re-seeds every orientation from the shared
-    grid at a wider ``g_max_refine`` (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`),
-    rebuilds each :class:`~diffBloch.engine.plan.OrientationPlan`, then re-applies the fixed Klar
-    window (``selection``); :func:`maximize_scalar` keeps widening while :func:`plan_coverage`
-    strictly increases. Guards the ``Fgb`` difference support exactly like
-    :func:`~diffBloch.preprocess.steps.convergence.converge_pool`: a candidate with
-    ``2 * g_max_refine > grid.g_max`` raises (dependent grid resizing is unimplemented). ``step``
-    must be positive.
-    """
-    if step <= 0.0:
-        raise ValueError("step must be positive")
-
-    def run(seed: Plan) -> Plan:
-        def build(g_max_refine: float) -> Plan:
-            return reseed_pool(seed, selection, g_max_refine=g_max_refine)
-
-        return maximize_scalar(
-            build,
-            plan_coverage,
-            start=start_g_max_refine,
             step=step,
             max_iterations=max_iterations,
         )

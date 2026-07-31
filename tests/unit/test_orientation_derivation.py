@@ -1,10 +1,8 @@
-"""Native orientation derivation pinned against the private as-collected golden.
+"""Native orientation derivation pinned against a golden fixture.
 
-The golden (``orientation_derivation_golden.npz``) is produced by the *private* diffBloch
-``process_file`` (``generate_u_matrix`` + ``generate_crystal_orientations``) on the quartz PETS
-anchor -- regenerate via the fixture's co-located ``generate_orientation_derivation_golden.py``
-(runs under the private venv). Oracle independence lives
-in the golden; the native path under test re-derives the same orientations from the UB/cell/angles.
+Regenerate via the fixture's co-located ``generate_orientation_derivation_golden.py``. Oracle
+independence lives in the golden; the native path under test re-derives the same orientations from
+the UB/cell/angles.
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ def golden() -> dict[str, np.ndarray]:
     return dict(np.load(FIXTURES / "orientation_derivation_golden.npz"))
 
 
-def test_orientation_matrices_match_private_golden(golden: dict[str, np.ndarray]) -> None:
+def test_orientation_matrices_match_golden(golden: dict[str, np.ndarray]) -> None:
     native = orientation_matrices(
         golden["ub_matrix"],
         golden["cell_params"],
@@ -41,9 +39,10 @@ def test_orientation_matrices_match_private_golden(golden: dict[str, np.ndarray]
         golden["omegas"],
     )
     assert native.shape == golden["orientation_matrices"].shape == (99, 3, 3)
-    # ~8.6e-7 residual: we compute the exact cell volume; the private impl reads the PETS file's
-    # rounded ``_cell_volume`` (113.32800 vs 113.32810). Negligible, and intentional (we do not
-    # reproduce the rounding). The convention itself -- order, B form, U = UB B^-1 -- is exact.
+    # ~8.6e-7 residual: we compute the exact cell volume, not the PETS file's rounded
+    # ``_cell_volume`` (113.32800 vs 113.32810) the golden derives from. Negligible, and intentional
+    # (we do not reproduce the rounding). The convention itself -- order, B form, U = UB B^-1 -- is
+    # exact.
     assert np.allclose(native, golden["orientation_matrices"], atol=1e-5)
 
 

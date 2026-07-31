@@ -1,0 +1,8 @@
+structure:
+  ref: borane_IAM_4.cif
+  sha256: 20fcecead2d1b91a0b49e9a39d0105a68c819b41f00c7db93847f0f902692cf4
+  bytes: 4109
+experimental_data:
+  ref: borane_dyn_final_16.cif_pets
+  sha256: 4a8a6da98f8c8935385575405792a5262ee9dadd94e741bb903571d8814289b8
+  bytes: 1419302

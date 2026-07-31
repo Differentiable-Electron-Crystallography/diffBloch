@@ -2,7 +2,7 @@
 
 Each frozen dataclass is the single home of its sweep's bounds rules; the pydantic config blocks
 delegate to these (see ``test_config.py``), and the pure ``fit_*`` steps trust them. Pins the
-defaults against the private and the construction-time validation.
+defaults and the construction-time validation.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from diffBloch.specs import (
     BeamSelection,
     ConvergenceTest,
     ConvergenceTolerance,
-    HexagonalSearch,
     IntegrationGeometry,
     Mosaicity,
     RockingCurve,
@@ -21,7 +20,7 @@ from diffBloch.specs import (
 )
 
 
-def test_convergence_tolerance_defaults_match_the_private() -> None:
+def test_convergence_tolerance_defaults() -> None:
     tol = ConvergenceTolerance()
     assert tol.r_factor_threshold == 0.005
     assert tol.max_iterations == 100
@@ -64,7 +63,7 @@ def test_integration_geometry_defaults_and_validation() -> None:
         IntegrationGeometry(geometry="spiral")  # type: ignore[arg-type]
 
 
-def test_beam_selection_defaults_match_the_private() -> None:
+def test_beam_selection_defaults() -> None:
     selection = BeamSelection()
     assert selection.rsg == 0.9
     assert selection.dsg == 0.0015
@@ -84,19 +83,11 @@ def test_beam_selection_allows_a_loosening_negative_margin() -> None:
     assert BeamSelection(dsg=-0.01).dsg == -0.01
 
 
-def test_thickness_grid_defaults_match_the_private() -> None:
+def test_thickness_grid_defaults() -> None:
     grid = ThicknessGrid()
     assert grid.min_thickness == 5.0
     assert grid.max_thickness == 2000.0
     assert grid.n_steps == 100
-
-
-def test_hexagonal_search_defaults_match_the_private() -> None:
-    search = HexagonalSearch()
-    assert search.max_search_angle == 0.4
-    assert search.min_search_angle == 0.001
-    assert search.n_steps == 6
-    assert search.max_iterations == 2000
 
 
 def test_thickness_grid_rejects_invalid_bounds() -> None:
@@ -106,17 +97,6 @@ def test_thickness_grid_rejects_invalid_bounds() -> None:
         ThicknessGrid(min_thickness=400.0, max_thickness=400.0)
     with pytest.raises(ValueError, match="n_steps must be >= 1"):
         ThicknessGrid(n_steps=0)
-
-
-def test_hexagonal_search_rejects_invalid_bounds() -> None:
-    with pytest.raises(ValueError, match="search angles must be positive"):
-        HexagonalSearch(min_search_angle=0.0)
-    with pytest.raises(ValueError, match="max_search_angle must exceed min_search_angle"):
-        HexagonalSearch(max_search_angle=0.001)
-    with pytest.raises(ValueError, match="n_steps must be >= 1"):
-        HexagonalSearch(n_steps=0)
-    with pytest.raises(ValueError, match="max_iterations must be >= 1"):
-        HexagonalSearch(max_iterations=0)
 
 
 def test_value_types_are_frozen() -> None:
@@ -142,7 +122,6 @@ def test_rocking_curve_rejects_invalid_geometry_and_bounds() -> None:
 
 
 def test_mosaicity_defaults_to_the_faithful_window() -> None:
-    # Faithful private default (the private hardcodes window_size = 5); 2.0 exposes it as tunable.
     assert Mosaicity().window == 5
     assert Mosaicity(window=3).window == 3
 

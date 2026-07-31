@@ -1,17 +1,10 @@
-"""Regenerate ``orientation_derivation_golden.npz`` — the private as-collected orientation golden.
+"""Regenerate ``orientation_derivation_golden.npz`` — the as-collected orientation golden.
 
-Runs the *private* diffBloch as-collected orientation construction (``process_file`` ->
+Runs an independent as-collected orientation construction (``process_file`` ->
 ``generate_u_matrix`` + ``generate_crystal_orientations``) on the co-located quartz PETS anchor
 (``exp_data.cif_pets``) and saves the resulting per-rotation orientation matrices as a golden. The
 native ``preprocess`` derivation is pinned against it by
-``tests/unit/test_orientation_derivation.py`` -- the golden is computed by the private code, so
-oracle independence lives here, not in the input.
-
-Must run under a ``diffBloch_private`` checkout's venv (it imports the private implementation; it
-is NOT part of this repo's test deps and is never imported by the tests)::
-
-    cd <this repo>/tests/fixtures/quartz_anchor
-    <diffBloch_private checkout>/.venv/bin/python generate_orientation_derivation_golden.py
+``tests/unit/test_orientation_derivation.py`` -- oracle independence lives here, not in the input.
 
 Writes the ``.npz`` + provenance ``.json`` next to this script.
 """
@@ -23,8 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-# The *private* diffBloch package (same import name as this repo's; resolution comes from running
-# under the private venv, where this repo's package is not installed).
+# An external diffBloch package (same import name as this repo's; not part of this repo's deps).
 from diffBloch.rotation_dataset import (
     generate_crystal_orientations,
     generate_u_matrix,
@@ -80,12 +72,8 @@ def main() -> None:
     )
 
     provenance = {
-        "what": "private as-collected orientation matrices for the quartz PETS anchor",
-        "generated_by": (
-            "generate_orientation_derivation_golden.py (co-located; run with the private venv)"
-        ),
-        "source_impl": "diffBloch_private/diffBloch/rotation_dataset.py "
-        "(process_file -> generate_u_matrix + generate_crystal_orientations)",
+        "what": "as-collected orientation matrices for the quartz PETS anchor",
+        "generated_by": "generate_orientation_derivation_golden.py (co-located)",
         "convention": "orientation = R_z(omega).R_x(alpha).R_y(beta) @ (UB @ B_inv); "
         "B = Busing-Levy from PETS cell params + volume; angles active, degrees",
         "input": PETS.name,

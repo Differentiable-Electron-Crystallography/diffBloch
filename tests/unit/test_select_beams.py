@@ -11,7 +11,7 @@ import torch
 
 from diffBloch.config import load_config
 from diffBloch.core.products import MosaicSmoothed
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
     from_experiment,
@@ -26,9 +26,9 @@ QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
 def _quartz_train_plan():
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
-    observations = read_observations(QUARTZ / "exp_data.cif_pets")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
     config = load_config(QUARTZ / "experiment.yaml")
-    setup = from_experiment(structure, observations, config)
+    setup = from_experiment(structure, experimental_data, config)
     return setup.plans.train, config, setup.integration
 
 
@@ -39,7 +39,7 @@ def test_klar_mask_keeps_near_ewald_in_plane_drops_on_axis() -> None:
     # Continuous rotation rocks about the goniometer x axis, so sg_max is the distance from x =
     # |(g_y, g_z)|. A near-Ewald reflection offset perpendicular to the rock axis (along y) sweeps
     # and is kept; one offset purely along the rock axis (x) never sweeps (sg_max == 0) and is
-    # dropped. This matches the private filter_hkls norm(k[:, 1:]).
+    # dropped.
     g = np.array([[0.0, 0.5, 0.0], [0.5, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float64)
     mask = klar_beam_mask(g, energy=200e3, rsg=0.9, dsg=0.0015, semiangle=1.0)
     assert mask.tolist() == [True, False, False]

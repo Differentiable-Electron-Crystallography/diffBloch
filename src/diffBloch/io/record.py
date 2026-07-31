@@ -186,8 +186,8 @@ class StructureRecord(BaseModel):
         return self.adp.uij_cif
 
 
-class ObservationRecord(BaseModel):
-    """Observed PETS reflection data keyed by rotation/zone-axis id."""
+class ExperimentalRecord(BaseModel):
+    """Experimental PETS reflection data keyed by rotation/zone-axis id."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 

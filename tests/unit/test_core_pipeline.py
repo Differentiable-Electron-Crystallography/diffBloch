@@ -1,9 +1,9 @@
 """End-to-end calculated pipeline on the synthetic-Friedel oracle.
 
 Ties the stage-8/9 pieces into one chain through the *public* API --
-``build_bloch_system -> propagate -> BlochSolution -> align -> losses`` -- and pins it against the
-``diffBloch_private`` golden one step at a time, so a regression localises to the offending step
-rather than only the endpoint:
+``build_bloch_system -> propagate -> BlochSolution -> align -> losses`` -- and pins it against a
+golden one step at a time, so a regression localises to the offending step rather than only the
+endpoint:
 
     Fgb --structure_matrix--> A --propagate--> psi --|.|^2--> intensities --align--> loss
 
@@ -47,8 +47,8 @@ def _load(npz: Path):
     return plan, data
 
 
-def test_pipeline_steps_match_private_golden() -> None:
-    # Composite-step breakdown: A, psi, then the intensity observable -- each vs the private golden.
+def test_pipeline_steps_match_golden() -> None:
+    # Composite-step breakdown: A, psi, then the intensity observable -- each vs the golden.
     # The golden arrays were computed at float64; propagate always runs at complex64, so the
     # comparisons are cast down and widened to the single-precision noise floor.
     plan, data = _load(_ORACLE_ZONE)

@@ -1,15 +1,10 @@
 """Regenerate ``orientation_oracle.npz`` — the quartz per-orientation excitation-error golden.
 
-The GOLDEN is the *private* geometry path (``reciprocal_cell`` of the rotated real cell -> ``g`` ->
-``excitation_errors``) evaluated on real quartz orientation matrices from ``optim_orientation.json``
-(co-located); the INPUT (cellpar, hkl, M) is shared so the public test
+The GOLDEN is an independent geometry path (``reciprocal_cell`` of the rotated real cell -> ``g``
+-> ``excitation_errors``) evaluated on real quartz orientation matrices from
+``optim_orientation.json`` (co-located); the INPUT (cellpar, hkl, M) is shared so the public test
 (``tests/unit/test_orientation_oracle.py``) can reconstruct it natively and pin its own geometry
-against this golden. Oracle independence lives in the golden, so this script must run under a
-``diffBloch_private`` checkout's venv (it imports the private implementation; it is NOT part of
-this repo's test deps and is never imported by the tests)::
-
-    cd <diffBloch_private checkout>
-    .venv/bin/python <this repo>/tests/fixtures/quartz_anchor/generate_orientation_oracle.py
+against this golden.
 
 Writes ``orientation_oracle.npz`` + ``orientation_oracle_provenance.json`` next to this script.
 """
@@ -23,8 +18,7 @@ from pathlib import Path
 import numpy as np
 from ase.geometry import cellpar_to_cell
 
-# The *private* diffBloch package (same import name as this repo's; resolution comes from running
-# under the private venv, where this repo's package is not installed).
+# An external diffBloch package (same import name as this repo's; not part of this repo's deps).
 from diffBloch.utils import excitation_errors, reciprocal_cell
 
 FIXTURE = Path(__file__).resolve().parent
@@ -56,7 +50,7 @@ def beam_hkl(recip: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     cell = cellpar_to_cell(CELLPAR)
-    recip = reciprocal_cell(cell)  # private, ASE-compatible (pinv(cell).T)
+    recip = reciprocal_cell(cell)  # ASE-compatible (pinv(cell).T)
     hkl = beam_hkl(recip)
 
     sg = np.empty((len(ROTATIONS), len(hkl)), dtype=np.float64)
@@ -65,8 +59,8 @@ def main() -> None:
     for i, idx in enumerate(ROTATIONS):
         m = load_orientation(idx)
         rr = reciprocal_cell(cell @ m.T)  # rotated real cell -> rotated reciprocal cell
-        g = hkl @ rr  # private get_k
-        sg[i] = excitation_errors(g, ENERGY)  # private Spence & Zuo, K along -z
+        g = hkl @ rr  # get_k
+        sg[i] = excitation_errors(g, ENERGY)  # Spence & Zuo, K along -z
         rotated_recip[i] = rr
         orientations[i] = m
 
@@ -88,15 +82,12 @@ def main() -> None:
                 "purpose": (
                     "Real-orientation excitation-error (Sg) golden: pins the native "
                     "per-orientation reciprocal-basis geometry (reciprocal_cell(cell @ M.T) -> g "
-                    "-> Sg) against the private implementation on real quartz orientation "
+                    "-> Sg) against an independent implementation on real quartz orientation "
                     "matrices. M is non-orthonormal (folds the measured-vs-ideal cell correction, "
                     "~1% anisotropic), so g0 @ M^-1 is faithful while g0 @ M.T is wrong by "
                     "~0.008 A^-1."
                 ),
-                "generated_by": (
-                    "generate_orientation_oracle.py (co-located; run with the private venv)"
-                ),
-                "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
+                "generated_by": "generate_orientation_oracle.py (co-located)",
                 "oracle_functions": {
                     "reciprocal_cell": "utils.py:35-58 (pinv(cell).T)",
                     "excitation_errors": "utils.py:261-300 (K along -z, Spence & Zuo)",

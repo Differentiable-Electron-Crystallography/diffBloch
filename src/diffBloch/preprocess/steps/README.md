@@ -22,8 +22,8 @@ needs no `converge_*`/`cover_*` step at all.
 | Module | Public step(s) | What it fits / does |
 |---|---|---|
 | `beams.py` | `select_beams` | prune to the active Klar-window beam set (`klar_beam_mask`) |
-| `fit_orientation.py` | `fit_orientation` | refine each rotation's crystal orientation to the data |
-| `fit_thickness.py` | `fit_thickness` | fit the sample thickness to the data |
+| `optimize_orientation.py` | `optimize_orientation` | refine each rotation's crystal orientation to the data |
+| `optimize_thickness.py` | `optimize_thickness` | fit the sample thickness to the data |
 | `rocking_curve.py` | `integrate_rocking_curve` | bake rocking-curve tilt integration into the geometry |
 | `convergence.py` | `converge_beams` / `converge_pool` / `converge_sampling` | grow a numerics knob until consecutive *simulations* stop moving (self-stability) |
 | `coverage.py` | `cover_beams` / `cover_pool` | grow a beam knob until it stops recovering new *observed* reflections (match-count) |

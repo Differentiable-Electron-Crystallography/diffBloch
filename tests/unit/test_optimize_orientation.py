@@ -1,13 +1,12 @@
-"""Slice 11 (5b): ``fit_orientation`` -- the Palatinus hexagonal-tilt orientation refinement.
+"""Slice 11 (5b): ``optimize_orientation`` -- the local Nelder-Mead orientation refinement.
 
 ``hexagonal_tilt`` is checked as a proper rotation (and that right-multiplying it preserves a
-non-orthonormal determinant -- the re-orthonormalisation trap). ``fit_orientation`` is then
-exercised end-to-end on the same fast synthetic silicon system as ``test_scoring``: an already
-self-consistent orientation is left essentially unchanged; the ``iterate_until``-style iteration cap
-is validated and shown to trip on an actively-descending search (which doubles as proof the
-accept-and-restart path is live, not a no-op). Recovery of a *specific* perturbed orientation needs
-a unique minimum, which this trivial high-symmetry system does not have -- that is deferred to the
-real quartz e2e.
+non-orthonormal determinant -- the re-orthonormalisation trap); it remains a shared geometry
+primitive even though the search itself no longer uses it. ``optimize_orientation`` is then exercised
+end-to-end on the same fast synthetic silicon system as ``test_scoring``: an already
+self-consistent orientation is left essentially unchanged. Recovery of a *specific* perturbed
+orientation needs a unique minimum, which this trivial high-symmetry system does not have -- that
+is deferred to the real quartz e2e.
 """
 
 from __future__ import annotations
@@ -24,12 +23,12 @@ from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
 from diffBloch.params import ConstraintSpec, RefinableParams
-from diffBloch.preprocess import RefinementSetup, fit_orientation, hexagonal_tilt
+from diffBloch.preprocess import RefinementSetup, hexagonal_tilt, optimize_orientation
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import (
     BeamSelection,
-    HexagonalSearch,
+    NelderMeadSearch,
     ScoredHklSelection,
     TrialCoupling,
     UnionCoupling,
@@ -62,7 +61,7 @@ def test_hexagonal_tilt_right_multiply_preserves_a_non_orthonormal_determinant()
     assert abs(np.linalg.det(m @ hexagonal_tilt(60.0, 0.25)) - np.linalg.det(m)) < 1e-12
 
 
-# --- fit_orientation (synthetic silicon) ----------------------------------------------------------
+# --- optimize_orientation (synthetic silicon) ----------------------------------------------------------
 
 
 def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
@@ -147,7 +146,7 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
     matched = _self_consistent(grid, asu_plan, spec, numbers, true_orientation)
     refinement = _refinement(asu_plan, spec, numbers)
 
-    (refined,) = fit_orientation(refinement, HexagonalSearch())(
+    (refined,) = optimize_orientation(refinement, NelderMeadSearch())(
         Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
 
@@ -166,7 +165,7 @@ def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() ->
     assert len(matched.tilts) == 3  # the seed carries the integration geometry
     refinement = _refinement(asu_plan, spec, numbers)
 
-    (refined,) = fit_orientation(refinement, HexagonalSearch())(
+    (refined,) = optimize_orientation(refinement, NelderMeadSearch())(
         Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
 
@@ -184,8 +183,8 @@ def test_fit_orientation_device_cpu_is_a_no_op() -> None:
     refinement = _refinement(asu_plan, spec, numbers)
     plan = Plan(structure_factor_grid=grid, orientations=(matched,))
 
-    (base,) = fit_orientation(refinement, HexagonalSearch())(plan).orientations
-    (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
+    (base,) = optimize_orientation(refinement, NelderMeadSearch())(plan).orientations
+    (cpu,) = optimize_orientation(refinement, NelderMeadSearch(), device="cpu")(plan).orientations
     assert torch.equal(cpu.orientation, base.orientation)
 
 
@@ -208,8 +207,8 @@ def test_fit_orientation_cuda_matches_cpu_within_tolerance() -> None:
     refinement = _refinement(asu_plan, spec, numbers)
     plan = Plan(structure_factor_grid=grid, orientations=(matched,))
 
-    (cpu,) = fit_orientation(refinement, HexagonalSearch(), device="cpu")(plan).orientations
-    (cuda,) = fit_orientation(refinement, HexagonalSearch(), device="cuda")(plan).orientations
+    (cpu,) = optimize_orientation(refinement, NelderMeadSearch(), device="cpu")(plan).orientations
+    (cuda,) = optimize_orientation(refinement, NelderMeadSearch(), device="cuda")(plan).orientations
     assert np.linalg.norm(np.asarray(cpu.orientation) - np.asarray(cuda.orientation)) < 1e-6
 
 
@@ -230,9 +229,9 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
         policy=UnionCoupling(), scored=ScoredHklSelection(klar=BeamSelection(), g_max=0.3)
     )
     with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
-        fit_orientation(_refinement(asu_plan, spec, numbers), HexagonalSearch(), coupling=coupling)(
-            Plan(structure_factor_grid=grid, orientations=(matched,))
-        )
+        optimize_orientation(
+            _refinement(asu_plan, spec, numbers), NelderMeadSearch(), coupling=coupling
+        )(Plan(structure_factor_grid=grid, orientations=(matched,)))
 
 
 def test_fit_orientation_workers_matches_sequential() -> None:
@@ -247,8 +246,8 @@ def test_fit_orientation_workers_matches_sequential() -> None:
     refinement = _refinement(asu_plan, spec, numbers)
     plan = Plan(structure_factor_grid=grid, orientations=(matched,) * 5)
 
-    sequential = fit_orientation(refinement, HexagonalSearch())(plan).orientations
-    threaded = fit_orientation(refinement, HexagonalSearch(), workers=3)(plan).orientations
+    sequential = optimize_orientation(refinement, NelderMeadSearch())(plan).orientations
+    threaded = optimize_orientation(refinement, NelderMeadSearch(), workers=3)(plan).orientations
     for a, b in zip(sequential, threaded, strict=True):
         assert torch.equal(a.orientation, b.orientation)
 
@@ -264,7 +263,7 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     already in flight finish). The per-rotation search is stubbed so the test is fast; we count how
     many actually run and assert it is below the total -- which the old draining code could not do.
     """
-    import diffBloch.preprocess.steps.fit_orientation as fo
+    import diffBloch.preprocess.steps.optimize_orientation as fo
 
     calls: list[int] = []
 
@@ -290,35 +289,12 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     logger = EarlyAbortLogger(wr2_ceiling=-1.0, patience=1)  # aborts on the first fit event
 
     with pytest.raises(FitAbortedError):
-        fit_orientation(refinement, HexagonalSearch(), workers=4, logger=logger)(plan)
+        optimize_orientation(refinement, NelderMeadSearch(), workers=4, logger=logger)(plan)
     assert len(calls) < 40  # queued rotations cancelled; the draining code ran all 40
 
 
-def test_hexagonal_search_rejects_a_nonpositive_iteration_cap() -> None:
-    # Bound validation now lives in HexagonalSearch (parse, don't validate); see test_specs.py for
-    # the full set. This pins that fit_orientation's cap is one of those validated bounds.
+def test_nelder_mead_search_rejects_a_nonpositive_iteration_cap() -> None:
+    # Bound validation lives in NelderMeadSearch (parse, don't validate). This pins that
+    # optimize_orientation's cap is one of those validated bounds.
     with pytest.raises(ValueError, match="max_iterations must be >= 1"):
-        HexagonalSearch(max_iterations=0)
-
-
-def test_fit_orientation_guard_trips_on_an_actively_descending_search() -> None:
-    # Tests the iterate_until-style cap, and doubles as the descent check: a non-improving search
-    # halts in ~10 passes (~log2(0.4 / 0.001) radius halvings), so tripping a cap of 15 *requires*
-    # repeated acceptances -- proof the greedy accept-and-restart path is live, not a no-op. On this
-    # degenerate system the accepted steps ridge-walk toward a symmetry-equivalent, well past 15.
-    grid, asu_plan, spec, numbers = _silicon()
-    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
-    # Azimuth 60 (counter 240, both in the hex set) tilts the x-axis beams out-of-plane so the score
-    # responds; azimuth 0 (R_x) would leave the [+-100] g-vectors -- and the score -- invariant.
-    perturbed = OrientationPlan.build(
-        grid,
-        _BEAM_HKL,
-        matched.pattern,
-        energy=_ENERGY,
-        thickness=(300.0,),
-        orientation=np.eye(3, dtype=np.float64) @ hexagonal_tilt(60.0, 0.2),
-    )
-    plan = Plan(structure_factor_grid=grid, orientations=(perturbed,))
-    refinement = _refinement(asu_plan, spec, numbers)
-    with pytest.raises(RuntimeError, match="did not converge"):
-        fit_orientation(refinement, HexagonalSearch(max_iterations=15))(plan)
+        NelderMeadSearch(max_iterations=0)

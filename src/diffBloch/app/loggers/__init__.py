@@ -9,6 +9,7 @@ dependency:
 
 - :class:`~diffBloch.app.loggers.wandb.WandbLogger` (``diffBloch.app.loggers.wandb``)
 - :class:`~diffBloch.app.loggers.comet.CometLogger` (``diffBloch.app.loggers.comet``)
+- :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` (``diffBloch.app.loggers.plotting``)
 
 Writing your own backend is a single method: implement ``report(event)`` for the events you care
 about.
@@ -29,11 +30,11 @@ from diffBloch.observability import (
     ConvergenceTrial,
     Event,
     Logger,
-    OrientationFitted,
+    OrientationOptimized,
     PlanStepCompleted,
     RefinementOrientationStep,
     RefinementStep,
-    ThicknessFitted,
+    ThicknessOptimized,
 )
 
 __all__ = [
@@ -104,9 +105,9 @@ class ConsoleLogger:
                 event.n_compared_hkl,
             )
             return
-        if isinstance(event, OrientationFitted):
+        if isinstance(event, OrientationOptimized):
             label = f"orientation optimization[rotation_index={event.rotation_index}]"
-        elif isinstance(event, ThicknessFitted):
+        elif isinstance(event, ThicknessOptimized):
             label = f"thickness optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, RefinementStep):
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
@@ -192,7 +193,7 @@ class EarlyAbortLogger:
     A fit-quality guard for a long, oracle-less **from-scratch** fit -- one with no committed
     checkpoint and no reference ``R_obs`` to pin against, so a mis-set-up
     run (wrong energy / ``g_max``, bad data lineage) would otherwise burn its whole budget producing
-    a bad answer. ``fit_orientation`` emits one :class:`~diffBloch.observability.OrientationFitted`
+    a bad answer. ``optimize_orientation`` emits one :class:`~diffBloch.observability.OrientationOptimized`
     per rotation as it finishes, carrying the scaling-optimised ``wr2`` at the fitted orientation. A
     healthy run reaches a low ``wr2`` on essentially every rotation; a fundamentally broken one stays
     high on all of them. This guard gives the run
@@ -209,7 +210,7 @@ class EarlyAbortLogger:
     paths call ``report`` from the driving thread, so the raise unwinds the run cleanly. Compute
     saved: **all** remaining rotations under ``workers = 1`` (sequential -- nothing further starts);
     under ``workers > 1`` the queued rotations are cancelled but the ``<= workers`` already running
-    cannot be interrupted and finish first (``fit_orientation`` cancels the rest on abort).
+    cannot be interrupted and finish first (``optimize_orientation`` cancels the rest on abort).
     """
 
     wr2_ceiling: float = 0.6
@@ -224,7 +225,7 @@ class EarlyAbortLogger:
 
     def report(self, event: Event) -> None:
         self.inner.report(event)  # forward first: the guard never swallows an observation
-        if event.channel != OrientationFitted.channel:
+        if event.channel != OrientationOptimized.channel:
             return
         self._seen += 1
         self._best_wr2 = min(self._best_wr2, event.measurements["wr2"])

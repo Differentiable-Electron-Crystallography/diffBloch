@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from diffBloch.io import AdpRecord, ObservationRecord, StructureRecord
+from diffBloch.io import AdpRecord, ExperimentalRecord, StructureRecord
 from diffBloch.io._cifio import loop_rows
 
 
@@ -107,7 +107,7 @@ def test_structure_record_rejects_negative_standard_uncertainties() -> None:
 
 def test_observation_record_validates_sigmas_and_zone_ids() -> None:
     with pytest.raises(ValidationError, match="sigmas must be non-negative"):
-        ObservationRecord(
+        ExperimentalRecord(
             unit_cell=np.eye(3),
             cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
             cell_parameters_su=np.full((6,), np.nan),
@@ -129,7 +129,7 @@ def test_observation_record_validates_sigmas_and_zone_ids() -> None:
 
 def test_observation_record_rejects_undeclared_reflection_zone_ids() -> None:
     with pytest.raises(ValidationError, match="not declared"):
-        ObservationRecord(
+        ExperimentalRecord(
             unit_cell=np.eye(3),
             cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
             cell_parameters_su=np.full((6,), np.nan),

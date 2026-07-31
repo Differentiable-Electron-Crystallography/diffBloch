@@ -3,7 +3,7 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
-      # Skip verbatim external data: the structure/observation inputs (cif / cif_pets) are
+      # Skip verbatim external data: the structure/experimental inputs (cif / cif_pets) are
       # hash-locked by experiment.lock -- normalizing whitespace would silently break the lock (it
       # did, on the LTA exp_data.cif_pets). Exclude the test-fixture tree AND the .cif/.cif_pets
       # extensions wherever they live (e.g. examples/experiments/*), so a committed example dataset

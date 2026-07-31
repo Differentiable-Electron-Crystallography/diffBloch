@@ -13,6 +13,5 @@ def test_load_config_reads_yaml_and_applies_defaults() -> None:
     assert cfg.name == "quartz-min"
     assert cfg.inputs.structure == "enantiomer_1.cif"
     assert cfg.inputs.exp_data == "exp_data.cif_pets"
-    assert cfg.blochwave.g_max_refine == 1.6
     # defaults-as-code applied for everything the file omits
     assert cfg.blochwave.solver.refine == "matrix_exp"

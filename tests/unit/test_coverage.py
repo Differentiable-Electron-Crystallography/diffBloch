@@ -1,5 +1,4 @@
-"""Slice 11: the coverage sweep -- ``plan_coverage``, ``maximize_scalar``, ``cover_beams`` /
-``cover_pool``.
+"""Slice 11: the coverage sweep -- ``plan_coverage``, ``maximize_scalar``, ``cover_beams``.
 
 The second convergence operation (match-count objective, distinct from ``convergence.py``'s
 self-stability). Reuses the fast synthetic system from ``tests.unit.synthetic`` (an hkl cube whose
@@ -15,12 +14,11 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import torch
-from tests.unit.synthetic import beam_count, seed_system
+from tests.unit.synthetic import seed_system
 
 from diffBloch.core.products import PatternBatch
 from diffBloch.preprocess import (
     cover_beams,
-    cover_pool,
     maximize_scalar,
     plan_coverage,
     select_beams,
@@ -77,7 +75,7 @@ def test_maximize_scalar_rejects_bad_max_iterations() -> None:
         maximize_scalar(lambda v: v, lambda v: v, start=1.0, step=0.1, max_iterations=0)
 
 
-# --- cover_beams / cover_pool: the two beam levers, end-to-end ---
+# --- cover_beams: the Klar-window coverage lever, end-to-end ---
 
 
 def test_cover_beams_widens_to_the_minimum_that_maximises_coverage() -> None:
@@ -94,56 +92,6 @@ def test_cover_beams_widens_to_the_minimum_that_maximises_coverage() -> None:
     assert started < plan_coverage(converged) < saturated
 
 
-def test_cover_pool_widens_the_seed_to_maximise_coverage() -> None:
-    from diffBloch.preprocess.experiment import seed_beam_hkl
-    from diffBloch.preprocess.plan import CandidatePlan
-
-    _, seed = seed_system()
-
-    def reseed_coverage(g_max_refine: float) -> int:
-        beam_hkl = seed_beam_hkl(seed.structure_factor_grid, g_max_refine=g_max_refine)
-        reseeded = tuple(
-            CandidatePlan.seed(
-                beam_hkl,
-                op.pattern,
-                energy=op.energy,
-                thickness=op.thickness,
-                u0=op.u0,
-                orientation=op.orientation,
-            )
-            for op in seed.orientations
-        )
-        return _coverage(replace(seed, orientations=reseeded), 1.0)
-
-    step = cover_pool(
-        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
-        start_g_max_refine=0.5,
-        step=0.1,
-        max_iterations=30,
-    )
-    converged = step(seed)
-    # Widened the pool past the start; observed is a superset so coverage == active beam count.
-    assert reseed_coverage(0.5) < plan_coverage(converged)
-    assert plan_coverage(converged) == beam_count(converged)
-
-
-def test_cover_pool_raises_past_the_grid_difference_support() -> None:
-    _, seed = seed_system()
-    step = cover_pool(
-        BeamSelection(integration=IntegrationGeometry(semiangle=1.0)),
-        start_g_max_refine=1.0,
-        step=0.2,
-        max_iterations=50,
-    )
-    with pytest.raises(ValueError, match="exceeds the grid's beam-difference support"):
-        step(seed)
-
-
 def test_cover_beams_rejects_non_positive_step() -> None:
     with pytest.raises(ValueError, match="step must be positive"):
         cover_beams(BeamSelection(), step=0.0)
-
-
-def test_cover_pool_rejects_non_positive_step() -> None:
-    with pytest.raises(ValueError, match="step must be positive"):
-        cover_pool(BeamSelection(), start_g_max_refine=0.5, step=0.0)

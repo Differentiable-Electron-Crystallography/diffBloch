@@ -6,9 +6,9 @@ import pytest
 
 from diffBloch.io import (
     parse_cif_number,
-    parse_observation_block,
+    parse_experimental_block,
     parse_structure_block,
-    read_observations,
+    read_experimental_data,
     read_structure,
     symmetry_constraints,
 )
@@ -41,7 +41,7 @@ def test_read_quartz_structure_fixture() -> None:
 
 
 def test_read_quartz_pets_fixture() -> None:
-    record = read_observations(FIXTURE_ROOT / "exp_data.cif_pets")
+    record = read_experimental_data(FIXTURE_ROOT / "exp_data.cif_pets")
 
     assert record.wavelength == 0.02510
     assert record.cell_parameters.tolist() == pytest.approx([4.9226, 4.9226, 5.4003, 90, 90, 120])
@@ -184,7 +184,7 @@ _refln_zone_axis_id
 """
     ).sole_block()
 
-    record = parse_observation_block(block)
+    record = parse_experimental_block(block)
 
     assert record.source_path is None
     assert record.n_rotations == 1

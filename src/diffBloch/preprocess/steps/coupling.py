@@ -12,7 +12,7 @@ discriminated union rather than a boolean toggle:
   :class:`~diffBloch.engine.plan.CoupledOrientationPlan` the engine reassembles + reduces.
 
 It is the tilt-dependent generalization of ``select_beams``. The default app recipe does not use
-this step -- it couples *per trial* inside ``fit_orientation`` (``coupling=...``); ``couple_beams``
+this step -- it couples *per trial* inside ``optimize_orientation`` (``coupling=...``); ``couple_beams``
 is the explicit composable step when a caller wants to settle a coupled ``Plan`` directly. It is
 only meaningful once ``select_beams`` has established the Klar-selected scored set (before it, an
 orientation's

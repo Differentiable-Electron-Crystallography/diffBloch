@@ -1,16 +1,10 @@
 # References & credits
 
-diffBloch is a from-scratch port of a research codebase and stands on published science and several
-open-source projects. This file records the scientific references, vendored reference data, the
-software we depend on / extract from / verify against, **and the codebases we examined for their
-approaches** (even where no code is used). It is a **living document** — each stage that introduces a
-new method, dataset, dependency, or studied design adds its credit here.
-
-## Origin
-
-- **diffBloch (research codebase)** — the private predecessor this package is ported from, stage by
-  stage. Physics conventions and reference behaviour derive from it.
-  <https://github.com/Differentiable-Electron-Crystallography/diffBloch>
+diffBloch stands on published science and several open-source projects. This file records the
+scientific references, vendored reference data, the software we depend on / extract from / verify
+against, **and the codebases we examined for their approaches** (even where no code is used). It is
+a **living document** — each stage that introduces a new method, dataset, dependency, or studied
+design adds its credit here.
 
 ## Scientific references
 
@@ -26,8 +20,8 @@ new method, dataset, dependency, or studied design adds its credit here.
   Spence, J. C. H. & Zuo, J. M. (1992). *Electron Microdiffraction.* Plenum Press, New York.
   The canonical reference for the Bloch-wave formulation diffBloch ports: the structure matrix `A`,
   the diagonalisation/`matrix_exp` propagation of the wavefunction through thickness, the diagonal
-  excitation errors `Sg` (the "Spence and Zuo method" named in the private `excitation_errors`
-  docstring), and the `Mii` Lorentz/obliquity factors. The relativistic electron-optics relations
+  excitation errors `Sg` (the "Spence and Zuo method"), and the `Mii` Lorentz/obliquity factors. The
+  relativistic electron-optics relations
   (`energy → wavelength`, interaction parameter `σ`) are standard and follow the abTEM
   implementation noted below.
 
@@ -46,23 +40,17 @@ new method, dataset, dependency, or studied design adds its credit here.
   refines the beam-selection thresholds on this framework, as implemented in Jana2006/Jana2020 +
   PETS. **Note:** the `couple_beams(TiltSegmentUnion)` policy — partitioning a rocking curve into
   contiguous tilt chunks and coupling the union of each chunk's boundary-tilt excited beams — is an
-  engineering approximation of this per-orientation beam list, **not** in the papers; it is ported
-  from the private `BlochNet.forward` and has no separate published source.
+  engineering approximation of this per-orientation beam list, **not** in the papers, and has no
+  separate published source.
 
 - **Atomic displacement parameter (ADP) frame conventions.**
   Trueblood, K. N. et al. (1996). *Atomic displacement parameter nomenclature: report of a
   subcommittee on atomic displacement parameter nomenclature.* **Acta Crystallographica A52,
   770–781.** DOI: [10.1107/S0108767396005697](https://doi.org/10.1107/S0108767396005697). Defines
-  the `U_cif` / `U_cart` / `U*` frames and the orthogonalization matrix `A` (their eq. 50) the
-  private `diffBloch` uses. `core/adp` maps raw ADPs into the reciprocal `U*` frame that
-  `core/scattering` consumes: Uani via `U*_ij = d*_i d*_j U_cif_ij` (the private CIF→Cartesian→star
-  chain with `A` cancelled algebraically — exactly faithful), and Uiso via the textbook
-  `U* = Uiso G*` (`G* = B B^T`, `B = reciprocal_cell`).
-  **Note (private bug, flag upstream):** the private `Atoms.A_matrix()` builds `A[2,2] = 1/c*` from
-  `c_star = |cross(c, b)|/V = |a*|` instead of `|cross(a, b)|/V = |c*|`, mislabelling `|a*|` as
-  `c*`. This only enters the Uiso path (Uani cancels `A`) and only matters for anisotropic cells;
-  diffBloch uses the convention-correct reciprocal metric instead, so it intentionally does **not**
-  reproduce that quantity.
+  the `U_cif` / `U_cart` / `U*` frames and the orthogonalization matrix `A` (their eq. 50). `core/adp`
+  maps raw ADPs into the reciprocal `U*` frame that `core/scattering` consumes: Uani via
+  `U*_ij = d*_i d*_j U_cif_ij`, and Uiso via the textbook `U* = Uiso G*` (`G* = B B^T`,
+  `B = reciprocal_cell`). diffBloch uses the convention-correct reciprocal metric throughout.
 
 - **Refinement loss / agreement metrics.**
   The Bragg R(obs) factor `R = Σ|√I_obs − √I_calc| / Σ√I_obs` (over reflections with `I_obs > 3σ`)
@@ -71,33 +59,30 @@ new method, dataset, dependency, or studied design adds its credit here.
   `μ`, weak-reflection floor) follow the SI of Klar, P. B. et al. (2023). *Accurate structure models
   and absolute configuration determination using dynamical effects in continuous-rotation 3D electron
   diffraction data.* **Nature Chemistry 15, 848–855.** DOI:
-  [10.1038/s41557-023-01186-1](https://doi.org/10.1038/s41557-023-01186-1). Loss bodies are ported
-  from the private `diffBloch/metrics.py`. The same paper's SI also defines the **rsg/dsg active-beam
-  selection** (`preprocess.select_beams`): keep a reflection when `|Sg|/sg_max < rsg` *and*
-  `sg_max - |Sg| > dsg`, with `sg_max = |g_perp|·deg2rad(semiangle)` the excitation-error spread over
-  the integration cone. We take `g_perp` from the geometry-appropriate axis (goniometer-rock-axis
-  distance for continuous rotation), a recorded correction of the private `filter_hkls`
-  transverse-axis convention.
+  [10.1038/s41557-023-01186-1](https://doi.org/10.1038/s41557-023-01186-1). The same paper's SI also
+  defines the **rsg/dsg active-beam selection** (`preprocess.select_beams`): keep a reflection when
+  `|Sg|/sg_max < rsg` *and* `sg_max - |Sg| > dsg`, with `sg_max = |g_perp|·deg2rad(semiangle)` the
+  excitation-error spread over the integration cone. We take `g_perp` from the geometry-appropriate
+  axis (goniometer-rock-axis distance for continuous rotation).
 
 - **Orientation refinement (hexagonal modified-simplex search).**
   Palatinus, L., Jacob, D., Cuvillier, P., Klementová, M., Sinkler, W. & Marks, L. D. (2013).
   *Structure refinement from precession electron diffraction data.* **Acta Crystallographica A69,
   171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X). Source of
-  the hexagonal orientation search `preprocess.fit_orientation` ports (via the private
-  `generate_new_tilt` / simplex loop): `n_steps` azimuths at a shrinking tilt radius, greedily
-  accepting the first wR2-lowering tilt and halving the radius when none improves.
+  the hexagonal orientation search `preprocess.optimize_orientation` implements: `n_steps` azimuths at a
+  shrinking tilt radius, greedily accepting the first wR2-lowering tilt and halving the radius when
+  none improves.
 
 - **Crystal orientation from the UB matrix (Busing-Levy formalism).**
   Busing, W. R. & Levy, H. A. (1967). *Angle calculations for 3- and 4-circle X-ray and neutron
   diffractometers.* **Acta Crystallographica 22, 457-464.** DOI:
   [10.1107/S0365110X67000970](https://doi.org/10.1107/S0365110X67000970). Defines the reciprocal
   `B` matrix (`a*`-along-x setting) and the `UB = U B` orientation formalism. `preprocess/orientation`
-  derives per-rotation crystal orientations natively as `R_z(ω) R_x(α) R_y(β) @ (UB B^-1)`, the
-  rotation ordering and `B` convention taken from the private `diffBloch/rotation_dataset.py`. The
+  derives per-rotation crystal orientations natively as `R_z(ω) R_x(α) R_y(β) @ (UB B^-1)`. The
   resulting orientation matrices are deliberately **non-orthonormal** (`U = UB B^-1` folds a ~1%
   measured-vs-ideal cell correction); geometry uses `reciprocal_cell(cell @ orientation.T)`.
 
-_(PETS / observation-model references will be added when stage 9+ lands the observation model.)_
+_(PETS / experimental-model references will be added when stage 9+ lands the experimental model.)_
 
 - **Convergence-testing method (concepts borrowed, no dependency).** The `converge_*` sweep design
   draws on established numerical-convergence and optimization practice, not a hyperparameter-search
@@ -157,9 +142,9 @@ _(PETS / observation-model references will be added when stage 9+ lands the obse
   for the lean core). The dynamical stage additionally reimplements abTEM's relativistic
   electron-optics helpers natively — `energy2wavelength` and `energy2sigma` (`abtem.core.energy`)
   and the interaction constant `kappa` (`abtem.core.constants`) — and follows the structure-matrix
-  conventions of `abtem.bloch`. The private predecessor imported these directly from abTEM; the
-  port re-derives them from the underlying physical constants and verifies against published values
-  (and abTEM as oracle), so abTEM remains a credited source but not a runtime dependency.
+  conventions of `abtem.bloch`. The port re-derives them from the underlying physical constants and
+  verifies against published values (and abTEM as oracle), so abTEM remains a credited source but
+  not a runtime dependency.
 - **diffsims** (pyxem) — independent tabulation of the Lobato coefficients
   (`diffsims.utils.lobato_scattering_params.ATOMIC_SCATTERING_PARAMS_LOBATO`), used to cross-check our
   vendored data against a second source. <https://github.com/pyxem/diffsims>
@@ -198,8 +183,8 @@ Studied while designing the 2.0 architecture and while choosing methods. We adop
   (<https://github.com/seto77/ReciPro>).
 
 ## Conventions credited
-- Reciprocal-cell convention (`pinv(cell).T`) follows the ASE-compatible helper from the research
-  codebase; ADP frame conventions follow standard crystallographic (cctbx-compatible) definitions.
+- Reciprocal-cell convention (`pinv(cell).T`) is ASE-compatible; ADP frame conventions follow
+  standard crystallographic (cctbx-compatible) definitions.
 - **State monad / stateful-loop decomposition** — the preprocess driver's shape (pure `Plan -> Plan`
   levers + a driver holding the loop state off the value) is the standard `State` decomposition:
   Wadler, *Monads for functional programming* (Advanced Functional Programming, 1995); Haskell

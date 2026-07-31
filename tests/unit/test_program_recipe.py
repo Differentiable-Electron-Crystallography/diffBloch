@@ -12,9 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _recipe_steps
+from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _preprocess, _recipe_steps
 from diffBloch.config import load_experiment
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.observability import NULL_LOGGER
 from diffBloch.preprocess import from_experiment, resolve_recipe, step_records
 from diffBloch.preprocess.pipeline import Fork
@@ -26,8 +26,8 @@ def _steps(material: str = "quartz_anchor") -> list:
     root = FIXTURES / material
     cfg, _ = load_experiment(root)
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     return _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
 
 
@@ -48,7 +48,7 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     """A ``blochwave`` override reaches the fit's recorded per-trial policy.
 
     The recipe reads its coupling from config (not a hardcoded ``UnionCoupling()``), so a
-    config that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the
+    config that overrides the SOLVE-union bounds re-keys the ``optimize_orientation`` step -- the
     mechanism that lets abiraterone's ``fixed_n_segments=4`` coupling be expressed through the
     standard config path.
     """
@@ -58,8 +58,8 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
         update={"blochwave": cfg.blochwave.model_copy(update={"fixed_n_segments": 4})}
     )
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     steps = _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     fit = next(r for r in records if r.name == "optimize_orientation")
@@ -84,8 +84,100 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
         "optimize_thickness",
     ]
     assert [r.name for r in small] == names == [r.name for r in large]
-    # identical params too (fit_orientation records only {search, coupling}; no validate)
+    # identical params too (optimize_orientation records only {search, coupling}; no validate)
     assert [r.params for r in small] == [r.params for r in large]
+
+
+def test_orientations_csv_prepends_an_import_orientations_step(tmp_path: Path) -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
+    csv_path = tmp_path / "orientations.csv"
+    csv_path.write_text("Rotation Index,Orientation Matrix\n")
+
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(
+                cfg,
+                setup.refinement,
+                setup.integration,
+                NULL_LOGGER,
+                orientations_csv=csv_path,
+            ),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+
+    assert records[0].name == "import_orientations"
+    assert records[0].params == {"csv_path": str(csv_path)}
+    assert [r.name for r in records[1:]] == [
+        "build_orientation_plans",
+        "optimize_orientation",
+        "optimize_thickness",
+    ]
+
+
+def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={"preprocess": cfg.preprocess.model_copy(update={"stage_order": "thickness_first"})}
+    )
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
+
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+
+    assert [r.name for r in records] == [
+        "build_orientation_plans",
+        "optimize_thickness",
+        "optimize_orientation",
+    ]
+
+
+def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path) -> None:
+    """``plot_thickness`` (API/CLI) composes a ``ThicknessPlotLogger`` into the recipe's logger.
+
+    Both fitting stages are disabled so only the unconditional ``build_orientation_plans`` geometry
+    build runs -- fast, and enough to exercise the composition branch without paying for a search.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            )
+        }
+    )
+    plot_dir = tmp_path / "thickness_optim"
+
+    refinement, plan = _preprocess(
+        root,
+        cfg,
+        logger=NULL_LOGGER,
+        checkpoint=False,
+        refresh=False,
+        device=None,
+        workers=1,
+        max_batch=None,
+        plot_thickness=True,
+        plot_thickness_dir=plot_dir,
+    )
+
+    assert plan.orientations  # the geometry build actually ran
+    assert refinement is not None
+    # no thickness fit ran, so no PNG was written -- but the branch itself (directory resolution +
+    # MultiLogger composition) executed without error, which is what this test pins.
+    assert plot_dir.is_dir()
 
 
 def test_fit_stages_can_be_enabled_independently() -> None:
@@ -102,8 +194,8 @@ def test_fit_stages_can_be_enabled_independently() -> None:
         }
     )
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     records = step_records(
         resolve_recipe(
             _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),

@@ -6,7 +6,7 @@ When something is unclear, ask before changing architecture. When running unatte
 
 ## What diffBloch is
 
-diffBloch refines crystal structures against rotating-stage 3D electron-diffraction data: continuous-rotation 3DED, a sequence of diffraction frames collected as the crystal is tilted/rocked through reciprocal space around a goniometer axis, reduced upstream by PETS2 into `.cif_pets` observations. Because the diffraction is dynamical (multiple-scattering), diffBloch uses a differentiable Bloch-wave simulation rather than a kinematical approximation.
+diffBloch refines crystal structures against rotating-stage 3D electron-diffraction data: continuous-rotation 3DED, a sequence of diffraction frames collected as the crystal is tilted/rocked through reciprocal space around a goniometer axis, reduced upstream by PETS2 into `.cif_pets` experimental data. Because the diffraction is dynamical (multiple-scattering), diffBloch uses a differentiable Bloch-wave simulation rather than a kinematical approximation.
 
 The object of value is small: a differentiable map from a handful of structural parameters (atom positions, ADPs, occupancies, structure factors) to simulated intensities and a single scalar R-loss. Gradients of that loss update the selected trainable parameters. Everything else in the package prepares inputs for that map, runs the optimizer around it, checkpoints expensive setup, or reports progress — around the numerical core, never inside it.
 
@@ -114,7 +114,7 @@ A `Plan` is the geometry/data scaffold around the differentiable structural para
 
 ### Candidate vs built plan
 
-`CandidatePlan` is source-only and intentionally unsolvable: candidate beams and observations without built Bloch geometry. `build_orientation_plans` is the declared build boundary that constructs the gathers/beam plans.
+`CandidatePlan` is source-only and intentionally unsolvable: candidate beams and experimental data without built Bloch geometry. `build_orientation_plans` is the declared build boundary that constructs the gathers/beam plans.
 
 - A `Plan` is simulatable only after the build phase; never encode the phase with nullable fields, optional gathers, or an `is_built` flag.
 - Never build `StructureFactorGather` over the full candidate pool. Build gather geometry only over the active solve set or the coupled SOLVE union. This is the large-cell out-of-memory lesson: the candidate pool can be far larger than what is solved.
@@ -222,7 +222,7 @@ This document is the naming guide; do not depend on files outside the repository
 
 - Documentation snippets are runnable where practical; if an example is only API shape, say so.
 - Documentation must not overclaim reproducibility: locks verify identity, not floating-point trajectories.
-- When explaining input data, say rotating-stage 3D electron diffraction / continuous-rotation 3DED where useful. PETS2 is upstream data reduction; diffBloch consumes its `.cif_pets` observations plus a starting structure `.cif`.
+- When explaining input data, say rotating-stage 3D electron diffraction / continuous-rotation 3DED where useful. PETS2 is upstream data reduction; diffBloch consumes its `.cif_pets` experimental data plus a starting structure `.cif`.
 
 ## Verify a change
 

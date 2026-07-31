@@ -8,7 +8,7 @@ preprocess.
 
 The core pieces are the :class:`~diffBloch.preprocess.plan.Plan` value object, the
 :mod:`diffBloch.preprocess.pipeline` combinators (``pipeline`` sequencing + ``iterate_until``
-fixpoint), the steps (``converge_numerics`` / ``fit_orientation`` / ``fit_thickness`` and the rest),
+fixpoint), the steps (``converge_numerics`` / ``optimize_orientation`` / ``optimize_thickness`` and the rest),
 and ``from_experiment`` construction from typed records.
 """
 
@@ -67,7 +67,6 @@ from diffBloch.preprocess.steps.beams import (
 )
 from diffBloch.preprocess.steps.convergence import (
     converge_beams,
-    converge_pool,
     converge_sampling,
     converge_scalar,
     simulation_converged,
@@ -76,14 +75,14 @@ from diffBloch.preprocess.steps.convergence import (
 from diffBloch.preprocess.steps.coupling import couple_beams
 from diffBloch.preprocess.steps.coverage import (
     cover_beams,
-    cover_pool,
     maximize_scalar,
     plan_coverage,
 )
-from diffBloch.preprocess.steps.fit_orientation import fit_orientation
-from diffBloch.preprocess.steps.fit_thickness import fit_thickness
 from diffBloch.preprocess.steps.frames import select_finite_loss_frames, select_frames
+from diffBloch.preprocess.steps.import_orientations import import_orientations
 from diffBloch.preprocess.steps.mosaicity import mosaicity
+from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
+from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
 from diffBloch.preprocess.steps.report_coupling import report_coupling
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
@@ -91,7 +90,6 @@ from diffBloch.specs import (
     ConvergenceTest,
     ConvergenceTolerance,
     FrameSelection,
-    HexagonalSearch,
     Mosaicity,
     RockingCurve,
     ThicknessGrid,
@@ -106,7 +104,6 @@ __all__ = [
     "ExperimentSetup",
     "Fork",
     "FrameSelection",
-    "HexagonalSearch",
     "InferenceResult",
     "Mosaicity",
     "OPAQUE",
@@ -127,13 +124,12 @@ __all__ = [
     "busing_levy_matrix",
     "converge_beams",
     "converge_numerics",
-    "converge_pool",
     "converge_sampling",
     "converge_scalar",
     "cover_beams",
-    "cover_pool",
-    "fit_orientation",
-    "fit_thickness",
+    "optimize_orientation",
+    "optimize_thickness",
+    "import_orientations",
     "fork",
     "from_experiment",
     "goniometer_rotation",

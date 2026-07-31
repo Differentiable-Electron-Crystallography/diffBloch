@@ -17,8 +17,8 @@ from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     Absorption,
     ApparentThicknessNetwork,
-    HexagonalSearch,
     IntegrationGeometry,
+    NelderMeadSearch,
     OrientationSelection,
     PerTiltCoupling,
     RockingCurve,
@@ -36,7 +36,6 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.blochwave.solver.refine == "matrix_exp"
     assert cfg.blochwave.solver.inference == "matrix_exp"
     assert cfg.sample.thicknesses == (820.0,)
-    assert cfg.blochwave.g_max_refine == 1.6
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
@@ -256,36 +255,34 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
         )
 
 
-def test_preprocess_orientation_defaults_match_the_private() -> None:
+def test_preprocess_orientation_defaults_match_specs() -> None:
     cfg = ExperimentConfig.model_validate(
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     orientation = cfg.preprocess.orientation
-    # The config is a 1:1 edge over HexagonalSearch: its defaults derive from the value-type, so a
-    # default config round-trips to the value-type's own defaults. The concrete values (the private
-    # numbers, incl. the quartz-calibrated max_iterations) are pinned once, in test_specs.
-    assert orientation.to_search() == HexagonalSearch()
+    # The config is a 1:1 edge over NelderMeadSearch: its defaults derive from the value-type, so a
+    # default config round-trips to the value-type's own defaults. The concrete values are pinned
+    # once, in test_specs.
+    assert orientation.to_search() == NelderMeadSearch()
 
 
 def test_orientation_search_bounds_are_validated() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="must be positive"):
         ExperimentConfig.model_validate(
-            {**base, "preprocess": {"orientation": {"min_search_angle": 0.0}}}
+            {**base, "preprocess": {"orientation": {"nelder_mead": {"step_size": 0.0}}}}
         )
-    with pytest.raises(ValidationError, match="must exceed"):
-        ExperimentConfig.model_validate(
-            {**base, "preprocess": {"orientation": {"max_search_angle": 0.001}}}
-        )
-    with pytest.raises(ValidationError, match="n_steps must be >= 1"):
-        ExperimentConfig.model_validate({**base, "preprocess": {"orientation": {"n_steps": 0}}})
     with pytest.raises(ValidationError, match="max_iterations must be >= 1"):
         ExperimentConfig.model_validate(
-            {**base, "preprocess": {"orientation": {"max_iterations": 0}}}
+            {**base, "preprocess": {"orientation": {"nelder_mead": {"max_iterations": 0}}}}
+        )
+    with pytest.raises(ValidationError, match="must be positive"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"orientation": {"nelder_mead": {"x_tolerance": 0.0}}}}
         )
 
 
-def test_preprocess_thickness_defaults_match_the_private() -> None:
+def test_preprocess_thickness_defaults_match_specs() -> None:
     cfg = ExperimentConfig.model_validate(
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )

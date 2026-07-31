@@ -1,7 +1,7 @@
 """Intensity observable and intensity-space losses (``core.products`` / ``core.losses``).
 
-Loss oracles inline the verbatim ``diffBloch_private/diffBloch/metrics.py`` bodies (pure torch, no
-``ase``) so the port is checked against the private source, not a paraphrase.
+Loss oracles inline verbatim reference bodies (pure torch, no ``ase``) so the port is checked
+against the source, not a paraphrase.
 """
 
 from __future__ import annotations
@@ -13,21 +13,21 @@ from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
 from diffBloch.core.products import intensities
 
 
-# --- private metrics.py bodies, verbatim (renamed args only) ------------------------------------
-def _private_mse(sim, exp, sigmas=None):
+# --- oracle bodies, verbatim (renamed args only) -------------------------------------------------
+def _oracle_mse(sim, exp, sigmas=None):
     return torch.mean((sim - exp) ** 2, dim=-1)
 
 
-def _private_l1(sim, exp, sigmas=None):
+def _oracle_l1(sim, exp, sigmas=None):
     return torch.mean(torch.abs(sim - exp), dim=-1)
 
 
-def _private_weighted_mse(sim, exp, sigmas):
+def _oracle_weighted_mse(sim, exp, sigmas):
     weight = 1 / sigmas**2
     return torch.sum(weight * (sim - exp) ** 2, dim=-1)
 
 
-def _private_rbragg_abs(sim, exp, sigmas):
+def _oracle_rbragg_abs(sim, exp, sigmas):
     mask = exp > 3 * sigmas
     sqrt_exp = exp.sqrt()
     sqrt_sim = sim.sqrt()
@@ -36,7 +36,7 @@ def _private_rbragg_abs(sim, exp, sigmas):
     return num / denom
 
 
-def _private_wrbragg(sim, exp, sigmas, mu=0.01):
+def _oracle_wrbragg(sim, exp, sigmas, mu=0.01):
     eps = 1e-12
     sqrt_I = torch.sqrt(torch.clamp(exp, min=eps))
     weak_mask = exp < (0.01 * sigmas)
@@ -65,7 +65,7 @@ def test_intensities_is_differentiable() -> None:
     assert psi.grad is not None and psi.grad.abs().sum() > 0
 
 
-# --- losses vs private oracle -------------------------------------------------------------------
+# --- losses vs oracle ----------------------------------------------------------------------------
 @pytest.fixture
 def _intensity_pair():
     g = torch.Generator().manual_seed(11)
@@ -77,24 +77,24 @@ def _intensity_pair():
     return calc, obs, sigmas
 
 
-def test_mse_matches_private(_intensity_pair) -> None:
+def test_mse_matches_oracle(_intensity_pair) -> None:
     calc, obs, _ = _intensity_pair
-    assert torch.allclose(mse(calc, obs), _private_mse(calc, obs))
+    assert torch.allclose(mse(calc, obs), _oracle_mse(calc, obs))
 
 
-def test_l1_matches_private(_intensity_pair) -> None:
+def test_l1_matches_oracle(_intensity_pair) -> None:
     calc, obs, _ = _intensity_pair
-    assert torch.allclose(l1(calc, obs), _private_l1(calc, obs))
+    assert torch.allclose(l1(calc, obs), _oracle_l1(calc, obs))
 
 
-def test_weighted_mse_matches_private(_intensity_pair) -> None:
+def test_weighted_mse_matches_oracle(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
-    assert torch.allclose(weighted_mse(calc, obs, sigmas), _private_weighted_mse(calc, obs, sigmas))
+    assert torch.allclose(weighted_mse(calc, obs, sigmas), _oracle_weighted_mse(calc, obs, sigmas))
 
 
-def test_rbragg_matches_private(_intensity_pair) -> None:
+def test_rbragg_matches_oracle(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
-    assert torch.allclose(rbragg(calc, obs, sigmas), _private_rbragg_abs(calc, obs, sigmas))
+    assert torch.allclose(rbragg(calc, obs, sigmas), _oracle_rbragg_abs(calc, obs, sigmas))
 
 
 def test_rbragg_masks_weak_reflections() -> None:
@@ -121,9 +121,9 @@ def test_rbragg_is_nan_safe_for_negative_masked_reflections() -> None:
     assert torch.allclose(full, subset)
 
 
-def test_w_rbragg_matches_private(_intensity_pair) -> None:
+def test_w_rbragg_matches_oracle(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
-    assert torch.allclose(w_rbragg(calc, obs, sigmas), _private_wrbragg(calc, obs, sigmas))
+    assert torch.allclose(w_rbragg(calc, obs, sigmas), _oracle_wrbragg(calc, obs, sigmas))
 
 
 # --- properties --------------------------------------------------------------------------------

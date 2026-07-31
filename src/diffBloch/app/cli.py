@@ -30,7 +30,7 @@ from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
     MultiLogger,
-    OrientationFitted,
+    OrientationOptimized,
     RecordingLogger,
 )
 
@@ -92,6 +92,30 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
+    )
+    parser.add_argument(
+        "--orientations-csv",
+        metavar="PATH",
+        default=None,
+        help="overwrite every rotation's orientation from a 'Rotation Index'/'Orientation Matrix' "
+        "CSV before the recipe's fitting steps run (part of the recipe, so it restales any "
+        "existing checkpoint); preprocess.optimize_orientation still controls whether the search "
+        "then refines from that seed or is skipped so the imported orientations are used as-is",
+    )
+    parser.add_argument(
+        "--plot-thickness",
+        action="store_true",
+        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search (requires "
+        "the 'diffBloch[plot]' extra); ORs with preprocess.thickness.plot in experiment.yaml, so "
+        "either turns it on. Defaults to '<inputs.structure's directory>/thickness_optim', "
+        "override with --plot-thickness-dir",
+    )
+    parser.add_argument(
+        "--plot-thickness-dir",
+        metavar="PATH",
+        default=None,
+        help="override the output directory for thickness plots; only takes effect when plotting "
+        "is on (--plot-thickness or preprocess.thickness.plot)",
     )
 
 
@@ -195,6 +219,9 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
+                orientations_csv=args.orientations_csv,
+                plot_thickness=args.plot_thickness,
+                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:
@@ -225,6 +252,9 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
+                orientations_csv=args.orientations_csv,
+                plot_thickness=args.plot_thickness,
+                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:
@@ -235,7 +265,9 @@ def main(argv: list[str] | None = None) -> int:
         built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
         total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
         matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
-        fitted = [event for event in summary_logger.events if isinstance(event, OrientationFitted)]
+        fitted = [
+            event for event in summary_logger.events if isinstance(event, OrientationOptimized)
+        ]
         mean_loss = (
             f"{sum(event.wr2 for event in fitted) / len(fitted):.6g}"
             if fitted
@@ -278,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
                 verbose=args.verbose_refinement,
                 profile=args.profile,
                 checkpoint_activations=not args.no_checkpoint_activations,
+                orientations_csv=args.orientations_csv,
+                plot_thickness=args.plot_thickness,
+                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
             if args.debug:

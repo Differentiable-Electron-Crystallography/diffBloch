@@ -1,9 +1,9 @@
 """Native site-symmetry projector + diffpy ADP constraints (``io.symmetry_setup``).
 
 The correctness proof for special-position constraints: the projector holds atoms on their sites
-(including *coupled* sites the private's boolean mask cannot express), the ADP equalities are
-enforced, and both agree with diffpy used as an independent oracle (which also trips on any
-space-group setting/origin mismatch between the CIF symops and diffpy).
+(including *coupled* sites a boolean mask cannot express), the ADP equalities are enforced, and
+both agree with diffpy used as an independent oracle (which also trips on any space-group
+setting/origin mismatch between the CIF symops and diffpy).
 """
 
 from dataclasses import replace

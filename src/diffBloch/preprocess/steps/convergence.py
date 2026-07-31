@@ -1,6 +1,6 @@
 """Convergence testing: grow a simulation-accuracy knob until the diffraction pattern stops moving.
 
-A convergence sweep is *self-referential* -- unlike ``fit_orientation`` / ``fit_thickness`` (which
+A convergence sweep is *self-referential* -- unlike ``optimize_orientation`` / ``optimize_thickness`` (which
 match the simulation to *observed* data), it asks whether two *consecutive* simulations still
 differ,
 so it is a numerical resolution study (has the calculation stopped depending on the knob?), run
@@ -14,10 +14,6 @@ before and orthogonally to the accuracy fit. This module has three layers:
   Plans); adapters instantiate it.
 - :func:`converge_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
   ``integration_semiangle`` until the pattern stabilises, re-running ``select_beams`` from the seed.
-- :func:`converge_pool` -- the coupled second beam lever: widens the ``g_max_refine`` candidate
-  pool, re-seeding each orientation from the shared grid, until the pattern stabilises. It is the
-  standalone lever; the joint window+pool fixpoint needs the driver to thread their shared scalar
-  state (the naive ``iterate_until(pipeline([...]))`` does not compose -- see ``converge_pool``).
 - :func:`converge_sampling` -- the forward-model lever: refines the rocking-curve tilt count
   (``rocking_curve_sampling``) until the integrated pattern stabilises. Independent of the beam
   levers (the tilt count does not touch the ``Fgb`` support), so it composes as an ordinary lever.
@@ -49,7 +45,6 @@ from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
-    reseed_pool,
     select_beams,
 )
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
@@ -57,7 +52,6 @@ from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
 __all__ = [
     "converge_beams",
-    "converge_pool",
     "converge_sampling",
     "converge_scalar",
     "simulation_converged",
@@ -205,56 +199,6 @@ def converge_beams(
         return converge_scalar(
             build, measure, tolerance, start=selection.integration.semiangle, step=step
         )
-
-    return run
-
-
-def converge_pool(
-    selection: BeamSelection,
-    refinement: RefinementSetup,
-    tolerance: ConvergenceTolerance,
-    *,
-    start_g_max_refine: float,
-    step: float,
-    method: SolverMethod = "matrix_exp",
-) -> PlanStep:
-    """Return a ``Plan -> Plan`` step: widen the ``g_max_refine`` pool until the pattern settles.
-
-    The pool lever of beam-set convergence -- the second, coupled beam knob (the window lever is
-    :func:`converge_beams`). Each candidate re-seeds every orientation's *candidate* reflections
-    from the shared grid at a wider ``g_max_refine``
-    (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), rebuilds each
-    :class:`~diffBloch.engine.plan.OrientationPlan` on that seed, then re-applies the
-    fixed Klar window via :func:`~diffBloch.preprocess.steps.beams.select_beams` -- so the active
-    set is
-    ``seed(g_max_refine) intersect Klar-window(selection)`` at each step. The sweep starts at
-    ``start_g_max_refine`` and clicks up by ``step`` until :func:`converge_scalar` settles the
-    pattern (first sub-threshold step wins); it settles when the widened pool stops admitting beams
-    the
-    window keeps. Re-seeding from the fixed grid (not the previous pruned set) lets widening recover
-    beams a narrower pool clipped, mirroring :func:`converge_beams`.
-
-    ``step`` must be positive. The pool stays inside the existing ``Fgb`` difference support while
-    ``2 * g_max_refine <= grid.g_max``; growing past that needs a dependent grid-resize that is not
-    implemented (the anchor never reaches it -- ``g_max_refine`` 1.6 vs ``g_max`` 4.5), so a
-    candidate that would exceed the grid raises rather than silently truncating.
-
-    This is the *standalone* pool lever. The joint window+pool fixpoint is **not** a naive
-    ``iterate_until(pipeline([converge_beams, converge_pool]))``: :func:`converge_beams` re-selects
-    from an *unpruned* seed while this step *emits a window-pruned* Plan, and the two levers share
-    scalar state (the window ``integration_semiangle`` and the pool ``g_max_refine``) the ``Plan``
-    does not carry. Threading that shared state across levers is the preprocess driver's job (block
-    coordinate descent: converge one lever, feed its settled scalar to the other, repeat).
-    """
-    if step <= 0.0:
-        raise ValueError("step must be positive")
-    measure = simulation_rfactor(refinement, method=method)
-
-    def run(seed: Plan) -> Plan:
-        def build(g_max_refine: float) -> Plan:
-            return reseed_pool(seed, selection, g_max_refine=g_max_refine)
-
-        return converge_scalar(build, measure, tolerance, start=start_g_max_refine, step=step)
 
     return run
 

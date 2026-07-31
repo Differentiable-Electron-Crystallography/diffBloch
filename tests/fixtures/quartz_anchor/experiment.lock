@@ -2,7 +2,7 @@ structure:
   ref: enantiomer_1.cif
   sha256: 4a1ed50ae8eff95b652e49a872979f4dca19bf77b2b34fa14be2ebc06b0bb306
   bytes: 942
-observations:
+experimental_data:
   ref: exp_data.cif_pets
   sha256: 96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4
   bytes: 303151
