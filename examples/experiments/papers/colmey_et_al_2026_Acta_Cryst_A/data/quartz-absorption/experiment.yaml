@@ -20,8 +20,8 @@ blochwave:
   ignore_orientations: []
 
 preprocess:
-  optimize_orientation: true
-  optimize_thickness: false
+  optimize_orientation: false
+  optimize_thickness: true
   orientation:
     nelder_mead:
       step_size: 1
@@ -33,7 +33,7 @@ preprocess:
     plot: true
 
 refinement:
-  steps: 200
+  steps: 40
   thickness_nn:
     enabled: true
     num_samples: 40

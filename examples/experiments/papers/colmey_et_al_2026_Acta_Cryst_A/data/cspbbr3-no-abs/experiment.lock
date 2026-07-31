@@ -4,5 +4,5 @@ structure:
   bytes: 2409
 experimental_data:
   ref: CsPbBr_P67-crot-050_dyn.cif_pets
-  sha256: 360c4b9b42e4e2fa5b852a2c1acc9b5d1187e82e5e025eafc5f2680f5ff8ab4c
-  bytes: 1443857
+  sha256: 324043aa22ebf0dad00ca0d7a7f50ade8f0a5058c7bcd58cc48401a2211ca022
+  bytes: 1444882

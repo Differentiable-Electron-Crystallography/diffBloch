@@ -1,118 +1,105 @@
-# Colmey et al. (2026), Acta Crystallographica A
+# Colmey et al. (2026), pending review, submitted to Acta Crystallographica A, Feb 6th, 2026
 
-This directory contains imported inputs and legacy Hydra configuration fragments for the quartz,
-CsPbBr3, and borane calculations. The three `data/*/experiment.yaml` files are translations into
-the current strict diffBloch schema. They establish runnable configuration boundaries; they do not
-yet claim reproduction of the paper's final R factors.
+---
 
-`legacy_checkpoint_preprocess/` is a preserved snapshot of the exact relevant configs, CIF/PETS
-inputs, and saved preprocessing outputs copied from the Desktop `checkpoint_preprocess` repository.
-Its README records the source revision and scope. Use it as the legacy reproduction record; use
-the sibling `data/*/experiment.yaml` directories for the current diffBloch CLI.
+### The role of absorption in three-dimensional electron diffraction dynamical structure refinement
 
-All three paper configs use `blochwave.coupling_mode: per_tilt`. Every rocking-curve sub-tilt
-recomputes excitation errors over the radial candidate pool, selects its own `g_max`/`sg_max` beam
-basis, and builds its own Bloch structure-matrix geometry. No beam union is shared between tilts.
+**Benjamin Colmey**¹, **Tiarnan A. S. Doherty**¹ ² , **Shreshth A. Malik**² , **Paul A. Midgley**¹
 
-## Material configs
+¹ Department of Materials Science and Metallurgy, University of Cambridge, 27 Charles Babbage Rd,
+Cambridge, CB3 0FS, United Kingdom
+² OATML, Department of Computer Science, University of Oxford, Wolfson Building, Parks Rd, Oxford,
+OX1 3QG, United Kingdom
 
-| Material | Current config | Legacy source |
-|---|---|---|
-| Quartz | `data/quartz/experiment.yaml` | `configs/experiment/quartz.yaml` plus the base fragments |
-| CsPbBr3 | `data/cspbbr3/experiment.yaml` | `configs/experiment/cspbbr3_zone.yaml` plus the base fragments |
-| Borane | `data/borane/experiment.yaml` | No borane-specific override was imported; values are explicitly marked as inferred |
+**arXiv:** https://arxiv.org/abs/2602.08935
 
-## Legacy-to-current mapping
+> The role of absorption in 3D electron diffraction is established through analytical theory,
+> simulation, and dynamical refinement. A two-beam expression for the absorbed integrated intensity
+> in centrosymmetric crystals is derived, showing that for t/ξg ≪ 1 reflections follow a uniform
+> exponential decay set by the mean absorptive potential U'0. Many-beam simulations of both
+> centrosymmetric and non-centrosymmetric crystals reveal additional reflection-specific anomalous
+> absorption beyond the uniform attenuation set by U'0. Neglecting these effects in dynamical
+> refinement of integrated intensities incurs an error that increases approximately linearly with
+> thickness, with this error becoming more severe near zone axes. Dynamical refinements were
+> performed on CsPbBr3, quartz, and borane, with the inclusion of absorption yielding an improvement
+> in R_obs from 6.4 to 5.3% for CsPbBr3 and negligible improvements for quartz and borane. Anomalous
+> absorption may therefore be ignored for routine refinement of integrated intensities except in
+> high-Z materials at thicknesses approaching ξg.
 
-| Legacy setting | Current setting | Translation |
-|---|---|---|
-| `atoms.data.cif_file_path` | `inputs.structure` | Reduced to a path relative to the material experiment directory |
-| `refinement.data.pets_path` | `inputs.exp_data` | Reduced to a relative path |
-| `atoms.data.load_hydrogens` | `inputs.load_hydrogens` | Preserved as `true` |
-| `bloch.thicknesses` | `sample.thicknesses` | Preserved at the imported base value of 1000 A |
-| `refinement.dataloader.ignore_orientations` | `blochwave.ignore_orientations` | Preserved in original zero-based PETS order |
-| `bloch.g_max_refine` | `blochwave.g_max` | Merged: the seed/scored radius now reuses the SOLVE cutoff directly (no separate knob) |
-| `bloch.sg_max` | `blochwave.sg_max` | Preserved |
-| `structure_factor.absorption` | `blochwave.absorption` | Preserved; `false` selects the elastic control and `true` enables absorption |
-| `refinement.data.rocking_curve_sampling` | `blochwave.rocking_curve_sampling` | Preserved |
-| `refinement.data.dsg` / `rsg` | `blochwave.dsg` / `rsg` | Preserved |
-| `preprocess.orientation.optim` | `preprocess.optimize_orientation` | Preserved |
-| `preprocess.thickness.optim` | `preprocess.optimize_thickness` | Preserved |
-| orientation search bounds and steps | `preprocess.orientation` | Preserved |
-| thickness grid bounds and steps | `preprocess.thickness` | Preserved |
-| `refinement.epochs` | `refinement.steps` | Set to 20 for the current reproduction runs |
-| Adam and `lr=0.001` | `refinement.optimizer` | Preserved |
-| position/ADP optimization | `refinement.trainable` | Preserved at whole-group granularity |
-| `thicknessNN` | `refinement.thickness_nn` | Disabled for the fixed-840 A structure-refinement runs |
+---
 
-## Known gaps before reproduction
+This directory holds six runnable diffBloch experiment configs reproducing the three materials refinement in
+the paper, elastic and absorptive:
 
-- The initially imported quartz `.cif_pets` was truncated after zone axis 2. It has been restored
-  from the matching complete in-repository export: 99 declared orientations and 6,666 reflections.
-- The imported borane PETS file parses successfully (52 rotations and 32,124 reflection rows).
-  Its H1b3 and H1b8 anisotropic ADP matrices are not positive semidefinite, so those two sites use
-  their supplied positive isotropic equivalents (0.049 and 0.035 A2); all coordinates and boron
-  ADPs remain unchanged.
-- The imported CsPbBr3 structure and PETS data parse successfully (4 ASU sites, 59 rotations, and
-  32,669 reflection rows). The paper config retains all 59 source rotations.
-- The legacy `rbragg_abs` objective is not a current loss literal. The translated configs use
-  `wr2`; parity must be established or an explicit paper loss added.
-- The legacy global `structure_factor.g_max` was independently configurable. Current diffBloch
-  derives structure-factor support from the SOLVE cutoff, so the old oversized support values
-  (quartz 4.5 and CsPbBr3 5.0) are recorded here but not independently represented.
-- The old `isotropic_displacements_only` flag has no current whole-config equivalent. Current ADP
-  behavior follows each CIF site's ADP kind and crystallographic constraints.
-- The old random/sequential dataloader, batch size, and `num_rotations` controls do not map to the
-  current full-batch deterministic default refinement.
-- The current train/validation split language cannot express every legacy sampling mode. The
-  translated files retain the standard current split until the paper's exact scoring population is
-  established.
-- Thickness-network settings, restraints, schedulers, visualization, output paths, devices, and
-  logger settings are not copied into experiment config because they are either unsupported
-  scientific composition or execution-only concerns in the current architecture.
-- Borane needs its original material-specific refinement configuration or a documented
-  reconstruction from the paper/method records.
-- Each material still needs an `experiment.lock` before `run preprocess`, `run infer`, or
-  `run refine` can be treated as a locked reproduction run.
-
-## Absorption controls
-
-Each material config records the elastic control by default:
-
-```yaml
-blochwave:
-  absorption: false
+```text
+data/quartz-absorption/    data/quartz-no-abs/
+data/cspbbr3-absorption/   data/cspbbr3-no-abs/
+data/borane-absorption/    data/borane-no-abs/
 ```
 
-For the absorption member of a paper comparison, change only
-`blochwave.absorption` to `true` in a separate experiment directory. The model reproduces
-the imported paper implementation's fitted absorptive atomic factors for elements Z=1--103,
-including its B-factor interpolation and absorptive `U0'` diagonal term. Absorption makes the
-Bloch operator non-Hermitian, so these configs must use `matrix_exp`; validation rejects
-`bloch_eigen`.
+## Data source
 
-## Quartz refinement with optimized orientations and thickness NN
+CsPbBr3, alpha-quartz, and borane data:
 
-After preprocessing has written `data/quartz/plan.npz`, this command reuses those optimized
-orientations and jointly refines the structure plus the configured apparent-thickness network:
+> Suresh, A., Yörük, E., Cabaj, M. K., Brázda, P., Výborný, K., Sedláček, O., Müller, C.,
+> Chintakindi, H., Eigner, V. & Palatinus, L. (2024). *Ionisation of atoms determined by kappa
+> refinement against 3D electron diffraction data.* Nature Communications 15, 9066.
+> https://doi.org/10.1038/s41467-024-53448-2
+
+```bibtex
+@article{Suresh2024,
+  author  = {Ashwin Suresh and Emre Yörük and Małgorzata K. Cabaj and Petr Brázda and
+             Karel Výborný and Ondřej Sedláček and Christian Müller and
+             Hrushikesh Chintakindi and Václav Eigner and Lukáš Palatinus},
+  title   = {Ionisation of atoms determined by kappa refinement against 3D electron diffraction data},
+  journal = {Nature Communications},
+  volume  = {15},
+  pages   = {9066},
+  year    = {2024},
+  doi     = {10.1038/s41467-024-53448-2},
+  url     = {https://doi.org/10.1038/s41467-024-53448-2}
+}
+```
+
+## Results
+
+#### Published (Colmey et al. 2026)
+
+|                          | CsPbBr3  | alpha-quartz | Borane   |
+| ------------------------ | :------: | :----------: | :------: |
+| **R_obs (%), elastic**   |   6.40   |     4.12     |   9.54   |
+| **wR2 (%), elastic**     |   6.73   |     3.84     |   8.56   |
+| **R_obs (%), absorptive**|   5.26   |     4.00     |   9.48   |
+| **wR2 (%), absorptive**  |   5.31   |     3.66     |   8.51   |
+
+#### This repository (diffBloch 0.2.0)
+
+|                          | CsPbBr3  | alpha-quartz | Borane   |
+| ------------------------ | :------: | :----------: | :------: |
+| **R_obs (%), elastic**   | pending  |    pending   | pending  |
+| **wR2 (%), elastic**     | pending  |    pending   | pending  |
+| **R_obs (%), absorptive**| pending  |     4.92     | pending  |
+| **wR2 (%), absorptive**  | pending  |     3.72     | pending  |
+
+Only `quartz-absorption` has a completed run recorded here so far (epoch 40/40). Fill in the rest
+from `refinement_report.txt`/`refinement_summary.json` as the other five runs complete.
+
+## Reproducing these numbers
+
+diffBloch has changed substantially since the runs that produced the numbers above -- checkpoint
+format, orientation search, absorption handling, and more have all moved since then. Running these
+configs on the current codebase is not guaranteed to reproduce the published numbers exactly.
+
+To reproduce the paper's results bit-for-bit, use the original prototype linked in the paper itself,
+not this repository. That prototype predates GPU support and several of the changes in this
+codebase, so it is considerably slower -- a single one of these refinements could take on the order
+of days, start to finish.
+
+## Running these examples
 
 ```bash
-uv run diffbloch run refine \
-  examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz
+uv run diffbloch run preprocess examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch run refine examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 ```
 
-The trained network tensors are written to `refined_components.npz` alongside the refined CIF,
-structural parameter snapshot, and refinement summary.
-
-## Validate the translated schemas
-
-```bash
-uv run diffbloch validate \
-  examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz/experiment.yaml
-
-uv run diffbloch validate \
-  examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3/experiment.yaml
-
-uv run diffbloch validate \
-  examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/borane/experiment.yaml
-```
+Swap in any of the six directory names above for the other materials/absorption settings.

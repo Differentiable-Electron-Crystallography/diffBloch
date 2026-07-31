@@ -20,8 +20,8 @@ blochwave:
   ignore_orientations: []
 
 preprocess:
-  optimize_orientation: false
-  optimize_thickness: true
+  optimize_orientation: true
+  optimize_thickness: false
   orientation:
     nelder_mead:
       step_size: 1
@@ -36,24 +36,24 @@ preprocess:
     plot: true
 
 refinement:
-  steps: 200
+  steps: 40
   thickness_nn:
     enabled: true
     num_samples: 40
     sample_thickness: false
     form: min_thickness
-    min_thickness: 100.0
+    min_thickness: 1000.0
     max_thickness: 2000.0
     init_seed: 0
   optimizer:
     name: adam
     lr: 0.001
   objective:
-    data_term: wr2
+    data_term: rbragg_abs
   trainable:
     positions: all
     adp: all
     occupancy: none
   split:
     train: all_except_validation
-    validation: every_10th_rotation
+    validation: none
