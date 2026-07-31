@@ -26,12 +26,15 @@ preprocess:
   optimize_thickness: false
   orientation:
     nelder_mead:
-      step_size: 0.25
+      step_size: 1
   thickness:
     min_thickness: 100.0
     max_thickness: 2500.0
     n_steps: 100
     plot: false
+
+loss_metrics:
+  residual: robs
 
 refinement:
   steps: 40
@@ -46,12 +49,10 @@ refinement:
   optimizer:
     name: adam
     lr: 0.001
-  objective:
-    data_term: wr2
   trainable:
     positions: all
     adp: all
     occupancy: none
   split:
-    train: all_except_validation
-    validation: every_10th_rotation
+    train_test: false
+    val_frac: 0.1

@@ -35,6 +35,9 @@ preprocess:
     n_steps: 100
     plot: true
 
+loss_metrics:
+  residual: robs
+
 refinement:
   steps: 40
   thickness_nn:
@@ -48,12 +51,9 @@ refinement:
   optimizer:
     name: adam
     lr: 0.001
-  objective:
-    data_term: rbragg_abs
   trainable:
     positions: all
     adp: all
     occupancy: none
   split:
-    train: all_except_validation
-    validation: none
+    train_test: false
