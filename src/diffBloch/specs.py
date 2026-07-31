@@ -32,6 +32,7 @@ __all__ = [
     "IntegrationGeometry",
     "Mosaicity",
     "NelderMeadSearch",
+    "OrientationPortfolioSearch",
     "OrientationSelection",
     "PerTiltCoupling",
     "RockingCurve",
@@ -243,6 +244,48 @@ class NelderMeadSearch:
             raise ValueError("max_iterations must be >= 1")
         if self.x_tolerance <= 0.0 or self.f_tolerance <= 0.0:
             raise ValueError("x_tolerance and f_tolerance must be positive")
+
+
+@dataclass(frozen=True)
+class OrientationPortfolioSearch:
+    """Fixed portfolio of Ben-style orientation optimizers for non-oracle selection.
+
+    This is an opt-in Python/API experiment spec, not default-path config. It records a small set
+    of labelled :class:`NelderMeadSearch` variants. A portfolio run applies Ben's canonical
+    ``optimize_orientation`` step once per variant, then chooses a result independently for each
+    rotation.
+
+    "Portfolio" is literal here: different orientations in one returned ``Plan`` may come from
+    different optimizer-parameter policies. Selection is intentionally narrow and non-oracle:
+    choose the candidate with the lowest terminal wR2 loss for that rotation. Reference
+    orientation CSVs are not an input to this spec or selector.
+    """
+
+    variants: tuple[tuple[str, NelderMeadSearch], ...] = field(
+        default_factory=lambda: (
+            ("default_step_0.05_penalty", NelderMeadSearch()),
+            ("fine_step_0.01_penalty", NelderMeadSearch(step_size=0.01)),
+            ("finer_step_0.005_penalty", NelderMeadSearch(step_size=0.005)),
+        )
+    )
+    selector: Literal["lowest_terminal_wr2"] = "lowest_terminal_wr2"
+
+    def __post_init__(self) -> None:
+        if self.selector != "lowest_terminal_wr2":
+            raise ValueError("orientation portfolio only supports selector='lowest_terminal_wr2'")
+        if not self.variants:
+            raise ValueError("orientation portfolio needs at least one variant")
+        names = [name for name, _search in self.variants]
+        if any(not name for name in names):
+            raise ValueError("orientation portfolio variant names must be non-empty")
+        if len(set(names)) != len(names):
+            raise ValueError("orientation portfolio variant names must be unique")
+        for name, search in self.variants:
+            if not search.penalize_fewer_reflections:
+                raise ValueError(
+                    "orientation portfolio variants must keep penalize_fewer_reflections=True; "
+                    f"{name!r} disables it"
+                )
 
 
 @dataclass(frozen=True)

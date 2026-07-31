@@ -83,6 +83,7 @@ from diffBloch.preprocess.steps.import_orientations import import_orientations
 from diffBloch.preprocess.steps.mosaicity import mosaicity
 from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
 from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
+from diffBloch.preprocess.steps.orientation_portfolio import select_orientation_portfolio
 from diffBloch.preprocess.steps.report_coupling import report_coupling
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
@@ -128,6 +129,7 @@ __all__ = [
     "converge_scalar",
     "cover_beams",
     "optimize_orientation",
+    "select_orientation_portfolio",
     "optimize_thickness",
     "import_orientations",
     "fork",
