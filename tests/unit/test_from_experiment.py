@@ -55,6 +55,24 @@ def test_from_experiment_builds_grid_sharing_train_val_split() -> None:
     assert [op.pattern.rotation_index for op in val.orientations[:2]] == [9, 19]
 
 
+def test_from_experiment_train_test_false_holds_out_nothing() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={
+            "refinement": base.refinement.model_copy(
+                update={"split": base.refinement.split.model_copy(update={"train_test": False})}
+            )
+        }
+    )
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    assert len(setup.plans.validation.orientations) == 0
+    assert len(setup.plans.train.orientations) == experimental_data.n_rotations
+
+
 def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")

@@ -26,7 +26,7 @@ from diffBloch.config.manifest import (
 from diffBloch.config.schema import (
     DataSplitConfig,
     ExperimentConfig,
-    ObjectiveConfig,
+    LossMetricsConfig,
     OptimizerConfig,
     SampleConfig,
     load_config,
@@ -38,7 +38,7 @@ __all__ = [
     "ExperimentConfig",
     "ExperimentLock",
     "InputLock",
-    "ObjectiveConfig",
+    "LossMetricsConfig",
     "OptimizerConfig",
     "PreprocessLock",
     "RecipeStep",

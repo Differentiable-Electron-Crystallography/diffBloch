@@ -177,14 +177,6 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
     )
     assert (
         config_digest(
-            with_refinement(
-                objective=cfg.refinement.objective.model_copy(update={"data_term": "least_squares"})
-            )
-        )
-        == base
-    )
-    assert (
-        config_digest(
             with_refinement(optimizer=cfg.refinement.optimizer.model_copy(update={"name": "adam"}))
         )
         == base
@@ -193,8 +185,16 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
     assert config_digest(with_solver(refine=_other_method(cfg.blochwave.solver.refine))) != base
     assert (
         config_digest(
-            with_refinement(
-                split=cfg.refinement.split.model_copy(update={"validation": "every_5th_rotation"})
+            with_refinement(split=cfg.refinement.split.model_copy(update={"val_frac": 0.3}))
+        )
+        != base
+    )
+    # included -- objective drives optimize_orientation/optimize_thickness's search too, not just
+    # the gradient refinement stage, so it must restale the preprocess checkpoint like split does.
+    assert (
+        config_digest(
+            cfg.model_copy(
+                update={"loss_metrics": cfg.loss_metrics.model_copy(update={"residual": "robs"})}
             )
         )
         != base
@@ -311,15 +311,18 @@ def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
     bumped_split = cfg.model_copy(
         update={
             "refinement": cfg.refinement.model_copy(
-                update={
-                    "split": cfg.refinement.split.model_copy(
-                        update={"validation": "every_5th_rotation"}
-                    )
-                }
+                update={"split": cfg.refinement.split.model_copy(update={"val_frac": 0.3})}
             )
         }
     )
     assert refinement_config_digest(bumped_split) == base
+
+    # excluded -- objective is top-level (drives preprocess search too) and already covered by
+    # config_digest, exactly like split
+    bumped_objective = cfg.model_copy(
+        update={"loss_metrics": cfg.loss_metrics.model_copy(update={"residual": "robs"})}
+    )
+    assert refinement_config_digest(bumped_objective) == base
 
     # excluded -- preprocess-only config never enters the refinement-stage digest
     bumped_blochwave = cfg.model_copy(

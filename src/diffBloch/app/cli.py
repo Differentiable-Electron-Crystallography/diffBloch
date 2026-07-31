@@ -17,7 +17,7 @@ import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -269,10 +269,11 @@ def main(argv: list[str] | None = None) -> int:
             event for event in summary_logger.events if isinstance(event, OrientationOptimized)
         ]
         mean_loss = (
-            f"{sum(event.wr2 for event in fitted) / len(fitted):.6g}"
+            f"{sum(event.score for event in fitted) / len(fitted):.6g}"
             if fitted
             else "n/a (checkpoint reused)"
         )
+        mean_label = f"Mean {residual_label(fitted[0].residual)}" if fitted else "Mean score"
         _print_summary_box(
             "PREPROCESS COMPLETE",
             (
@@ -280,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
                 ("Stages", str(len(plan.provenance))),
                 ("Total HKLs", str(total_hkl)),
                 ("Matched HKLs", str(matched_hkl)),
-                ("Mean wR2", mean_loss),
+                (mean_label, mean_loss),
             ),
         )
         print()

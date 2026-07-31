@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,6 +54,7 @@ from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
     RefinementEngine,
+    RotationMetrics,
     ThicknessBounds,
     build_refinement_model,
     build_refinement_problem,
@@ -257,7 +259,7 @@ def preprocess_experiment(
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    _refinement, _integration, prepared = _preprocess(
+    _refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -299,7 +301,7 @@ def run_experiment(
     """
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    refinement, _integration, prepared = _preprocess(
+    refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -345,7 +347,7 @@ def refine_experiment(
     recipe and ``checkpoint``/``refresh``/``device``/``workers``/``orientations_csv``/
     ``plot_thickness``/``plot_thickness_dir`` semantics), then run the
     **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs
-    path: the data term (:meth:`~diffBloch.config.schema.ObjectiveConfig.to_loss`), the trainable
+    path: the residual (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_loss`), the trainable
     selection (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and
     the optimizer/step budget all come from ``experiment.yaml``. It composes no hard constraints or
     penalties -- scientific
@@ -380,7 +382,7 @@ def refine_experiment(
     started = time.perf_counter()
     root = Path(experiment_dir)
     cfg, _lock = load_experiment(root)
-    refinement, integration, prepared = _preprocess(
+    refinement, integration, prepared, validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -393,16 +395,37 @@ def refine_experiment(
         plot_thickness=plot_thickness,
         plot_thickness_dir=plot_thickness_dir,
     )
+    # `engine` covers every rotation (train + validation) -- reporting always scores the whole
+    # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
+    # validation angles it never saw, which is the point. Only the *training* engine, built
+    # separately, excludes validation_rotation_indices from the gradient objective.
     engine = build_engine(
         prepared,
         refinement,
-        loss=cfg.refinement.objective.to_loss(),
+        loss=cfg.loss_metrics.to_loss(),
         method=cfg.blochwave.solver.refine,
         max_batch=max_batch,
         absorption=cfg.blochwave.to_absorption(),
         profile=profile,
         checkpoint_activations=checkpoint_activations,
     )
+    train_engine = engine
+    if validation_rotation_indices:
+        train_only = tuple(
+            op
+            for op in prepared.orientations
+            if op.pattern.rotation_index not in validation_rotation_indices
+        )
+        train_engine = build_engine(
+            replace(prepared, orientations=train_only),
+            refinement,
+            loss=cfg.loss_metrics.to_loss(),
+            method=cfg.blochwave.solver.refine,
+            max_batch=max_batch,
+            absorption=cfg.blochwave.to_absorption(),
+            profile=profile,
+            checkpoint_activations=checkpoint_activations,
+        )
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
     thickness_nn: ApparentThicknessNN | None = None
@@ -435,7 +458,7 @@ def refine_experiment(
         model = build_refinement_model(initial=initial)
     problem = build_refinement_problem()
     result = run_refinement_model(
-        engine,
+        train_engine,
         model,
         problem,
         trainable=cfg.refinement.trainable.to_spec(),
@@ -447,7 +470,14 @@ def refine_experiment(
         profile=profile,
     )
     elapsed_seconds = time.perf_counter() - started
-    result = _write_refinement_outputs(root, cfg, refinement, result)
+    result = _write_refinement_outputs(
+        root,
+        cfg,
+        refinement,
+        result,
+        engine=engine,
+        validation_rotation_indices=validation_rotation_indices,
+    )
     report_path = _write_refinement_report(
         root,
         cfg,
@@ -455,6 +485,7 @@ def refine_experiment(
         engine,
         result,
         elapsed_seconds=elapsed_seconds,
+        validation_rotation_indices=validation_rotation_indices,
         thickness_nn=thickness_nn,
         raw_alphas=raw_alphas,
     )
@@ -480,8 +511,18 @@ def _write_refinement_outputs(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     result: ModelRefinementResult,
+    *,
+    engine: RefinementEngine | None = None,
+    validation_rotation_indices: frozenset[int] = frozenset(),
 ) -> ModelRefinementResult:
-    """Persist the best structure, raw parameter snapshot, and machine-readable summary."""
+    """Persist the best structure, raw parameter snapshot, and machine-readable summary.
+
+    ``engine``/``validation_rotation_indices``, when the latter is non-empty (``train_test`` on),
+    add a ``"validation"`` block to ``refinement_summary.json``: mean wR2/R_obs over the rotations
+    held out from the gradient objective, scored against the same ``result.best_model`` -- ``engine``
+    must cover those rotations (the *reporting* engine over every rotation, not the training-only
+    one ``run_refinement_model`` consumed).
+    """
     structure_path = (root / "refined_structure.cif").resolve()
     params_path = (root / "refined_parameters.npz").resolve()
     components_path = (root / "refined_components.npz").resolve()
@@ -595,7 +636,7 @@ def _write_refinement_outputs(
             ),
         )
         artifacts["refinement_lock"] = str(lock_path)
-    summary = {
+    summary: dict[str, object] = {
         "best_epoch": result.best_step,
         "objective": result.best_loss,
         "wr2": best.wr2,
@@ -607,6 +648,19 @@ def _write_refinement_outputs(
         ),
         "artifacts": artifacts,
     }
+    if engine is not None and validation_rotation_indices:
+        val_rows = [
+            row
+            for row in engine.per_rotation_metrics(result.best_model)
+            if row.rotation_index in validation_rotation_indices
+        ]
+        finite_wr2 = [row.wr2 for row in val_rows if row.wr2 == row.wr2]  # drop NaN
+        finite_r_obs = [row.r_obs for row in val_rows if row.r_obs == row.r_obs]
+        summary["validation"] = {
+            "n_rotations": len(val_rows),
+            "wr2": sum(finite_wr2) / len(finite_wr2) if finite_wr2 else None,
+            "r_obs": sum(finite_r_obs) / len(finite_r_obs) if finite_r_obs else None,
+        }
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     return replace(result, artifacts=artifacts)
 
@@ -650,6 +704,7 @@ def _write_refinement_report(
     result: ModelRefinementResult,
     *,
     elapsed_seconds: float,
+    validation_rotation_indices: frozenset[int] = frozenset(),
     thickness_nn: ApparentThicknessNN | None = None,
     raw_alphas: np.ndarray | None = None,
 ) -> Path:
@@ -658,7 +713,9 @@ def _write_refinement_report(
     Reads the just-written ``refined_structure.cif`` back (rather than recomputing its atom-site
     values a second time) so the reported unit cell / space group / atom-site tables are guaranteed
     byte-for-byte consistent with the committed CIF -- this function runs after
-    :func:`_write_refinement_outputs`.
+    :func:`_write_refinement_outputs`. ``engine`` covers every rotation (the per-rotation table is
+    never restricted to train); ``validation_rotation_indices`` non-empty (``train_test`` on) adds a
+    held-out-only section after it.
     """
     blochwave = cfg.blochwave
     best = result.history[result.best_step] if result.history else None
@@ -721,35 +778,47 @@ def _write_refinement_report(
     ]
     lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
 
+    def rotation_metrics_block(rows: Sequence[RotationMetrics]) -> None:
+        lines.append(
+            _ascii_table(
+                ["Rotation", "wR2", "R_obs", "N matched"],
+                [
+                    [
+                        str(row.rotation_index),
+                        f"{row.wr2:.6f}",
+                        f"{row.r_obs:.6f}",
+                        str(row.n_matched),
+                    ]
+                    for row in rows
+                ],
+            )
+        )
+        finite_wr2 = [row.wr2 for row in rows if row.wr2 == row.wr2]
+        finite_r_obs = [row.r_obs for row in rows if row.r_obs == row.r_obs]
+        lines.append("")
+        lines.append(
+            f" mean wR2   = {sum(finite_wr2) / len(finite_wr2):.6f}"
+            if finite_wr2
+            else " mean wR2   = n/a"
+        )
+        lines.append(
+            f" mean R_obs = {sum(finite_r_obs) / len(finite_r_obs):.6f}"
+            if finite_r_obs
+            else " mean R_obs = n/a"
+        )
+
     rule("Per-rotation wR2 / R_obs (final refined model)")
     per_rotation = engine.per_rotation_metrics(result.best_model)
-    lines.append(
-        _ascii_table(
-            ["Rotation", "wR2", "R_obs", "N matched"],
-            [
-                [
-                    str(row.rotation_index),
-                    f"{row.wr2:.6f}",
-                    f"{row.r_obs:.6f}",
-                    str(row.n_matched),
-                ]
-                for row in per_rotation
-            ],
+    rotation_metrics_block(per_rotation)
+
+    if validation_rotation_indices:
+        rule("Validation set (held out from the refinement objective)")
+        validation_rows = tuple(
+            row for row in per_rotation if row.rotation_index in validation_rotation_indices
         )
-    )
-    finite_wr2 = [row.wr2 for row in per_rotation if row.wr2 == row.wr2]  # drop NaN
-    finite_r_obs = [row.r_obs for row in per_rotation if row.r_obs == row.r_obs]
-    lines.append("")
-    lines.append(
-        f" mean wR2   = {sum(finite_wr2) / len(finite_wr2):.6f}"
-        if finite_wr2
-        else " mean wR2   = n/a"
-    )
-    lines.append(
-        f" mean R_obs = {sum(finite_r_obs) / len(finite_r_obs):.6f}"
-        if finite_r_obs
-        else " mean R_obs = n/a"
-    )
+        lines.append(f" n_rotations = {len(validation_rows)}")
+        lines.append("")
+        rotation_metrics_block(validation_rows)
 
     rule("Thickness NN")
     if thickness_nn is not None and raw_alphas is not None:
@@ -814,14 +883,16 @@ def _preprocess(
     orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[RefinementSetup, IntegrationGeometry, Plan]:
+) -> tuple[RefinementSetup, IntegrationGeometry, Plan, frozenset[int]]:
     """Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.
 
-    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs) and the
-    ``IntegrationGeometry`` (the PETS-derived integration semiangle, for reporting) alongside the
-    settled ``Plan``, so :func:`preprocess_experiment` can drop the setup and
-    :func:`run_experiment` can score with it -- neither loads the inputs twice. Hydrogen sites are
-    loaded per ``inputs.load_hydrogens``.
+    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs), the
+    ``IntegrationGeometry`` (the PETS-derived integration semiangle, for reporting), the settled
+    ``Plan`` (still over *every* rotation -- the train/validation split never restricts
+    preprocessing, only :func:`refine_experiment`'s gradient stage), and the ``rotation_index`` set
+    ``cfg.refinement.split`` holds out as validation (empty when ``train_test`` is off), so
+    :func:`preprocess_experiment` can drop the setup and :func:`run_experiment` can score with it --
+    neither loads the inputs twice. Hydrogen sites are loaded per ``inputs.load_hydrogens``.
 
     ``orientations_csv`` (the API/CLI argument) overrides ``cfg.preprocess.orientations_csv`` when
     given; the config value (resolved relative to ``root``, like ``inputs.structure``) is the
@@ -838,6 +909,9 @@ def _preprocess(
     )
     experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, experimental_data, cfg)
+    validation_rotation_indices = frozenset(
+        op.pattern.rotation_index for op in setup.plans.validation.orientations
+    )
     effective_orientations_csv = (
         orientations_csv
         if orientations_csv is not None
@@ -871,7 +945,7 @@ def _preprocess(
         refresh=refresh,
         logger=logger,
     )
-    return setup.refinement, setup.integration, prepared
+    return setup.refinement, setup.integration, prepared, validation_rotation_indices
 
 
 def _recipe_steps(
@@ -931,6 +1005,8 @@ def _recipe_steps(
             workers=workers,
             logger=logger,  # per-rotation fit progress (the run's long phase)
             absorption=cfg.blochwave.to_absorption(),
+            scores=cfg.loss_metrics.to_scores(),
+            residual=cfg.loss_metrics.residual,
         )
 
     def thickness_fit() -> PlanStep:
@@ -942,6 +1018,8 @@ def _recipe_steps(
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
             absorption=cfg.blochwave.to_absorption(),
+            scores=cfg.loss_metrics.to_scores(),
+            residual=cfg.loss_metrics.residual,
         )
 
     steps: list[PlanStep] = []

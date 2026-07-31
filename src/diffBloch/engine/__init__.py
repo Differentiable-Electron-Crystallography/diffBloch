@@ -30,6 +30,7 @@ from diffBloch.engine.forward import (
     RefinementModel,
     RefinementProblem,
     RotationMetrics,
+    ScoresFn,
     StructureComponent,
     build_refinement_model,
     build_refinement_problem,
@@ -37,11 +38,14 @@ from diffBloch.engine.forward import (
 )
 from diffBloch.engine.losses import (
     l1_loss,
+    least_squares_scores,
     mse_loss,
     rbragg_loss,
+    robs_scores,
     w_rbragg_loss,
     weighted_mse_loss,
     wr2_loss,
+    wr2_scores,
 )
 from diffBloch.engine.penalties import BondLengthPenalty, perceive_bond_length_penalty
 from diffBloch.engine.plan import (
@@ -69,6 +73,7 @@ __all__ = [
     "ConstraintTransform",
     "ForwardContext",
     "HydrogenRiding",
+    "least_squares_scores",
     "LossFn",
     "mean_plan_thickness",
     "ModelComponent",
@@ -79,6 +84,8 @@ __all__ = [
     "OrientationPlanLike",
     "PerOrientationThickness",
     "QuadraticThicknessProfile",
+    "robs_scores",
+    "ScoresFn",
     "StructureComponent",
     "RefinementEngine",
     "RefinementModel",
@@ -101,6 +108,7 @@ __all__ = [
     "run_refinement",
     "run_refinement_model",
     "wr2_loss",
+    "wr2_scores",
     "w_rbragg_loss",
     "weighted_mse_loss",
     "with_hydrogen_riding",

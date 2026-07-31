@@ -305,15 +305,14 @@ def seed_beam_hkl(grid: StructureFactorGrid, *, g_max: float) -> NDArray[np.int6
 def _validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool_]:
     """Boolean per-rotation validation mask from the split policy.
 
-    The implemented policies are ``train='all_except_validation'`` with
-    ``validation='every_10th_rotation'`` (every 10th rotation by 1-based count -> 0-based indices
-    where ``(i + 1) % 10 == 0``). Other selector strings are rejected rather than silently ignored.
+    ``train_test=False`` holds out nothing (every rotation trains). Otherwise every
+    ``round(1 / val_frac)``-th rotation (1-based count -> 0-based indices) is held out for
+    validation, e.g. ``val_frac=0.2`` holds out every 5th rotation.
     """
-    if split.train != "all_except_validation":
-        raise ValueError(f"unsupported train split policy: {split.train!r}")
-    if split.validation != "every_10th_rotation":
-        raise ValueError(f"unsupported validation split policy: {split.validation!r}")
-    mask: NDArray[np.bool_] = (np.arange(n_rotations) + 1) % 10 == 0
+    if not split.train_test:
+        return np.zeros(n_rotations, dtype=np.bool_)
+    step = round(1.0 / split.val_frac)
+    mask: NDArray[np.bool_] = (np.arange(n_rotations) + 1) % step == 0
     return mask
 
 

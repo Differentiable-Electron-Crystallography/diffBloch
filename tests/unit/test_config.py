@@ -6,13 +6,21 @@ import pytest
 from pydantic import ValidationError
 
 from diffBloch.config.schema import (
+    DataSplitConfig,
     ExperimentConfig,
-    ObjectiveConfig,
+    LossMetricsConfig,
     OptimizerConfig,
     TrainableConfig,
 )
 from diffBloch.engine import AtomSelection, TrainableSpec
-from diffBloch.engine.losses import weighted_mse_loss, wr2_loss
+from diffBloch.engine.losses import (
+    least_squares_scores,
+    rbragg_loss,
+    robs_scores,
+    weighted_mse_loss,
+    wr2_loss,
+    wr2_scores,
+)
 from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
     Absorption,
@@ -40,9 +48,10 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "lbfgs"
-    assert cfg.refinement.objective.data_term == "wr2"
+    assert cfg.loss_metrics.residual == "wr2"
     assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
-    assert cfg.refinement.split.validation == "every_10th_rotation"
+    assert cfg.refinement.split.train_test is False
+    assert cfg.refinement.split.val_frac == 0.2
     assert cfg.blochwave.ignore_orientations == ()
     assert cfg.blochwave.to_absorption() == Absorption()
     assert cfg.preprocess.optimize_orientation is True
@@ -184,14 +193,41 @@ def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
     assert spec.occupancy == AtomSelection.all()
 
 
-def test_objective_data_term_parses_to_loss() -> None:
-    assert ObjectiveConfig(data_term="wr2").to_loss() is wr2_loss
-    assert ObjectiveConfig(data_term="least_squares").to_loss() is weighted_mse_loss
+def test_loss_metrics_residual_parses_to_loss() -> None:
+    assert LossMetricsConfig(residual="wr2").to_loss() is wr2_loss
+    assert LossMetricsConfig(residual="least_squares").to_loss() is weighted_mse_loss
+    assert LossMetricsConfig(residual="robs").to_loss() is rbragg_loss
 
 
-def test_objective_rejects_unimplemented_data_term() -> None:
+def test_loss_metrics_residual_parses_to_scores() -> None:
+    """to_scores is the per-thickness counterpart to_loss sums -- same residual, matching metric."""
+    assert LossMetricsConfig(residual="wr2").to_scores() is wr2_scores
+    assert LossMetricsConfig(residual="least_squares").to_scores() is least_squares_scores
+    assert LossMetricsConfig(residual="robs").to_scores() is robs_scores
+
+
+def test_experiment_config_loss_metrics_is_top_level_not_under_refinement() -> None:
+    """loss_metrics governs preprocess search + refinement, so it's on ExperimentConfig directly."""
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "quartz",
+            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
+            "loss_metrics": {"residual": "robs"},
+        }
+    )
+    assert cfg.loss_metrics.residual == "robs"
+    assert not hasattr(cfg.refinement, "loss_metrics")
+
+
+@pytest.mark.parametrize("val_frac", [0.0, 1.0, -0.1, 1.5])
+def test_data_split_config_rejects_val_frac_outside_zero_one(val_frac: float) -> None:
     with pytest.raises(ValidationError):
-        ObjectiveConfig(data_term="poisson_nll")  # deferred: no LossFn
+        DataSplitConfig(val_frac=val_frac)
+
+
+def test_loss_metrics_rejects_unimplemented_residual() -> None:
+    with pytest.raises(ValidationError):
+        LossMetricsConfig(residual="poisson_nll")  # deferred: no LossFn
 
 
 def test_optimizer_rejects_deferred_backend() -> None:
@@ -236,7 +272,7 @@ def test_refinement_precision_is_not_a_config_field() -> None:
         ExperimentConfig.model_validate({**base, "refinement": {"precision": "fp32"}})
 
 
-def test_optimizer_and_objective_values_are_enumerated() -> None:
+def test_optimizer_and_loss_metrics_values_are_enumerated() -> None:
     with pytest.raises(ValidationError):
         ExperimentConfig.model_validate(
             {
@@ -250,7 +286,7 @@ def test_optimizer_and_objective_values_are_enumerated() -> None:
             {
                 "name": "bad",
                 "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
-                "refinement": {"objective": {"data_term": "made_up"}},
+                "loss_metrics": {"residual": "made_up"},
             }
         )
 

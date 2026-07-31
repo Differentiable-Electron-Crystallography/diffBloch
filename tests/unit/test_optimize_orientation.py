@@ -279,7 +279,7 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     ):
         calls.append(1)
         time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return op, 0.5, 0.4, 1, 1
+        return op, 0.5, 1, 1
 
     monkeypatch.setattr(fo, "_refine_one", stub)
     grid, asu_plan, spec, numbers = _silicon()

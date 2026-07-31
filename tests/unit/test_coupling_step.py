@@ -448,7 +448,7 @@ def test_fit_orientation_emits_progress_events() -> None:
 
     fits = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
     assert [e.rotation_index for e in fits] == [op.pattern.rotation_index] * 2
-    assert all(e.n_trials >= 1 and e.wr2 >= 0.0 for e in fits)
+    assert all(e.n_trials >= 1 and e.score >= 0.0 for e in fits)
     # n_passes is the capped quantity and must be observable within its cap for calibration.
     assert all(1 <= e.n_passes <= e.pass_cap == search.max_iterations for e in fits)
 

@@ -38,6 +38,7 @@ from diffBloch.observability import (
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
+    ThicknessOptimizationStarted,
     ThicknessOptimized,
 )
 
@@ -48,6 +49,7 @@ __all__ = [
     "FitAbortedError",
     "format_measurements",
     "namespaced_measurements",
+    "residual_label",
 ]
 
 _log = logging.getLogger("diffBloch.loggers")
@@ -67,6 +69,14 @@ def namespaced_measurements(event: Event) -> dict[str, float]:
 
 
 _BAR_WIDTH = 30
+
+# Display label per LossMetricsConfig.residual name, for progress-bar text that doesn't go
+# through .measurements (which already keys dynamically on the raw residual string).
+_RESIDUAL_LABELS = {"wr2": "wR2", "robs": "R_obs", "least_squares": "least_squares"}
+
+
+def residual_label(residual: str) -> str:
+    return _RESIDUAL_LABELS.get(residual, residual)
 
 
 def _format_eta(seconds: float) -> str:
@@ -105,9 +115,10 @@ class ConsoleLogger:
     scroll of per-rotation ``R_obs`` while chasing a residual. Attach a handler (or call
     :func:`logging.basicConfig`) at the app boundary to see it.
 
-    On a real terminal (``sys.stdout.isatty()``), refinement epochs and orientation-search rotations
-    render as an in-place progress bar (with a linearly-extrapolated ETA) instead of one scrolling
-    line per event -- their respective ``*Started`` event supplies the total up front. Off a
+    On a real terminal (``sys.stdout.isatty()``), refinement epochs, orientation-search rotations,
+    and thickness-search rotations render as an in-place progress bar (with a linearly-extrapolated
+    ETA) instead of one scrolling line per event -- their respective ``*Started`` event supplies
+    the total up front. Off a
     terminal (piped to a file, CI logs) this falls back to the plain per-event line, since
     ``\\r``-based in-place updates are meaningless there and would just corrupt a log file with
     control characters.
@@ -119,6 +130,9 @@ class ConsoleLogger:
     _orientation_total: int = field(default=0, init=False, repr=False)
     _orientation_seen: int = field(default=0, init=False, repr=False)
     _orientation_started_at: float = field(default=0.0, init=False, repr=False)
+    _thickness_total: int = field(default=0, init=False, repr=False)
+    _thickness_seen: int = field(default=0, init=False, repr=False)
+    _thickness_started_at: float = field(default=0.0, init=False, repr=False)
 
     def report(self, event: Event) -> None:
         if isinstance(event, RefinementStarted):
@@ -140,7 +154,27 @@ class ConsoleLogger:
                 self._orientation_seen,
                 self._orientation_total,
                 time.perf_counter() - self._orientation_started_at,
-                f"rotation {event.rotation_index} │ wR2 {event.wr2:.6f}",
+                f"rotation {event.rotation_index} │ "
+                f"{residual_label(event.residual)} {event.score:.6f}",
+            )
+            return
+        if isinstance(event, ThicknessOptimizationStarted):
+            self._thickness_total = event.total_rotations
+            self._thickness_seen = 0
+            self._thickness_started_at = time.perf_counter()
+            return
+        if (
+            isinstance(event, ThicknessOptimized)
+            and self._thickness_total > 0
+            and sys.stdout.isatty()
+        ):
+            self._thickness_seen += 1
+            _render_progress_bar(
+                self._thickness_seen,
+                self._thickness_total,
+                time.perf_counter() - self._thickness_started_at,
+                f"rotation {event.rotation_index} │ "
+                f"{residual_label(event.residual)} {event.score:.6f}",
             )
             return
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():

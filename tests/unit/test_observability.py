@@ -42,14 +42,16 @@ from diffBloch.observability import (
     RefinementStep,
     RotationCoupling,
     RotationScored,
+    ThicknessOptimizationStarted,
     ThicknessOptimized,
 )
 
 
-def _fitted(index: int, wr2: float) -> OrientationOptimized:
+def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptimized:
     return OrientationOptimized(
         rotation_index=index,
-        wr2=wr2,
+        score=score,
+        residual=residual,
         n_matched_hkl=42,
         n_trials=10,
         n_passes=3,
@@ -75,19 +77,36 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
 
     thickness = ThicknessOptimized(
         rotation_index=7,
-        wr2=0.031,
+        score=0.031,
+        residual="wr2",
         thickness=1460.0,
         candidate_thicknesses=(1400.0, 1460.0, 1520.0),
-        candidate_wr2=(0.05, 0.031, 0.045),
+        candidate_score=(0.05, 0.031, 0.045),
     )
     assert thickness.channel == "optimize_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
+
+    thickness_started = ThicknessOptimizationStarted(total_rotations=99)
+    assert thickness_started.channel == "thickness_started"
+    assert thickness_started.step is None
+    assert thickness_started.measurements == {"total_rotations": 99.0}
+    assert thickness_started.channel != thickness.channel
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
+
+    robs_thickness = ThicknessOptimized(
+        rotation_index=7,
+        score=0.028,
+        residual="robs",
+        thickness=1460.0,
+        candidate_thicknesses=(1400.0, 1460.0, 1520.0),
+        candidate_score=(0.045, 0.028, 0.05),
+    )
+    assert robs_thickness.measurements == {"robs": 0.028, "thickness": 1460.0}
 
     orientation_summary = OrientationOptimizationSummary(
         n_orientations=2,
-        mean_wr2=0.03,
-        mean_r_obs=0.04,
+        mean_score=0.03,
+        residual="wr2",
         total_matched_hkl=80,
         total_strong_hkl=60,
         total_weak_hkl=20,
@@ -98,7 +117,6 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert orientation_summary.measurements == {
         "n_orientations": 2.0,
         "mean_wr2": 0.03,
-        "mean_r_obs": 0.04,
         "total_matched_hkl": 80.0,
         "total_strong_hkl": 60.0,
         "total_weak_hkl": 20.0,
@@ -118,7 +136,7 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert orientation_started.channel == "orientation_started"
     assert orientation_started.step is None
     assert orientation_started.measurements == {"total_rotations": 52.0}
-    assert orientation_started.channel != _fitted(index=0, wr2=0.0).channel
+    assert orientation_started.channel != _fitted(index=0, score=0.0).channel
 
     coupled = RotationCoupling(
         index=2,
@@ -265,7 +283,7 @@ def test_console_logger_labels_orientation_refinement_index(
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(_fitted(index=10, wr2=0.025))
+        logger.report(_fitted(index=10, score=0.025))
 
     assert (
         caplog.records[-1]
@@ -282,10 +300,11 @@ def test_console_logger_labels_thickness_refinement_index(
         logger.report(
             ThicknessOptimized(
                 rotation_index=10,
-                wr2=0.025,
+                score=0.025,
+                residual="wr2",
                 thickness=820.0,
                 candidate_thicknesses=(780.0, 820.0, 860.0),
-                candidate_wr2=(0.04, 0.025, 0.038),
+                candidate_score=(0.04, 0.025, 0.038),
             )
         )
 
@@ -332,8 +351,41 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
     logger = ConsoleLogger(level=logging.INFO)
 
     logger.report(OrientationOptimizationStarted(total_rotations=2))
-    logger.report(_fitted(index=5, wr2=0.05))
-    logger.report(_fitted(index=9, wr2=0.02))
+    logger.report(_fitted(index=5, score=0.05))
+    logger.report(_fitted(index=9, score=0.02))
+
+    out = capsys.readouterr().out
+    assert "1/2" in out and "2/2" in out
+    assert out.endswith("\n")
+
+
+def test_console_logger_renders_a_thickness_progress_bar_on_a_tty(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    logger = ConsoleLogger(level=logging.INFO)
+
+    logger.report(ThicknessOptimizationStarted(total_rotations=2))
+    logger.report(
+        ThicknessOptimized(
+            rotation_index=5,
+            score=0.05,
+            residual="wr2",
+            thickness=1000.0,
+            candidate_thicknesses=(900.0, 1000.0),
+            candidate_score=(0.1, 0.05),
+        )
+    )
+    logger.report(
+        ThicknessOptimized(
+            rotation_index=9,
+            score=0.02,
+            residual="wr2",
+            thickness=1100.0,
+            candidate_thicknesses=(1000.0, 1100.0),
+            candidate_score=(0.04, 0.02),
+        )
+    )
 
     out = capsys.readouterr().out
     assert "1/2" in out and "2/2" in out
@@ -360,6 +412,7 @@ def test_early_abort_logger_ignores_the_started_events(
     logger = EarlyAbortLogger(wr2_ceiling=0.6, patience=5)
     logger.report(OrientationOptimizationStarted(total_rotations=52))  # must not raise
     logger.report(RefinementStarted(total_steps=40))  # must not raise
+    logger.report(ThicknessOptimizationStarted(total_rotations=52))  # must not raise
 
 
 def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:

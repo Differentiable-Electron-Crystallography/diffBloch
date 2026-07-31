@@ -14,11 +14,18 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from diffBloch.core.solver import SolverMethod
-from diffBloch.engine.losses import weighted_mse_loss, wr2_loss
+from diffBloch.engine.losses import (
+    least_squares_scores,
+    rbragg_loss,
+    robs_scores,
+    weighted_mse_loss,
+    wr2_loss,
+    wr2_scores,
+)
 from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
 if TYPE_CHECKING:
-    from diffBloch.engine.forward import LossFn
+    from diffBloch.engine.forward import LossFn, ScoresFn
 from diffBloch.specs import (
     Absorption,
     ApparentThicknessNetwork,
@@ -165,35 +172,61 @@ class SampleConfig(_StrictConfig):
 
 
 class DataSplitConfig(_StrictConfig):
-    """Required train/validation split declaration.
+    """Train/validation split declaration.
 
-    The concrete selector language is intentionally small: it records the fixed split
-    policy that dataset code materializes into ``data_used``.
+    ``train_test=False`` (default) trains on every rotation -- no held-out validation set, matching
+    the behaviour of an experiment.yaml that never mentions ``split``. ``train_test=True`` excludes
+    an evenly spaced ``val_frac`` fraction of rotations from the refinement objective (preprocessing
+    still fits their orientation/thickness) and reports their held-out wR2/R_obs alongside the
+    training-set numbers -- opt in per experiment, since it means training sees less data.
     """
 
-    train: str = "all_except_validation"
-    validation: str = "every_10th_rotation"
+    train_test: bool = False
+    val_frac: float = 0.2
+
+    @field_validator("val_frac")
+    @classmethod
+    def _val_frac_in_range(cls, value: float) -> float:
+        if not 0.0 < value < 1.0:
+            raise ValueError("val_frac must be between 0 and 1 (exclusive)")
+        return value
 
 
-class ObjectiveConfig(_StrictConfig):
-    """The differentiable data loss for the default refinement path.
+class LossMetricsConfig(_StrictConfig):
+    """The one residual driving the whole pipeline: preprocess search AND refinement.
 
-    ``data_term`` parses (via :meth:`to_loss`) into the
-    :data:`~diffBloch.engine.forward.LossFn` ``build_engine`` consumes; only implemented terms are
-    admissible. Only knobs the default path actually consumes live here -- outlier rejection,
-    penalty/nuisance weighting, and gradient-norm reporting are not accepted config keys until a
-    consumer reads them, rather than accepted-but-ignored (cf. penalties, which are Python/API
-    composition, not config).
+    ``residual`` parses into a matching ``LossFn``/``ScoresFn`` pair (:meth:`to_loss` /
+    :meth:`to_scores`) -- the scalar the gradient refinement minimises and the per-thickness vector
+    ``optimize_orientation``/``optimize_thickness`` search, off the *same* metric (see
+    :mod:`diffBloch.engine.losses`). A top-level ``ExperimentConfig`` field (not scoped under
+    ``refinement``) because it governs preprocessing too, not just the gradient stage; only
+    implemented terms are admissible. Only knobs the default path actually consumes live here --
+    outlier rejection, penalty/nuisance weighting, and gradient-norm reporting are not accepted
+    config keys until a consumer reads them, rather than accepted-but-ignored (cf. penalties, which
+    are Python/API composition, not config).
     """
 
-    data_term: Literal["wr2", "least_squares"] = "wr2"
+    residual: Literal["wr2", "least_squares", "robs"] = "wr2"
 
     def to_loss(self) -> LossFn:
-        """Parse the data term into the ``LossFn`` the engine scores with."""
+        """Parse the residual into the scalar ``LossFn`` the gradient refinement minimises."""
         return {
             "wr2": wr2_loss,
             "least_squares": weighted_mse_loss,
-        }[self.data_term]
+            "robs": rbragg_loss,
+        }[self.residual]
+
+    def to_scores(self) -> ScoresFn:
+        """Parse the residual into the per-thickness ``ScoresFn`` the preprocessing search uses.
+
+        The exact per-thickness form :meth:`to_loss` sums to a scalar -- see
+        :mod:`diffBloch.engine.losses` -- so the two always agree on one metric.
+        """
+        return {
+            "wr2": wr2_scores,
+            "least_squares": least_squares_scores,
+            "robs": robs_scores,
+        }[self.residual]
 
 
 class OptimizerConfig(_StrictConfig):
@@ -265,7 +298,6 @@ class RefinementConfig(_StrictConfig):
     steps: int = 40
     trainable: TrainableConfig = Field(default_factory=TrainableConfig)
     optimizer: OptimizerConfig = Field(default_factory=OptimizerConfig)
-    objective: ObjectiveConfig = Field(default_factory=ObjectiveConfig)
     split: DataSplitConfig = Field(default_factory=DataSplitConfig)
     thickness_nn: ThicknessNNConfig = Field(default_factory=ThicknessNNConfig)
 
@@ -410,6 +442,10 @@ class ExperimentConfig(_StrictConfig):
     sample: SampleConfig = Field(default_factory=SampleConfig)
     blochwave: BlochwaveConfig = Field(default_factory=BlochwaveConfig)
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
+    # Top-level, not under `refinement`: this metric drives BOTH the orientation/thickness
+    # preprocessing search and the gradient refinement loss (see LossMetricsConfig), so it isn't
+    # scoped to either stage.
+    loss_metrics: LossMetricsConfig = Field(default_factory=LossMetricsConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
 

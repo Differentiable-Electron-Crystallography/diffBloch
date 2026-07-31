@@ -277,7 +277,8 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         logger.report(
             OrientationOptimized(
                 rotation_index=3,
-                wr2=0.25,
+                score=0.25,
+                residual="wr2",
                 n_matched_hkl=2,
                 n_trials=10,
                 n_passes=3,
@@ -287,7 +288,8 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         logger.report(
             OrientationOptimized(
                 rotation_index=8,
-                wr2=0.5,
+                score=0.5,
+                residual="wr2",
                 n_matched_hkl=3,
                 n_trials=10,
                 n_passes=3,
