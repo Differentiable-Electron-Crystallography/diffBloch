@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _recipe_steps
+from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _preprocess, _recipe_steps
 from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.observability import NULL_LOGGER
@@ -86,6 +86,98 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
     assert [r.name for r in small] == names == [r.name for r in large]
     # identical params too (optimize_orientation records only {search, coupling}; no validate)
     assert [r.params for r in small] == [r.params for r in large]
+
+
+def test_orientations_csv_prepends_an_import_orientations_step(tmp_path: Path) -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
+    csv_path = tmp_path / "orientations.csv"
+    csv_path.write_text("Rotation Index,Orientation Matrix\n")
+
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(
+                cfg,
+                setup.refinement,
+                setup.integration,
+                NULL_LOGGER,
+                orientations_csv=csv_path,
+            ),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+
+    assert records[0].name == "import_orientations"
+    assert records[0].params == {"csv_path": str(csv_path)}
+    assert [r.name for r in records[1:]] == [
+        "build_orientation_plans",
+        "optimize_orientation",
+        "optimize_thickness",
+    ]
+
+
+def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={"preprocess": cfg.preprocess.model_copy(update={"stage_order": "thickness_first"})}
+    )
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
+
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+
+    assert [r.name for r in records] == [
+        "build_orientation_plans",
+        "optimize_thickness",
+        "optimize_orientation",
+    ]
+
+
+def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path) -> None:
+    """``plot_thickness`` (API/CLI) composes a ``ThicknessPlotLogger`` into the recipe's logger.
+
+    Both fitting stages are disabled so only the unconditional ``build_orientation_plans`` geometry
+    build runs -- fast, and enough to exercise the composition branch without paying for a search.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            )
+        }
+    )
+    plot_dir = tmp_path / "thickness_optim"
+
+    refinement, plan = _preprocess(
+        root,
+        cfg,
+        logger=NULL_LOGGER,
+        checkpoint=False,
+        refresh=False,
+        device=None,
+        workers=1,
+        max_batch=None,
+        plot_thickness=True,
+        plot_thickness_dir=plot_dir,
+    )
+
+    assert plan.orientations  # the geometry build actually ran
+    assert refinement is not None
+    # no thickness fit ran, so no PNG was written -- but the branch itself (directory resolution +
+    # MultiLogger composition) executed without error, which is what this test pins.
+    assert plot_dir.is_dir()
 
 
 def test_fit_stages_can_be_enabled_independently() -> None:

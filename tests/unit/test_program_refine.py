@@ -8,17 +8,14 @@ import numpy as np
 import torch
 
 from diffBloch.app.program import _write_refinement_outputs
+from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.engine import ModelRefinementResult, build_refinement_model
 from diffBloch.io import read_structure
 from diffBloch.observability import RefinementStep
 from diffBloch.preprocess import RefinementSetup
 
-
-def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path: Path) -> None:
-    source = tmp_path / "q.cif"
-    source.write_text(
-        """data_q
+_MINIMAL_CIF = """data_q
 _cell_length_a 5
 _cell_length_b 5
 _cell_length_c 5
@@ -51,7 +48,13 @@ _atom_site_aniso_U_13
 _atom_site_aniso_U_12
 O1 0.03 0.04 0.05 0.001 0.002 0.003
 """
-    )
+
+
+def _refinement_result_for(
+    tmp_path: Path,
+) -> tuple[ExperimentConfig, RefinementSetup, ModelRefinementResult]:
+    source = tmp_path / "q.cif"
+    source.write_text(_MINIMAL_CIF)
     cfg = ExperimentConfig.model_validate(
         {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
@@ -83,6 +86,11 @@ O1 0.03 0.04 0.05 0.001 0.002 0.003
             "unmatched_observed": 3,
         },
     )
+    return cfg, refinement, result
+
+
+def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path: Path) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
 
     written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
 
@@ -104,3 +112,26 @@ O1 0.03 0.04 0.05 0.001 0.002 0.003
     summary = json.loads((tmp_path / "refinement_summary.json").read_text())
     assert summary["best_epoch"] == 0
     assert summary["total_hkl"] == "8 / 12"
+
+
+def test_write_refinement_outputs_skips_the_lock_without_a_plan_lock(tmp_path: Path) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+
+    written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
+
+    assert "refinement_lock" not in written.artifacts
+    assert not (tmp_path / "refinement.lock").exists()
+
+
+def test_write_refinement_outputs_writes_a_refinement_lock_beside_an_existing_plan_lock(
+    tmp_path: Path,
+) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    (tmp_path / "plan.lock").write_text("fake-plan-lock-bytes")
+
+    written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
+
+    assert "refinement_lock" in written.artifacts
+    lock = read_refinement_lock(tmp_path / "refinement.lock")
+    assert lock.refined_structure.path == "refined_structure.cif"
+    assert lock.refined_parameters.path == "refined_parameters.npz"
