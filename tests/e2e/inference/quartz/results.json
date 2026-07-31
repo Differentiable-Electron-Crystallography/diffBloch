@@ -2,67 +2,67 @@
   "seed": 42,
   "solver": "bloch_eigen",
   "n_rotations": 10,
-  "wall_time_seconds": 1.0865404489450157,
-  "mean_r_obs": 0.06292705349964027,
+  "wall_time_seconds": 1.5756618520244956,
+  "mean_r_obs": 0.06271666859867497,
   "rotations": [
     {
       "rotation_index": 26,
-      "r_obs": 0.06480919799149955,
+      "r_obs": 0.06489795989948638,
       "n_observed": 13,
       "n_beams": 105
     },
     {
       "rotation_index": 33,
-      "r_obs": 0.04026581519861485,
+      "r_obs": 0.04015492060231691,
       "n_observed": 8,
       "n_beams": 103
     },
     {
       "rotation_index": 56,
-      "r_obs": 0.08089161996612748,
-      "n_observed": 11,
+      "r_obs": 0.08614394402403293,
+      "n_observed": 12,
       "n_beams": 102
     },
     {
       "rotation_index": 18,
-      "r_obs": 0.14996113627630397,
-      "n_observed": 13,
+      "r_obs": 0.12899492934926587,
+      "n_observed": 14,
       "n_beams": 97
     },
     {
       "rotation_index": 70,
-      "r_obs": 0.08283639415022996,
+      "r_obs": 0.0830006745885027,
       "n_observed": 4,
       "n_beams": 106
     },
     {
       "rotation_index": 84,
-      "r_obs": 0.031025923650198427,
+      "r_obs": 0.030978708906958603,
       "n_observed": 10,
       "n_beams": 108
     },
     {
       "rotation_index": 85,
-      "r_obs": 0.05190410417654944,
+      "r_obs": 0.052825997307217584,
       "n_observed": 9,
       "n_beams": 102
     },
     {
       "rotation_index": 96,
-      "r_obs": 0.041446812338727546,
+      "r_obs": 0.041401085547721164,
       "n_observed": 10,
       "n_beams": 103
     },
     {
       "rotation_index": 20,
-      "r_obs": 0.05248041597063959,
-      "n_observed": 12,
+      "r_obs": 0.05968205866213909,
+      "n_observed": 13,
       "n_beams": 102
     },
     {
       "rotation_index": 34,
-      "r_obs": 0.03364911527751188,
-      "n_observed": 9,
+      "r_obs": 0.039086407099108544,
+      "n_observed": 10,
       "n_beams": 99
     }
   ]
