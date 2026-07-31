@@ -16,7 +16,7 @@ Differentiable Bloch-wave structure refinement for rotating-stage 3D electron di
 Electrons scatter far more strongly than X-rays, so even a submicron crystal re-scatters a
 diffracted beam before it exits — dynamical, multiple-scattering diffraction rather than the
 kinematical single-scattering approximation X-ray refinement relies on. diffBloch refines crystal
-structures directly against that dynamical simulation, using continuous-rotation 3DED observations:
+structures directly against that dynamical simulation, using continuous-rotation 3DED experimental data:
 diffraction frames collected as the crystal is tilted/rocked through reciprocal space and reduced
 upstream by PETS2 into `.cif_pets`.
 
@@ -30,7 +30,7 @@ gradient descent on a scaling-optimized weighted R-factor.
 ## Quickstart
 
 Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` observations and `plan.npz`
+[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and `plan.npz`
 checkpoints, then sync the project environment from the repository root:
 
 ```bash

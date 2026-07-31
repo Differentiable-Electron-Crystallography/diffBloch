@@ -20,13 +20,15 @@ M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
 where {math}`\alpha` is the main varying goniometer angle.
 
 Using a fixed trial thickness and the starting structure, orientation optimization searches nearby
-orientations for better agreement with experiment. Three approaches are available:
+orientations for better agreement with experiment. Two approaches are implemented, selected by
+`preprocess.orientation.method`:
 
 | Method | Difference |
 |---|---|
-| Bayesian optimization | Explores a broad angular range; robust but expensive. |
-| Nelder–Mead | Locally optimizes all three rotation angles; efficient but sensitive to the starting orientation. |
-| Modified simplex | Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close. |
+| `palatinus_modified_simplex` (default) | Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close. |
+| `nelder_mead` | Local simplex search over all three goniometer-correction angles directly (`scipy.optimize.minimize`); efficient but sensitive to the starting orientation and the fixed `step_size` neighbourhood it explores. |
+
+Bayesian optimization is not implemented.
 
 ## Thickness
 
@@ -49,7 +51,7 @@ preprocess:
 
 ## The `Plan`
 
-A `Plan` is the fitted geometry and observation scaffold around the structural parameters; it is
+A `Plan` is the fitted geometry and experimental scaffold around the structural parameters; it is
 not the structure being refined. It carries optimized orientations, rocking-curve tilts,
 per-rotation thicknesses, reflection sets, and preprocessing provenance.
 
@@ -102,15 +104,15 @@ orientation plan, not separately displayed default stages.
 from pathlib import Path
 
 from diffBloch.config import load_experiment
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import from_experiment
 
 root = Path("examples/experiments/quartz-checkpoint")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
-observations = read_observations(root / cfg.inputs.exp_data)
+experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
 
-setup = from_experiment(structure, observations, cfg)
+setup = from_experiment(structure, experimental_data, cfg)
 initial_plan = setup.plans.combined
 refinement_setup = setup.refinement
 
@@ -127,7 +129,7 @@ The default app recipe begins with one displayed `build_orientation_plans` stage
 shared structure-factor support, constructs every central orientation and rocking sub-tilt,
 calculates excitation errors for reciprocal-lattice points inside the solve cutoff, selects the
 tilt-dependent SOLVE beams, builds the Bloch geometry, and matches the selected scoring reflections
-to PETS observations. It does not use experimental presence to choose the SOLVE basis.
+to PETS experimental data. It does not use experimental presence to choose the SOLVE basis.
 
 Real steps include:
 
@@ -135,8 +137,8 @@ Real steps include:
 - {func}`diffBloch.preprocess.steps.beams.select_beams` — lower-level tilt-independent candidate selection for custom API pipelines and convergence work; it is not a separate default app stage.
 - {func}`diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve` — expand orientations into virtual rocking-curve tilts.
 - {func}`diffBloch.preprocess.steps.mosaicity.mosaicity` — apply tilt-axis mosaic broadening.
-- {func}`diffBloch.preprocess.steps.fit_orientation.fit_orientation` — search nearby orientations and keep the best-scoring one.
-- {func}`diffBloch.preprocess.steps.fit_thickness.fit_thickness` — search mean specimen thickness and keep the best-scoring value.
+- {func}`diffBloch.preprocess.steps.optimize_orientation.optimize_orientation` — search nearby orientations and keep the best-scoring one.
+- {func}`diffBloch.preprocess.steps.optimize_thickness.optimize_thickness` — search mean specimen thickness and keep the best-scoring value.
 - {func}`diffBloch.preprocess.driver.converge_numerics` — test convergence over `g_max`, `sg_max`, and `tilt_steps`.
 
 ## API example: composing simple steps
@@ -148,15 +150,15 @@ device choices, optional fitting stages, and logging.
 from pathlib import Path
 
 from diffBloch.config import load_experiment
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import build_orientation_plans, from_experiment, pipeline
 
 root = Path("examples/experiments/quartz-checkpoint")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
-observations = read_observations(root / cfg.inputs.exp_data)
+experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
 
-setup = from_experiment(structure, observations, cfg)
+setup = from_experiment(structure, experimental_data, cfg)
 base_plan = setup.plans.combined
 
 prepare = pipeline([

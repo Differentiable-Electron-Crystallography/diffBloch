@@ -43,7 +43,7 @@ rather than fields in `experiment.yaml`:
 from pathlib import Path
 
 from diffBloch.config import load_experiment
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     ConvergenceTest,
     ConvergenceTolerance,
@@ -56,8 +56,8 @@ from diffBloch.preprocess import (
 root = Path("examples/experiments/quartz")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
-observations = read_observations(root / cfg.inputs.exp_data)
-setup = from_experiment(structure, observations, cfg)
+experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+setup = from_experiment(structure, experimental_data, cfg)
 plan = build_orientation_plans()(
     select_beams(cfg.blochwave.to_beam_selection(setup.integration))(setup.plans.combined)
 )

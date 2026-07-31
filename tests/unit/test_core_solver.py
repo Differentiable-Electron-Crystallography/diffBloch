@@ -241,7 +241,7 @@ def _system_from(npz: Path):
     return build_bloch_system(plan, torch.tensor(data["structure_factor"])), data
 
 
-def test_propagate_matches_private_oracle_zone() -> None:
+def test_propagate_matches_oracle_zone() -> None:
     # Zone axis (Mii == 1), Friedel-symmetric Fgb -> A Hermitian. The two propagators agree to
     # single-precision tolerance here (the solve always runs at complex64), and matrix_exp
     # conserves flux. The golden fixtures were computed at float64; rtol/atol are widened to the
@@ -265,11 +265,11 @@ def test_propagate_matches_private_oracle_zone() -> None:
     assert torch.allclose(psi_me, psi_be, atol=1e-4)
 
 
-def test_propagate_matches_private_oracle_oblique() -> None:
+def test_propagate_matches_oracle_oblique() -> None:
     # Off zone axis (Mii != 1), still Friedel -> A Hermitian. matrix_exp returns the *symmetrised*
     # wavefunction (unitary); bloch_eigen un-symmetrises to *physical* amplitudes. Both reproduce
-    # their private goldens, but agree only to O(g_z/K_n) -- not bit-for-bit -- the obliquity
-    # difference this case exists to pin (see provenance.json propagator_note).
+    # their goldens, but agree only to O(g_z/K_n) -- not bit-for-bit -- the obliquity difference
+    # this case exists to pin (see provenance.json propagator_note).
     system, data = _system_from(_ORACLE_OBLIQUE)
     g = g_vectors(data["beam_hkl"], data["reciprocal_basis"])
     assert np.any(np.abs(mii_factors(g, float(data["energy"]), u0=float(data["u0"])) - 1.0) > 1e-4)

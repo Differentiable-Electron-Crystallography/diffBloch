@@ -1,0 +1,16 @@
+{
+  "best_epoch": 199,
+  "objective": 3.6397808101194937,
+  "wr2": 0.03676546272847974,
+  "r_obs": 0.04866510598626135,
+  "diff_loss": 3.6397808101194937,
+  "total_hkl": "1015 / 2521",
+  "artifacts": {
+    "refined_structure": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refined_structure.cif",
+    "refined_parameters": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refined_parameters.npz",
+    "summary": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refinement_summary.json",
+    "plan": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/plan.npz",
+    "plan_lock": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/plan.lock",
+    "refined_components": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refined_components.npz"
+  }
+}

@@ -109,7 +109,7 @@ def build_structure_factor_gather(
     """
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
 
-    # Private ordering: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
+    # Ordering convention: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
     gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
 
     if structure_factor_indices is None:

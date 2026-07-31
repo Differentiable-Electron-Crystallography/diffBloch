@@ -6,6 +6,7 @@ from diffBloch.config.manifest import (
     InputLock,
     PreprocessLock,
     RecipeStep,
+    RefinementLock,
     RunManifest,
     artifact_hash_for,
     code_version,
@@ -15,8 +16,11 @@ from diffBloch.config.manifest import (
     pack_run,
     preprocess_lock_status,
     read_preprocess_lock,
+    read_refinement_lock,
+    refinement_config_digest,
     sha256_file,
     write_preprocess_lock,
+    write_refinement_lock,
     write_run_manifest,
 )
 from diffBloch.config.schema import (
@@ -38,6 +42,7 @@ __all__ = [
     "OptimizerConfig",
     "PreprocessLock",
     "RecipeStep",
+    "RefinementLock",
     "SampleConfig",
     "RunManifest",
     "artifact_hash_for",
@@ -49,7 +54,10 @@ __all__ = [
     "pack_run",
     "preprocess_lock_status",
     "read_preprocess_lock",
+    "read_refinement_lock",
+    "refinement_config_digest",
     "sha256_file",
     "write_preprocess_lock",
+    "write_refinement_lock",
     "write_run_manifest",
 ]

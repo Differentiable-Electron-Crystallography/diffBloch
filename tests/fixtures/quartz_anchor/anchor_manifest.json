@@ -1,5 +1,4 @@
 {
-  "source": "diffBloch_private/tests/e2e/inference/quartz",
   "reference_results": {
     "path": "reference_results.json",
     "sha256": "c6c6b868f81ce57564acfae595ac8f326aba907fe81c61a269fb94b1c49248b9",

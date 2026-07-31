@@ -96,7 +96,7 @@ def run_inference(
 
     First applies ``prepare`` to ``plan`` -- one composed ``Plan -> Plan`` pipeline (compose the
     run's steps with :func:`~diffBloch.preprocess.pipeline.pipeline`, e.g. ``select_beams`` ->
-    ``integrate_rocking_curve`` -> ``mosaicity`` -> ``fit_orientation`` -> ``fit_thickness``);
+    ``integrate_rocking_curve`` -> ``mosaicity`` -> ``optimize_orientation`` -> ``optimize_thickness``);
     it defaults to the identity (evaluate the plan as given). Then builds
     a :class:`RefinementEngine`, simulates every orientation under ``no_grad`` with the swappable
     ``method`` solver, and returns per-rotation :class:`RotationInference`.

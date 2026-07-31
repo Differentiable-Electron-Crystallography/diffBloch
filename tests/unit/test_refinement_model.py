@@ -20,7 +20,7 @@ from diffBloch.engine import (
     StructureComponent,
     build_refinement_model,
 )
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import from_experiment, read_plan
 from diffBloch.preprocess.scoring import build_engine
 
@@ -98,8 +98,8 @@ def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     """
     cfg, _lock = load_experiment(_QUARTZ_ROOT)
     structure = read_structure(_QUARTZ_ROOT / cfg.inputs.structure)
-    observations = read_observations(_QUARTZ_ROOT / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(_QUARTZ_ROOT / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     plan = read_plan(_QUARTZ_ROOT / "plan.npz")
     engine = build_engine(
         plan,

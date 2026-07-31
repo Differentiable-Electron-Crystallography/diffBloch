@@ -9,7 +9,7 @@ there is no ``Plan`` yet). It assembles two separable products from the same rec
   :class:`~diffBloch.engine.forward.RefinementEngine` needs (ASU expansion, constraint spec, initial
   parameters, atomic numbers).
 
-The structure side lives here so the structure/observation split mirrors the two parsed records.
+The structure side lives here so the structure/experimental split mirrors the two parsed records.
 """
 
 from __future__ import annotations
@@ -24,17 +24,18 @@ from torch import Tensor
 from diffBloch.config.schema import DataSplitConfig, ExperimentConfig
 from diffBloch.core.adp import cholesky_raw_from_adp
 from diffBloch.core.crystal import reciprocal_cell
-from diffBloch.core.dynamical import wavelength2energy
+from diffBloch.core.dynamical import energy2sigma, energy2wavelength, kappa, wavelength2energy
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
-from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan
+from diffBloch.core.scattering import structure_factors
+from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan, expand_asu
 from diffBloch.engine.plan import StructureFactorGrid
-from diffBloch.io.record import AdpRecord, ObservationRecord, StructureRecord
+from diffBloch.io.record import AdpRecord, ExperimentalRecord, StructureRecord
 from diffBloch.io.symmetry_setup import symmetry_constraints
-from diffBloch.params import ConstraintSpec, RefinableParams
+from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 from diffBloch.preprocess.orientation import orientation_matrices
 from diffBloch.preprocess.plan import CandidatePlan, Plan
-from diffBloch.specs import IntegrationGeometry
+from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry
 
 __all__ = [
     "ExperimentSetup",
@@ -116,7 +117,7 @@ class RefinementSetup:
         through the per-orientation matrices in the geometry plan). ADPs are mapped to the
         reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
         Per-rotation thickness lives elsewhere -- on each per-rotation plan (seeded by
-        ``from_experiment``, fitted by ``fit_thickness``) -- because it varies per rotation, not per
+        ``from_experiment``, fitted by ``optimize_thickness``) -- because it varies per rotation, not per
         structure.
 
         Special-position degrees of freedom are constrained by the site-symmetry projector built
@@ -151,7 +152,7 @@ class RefinementSetup:
 
 def from_experiment(
     structure: StructureRecord,
-    observations: ObservationRecord,
+    experimental_data: ExperimentalRecord,
     config: ExperimentConfig,
 ) -> ExperimentSetup:
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
@@ -160,15 +161,14 @@ def from_experiment(
     ``Plan`` yet). The shared structure-factor grid is *derived* from the solve cutoff rather than
     hand-declared: :func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff`
     sizes it
-    to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The solve cutoff is the
-    ``blochwave`` radius when the run couples, else the seed pool ``g_max_refine`` (a
-    tilt-independent run solves only the seed set). The beam energy is derived from the PETS
+    to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The beam energy is derived
+    from the PETS
     wavelength; one :class:`CandidatePlan` per rotation carries its crystal orientation matrix
     (native PETS derivation, no side-car file) and the observed pattern for that zone axis.
     Rotations split into ``train`` / ``validation`` plans sharing the grid.
 
     Each orientation is seeded with the orientation-independent, difference-safe beam set
-    ``{hkl in grid : |g| <= blochwave.g_max_refine}`` (so beam differences stay within the derived
+    ``{hkl in grid : |g| <= blochwave.g_max}`` (so beam differences stay within the derived
     grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
     pruning is the later ``select_beams`` step.
 
@@ -181,28 +181,33 @@ def from_experiment(
     """
     solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
-    energy = wavelength2energy(observations.wavelength)
-    beam_hkl = seed_beam_hkl(grid, g_max_refine=config.blochwave.g_max_refine)
+    energy = wavelength2energy(experimental_data.wavelength)
+    beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
     orientations = orientation_matrices(
-        observations.ub_matrix,
-        observations.cell_parameters,
-        observations.alphas,
-        observations.betas,
-        observations.omegas,
+        experimental_data.ub_matrix,
+        experimental_data.cell_parameters,
+        experimental_data.alphas,
+        experimental_data.betas,
+        experimental_data.omegas,
+    )
+    refinement_setup = RefinementSetup.from_structure(structure)
+    u0 = _mean_inner_potential(
+        grid, refinement_setup, energy=energy, absorption=config.blochwave.to_absorption()
     )
     all_plans = tuple(
         CandidatePlan.seed(
             beam_hkl,
-            PatternBatch.from_observation_record(
-                observations,
+            PatternBatch.from_experimental_record(
+                experimental_data,
                 zone_axis_id=int(zone_id),
                 rotation_index=index,
             ),
             energy=energy,
             thickness=config.sample.thicknesses,
             orientation=orientations[index],
+            u0=u0,
         )
-        for index, zone_id in enumerate(observations.zone_axis_ids)
+        for index, zone_id in enumerate(experimental_data.zone_axis_ids)
     )
 
     selection = config.blochwave.to_orientation_selection()
@@ -227,22 +232,64 @@ def from_experiment(
             train=Plan(structure_factor_grid=grid, orientations=train_orientations),
             validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
-        refinement=RefinementSetup.from_structure(structure),
-        integration=IntegrationGeometry(semiangle=observations.integration_semiangle),
+        refinement=refinement_setup,
+        integration=IntegrationGeometry(semiangle=experimental_data.integration_semiangle),
     )
 
 
-def seed_beam_hkl(grid: StructureFactorGrid, *, g_max_refine: float) -> NDArray[np.int64]:
-    """Difference-safe seed beams: the grid reflections within ``g_max_refine`` (includes 000).
+def _mean_inner_potential(
+    grid: StructureFactorGrid,
+    refinement: RefinementSetup,
+    *,
+    energy: float,
+    absorption: Absorption = NO_ABSORPTION,
+) -> float:
+    """The mean-inner-potential correction ``U0 = |Fgb(000)| * prefactor``, from the seed structure.
 
-    The orientation-independent candidate pool ``{hkl in grid : |g| <= g_max_refine}`` that
-    ``from_experiment`` lays down and the pool-lever convergence step (``converge_pool``) re-seeds
-    at a wider radius. Selecting from the shared ``grid`` keeps every beam difference inside the
-    ``Fgb`` support as long as ``2 * g_max_refine <= grid.g_max`` (the caller's responsibility).
+    Corrects the in-crystal wavevector magnitude (``core.dynamical.wavevector_magnitude``'s
+    ``u0``), computed once from the CIF-seeded structure (not the trainable state a refinement
+    later reaches) and carried fixed on every :class:`~diffBloch.preprocess.plan.CandidatePlan`
+    thereafter -- mirroring the reference implementation, which computes it once in its model
+    constructor and never updates it during a refinement run. ``Fgb(000)`` includes the
+    absorptive component when ``absorption`` is enabled, so ``u0`` folds in both the elastic and
+    absorptive forward-scattering contribution, matching ``abs(complex Fgb(000))``.
+    """
+    state = constrain(refinement.params, refinement.spec)
+    expanded = expand_asu(
+        refinement.asu_plan,
+        state.positions,
+        numbers=refinement.numbers,
+        uij=state.uij_star,
+        occupancies=state.occupancies,
+    )
+    assert expanded.numbers is not None and expanded.uij is not None
+    assert expanded.occupancies is not None
+    fgb_000 = structure_factors(
+        expanded.positions,
+        expanded.numbers,
+        expanded.occupancies,
+        expanded.uij,
+        hkl=torch.zeros((1, 3), dtype=torch.int64),
+        reciprocal_basis=grid.reciprocal_basis,
+        cell_volume=grid.cell_volume,
+        g_max=grid.g_max,
+        absorption=absorption,
+        energy=energy,
+    )
+    prefactor = energy2sigma(energy) / (kappa * energy2wavelength(energy) * float(np.pi))
+    return float(torch.abs(fgb_000[0]) * prefactor)
+
+
+def seed_beam_hkl(grid: StructureFactorGrid, *, g_max: float) -> NDArray[np.int64]:
+    """Difference-safe seed beams: the grid reflections within ``g_max`` (includes 000).
+
+    The orientation-independent candidate pool ``{hkl in grid : |g| <= g_max}`` that
+    ``from_experiment`` lays down. Selecting from the shared ``grid`` keeps every beam difference
+    inside the ``Fgb`` support as long as ``2 * g_max <= grid.g_max`` (the caller's responsibility).
     """
     structure_factor_hkl = np.asarray(grid.structure_factor_hkl)
     beams: NDArray[np.int64] = structure_factor_hkl[
-        gmax_mask(structure_factor_hkl, np.asarray(grid.reciprocal_basis), g_max_refine)
+        gmax_mask(structure_factor_hkl, np.asarray(grid.reciprocal_basis), g_max)
     ]
     return beams
 

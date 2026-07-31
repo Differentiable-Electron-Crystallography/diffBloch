@@ -2,7 +2,7 @@
 
 Reconstructs per-rotation crystal orientation matrices from the experiment's goniometer geometry --
 the UB matrix and per-rotation tilt angles recorded in the PETS data -- with no side-car
-orientation file. The orientations are first-class inputs to the ``Plan``; ``fit_orientation``
+orientation file. The orientations are first-class inputs to the ``Plan``; ``optimize_orientation``
 refines them in-Plan -- it must not re-orthonormalise them: they fold a ~1% measured-vs-ideal cell
 correction, so a polar/SVD projection would silently drop it.
 
@@ -89,7 +89,7 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     """Palatinus hexagonal-search tilt ``R_z(azimuth) . R_x(polar) . R_z(-azimuth)``, in degrees.
 
     A tilt of magnitude ``polar`` about the in-plane axis at ``azimuth`` -- the delta rotation
-    ``fit_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a true
+    ``optimize_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a true
     rotation (``det = 1``) it preserves the non-orthonormal ``U`` measured-cell correction exactly,
     so the re-orthonormalisation trap is dodged by construction.
 

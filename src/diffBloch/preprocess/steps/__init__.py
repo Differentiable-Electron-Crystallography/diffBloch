@@ -4,8 +4,8 @@ Each module here produces a ``Plan -> Plan`` transform (or the small drivers/mea
 use): :mod:`~diffBloch.preprocess.steps.beams` (``select_beams``),
 :mod:`~diffBloch.preprocess.steps.convergence` / :mod:`~diffBloch.preprocess.steps.coverage` (the
 two
-convergence operations), :mod:`~diffBloch.preprocess.steps.fit_orientation` /
-:mod:`~diffBloch.preprocess.steps.fit_thickness` (the accuracy fits), and
+convergence operations), :mod:`~diffBloch.preprocess.steps.optimize_orientation` /
+:mod:`~diffBloch.preprocess.steps.optimize_thickness` (the accuracy fits), and
 :mod:`~diffBloch.preprocess.steps.rocking_curve` (``integrate_rocking_curve``).
 
 Steps depend only on the parent *spine* (``plan``, ``pipeline``, ``experiment``, ``scoring``,

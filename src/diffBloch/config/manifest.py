@@ -37,7 +37,7 @@ class ExperimentLock(BaseModel):
     """``experiment.lock``: exact input identity, never generated outputs."""
 
     structure: InputLock
-    observations: InputLock
+    experimental_data: InputLock
 
 
 class ArtifactHash(BaseModel):
@@ -97,6 +97,26 @@ class PreprocessLock(BaseModel):
     plan: ArtifactHash
 
 
+class RefinementLock(BaseModel):
+    """``refinement.lock``: binds refined-structure outputs to everything that produced them.
+
+    The refinement-stage counterpart to :class:`PreprocessLock`. Refinement runs on top of an
+    already-settled ``Plan``, so everything that determines *that* -- inputs, sample, blochwave,
+    preprocess config, recipe -- is already pinned by ``plan_lock_sha256`` (the hash of the exact
+    ``plan.lock`` this run refined from, which itself chains back to ``experiment.lock``). What this
+    lock adds is what refinement itself contributes on top: the refinement-determining config
+    (:func:`refinement_config_digest`) and the code version that ran it, plus hashes of the refined
+    outputs. Verifiable independently of whether ``plan.lock`` is still present or matches --
+    ``plan_lock_sha256`` is a recorded fact about that run, not a live re-check.
+    """
+
+    plan_lock_sha256: str
+    refinement_config_digest: str
+    code_version: str
+    refined_structure: ArtifactHash
+    refined_parameters: ArtifactHash
+
+
 def sha256_file(path: str | Path) -> str:
     """Return the SHA256 hex digest for ``path``."""
     digest = hashlib.sha256()
@@ -132,7 +152,7 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     lock_path = root / "experiment.lock"
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
-    _verify_input(root, cfg.inputs.exp_data, lock.observations)
+    _verify_input(root, cfg.inputs.exp_data, lock.experimental_data)
     return cfg, lock
 
 
@@ -152,7 +172,14 @@ def config_digest(config: ExperimentConfig) -> str:
     ``Plan`` -- so a committed preprocess checkpoint is restaled only by a change that could alter
     it:
 
-    - ``inputs``, ``sample``, ``blochwave``, ``preprocess`` -- shape the grid, beams, and fits;
+    - ``inputs``, ``sample``, ``blochwave`` -- shape the grid and beams;
+    - ``preprocess`` -- shapes and configures the fitting steps, but ``orientation``/``thickness``
+      only when the matching ``optimize_orientation``/``optimize_thickness`` flag enables that step
+      (the step's own params already ride in the recipe axis whenever it actually runs -- see
+      :func:`~diffBloch.preprocess.pipeline.as_step` -- so including them here unconditionally would
+      restale a checkpoint over config that provably never touched it), and always excluding
+      ``thickness.plot`` (reporting-only, never touches the Plan even when ``thickness`` is in
+      scope);
     - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.
 
     Everything else is excluded because it cannot change the Plan: ``name`` (a label),
@@ -165,14 +192,38 @@ def config_digest(config: ExperimentConfig) -> str:
         **dump["blochwave"],
         "solver": {"refine": dump["blochwave"]["solver"]["refine"]},
     }
+    preprocess = dict(dump["preprocess"])
+    if not preprocess["optimize_orientation"]:
+        preprocess.pop("orientation", None)
+    if not preprocess["optimize_thickness"]:
+        preprocess.pop("thickness", None)
+    elif "thickness" in preprocess:
+        # thickness.plot only selects whether a PNG gets written; it never touches the Plan.
+        preprocess["thickness"] = {k: v for k, v in preprocess["thickness"].items() if k != "plot"}
     preprocess_identity = {
         "inputs": dump["inputs"],
         "sample": dump["sample"],
         "blochwave": blochwave,
-        "preprocess": dump["preprocess"],
+        "preprocess": preprocess,
         "refinement": {"split": dump["refinement"]["split"]},
     }
     canonical = json.dumps(preprocess_identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def refinement_config_digest(config: ExperimentConfig) -> str:
+    """SHA256 of the *refinement-determining* config -- the refinement lock's config identity.
+
+    The complement of :func:`config_digest`: everything that function excludes from the preprocess
+    checkpoint's identity (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` /
+    ``thickness_nn``) is exactly what determines the gradient-refined result on top of an
+    already-settled ``Plan``, so this hashes precisely that complement. ``refinement.split`` is
+    omitted here too -- it shapes the ``Plan`` itself and is already covered by ``config_digest``
+    (and therefore by the ``plan.lock`` a refinement run is built from).
+    """
+    dump = config.model_dump(mode="json")
+    refinement = {k: v for k, v in dump["refinement"].items() if k != "split"}
+    canonical = json.dumps(refinement, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -218,6 +269,16 @@ def write_preprocess_lock(path: str | Path, lock: PreprocessLock) -> None:
 def read_preprocess_lock(path: str | Path) -> PreprocessLock:
     """Read a ``plan.lock`` written by :func:`write_preprocess_lock`."""
     return PreprocessLock.model_validate_json(Path(path).read_text())
+
+
+def write_refinement_lock(path: str | Path, lock: RefinementLock) -> None:
+    """Write ``refinement.lock`` in a stable, human-readable form (beside ``refined_structure.cif``)."""
+    Path(path).write_text(lock.model_dump_json(indent=2) + "\n")
+
+
+def read_refinement_lock(path: str | Path) -> RefinementLock:
+    """Read a ``refinement.lock`` written by :func:`write_refinement_lock`."""
+    return RefinementLock.model_validate_json(Path(path).read_text())
 
 
 PreprocessLockStatus = Literal["reuse", "resume", "stale"]

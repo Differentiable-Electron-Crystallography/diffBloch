@@ -16,9 +16,8 @@ _SOLVE_G_MAX = 0.45  # beams to |g| <= 0.45; their g - h differences reach 0.9
 
 def test_from_cell_for_beam_cutoff_derives_double_support_plus_margin() -> None:
     # The solve cutoff is the beam radius; the SF support it needs is 2x that (g - h differences)
-    # plus a half-Angstrom shell (the private's 2*g_max + 0.5) for orientation-metric wobble. So the
-    # derived grid matches hand-passing 2*solve + 0.5 to from_cell -- without the caller knowing the
-    # convention.
+    # plus a half-Angstrom shell (2*g_max + 0.5) for orientation-metric wobble. So the derived grid
+    # matches hand-passing 2*solve + 0.5 to from_cell -- without the caller knowing the convention.
     solve = StructureFactorGrid.from_cell_for_beam_cutoff(_CELL, solve_g_max=1.0)
     explicit = StructureFactorGrid.from_cell(_CELL, g_max=2.0 + 0.5)
 

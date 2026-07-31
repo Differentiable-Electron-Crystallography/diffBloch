@@ -4,7 +4,7 @@ Bridges the two products :func:`diffBloch.preprocess.from_experiment` returns --
 :class:`~diffBloch.preprocess.plan.Plan` and the structure-side
 :class:`~diffBloch.preprocess.experiment.RefinementSetup` -- into a runnable
 :class:`~diffBloch.engine.RefinementEngine`, then exposes the per-orientation scaling-optimised wR2
-the orientation refinement (``fit_orientation``) minimises.
+the orientation refinement (``optimize_orientation``) minimises.
 
 ``build_engine`` is the general ``Plan + RefinementSetup -> engine`` assembly (the same engine
 ``refine`` will consume); ``score_orientations`` is the thin convenience that computes the
@@ -133,7 +133,7 @@ def score_orientations(
     """Scaling-optimised wR2 for every orientation in ``plan`` at the seeded ``refinement.params``.
 
     Computes the orientation-invariant ``F_gb`` once and reuses it across orientations. This is the
-    objective surface ``fit_orientation`` searches over per rotation; here it evaluates
+    objective surface ``optimize_orientation`` searches over per rotation; here it evaluates
     the current (seed) orientations, returning one scalar score per rotation.
     """
     engine = build_engine(plan, refinement, method=method)

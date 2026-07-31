@@ -115,7 +115,7 @@ def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
     steps cannot consume, so they must all precede ``couple_beams`` in a pipeline. This helper
     enforces that ordering with a clear error and narrows the element type for the caller.
 
-    The fitting steps (``fit_orientation``, ``fit_thickness``) are deliberately *not* narrowed: they
+    The fitting steps (``optimize_orientation``, ``optimize_thickness``) are deliberately *not* narrowed: they
     are plan-agnostic (they rebuild via :meth:`OrientationPlan.with_orientation` /
     ``replace(thickness=...)``, both defined on the segmented plan too), so they iterate
     ``plan.orientations`` directly and run either before or after ``couple_beams``.

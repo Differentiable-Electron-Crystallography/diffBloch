@@ -1,8 +1,8 @@
-# Abiraterone acetate 3D-ED anchor -- real molecular-crystal data (private lineage).
+# Abiraterone acetate 3D-ED anchor -- real molecular-crystal data.
 # A well-conditioned molecular crystal (P2_1 2_1 2_1, sg 19): the refinement positive control, and a
-# forward-parity anchor vs the private (rotation-0 R_obs: public 0.0978 vs private 0.09697). NOT a
-# canonical examples/ experiment -- reproducing the private forward requires load_hydrogens AND
-# explicit solve-set coupling, neither of which the public app/config path expresses yet (see README).
+# forward-parity anchor (rotation-0 R_obs: public 0.0978 vs reference 0.09697). NOT a canonical
+# examples/ experiment -- reproducing the reference forward requires load_hydrogens AND explicit
+# solve-set coupling, neither of which the public app/config path expresses yet (see README).
 name: abiraterone-anchor
 inputs:
   structure: abiraterone.cif
@@ -11,19 +11,19 @@ inputs:
 sample:
   thicknesses: [1460.0]
 blochwave:
-  # match the private abiraterone config (diffbloch_private .../abiraterone_acetate/config.yml):
-  # scoring/seed-pool g_max_refine 1 and the rocking-curve integration geometry
-  # (dsg/rsg/sampling/semiangle). The numerical quadrature (sampling, dsg) is converged by
-  # sampling>=60 (R_obs flat 60->120); 30 is the private's value, kept for parity. The
+  # The rocking-curve integration geometry (dsg/rsg/sampling/semiangle). The numerical quadrature
+  # (sampling, dsg) is converged by sampling>=60 (R_obs flat 60->120); 30 is kept for parity. The
   # structure-factor grid is derived from the coupling radius (2 * 1.5 = 3.0), not declared.
-  g_max_refine: 1.0
+  # NOTE: this repo's seed/scored set now reuses g_max directly (no separate g_max_refine knob);
+  # the forward-parity value below (rotation-0 R_obs 0.09697) was pinned when the public path
+  # still scored against a separate, smaller g_max_refine=1.0 -- re-verify parity.
   rocking_curve_sampling: 30
   dsg: 0.0025
   rsg: 0.6
   # The forward-parity coupling the anchor test composes explicitly (the public app path wires
   # couple_beams only inside the fit steps). Declared here so from_experiment derives the SF grid
-  # (2 * 1.5 + 0.5 = 3.5) the coupled forward needs. g_max is the private post-#154 solve cutoff
-  # (its structure_factor.g_max 1.5, no cap margin); fixed_n_segments from private union_splits=4.
+  # (2 * 1.5 + 0.5 = 3.5) the coupled forward needs. g_max is the post-#154 solve cutoff
+  # (structure_factor.g_max 1.5, no cap margin); fixed_n_segments from union_splits=4.
   g_max: 1.5
   sg_max: 0.02
 refinement:

@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.5",
     "pydantic>=2.7",
     "pyyaml>=6.0",
+    "scipy>=1.11",  # preprocess.steps.optimize_orientation: Nelder-Mead orientation search
     "torch>=2.12.1",
     # Scientific deps are added as their modules land:
     #   abtem -> core/scattering (electron form factors), wrapped behind a seam
@@ -22,6 +23,7 @@ dependencies = [
 # install the extra to use that backend. The core never imports these.
 wandb = ["wandb>=0.16"]
 comet = ["comet_ml>=3.0"]
+plot = ["matplotlib>=3.7"]
 
 [project.scripts]
 diffbloch = "diffBloch.app.cli:main"

@@ -37,8 +37,8 @@ __all__ = [
     "Logger",
     "MultiLogger",
     "NullLogger",
-    "OrientationFitted",
-    "OrientationFitSummary",
+    "OrientationOptimized",
+    "OrientationOptimizationSummary",
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
@@ -46,7 +46,7 @@ __all__ = [
     "RefinementStep",
     "RotationCoupling",
     "RotationScored",
-    "ThicknessFitted",
+    "ThicknessOptimized",
 ]
 
 
@@ -184,14 +184,14 @@ class RotationScored:
 
 
 @dataclass(frozen=True)
-class OrientationFitted:
-    """One rotation's finished orientation search, emitted per rotation by ``fit_orientation``.
+class OrientationOptimized:
+    """One rotation's finished orientation search, emitted per rotation by ``optimize_orientation``.
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
     PETS rotation index, ``wr2`` the final scaling-optimised objective, ``n_trials`` the
-    number of trial orientations the search scored, ``n_passes`` the number of hexagonal-ring sweeps
-    the search took to converge (the quantity ``HexagonalSearch.max_iterations`` caps), and
+    number of trial orientations the search scored, ``n_passes`` scipy's reported iteration count
+    (the quantity ``NelderMeadSearch.max_iterations`` caps), and
     ``pass_cap`` that cap itself -- carried per event so a plot can show each rotation's headroom
     (``n_passes`` vs ``pass_cap``) and flag any rotation that ran to the cap. With ``workers > 1``
     events arrive in *completion* order (the plan itself stays ordered). The channel is shared
@@ -216,7 +216,7 @@ class OrientationFitted:
 
 
 @dataclass(frozen=True)
-class OrientationFitSummary:
+class OrientationOptimizationSummary:
     """Aggregate statistics after every rotation's orientation fit has completed."""
 
     n_orientations: int
@@ -252,20 +252,27 @@ class OrientationFitSummary:
 
 
 @dataclass(frozen=True)
-class ThicknessFitted:
-    """One rotation's finished thickness grid search, emitted per rotation by ``fit_thickness``.
+class ThicknessOptimized:
+    """One rotation's finished thickness grid search, emitted per rotation by ``optimize_thickness``.
 
     The thickness fit is the memory-heavy tail phase (each rotation scores the whole
-    ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationFitted` this makes it a
+    ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationOptimized` this makes it a
     progress stream rather than a silent block: ``rotation_index`` is the original zero-based PETS
     rotation index, ``wr2`` the scaling-optimised objective at the baked thickness, and
-    ``thickness`` that winning candidate (Angstrom). Emitted in plan order (the fit is sequential).
+    ``thickness`` that winning candidate (Angstrom). ``candidate_thicknesses``/``candidate_wr2``
+    carry the whole scored grid (same order, one entry per :class:`~diffBloch.specs.ThicknessGrid`
+    step) -- deliberately excluded from ``measurements`` (which stays flat-scalar for the
+    generic console/CSV/wandb/comet backends); a plotting backend such as
+    :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` pattern-matches the concrete
+    dataclass to read them. Emitted in plan order (the fit is sequential).
     """
 
     channel: ClassVar[str] = "optimize_thickness"
     rotation_index: int
     wr2: float
     thickness: float
+    candidate_thicknesses: tuple[float, ...]
+    candidate_wr2: tuple[float, ...]
 
     @property
     def step(self) -> int | None:
@@ -281,8 +288,8 @@ class PlanStepCompleted:
     """The Plan produced by one preprocess pipeline step, summarised as the recipe runs.
 
     Unlike the other events its ``channel`` is the *step name* (``select_beams``,
-    ``fit_orientation``, ...), set per instance rather than a class constant -- so the console reads
-    ``fit_orientation[4] n_orientations=55 ...``, carrying the categorical
+    ``optimize_orientation``, ...), set per instance rather than a class constant -- so the console reads
+    ``optimize_orientation[4] n_orientations=55 ...``, carrying the categorical
     step identity a fixed channel cannot. ``index`` is the step's ordinal in the recipe (its
     ``step`` on the run's x-axis); ``measurements`` is
     :func:`diffBloch.preprocess.plan.summarize_plan` of the resulting plan. Emitted only on a
@@ -422,7 +429,7 @@ class RefinementOrientationStep:
     ``n_orientations``x louder than the epoch summary, so it is a diagnosis tool, not the default
     reporting shape. ``iteration`` places it on the same x-axis as :class:`RefinementStep`;
     ``rotation_index`` (the original zero-based PETS rotation index) is this event's ``step``,
-    matching the per-rotation convention of :class:`RotationScored` / :class:`OrientationFitted`.
+    matching the per-rotation convention of :class:`RotationScored` / :class:`OrientationOptimized`.
     """
 
     channel: ClassVar[str] = "refinement orientation"

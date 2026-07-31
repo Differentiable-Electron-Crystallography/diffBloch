@@ -23,9 +23,9 @@ from diffBloch.specs import (
     Absorption,
     ApparentThicknessNetwork,
     BeamSelection,
-    HexagonalSearch,
     IntegrationGeometry,
     Mosaicity,
+    NelderMeadSearch,
     OrientationSelection,
     PerTiltCoupling,
     RockingCurve,
@@ -36,9 +36,8 @@ from diffBloch.specs import (
 # The preprocess config classes below are 1:1 YAML edges over their value-types; their field
 # defaults derive from these default instances so the boundary value cannot drift from the
 # value-type it parses into. The value-type in ``specs`` is the single source of truth for both the
-# default value and its validation rules (e.g. the calibrated ``max_iterations`` lives once,
-# in ``HexagonalSearch``).
-_HEXAGONAL_SEARCH_DEFAULTS = HexagonalSearch()
+# default value and its validation rules.
+_NELDER_MEAD_DEFAULTS = NelderMeadSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
 _THICKNESS_NN_DEFAULTS = ApparentThicknessNetwork()
 
@@ -72,19 +71,20 @@ class SolverConfig(_StrictConfig):
 class BlochwaveConfig(_StrictConfig):
     """Numerical-accuracy controls, frozen into the simulation spec.
 
-    ``g_max_refine`` (seed beam-pool / scoring-resolution radius) is a grid primitive consumed
-    directly. The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
+    The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
     solve cutoff (``g_max``), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
     reaching ``2 * cutoff`` -- so declaring both cutoff and support would let them contradict
-    (one beam cutoff, support derived). ``rsg`` / ``dsg`` are
+    (one beam cutoff, support derived). The orientation-independent seed pool
+    (``from_experiment``'s difference-safe candidate set) and the scored-reflection cap
+    (``optimize_orientation``'s trial-coupling window) both read ``g_max`` directly, rather than a
+    separate smaller radius. ``rsg`` / ``dsg`` are
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
-    integration semi-angle is read from the PETS observations rather than configured.
+    integration semi-angle is read from the PETS experimental data rather than configured.
     ``mosaicity`` is the :class:`Mosaicity` reduction.
     """
 
     solver: SolverConfig = Field(default_factory=SolverConfig)
     absorption: bool = False
-    g_max_refine: float = 1.6
     rsg: float = 0.9
     dsg: float = 0.0015
     rocking_curve_sampling: int = 42
@@ -270,50 +270,77 @@ class RefinementConfig(_StrictConfig):
     thickness_nn: ThicknessNNConfig = Field(default_factory=ThicknessNNConfig)
 
 
-class OrientationFitConfig(_StrictConfig):
-    """Bounds for the ``fit_orientation`` Palatinus hexagonal search (preprocess).
+class NelderMeadOptimizationConfig(_StrictConfig):
+    """Bounds for the ``optimize_orientation`` local Nelder-Mead search (preprocess).
 
     The YAML edge: parses (via :meth:`to_search`) into the validated
-    :class:`~diffBloch.specs.HexagonalSearch` value-type the pure ``fit_orientation`` consumes, and
-    delegates all validation there (one rule home, no drift). Defaults derive from that value-type
-    (``_HEXAGONAL_SEARCH_DEFAULTS``), so the boundary value cannot drift from it either.
+    :class:`~diffBloch.specs.NelderMeadSearch` value-type.
     """
 
-    max_search_angle: float = _HEXAGONAL_SEARCH_DEFAULTS.max_search_angle  # degrees
-    min_search_angle: float = _HEXAGONAL_SEARCH_DEFAULTS.min_search_angle  # degrees
-    n_steps: int = _HEXAGONAL_SEARCH_DEFAULTS.n_steps  # hexagonal azimuths per ring
-    max_iterations: int = _HEXAGONAL_SEARCH_DEFAULTS.max_iterations  # runaway guard
+    step_size: float = _NELDER_MEAD_DEFAULTS.step_size  # degrees
+    max_iterations: int = _NELDER_MEAD_DEFAULTS.max_iterations  # scipy `maxiter`
+    x_tolerance: float = _NELDER_MEAD_DEFAULTS.x_tolerance  # scipy `xatol`
+    f_tolerance: float = _NELDER_MEAD_DEFAULTS.f_tolerance  # scipy `fatol`
+    penalize_fewer_reflections: bool = _NELDER_MEAD_DEFAULTS.penalize_fewer_reflections
 
-    def to_search(self) -> HexagonalSearch:
-        """Parse into the validated value-type the pure ``fit_orientation`` consumes."""
-        return HexagonalSearch(
-            max_search_angle=self.max_search_angle,
-            min_search_angle=self.min_search_angle,
-            n_steps=self.n_steps,
+    def to_search(self) -> NelderMeadSearch:
+        """Parse into the validated value-type the pure ``optimize_orientation`` consumes."""
+        return NelderMeadSearch(
+            step_size=self.step_size,
             max_iterations=self.max_iterations,
+            x_tolerance=self.x_tolerance,
+            f_tolerance=self.f_tolerance,
+            penalize_fewer_reflections=self.penalize_fewer_reflections,
         )
 
     @model_validator(mode="after")
-    def _parse_fails_fast(self) -> OrientationFitConfig:
-        self.to_search()  # the rules live in HexagonalSearch; fail fast at config load
+    def _parse_fails_fast(self) -> NelderMeadOptimizationConfig:
+        self.to_search()  # the rules live in NelderMeadSearch; fail fast at config load
         return self
 
 
-class ThicknessFitConfig(_StrictConfig):
-    """Bounds for the ``fit_thickness`` per-rotation grid search (preprocess).
+class OrientationOptimizationConfig(_StrictConfig):
+    """Bounds for the ``optimize_orientation`` orientation search (preprocess).
+
+    The YAML edge: parses (via :meth:`to_search`) into the validated
+    :class:`~diffBloch.specs.NelderMeadSearch` value-type the pure ``optimize_orientation`` consumes
+    (the ``nelder_mead`` block), and delegates all validation there (one rule home, no drift).
+    """
+
+    nelder_mead: NelderMeadOptimizationConfig = Field(default_factory=NelderMeadOptimizationConfig)
+
+    def to_search(self) -> NelderMeadSearch:
+        """Parse into the validated value-type the pure ``optimize_orientation`` consumes."""
+        return self.nelder_mead.to_search()
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> OrientationOptimizationConfig:
+        self.to_search()  # the rules live in NelderMeadSearch; fail fast at load
+        return self
+
+
+class ThicknessOptimizationConfig(_StrictConfig):
+    """Bounds for the ``optimize_thickness`` per-rotation grid search (preprocess).
 
     The YAML edge: parses (via :meth:`to_grid`) into the validated
-    :class:`~diffBloch.specs.ThicknessGrid` value-type the pure ``fit_thickness`` consumes, and
+    :class:`~diffBloch.specs.ThicknessGrid` value-type the pure ``optimize_thickness`` consumes, and
     delegates all validation there (one rule home, no drift). Defaults derive from that value-type
     (``_THICKNESS_GRID_DEFAULTS``), so the boundary value cannot drift from it either.
+
+    ``plot`` is reporting-only -- it selects whether the CLI attaches a
+    :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` (one wR2-vs-thickness PNG per
+    rotation, default ``<inputs.structure's directory>/thickness_optim``); it never changes the
+    fitted ``Plan``, so :func:`~diffBloch.config.manifest.config_digest` excludes it explicitly even
+    when the rest of this block is in scope.
     """
 
     min_thickness: float = _THICKNESS_GRID_DEFAULTS.min_thickness  # Angstroms
     max_thickness: float = _THICKNESS_GRID_DEFAULTS.max_thickness  # Angstroms
     n_steps: int = _THICKNESS_GRID_DEFAULTS.n_steps  # evenly-spaced candidates
+    plot: bool = False
 
     def to_grid(self) -> ThicknessGrid:
-        """Parse into the validated value-type the pure ``fit_thickness`` consumes."""
+        """Parse into the validated value-type the pure ``optimize_thickness`` consumes."""
         return ThicknessGrid(
             min_thickness=self.min_thickness,
             max_thickness=self.max_thickness,
@@ -321,7 +348,7 @@ class ThicknessFitConfig(_StrictConfig):
         )
 
     @model_validator(mode="after")
-    def _parse_fails_fast(self) -> ThicknessFitConfig:
+    def _parse_fails_fast(self) -> ThicknessOptimizationConfig:
         self.to_grid()  # the rules live in ThicknessGrid; fail fast at config load
         return self
 
@@ -330,8 +357,8 @@ class PreprocessConfig(_StrictConfig):
     """Preprocess-stage configuration (the ``Plan -> Plan`` calibration pipeline).
 
     Grouping, not composition: each block configures one preprocess step. Only steps the default run
-    composes get a config block here: ``fit_orientation`` under ``orientation`` and
-    ``fit_thickness`` under ``thickness``. The optional
+    composes get a config block here: ``optimize_orientation`` under ``orientation`` and
+    ``optimize_thickness`` under ``thickness``. The optional
     ``converge_numerics``
     driver is *not* in the default recipe, so it has no config block -- a caller that composes it
     constructs :class:`~diffBloch.specs.ConvergenceTest` /
@@ -341,8 +368,20 @@ class PreprocessConfig(_StrictConfig):
 
     optimize_orientation: bool = True
     optimize_thickness: bool = True
-    orientation: OrientationFitConfig = Field(default_factory=OrientationFitConfig)
-    thickness: ThicknessFitConfig = Field(default_factory=ThicknessFitConfig)
+    # Fitting stage order when both are enabled: orientation then thickness (default) fits
+    # orientation against the seed thickness, then thickness against the fitted orientation;
+    # "thickness_first" reverses that, fitting thickness against the seed orientation first.
+    stage_order: Literal["orientation_first", "thickness_first"] = "orientation_first"
+    orientation: OrientationOptimizationConfig = Field(
+        default_factory=OrientationOptimizationConfig
+    )
+    thickness: ThicknessOptimizationConfig = Field(default_factory=ThicknessOptimizationConfig)
+    # Path (relative to the experiment directory) to a 'Rotation Index'/'Orientation Matrix' CSV
+    # that overwrites every candidate's orientation before the recipe's fitting steps run -- see
+    # diffBloch.preprocess.import_orientations. None (default) skips the import; optimize_orientation
+    # still controls whether the search refines from the imported seed or is skipped so the CSV's
+    # orientations are used as-is. The CLI's --orientations-csv flag overrides this when given.
+    orientations_csv: str | None = None
 
 
 class Inputs(_StrictConfig):

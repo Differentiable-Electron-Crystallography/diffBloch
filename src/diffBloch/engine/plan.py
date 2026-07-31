@@ -64,8 +64,9 @@ class StructureFactorGrid:
     - **structure-factor support** -- the ``Fgb`` grid this class holds. It must cover every beam
       difference ``g_j - g_i``, which reaches ``2 * solve_g_max``, so the support radius is
       ``~2x`` the solve cutoff. :meth:`from_cell_for_beam_cutoff` derives it from the solve cutoff.
-    - **scored cutoff** -- ``g_max_refine``, the reflections compared in the objective. It selects
-      what enters the loss, not what solves, and is a separate (typically smaller) radius.
+    - **scored cutoff** -- ``ScoredHklSelection.g_max``, the reflections compared in the objective.
+      It selects what enters the loss, not what solves. The default app recipe reuses the solve
+      cutoff for it (see ``_trial_coupling``); a custom composition may set a separate radius.
 
     ``structure_factor_hkl`` ``(G, 3)`` are the Miller indices ``Fgb`` is tabulated on
     (``|g| <= g_max``);
@@ -116,8 +117,8 @@ class StructureFactorGrid:
         solve cutoff* and the ``2x`` support is *derived* here, rather than declaring the doubled
         radius and halving it internally (``self.g_max = sf_g_max / 2``) -- an error-prone
         double-entry. ``solve_g_max`` is the beam/coupling cutoff, distinct from the
-        scoring-resolution cutoff (``g_max_refine``), which selects reflections for the objective,
-        not the solve.
+        scoring-resolution cutoff (``ScoredHklSelection.g_max``), which selects reflections for the
+        objective, not the solve.
 
         The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN``. The half-Angstrom headroom
         reconciles the coupling filter's *orientation* metric (which folds the experimental cell
@@ -136,8 +137,8 @@ class OrientationPlan:
     """The refinement-invariant plans for a single rotation/orientation.
 
     Self-describing: it carries both its **source / rebuild inputs** (``orientation``, ``energy``,
-    ``u0``, ``thickness`` -- what ``preprocess`` steps like ``select_beams`` / ``fit_orientation`` /
-    ``fit_thickness`` consume to rebuild) and the **built geometry** (``beam_plan``,
+    ``u0``, ``thickness`` -- what ``preprocess`` steps like ``select_beams`` / ``optimize_orientation`` /
+    ``optimize_thickness`` consume to rebuild) and the **built geometry** (``beam_plan``,
     ``alignment`` -- what ``engine.simulate`` consumes). Source and built geometry are only ever set
     together by :meth:`build`, so they cannot desync. ``orientation`` is the source of truth;
     the lab-frame basis is derived from it, never stored. ``tilts`` ``(N, 3, 3)`` is the
@@ -148,7 +149,7 @@ class OrientationPlan:
     ``thickness`` ``(T,)`` is the specimen's
     thickness for this rotation (its beam path length at this tilt), held fixed during refinement.
     It is seeded from the sample thickness and later replaced by the best-fitting value
-    ``fit_thickness`` finds. The forward model uses it for this orientation unless the caller is
+    ``optimize_thickness`` finds. The forward model uses it for this orientation unless the caller is
     refining thickness directly (see
     :meth:`~diffBloch.engine.forward.RefinementEngine._thickness_for`).
     """
@@ -198,7 +199,7 @@ class OrientationPlan:
 
         ``thickness`` ``(T,)`` is required: this rotation's frozen per-rotation conditioning,
         coerced to a 1-D float64 tensor. A rebuild threads ``old_plan.thickness`` through unchanged;
-        ``fit_thickness`` bakes the single gridsearch winner ``(1,)``.
+        ``optimize_thickness`` bakes the single gridsearch winner ``(1,)``.
 
         ``tilts`` ``(N, 3, 3)`` is the optional rocking-curve integration set: N goniometer
         rotations, each left-multiplying ``orientation`` (``R_tilt @ orientation``) into its own

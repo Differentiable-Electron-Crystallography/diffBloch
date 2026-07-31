@@ -1,0 +1,16 @@
+{
+  "best_epoch": 18,
+  "objective": 4.259967164698223,
+  "wr2": 0.07220283329996988,
+  "r_obs": 0.056705741164353014,
+  "diff_loss": 4.259967164698223,
+  "total_hkl": "2745 / 17258",
+  "artifacts": {
+    "refined_structure": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/refined_structure.cif",
+    "refined_parameters": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/refined_parameters.npz",
+    "summary": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/refinement_summary.json",
+    "plan": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/plan.npz",
+    "plan_lock": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/plan.lock",
+    "refined_components": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption/refined_components.npz"
+  }
+}

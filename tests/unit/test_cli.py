@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, NullLogger, OrientationFitted
+from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimized
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -91,6 +91,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> InferenceResult:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -126,6 +127,7 @@ def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPat
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> InferenceResult:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
@@ -151,12 +153,13 @@ def test_run_infer_builds_console_and_csv_sinks(
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    csv_path = tmp_path / "observations.csv"
+    csv_path = tmp_path / "experimental_data.csv"
     rc = main(["run", "infer", "x", "--csv", str(csv_path)])
 
     assert rc == 0
@@ -167,7 +170,7 @@ def test_run_infer_builds_console_and_csv_sinks(
 
 
 def test_run_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``--quiet`` opts out of the default console stream -> the null sink (no observations)."""
+    """``--quiet`` opts out of the default console stream -> the null sink (no experimental_data)."""
     seen: dict[str, object] = {}
 
     def fake_run_experiment(
@@ -179,6 +182,7 @@ def test_run_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> InferenceResult:
         seen["logger"] = logger
         return InferenceResult(per_rotation=())
@@ -262,6 +266,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> _FakePlan:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -270,7 +275,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         captured["device"] = device
         captured["workers"] = workers
         logger.report(
-            OrientationFitted(
+            OrientationOptimized(
                 rotation_index=3,
                 wr2=0.25,
                 n_matched_hkl=2,
@@ -280,7 +285,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
             )
         )
         logger.report(
-            OrientationFitted(
+            OrientationOptimized(
                 rotation_index=8,
                 wr2=0.5,
                 n_matched_hkl=3,
@@ -322,6 +327,7 @@ def test_run_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) ->
         device: object = None,
         workers: int = 1,
         max_batch: object = None,
+        **_kwargs: object,
     ) -> _FakePlan:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh
@@ -402,6 +408,7 @@ def test_run_refine_delegates_and_reports(
         verbose: bool = False,
         profile: bool = False,
         checkpoint_activations: bool = True,
+        **_kwargs: object,
     ) -> SimpleNamespace:
         captured["dir"] = experiment_dir
         captured["logger"] = logger
@@ -440,6 +447,7 @@ def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
         verbose: bool = False,
         profile: bool = False,
         checkpoint_activations: bool = True,
+        **_kwargs: object,
     ) -> SimpleNamespace:
         seen["checkpoint"] = checkpoint
         seen["refresh"] = refresh

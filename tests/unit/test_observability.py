@@ -25,8 +25,8 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
-    OrientationFitSummary,
-    OrientationFitted,
+    OrientationOptimizationSummary,
+    OrientationOptimized,
     PlanStepCompleted,
     RecordingLogger,
     RefinementCompleted,
@@ -34,12 +34,12 @@ from diffBloch.observability import (
     RefinementStep,
     RotationCoupling,
     RotationScored,
-    ThicknessFitted,
+    ThicknessOptimized,
 )
 
 
-def _fitted(index: int, wr2: float) -> OrientationFitted:
-    return OrientationFitted(
+def _fitted(index: int, wr2: float) -> OrientationOptimized:
+    return OrientationOptimized(
         rotation_index=index,
         wr2=wr2,
         n_matched_hkl=42,
@@ -65,12 +65,18 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "mean_r_obs": 0.065,
     }
 
-    thickness = ThicknessFitted(rotation_index=7, wr2=0.031, thickness=1460.0)
+    thickness = ThicknessOptimized(
+        rotation_index=7,
+        wr2=0.031,
+        thickness=1460.0,
+        candidate_thicknesses=(1400.0, 1460.0, 1520.0),
+        candidate_wr2=(0.05, 0.031, 0.045),
+    )
     assert thickness.channel == "optimize_thickness"
     assert thickness.step == 7  # a thickness fit's step is its rotation index
     assert thickness.measurements == {"wr2": 0.031, "thickness": 1460.0}
 
-    orientation_summary = OrientationFitSummary(
+    orientation_summary = OrientationOptimizationSummary(
         n_orientations=2,
         mean_wr2=0.03,
         mean_r_obs=0.04,
@@ -253,7 +259,15 @@ def test_console_logger_labels_thickness_refinement_index(
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(ThicknessFitted(rotation_index=10, wr2=0.025, thickness=820.0))
+        logger.report(
+            ThicknessOptimized(
+                rotation_index=10,
+                wr2=0.025,
+                thickness=820.0,
+                candidate_thicknesses=(780.0, 820.0, 860.0),
+                candidate_wr2=(0.04, 0.025, 0.038),
+            )
+        )
 
     assert caplog.records[-1].getMessage() == (
         "thickness optimization[rotation_index=10] wr2=0.025 thickness=820"

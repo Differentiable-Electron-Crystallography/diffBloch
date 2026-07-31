@@ -59,9 +59,9 @@ def _lobato_table() -> dict[int, tuple[tuple[float, ...], tuple[float, ...]]]:
 def lobato_form_factors(numbers: Tensor, g: Tensor) -> Tensor:
     """Electron scattering factor ``f_e(Z, |g|)`` for each atom, vectorised over unique Z.
 
-    ``f_e(s) = sum_i a_i (2 + b_i s^2) / (1 + b_i s^2)^2`` with ``s^2 = |g|^2`` (matching the
-    private ``scattering_factor(g**2)`` call). Returns a real ``(N_atoms, N_g)`` tensor (in ``g``'s
-    dtype); a constant with respect to the refinement (depends only on Z and the fixed geometry).
+    ``f_e(s) = sum_i a_i (2 + b_i s^2) / (1 + b_i s^2)^2`` with ``s^2 = |g|^2``. Returns a real
+    ``(N_atoms, N_g)`` tensor (in ``g``'s dtype); a constant with respect to the refinement (depends
+    only on Z and the fixed geometry).
     """
     if numbers.ndim != 1:
         raise ValueError("numbers must have shape (N,)")
@@ -121,7 +121,7 @@ def structure_factors(
     *,
     g_max: float,
     cutoff: StructureFactorCutoff = "hard",
-    extinction_threshold: float = 1e-12,
+    zero_threshold: float = 1e-12,
     absorption: Absorption = NO_ABSORPTION,
     energy: float | None = None,
 ) -> Tensor:
@@ -130,8 +130,9 @@ def structure_factors(
     ``Fgb(h) = (1/V) sum_atoms f_e * DWF * occ * cutoff * exp(2 pi i r . h)``. ``|g|`` is derived
     internally from ``hkl`` and ``reciprocal_basis`` (no separate ``g`` argument to keep in sync).
     Differentiable in ``positions``, ``uij_star``, ``occupancies``; ``f_e`` is a constant form
-    factor. Components below ``extinction_threshold`` are zeroed as a symmetry-extinction cleanup.
-    Returns a complex ``(M,)`` tensor.
+    factor. Symmetry-related atoms can sum a component to exactly zero mathematically (systematic
+    absences); floating-point roundoff lands near but not at zero, so components below
+    ``zero_threshold`` are snapped to a clean ``0.0``. Returns a complex ``(M,)`` tensor.
     """
     n_atoms = positions.shape[0]
     if positions.ndim != 2 or positions.shape[1] != 3:
@@ -161,9 +162,9 @@ def structure_factors(
     phase = torch.exp(2.0j * torch.pi * (positions @ hkl.to(positions.dtype).transpose(0, 1)))
     unmasked = (per_atom.to(phase.dtype) * phase).sum(dim=0)
     real = torch.where(
-        unmasked.real.abs() >= extinction_threshold, unmasked.real, torch.zeros_like(unmasked.real)
+        unmasked.real.abs() >= zero_threshold, unmasked.real, torch.zeros_like(unmasked.real)
     )
     imag = torch.where(
-        unmasked.imag.abs() >= extinction_threshold, unmasked.imag, torch.zeros_like(unmasked.imag)
+        unmasked.imag.abs() >= zero_threshold, unmasked.imag, torch.zeros_like(unmasked.imag)
     )
     return torch.complex(real, imag) / cell_volume

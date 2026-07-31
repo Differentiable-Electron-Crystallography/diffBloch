@@ -154,7 +154,7 @@ def test_gather_round_trip_recovers_difference_factors() -> None:
     lookup = {tuple(hkl): _encoded_factors(_GRID_HKL)[i] for i, hkl in enumerate(_GRID_HKL)}
     for i in range(3):
         for j in range(3):
-            difference = tuple(_BEAM_HKL[j] - _BEAM_HKL[i])  # private ordering: beam_j - beam_i
+            difference = tuple(_BEAM_HKL[j] - _BEAM_HKL[i])  # ordering convention: beam_j - beam_i
             assert out[i, j] == lookup[difference]
 
 
@@ -415,8 +415,8 @@ _ORACLE_NPZ = (
 )
 
 
-def test_structure_matrix_matches_private_oracle() -> None:
-    # Independent oracle: A from diffBloch_private's verbatim calculate_structure_matrix on a small
+def test_structure_matrix_matches_oracle() -> None:
+    # Independent oracle: A from a verbatim reference calculate_structure_matrix on a small
     # alpha-quartz case (regenerate via the fixture's co-located generate_oracle.py; provenance in
     # its provenance.json).
     data = np.load(_ORACLE_NPZ)

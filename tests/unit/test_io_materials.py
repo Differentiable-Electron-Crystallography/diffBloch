@@ -7,7 +7,7 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.config import load_experiment
 from diffBloch.core import build_asu_expansion_plan
 from diffBloch.core.crystal import reciprocal_cell
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.params import RefinableParams, constrain
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
@@ -26,7 +26,7 @@ def test_read_lta_observations_parses_the_full_pets_reflection_loop() -> None:
     # Fixture integrity + the loop_rows O(N)->fix on a real large loop: LTA's PETS export is 50
     # rotations / 29,023 reflections (the quadratic parse this used to trip is why loop_rows binds
     # loop.values once).
-    obs = read_observations(FIXTURE_ROOT / "lta_anchor" / "exp_data.cif_pets")
+    obs = read_experimental_data(FIXTURE_ROOT / "lta_anchor" / "exp_data.cif_pets")
     assert obs.n_rotations == 50
     assert obs.n_reflections == 29023
 
@@ -37,7 +37,6 @@ def test_lta_experiment_lock_verifies_the_committed_inputs() -> None:
     # whitespace hook silently rewriting the PETS file) fails loudly here, not silently at Tier 2.
     cfg, _lock = load_experiment(FIXTURE_ROOT / "lta_anchor")
     assert cfg.name == "lta-anchor"
-    assert cfg.blochwave.g_max_refine == 1.4
 
 
 def test_read_paracetamol_uiso_fixture() -> None:

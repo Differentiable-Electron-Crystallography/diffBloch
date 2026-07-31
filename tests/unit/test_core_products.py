@@ -15,12 +15,12 @@ from diffBloch.core.products import (
     build_alignment_plan,
     intensities,
 )
-from diffBloch.io.record import ObservationRecord
+from diffBloch.io.record import ExperimentalRecord
 
 
-def _observation_record() -> ObservationRecord:
+def _experimental_record() -> ExperimentalRecord:
     # Two zone axes; reflections split across them so zone filtering is exercised.
-    return ObservationRecord(
+    return ExperimentalRecord(
         unit_cell=np.eye(3),
         cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
         cell_parameters_su=np.full((6,), np.nan),
@@ -125,7 +125,7 @@ def test_integrate_default_reduction_is_the_plain_sum() -> None:
 def test_integrate_mosaic_smoothed_is_moving_average_then_sum() -> None:
     sols = _ramp_tilts([1.0, 2.0, 3.0, 4.0, 5.0])
     # window=3 moving average then sum == sum of window means: mean(1,2,3)+mean(2,3,4)+mean(3,4,5)
-    # = 2 + 3 + 4 = 9 (the private zero-pads the smoothed curve, which does not change the sum).
+    # = 2 + 3 + 4 = 9 (zero-padding the smoothed curve does not change the sum).
     mosaic = BlochSolution.integrate(sols, reduction=MosaicSmoothed(3))
     assert torch.allclose(mosaic.intensities, torch.full((1, 2), 9.0, dtype=torch.float64))
     # window=1 is the identity: each window mean is the tilt itself, so it equals the plain sum.
@@ -168,18 +168,18 @@ def test_integrate_batched_rejects_non_3d_amplitudes() -> None:
 
 
 def test_pattern_batch_from_observation_record_full() -> None:
-    pattern = PatternBatch.from_observation_record(_observation_record())
+    pattern = PatternBatch.from_experimental_record(_experimental_record())
     assert pattern.hkl.shape == (3, 3)
     assert torch.equal(pattern.intensities, torch.tensor([10.0, 20.0, 30.0], dtype=torch.float64))
     assert pattern.sigmas.dtype == torch.float64
 
 
 def test_pattern_batch_zone_axis_filter() -> None:
-    pattern = PatternBatch.from_observation_record(_observation_record(), zone_axis_id=1)
+    pattern = PatternBatch.from_experimental_record(_experimental_record(), zone_axis_id=1)
     assert pattern.hkl.shape == (2, 3)
     assert torch.equal(pattern.intensities, torch.tensor([10.0, 20.0], dtype=torch.float64))
     with pytest.raises(ValueError, match="no observed reflections for zone_axis_id 9"):
-        PatternBatch.from_observation_record(_observation_record(), zone_axis_id=9)
+        PatternBatch.from_experimental_record(_experimental_record(), zone_axis_id=9)
 
 
 def test_align_puts_calculated_and_observed_on_common_axis() -> None:
@@ -188,7 +188,7 @@ def test_align_puts_calculated_and_observed_on_common_axis() -> None:
     amplitudes = torch.tensor([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]], dtype=torch.complex128)
     beam_hkl = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
     solution = BlochSolution.from_propagation(amplitudes, beam_hkl, torch.tensor([1.0, 8.0]))
-    pattern = PatternBatch.from_observation_record(_observation_record())  # 100,010,200
+    pattern = PatternBatch.from_experimental_record(_experimental_record())  # 100,010,200
 
     plan = build_alignment_plan(solution.beam_hkl, pattern.hkl)
     assert torch.equal(plan.hkl, torch.tensor([[1, 0, 0], [0, 1, 0]]))
@@ -208,7 +208,7 @@ def test_align_is_differentiable_back_to_amplitudes() -> None:
     amplitudes = torch.tensor([[1.0 + 0j, 2.0 + 0j]], dtype=torch.complex128, requires_grad=True)
     beam_hkl = torch.tensor([[1, 0, 0], [0, 1, 0]])
     solution = BlochSolution.from_propagation(amplitudes, beam_hkl, torch.tensor([1.0]))
-    pattern = PatternBatch.from_observation_record(_observation_record())
+    pattern = PatternBatch.from_experimental_record(_experimental_record())
     plan = build_alignment_plan(solution.beam_hkl, pattern.hkl)
 
     align(solution, pattern, plan).calculated.sum().backward()

@@ -1,4 +1,4 @@
-"""PETS CIF-like observation reader."""
+"""PETS CIF-like experimental data reader."""
 
 from __future__ import annotations
 
@@ -10,20 +10,20 @@ from numpy.typing import NDArray
 
 from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_float
-from diffBloch.io.record import ObservationRecord
+from diffBloch.io.record import ExperimentalRecord
 
 
-def read_observations(path: str | Path) -> ObservationRecord:
-    """Read a PETS ``.cif_pets`` file into a validated :class:`ObservationRecord`."""
+def read_experimental_data(path: str | Path) -> ExperimentalRecord:
+    """Read a PETS ``.cif_pets`` file into a validated :class:`ExperimentalRecord`."""
     source = Path(path)
     block = gemmi.cif.read_file(str(source)).sole_block()
-    return parse_observation_block(block, source_path=source)
+    return parse_experimental_block(block, source_path=source)
 
 
-def parse_observation_block(
+def parse_experimental_block(
     block: gemmi.cif.Block, *, source_path: str | Path | None = None
-) -> ObservationRecord:
-    """Parse a Gemmi PETS CIF-like block into a validated :class:`ObservationRecord`."""
+) -> ExperimentalRecord:
+    """Parse a Gemmi PETS CIF-like block into a validated :class:`ExperimentalRecord`."""
     zone_rows = loop_rows(block, "_diffrn_zone_axis_id")
     reflection_rows = loop_rows(block, "_refln_index_h")
     if not zone_rows:
@@ -32,7 +32,7 @@ def parse_observation_block(
         raise ValueError("PETS file does not contain a _refln loop")
 
     cellpar, cellpar_su = cell_parameters(block)
-    return ObservationRecord(
+    return ExperimentalRecord(
         source_path=Path(source_path) if source_path is not None else None,
         unit_cell=cell_matrix_from_parameters(cellpar),
         cell_parameters=cellpar,

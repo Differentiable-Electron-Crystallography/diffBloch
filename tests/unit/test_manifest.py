@@ -144,11 +144,7 @@ def test_config_digest_is_stable_and_value_sensitive() -> None:
     assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
     # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
     bumped = cfg.model_copy(
-        update={
-            "blochwave": cfg.blochwave.model_copy(
-                update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
-            )
-        }
+        update={"blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})}
     )
     assert config_digest(bumped) != config_digest(cfg)
 
@@ -258,9 +254,7 @@ def test_config_change_is_stale(tmp_path: Path) -> None:
     args["config_digest"] = config_digest(
         cfg.model_copy(
             update={
-                "blochwave": cfg.blochwave.model_copy(
-                    update={"g_max_refine": cfg.blochwave.g_max_refine + 1.0}
-                )
+                "blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})
             }
         )
     )

@@ -26,7 +26,7 @@ def test_cell_matrix_from_parameters_matches_quartz_fixture() -> None:
     assert cell_matrix_from_parameters(record.cell_parameters) == pytest.approx(record.unit_cell)
 
 
-def test_reciprocal_cell_matches_private_convention() -> None:
+def test_reciprocal_cell_matches_ase_convention() -> None:
     cell = np.asarray(
         [
             [5.0, 0.0, 0.0],

@@ -4,7 +4,7 @@ A ``Plan -> Plan`` step that re-picks every :class:`~diffBloch.engine.plan.Orien
 ``beam_hkl`` using the relative-/minimum-excitation-error criterion of the SI of Klar et al. (2023),
 then rebuilds its ``BeamPlan`` + ``AlignmentPlan`` against the shared grid (``pattern`` unchanged).
 This is the per-orientation selection that replaces the orientation-independent
-``g_max_refine`` seed laid down by ``from_experiment``.
+``g_max`` seed laid down by ``from_experiment``.
 
 ``sg_max`` is the excitation-error span a reflection sweeps *during the actual integration*, so its
 transverse lever arm is set by the tilt geometry (``BeamSelection.geometry``), which must match the
@@ -39,7 +39,6 @@ from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
-from diffBloch.preprocess.experiment import seed_beam_hkl
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
@@ -52,7 +51,7 @@ from diffBloch.specs import (
     assert_grid_covers_coupling,
 )
 
-__all__ = ["build_orientation_plans", "klar_beam_mask", "reseed_pool", "select_beams"]
+__all__ = ["build_orientation_plans", "klar_beam_mask", "select_beams"]
 
 
 def select_beams(selection: BeamSelection) -> PlanStep:
@@ -69,8 +68,8 @@ def select_beams(selection: BeamSelection) -> PlanStep:
 
     The 000 transmitted beam is retained whenever present (the ``from_experiment`` seed always
     includes it): ``BeamPlan`` anchors ``psi0`` on ``hkl == 000``, and 000 has ``g = 0`` so its
-    ``sg_max = 0`` would otherwise reject it. Beams stay within ``g_max_refine < g_max``, so the
-    ``Fgb`` difference support remains valid once ``build_orientation_plans`` runs.
+    ``sg_max = 0`` would otherwise reject it. Beams stay within the seed radius (``blochwave.g_max``),
+    so the ``Fgb`` difference support remains valid once ``build_orientation_plans`` runs.
     """
 
     def run(plan: Plan) -> Plan:
@@ -105,7 +104,7 @@ def build_orientation_plans(
     ``mosaicity`` selects the reduction applied to those sub-tilt intensities and therefore requires
     ``rocking``. When ``coupling`` is supplied, each segment's beam set is selected from the full
     support grid by ``|g| < g_max`` and ``|Sg| < sg_max`` at its boundary tilts, then the ordinary
-    alignment intersects the resulting simulator HKLs with the PETS observations.
+    alignment intersects the resulting simulator HKLs with the PETS experimental data.
     ``scoring_selection`` optionally applies the former Klar ``rsg``/``dsg``/semiangle filter to
     the candidate scoring pool before that intersection; it does not alter the coupled SOLVE beams.
     ``workers`` fans independent rotation builds over threads while preserving input order. It is
@@ -213,7 +212,7 @@ def _build_coupled_candidate(
     gather_cache: dict[bytes, StructureFactorGather],
     gather_cache_lock: LockType,
 ) -> CoupledOrientationPlan:
-    """Build one simulator plan from geometric coupling only; alignment handles observations."""
+    """Build one simulator plan from geometric coupling only; alignment handles experimental data."""
     segments = build_coupling_segments(
         coupling,
         np.asarray(grid.structure_factor_hkl, dtype=np.int64),
@@ -260,45 +259,6 @@ def _build_coupled_candidate(
         scored_hkl=scored_hkl,
         gathers=gathers,
     )
-
-
-def reseed_pool(seed: Plan, selection: BeamSelection, *, g_max_refine: float) -> Plan:
-    """Re-seed each orientation from the grid at ``g_max_refine``, then apply the Klar window.
-
-    The shared build step for the pool levers
-    (:func:`~diffBloch.preprocess.steps.convergence.converge_pool`,
-    :func:`~diffBloch.preprocess.steps.coverage.cover_pool`) and the convergence driver: each
-    orientation's *candidate* reflections are re-seeded from the shared grid at ``g_max_refine``
-    (:func:`~diffBloch.preprocess.experiment.seed_beam_hkl`), then :func:`select_beams` applies the
-    fixed Klar window and :func:`build_orientation_plans` builds the (small) active set -- so the
-    returned plan is solvable, with active set
-    ``seed(g_max_refine) intersect Klar-window(selection)``. Re-seeding from the shared grid (not a
-    previous pruned ``Plan``) lets a widening pool recover beams a narrower one clipped.
-
-    The pool stays inside the existing ``Fgb`` difference support while
-    ``2 * g_max_refine <= grid.g_max``; a candidate past that raises rather than silently truncating
-    (dependent grid resizing is unimplemented).
-    """
-    if 2.0 * g_max_refine > seed.structure_factor_grid.g_max:
-        raise ValueError(
-            f"g_max_refine={g_max_refine:.4g} exceeds the grid's beam-difference support "
-            f"(g_max={seed.structure_factor_grid.g_max:.4g}); "
-            "dependent grid resizing is not implemented"
-        )
-    beam_hkl = seed_beam_hkl(seed.structure_factor_grid, g_max_refine=g_max_refine)
-    candidates = tuple(
-        CandidatePlan.seed(
-            beam_hkl,
-            op.pattern,
-            energy=op.energy,
-            thickness=op.thickness,
-            u0=op.u0,
-            orientation=op.orientation,
-        )
-        for op in seed.orientations
-    )
-    reseeded = replace(seed, orientations=candidates)
-    return build_orientation_plans()(select_beams(selection)(reseeded))
 
 
 def _reselect(

@@ -42,7 +42,7 @@ pieces are available through the public Python API.
 ## Quickstart
 
 Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` observations and `plan.npz`
+[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and `plan.npz`
 checkpoints, then sync the project environment from the repository root:
 
 ```bash
@@ -83,11 +83,9 @@ structural parameters. Use `refine` to run the optimization loop, repeatedly sim
 and updating the selected trainable structural parameters.
 
 The default refinement runs for 40 epochs, streams `wR2`, `R_obs`, and diffraction loss, then writes
-the best refined CIF, exact raw parameter snapshot, and JSON summary into the experiment directory.
-The CLI prints aligned preprocess/refinement completion summaries and absolute artifact paths.
+the best refined CIF, exact raw parameter snapshot, and JSON summary into the experiment directory..
 
-Python users can compose preprocessing steps, constraints, penalties, and refinement problems
-directly with the public API; the CLI is the friendly default runner, not the only path.
+
 
 ## Citation
 

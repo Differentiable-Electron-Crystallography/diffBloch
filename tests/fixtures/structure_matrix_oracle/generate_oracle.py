@@ -5,13 +5,13 @@ Writes ``structure_matrix_oracle.npz`` (zone-axis, ``Mii == 1``),
 this script, then cross-checks that the *native* ``diffBloch.core`` implementation reproduces the
 freshly written goldens.
 
-Self-contained: the oracle bodies below are the **verbatim private implementations**
-(``diffBloch_private @ c865c3d``, pure numpy/torch, timing/CUDA logging elided), vendored here so
-regeneration needs no private checkout. Run with this repo's venv::
+Self-contained: the oracle bodies below are **verbatim reference implementations** (pure
+numpy/torch, timing/CUDA logging elided), vendored here so regeneration needs no external
+checkout. Run with this repo's venv::
 
     uv run python tests/fixtures/structure_matrix_oracle/generate_oracle.py
 
-Documented deviation: the private propagator internally casts to ``complex64``; this oracle keeps
+Documented deviation: the source propagator internally casts to ``complex64``; this oracle keeps
 ``complex128`` throughout for tight regression tolerances. ``Fgb`` is synthetic but
 Friedel-symmetric (``F(-g) = conj(F(g))``, ``F(000)`` real), as a real no-absorption potential
 requires, so the ``Mii``-symmetrised ``A`` is Hermitian and the propagator goldens are physical.
@@ -59,8 +59,8 @@ def energy2sigma(energy):
     return float(sigma_si * 1e-10)
 
 
-# Verbatim private bodies -- diffBloch_private @ c865c3d. Pure numpy/torch; copied unchanged except
-# timing/CUDA logging is elided. Sources: utils.py::reciprocal_cell (35-58), calculate_g_vec
+# Verbatim reference bodies. Pure numpy/torch; copied unchanged except timing/CUDA logging is
+# elided. Sources: utils.py::reciprocal_cell (35-58), calculate_g_vec
 # (61-79), excitation_errors (261-300), ravel_hkl (520-548), raveled_hkl_to_hkl_torch (453-517),
 # fill_diagonal_torch (564-602), fill_diagonal_torch_batched (605-624);
 # dynamical.py::calculate_M_matrix (1128-1143), calculate_structure_matrix (975-1025),
@@ -76,7 +76,7 @@ def calculate_g_vec(hkl, cell):
 
 
 def excitation_errors(g, energy, U0=0.0):
-    l = energy2wavelength(energy)  # noqa: E741 (verbatim private body)
+    l = energy2wavelength(energy)  # noqa: E741 (verbatim oracle body)
     K0 = 1 / l
     Kmag = np.sqrt(K0**2 + U0)
     K = np.array([0.0, 0.0, -Kmag])
@@ -230,7 +230,7 @@ def calculate_dynamical_scattering_batched(
         diag = diag.to(C_temp.dtype)
         C = fill_diagonal_torch_batched(C_temp, diag)
 
-        if absorption:  # noqa: SIM108 (verbatim private body)
+        if absorption:  # noqa: SIM108 (verbatim oracle body)
             C_inv = torch.linalg.inv(C_temp)
         else:
             C_inv = torch.conj(C.mT)
@@ -363,7 +363,7 @@ _FIXTURE_KEYS = (
 def cross_check(name, case):
     """Confirm the native diffBloch.core implementation reproduces the just-written golden.
 
-    The same assertion ``test_core_dynamical.py::test_structure_matrix_matches_private_oracle``
+    The same assertion ``test_core_dynamical.py::test_structure_matrix_matches_oracle``
     makes -- run here so regeneration is self-validating.
     """
     plan = build_beam_plan(
@@ -422,8 +422,7 @@ def main() -> None:
                 "oblique (l!=0 beams) -> g_z!=0 -> Mii!=1; A Hermitian"
             ),
         },
-        "generated_by": "generate_oracle.py (co-located; self-contained verbatim private bodies)",
-        "oracle_source": "diffBloch_private @ c865c3d66337f16c9f15b2adf2701416146d71be",
+        "generated_by": "generate_oracle.py (co-located; self-contained verbatim oracle bodies)",
         "oracle_functions": {
             "calculate_structure_matrix": (
                 "dynamical.py:975-1025 (no-absorption; timing/cuda elided)"
@@ -446,7 +445,7 @@ def main() -> None:
             "(abTEM-pinned ~1e-8, stage 8.1-8.3)"
         ),
         "dtype_note": (
-            "Private propagator casts to complex64 internally; this oracle keeps complex128 "
+            "The source propagator casts to complex64 internally; this oracle keeps complex128 "
             "throughout for tight regression tolerances."
         ),
         "fgb_note": (

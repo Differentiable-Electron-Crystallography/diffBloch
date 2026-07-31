@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _recipe_steps
 from diffBloch.config import load_experiment
-from diffBloch.io import read_observations, read_structure
+from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.observability import NULL_LOGGER
 from diffBloch.preprocess import from_experiment, resolve_recipe, step_records
 from diffBloch.preprocess.pipeline import Fork
@@ -26,8 +26,8 @@ def _steps(material: str = "quartz_anchor") -> list:
     root = FIXTURES / material
     cfg, _ = load_experiment(root)
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     return _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
 
 
@@ -48,7 +48,7 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     """A ``blochwave`` override reaches the fit's recorded per-trial policy.
 
     The recipe reads its coupling from config (not a hardcoded ``UnionCoupling()``), so a
-    config that overrides the SOLVE-union bounds re-keys the ``fit_orientation`` step -- the
+    config that overrides the SOLVE-union bounds re-keys the ``optimize_orientation`` step -- the
     mechanism that lets abiraterone's ``fixed_n_segments=4`` coupling be expressed through the
     standard config path.
     """
@@ -58,8 +58,8 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
         update={"blochwave": cfg.blochwave.model_copy(update={"fixed_n_segments": 4})}
     )
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     steps = _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     fit = next(r for r in records if r.name == "optimize_orientation")
@@ -84,7 +84,7 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
         "optimize_thickness",
     ]
     assert [r.name for r in small] == names == [r.name for r in large]
-    # identical params too (fit_orientation records only {search, coupling}; no validate)
+    # identical params too (optimize_orientation records only {search, coupling}; no validate)
     assert [r.params for r in small] == [r.params for r in large]
 
 
@@ -102,8 +102,8 @@ def test_fit_stages_can_be_enabled_independently() -> None:
         }
     )
     structure = read_structure(root / cfg.inputs.structure)
-    observations = read_observations(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, observations, cfg)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
     records = step_records(
         resolve_recipe(
             _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),

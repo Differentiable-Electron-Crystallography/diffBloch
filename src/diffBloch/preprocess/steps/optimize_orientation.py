@@ -1,40 +1,43 @@
-"""``fit_orientation``: per-rotation crystal-orientation refinement (Palatinus hexagonal simplex).
+"""``optimize_orientation``: per-rotation crystal-orientation refinement.
 
 A ``Plan -> Plan`` step that sharpens each orientation by minimising the scaling-optimised wR2 of
 the full dynamical simulation against the observed pattern -- the objective exposed by
-:meth:`~diffBloch.engine.RefinementEngine.score_orientation`. Per rotation it runs the modified
-simplex of Palatinus et al. (*Acta Cryst.* A69, 171-188, 2013): a hexagonal search of ``n_steps``
-azimuths at a shrinking tilt radius, greedily accepting the first tilt that lowers wR2 and halving
-the radius when none does, until the radius falls below ``min_search_angle``.
+:meth:`~diffBloch.engine.RefinementEngine.score_orientation`. A local
+``scipy.optimize.minimize(method="Nelder-Mead")`` simplex search over the three
+goniometer-correction angles directly, seeded from a fixed initial simplex of edge length
+``search.step_size`` around ``(alpha, beta, omega) = (0, 0, 0)`` (see :func:`_refine_one`).
 
-The trial orientation is ``orientation @ hexagonal_tilt(azimuth, radius)`` -- a right-multiplied
-true rotation, so the non-orthonormal ``U`` measured-cell correction is preserved (no
-re-orthonormalisation). The captured ``refinement`` is read-only context
-the step never mutates; the simulation inside is
+The captured ``refinement`` is read-only context the step never mutates; the simulation inside is
 deterministic and depends only on its inputs, so it is ordinary computation, not a side effect.
 
-The SCORED reflection set is held fixed at each orientation's seed selection across the search.
-With ``coupling=`` the additional SOLVE beams are re-derived per trial, while every scored
-reflection is retained in each segment's solve basis. The rocking-curve tilt set carried by the
-``Plan`` is
+Without ``coupling=``, the SCORED reflection set is held fixed at each orientation's seed
+selection across the search (:meth:`~diffBloch.engine.plan.OrientationPlan.with_orientation` only
+recomputes the orientation-dependent bases). The rocking-curve tilt set carried by the ``Plan`` is
 threaded through every trial unchanged, so each candidate is scored under the *same* integration as
-the seed -- the fit/eval consistency invariant. Ordering ``integrate_rocking_curve`` before this
-step therefore couples the fit to the integrated model; with rocking off the tilt set is a single
-identity, identical to a static fit.
+the seed -- the optimize/eval consistency invariant. Ordering ``integrate_rocking_curve`` before this
+step therefore couples the search to the integrated model; with rocking off the tilt set is a single
+identity, identical to a static search.
 
 **Coupling (opt-in, ``coupling=TrialCoupling(...)``)** re-derives the excitation-selected SOLVE
-beams at every trial while pinning the SCORED set to the seed alignment. Pinning is required for a
-valid greedy comparison: otherwise a trial can lower wR2 merely by deleting reflections and reach
-the degenerate one-reflection ``wr2=0`` minimum. The seed is rebuilt through the same builder, and
-the last accepted trial is already the coupled-at-fitted-orientation plan -- no separate
-``couple_beams`` step is needed. Atomic ``F_gb`` values are cached lazily by support-grid row:
-each trial computes only previously unseen beam differences, while every segment's structure
-matrix remains a cheap gather-index into that cache.
+beams *and* re-selects the SCORED set at every trial's own orientation (``coupling.scored``'s Klar
+rsg/dsg window + resolution cap, reapplied to that trial's fresh lab-frame geometry) -- mirroring
+the reference implementation's per-trial ``filter_hkls``, rather than pinning scoring to the seed's
+selection. A trial's matched-reflection count can therefore differ from the seed's and from other
+trials'; the raw wR2 formula itself has no reflection-count term
+(:func:`diffBloch.core.losses.w_rbragg`: plain ``sum/sum``), so the search can in principle prefer
+a trial that improves partly by matching a different, easier subset --
+``search.penalize_fewer_reflections`` (:class:`~diffBloch.specs.NelderMeadSearch`, off by default)
+guards against exactly this by dividing the comparison score by the matched count
+(:func:`_comparable_score`); the reported ``wr2`` stays the plain metric regardless. The seed is
+rebuilt through the same builder, and the last accepted trial is already the
+coupled-at-optimized-orientation plan -- no separate ``couple_beams`` step is needed. Atomic ``F_gb``
+values are cached lazily by support-grid row: each trial computes only previously unseen beam
+differences, while every segment's structure matrix remains a cheap gather-index into that cache.
 
 With ``coupling=None`` (the default) each trial is ``current.with_orientation(...)``, defined on
 both the tilt-independent :class:`OrientationPlan` and the
-:class:`~diffBloch.engine.plan.CoupledOrientationPlan`, so an already-segmented plan is fit under
-its frozen union.
+:class:`~diffBloch.engine.plan.CoupledOrientationPlan`, so an already-segmented plan is optimized
+under its frozen union.
 """
 
 from __future__ import annotations
@@ -46,43 +49,47 @@ from dataclasses import replace
 import numpy as np
 import torch
 from numpy.typing import NDArray
+from scipy.optimize import minimize
 from torch import Tensor
 
+from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import (
     StructureFactorGather,
     build_structure_factor_gather,
     grid_source_indices,
 )
+from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
-    OrientationFitSummary,
-    OrientationFitted,
+    OrientationOptimizationSummary,
+    OrientationOptimized,
 )
 from diffBloch.params import Device
 from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
-from diffBloch.preprocess.orientation import hexagonal_tilt
+from diffBloch.preprocess.orientation import goniometer_rotation
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans
 from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
+from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import (
     NO_ABSORPTION,
     Absorption,
-    HexagonalSearch,
+    NelderMeadSearch,
     TrialCoupling,
     assert_grid_covers_coupling,
 )
 
-__all__ = ["fit_orientation"]
+__all__ = ["optimize_orientation"]
 
 
-def fit_orientation(
+def optimize_orientation(
     refinement: RefinementSetup,
-    search: HexagonalSearch,
+    search: NelderMeadSearch,
     *,
     method: SolverMethod = "matrix_exp",
     coupling: TrialCoupling | None = None,
@@ -93,21 +100,19 @@ def fit_orientation(
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
 ) -> PlanStep:
-    """Return a ``Plan -> Plan`` step refining each orientation by Palatinus hexagonal search.
+    """Return a ``Plan -> Plan`` step refining each orientation by orientation search.
 
     ``refinement`` (constraint spec, ASU expansion, atomic numbers, seeded params) is captured
     read-only and rejoined to the geometry ``Plan`` via :func:`build_engine`; the
     orientation-invariant ``F_gb`` is computed once and reused across every orientation and trial.
-    ``search`` is a pre-validated :class:`~diffBloch.specs.HexagonalSearch` (invalid bounds are
-    unrepresentable, so this function never re-validates): ``max_search_angle`` /
-    ``min_search_angle`` (degrees) bound the shrinking tilt radius, and ``n_steps`` is the number of
-    hexagonal azimuths (6 -> 0, 60, ..., 300 deg). ``method`` configures the
-    engine's solver (``score_orientation`` uses a scaling-optimised wR2 internally).
+    ``search`` is a pre-validated :class:`~diffBloch.specs.NelderMeadSearch` (invalid bounds are
+    unrepresentable, so this function never re-validates). ``method`` configures the engine's
+    solver (``score_orientation`` uses a scaling-optimised wR2 internally).
 
-    ``coupling`` (default ``None``) opts the fit into per-trial re-coupling: a
+    ``coupling`` (default ``None``) opts the optimization into per-trial re-coupling: a
     :class:`~diffBloch.specs.TrialCoupling` re-derives the solve union and re-selects the scored set
     at every trial orientation (see the module docstring for the non-stationary-objective nuance).
-    ``None`` keeps the tilt-independent fit (one fixed beam set across the search).
+    ``None`` keeps the tilt-independent search (one fixed beam set across the search).
 
     ``validate`` (default ``True``) forwards to the per-trial coupled gather rebuild
     (:func:`~diffBloch.core.dynamical.build_structure_factor_gather`). ``False`` skips its O(N^2)
@@ -124,14 +129,14 @@ def fit_orientation(
     trial rebuilds are cheap numpy; only their tensors reach the device). Kept out of the
     recipe identity like ``workers``/``logger`` -- but unlike those it is not bit-exact: the
     solve shifts ~1e-11 cross-device, and because the greedy search accepts on a threshold, that
-    shift can flip a near-tie into a full-radius orientation difference (a well-conditioned fit
-    stays; a knife-edge one legitimately diverges). Safe regardless: reproducibility is anchored at
+    shift can flip a near-tie into a full-radius orientation difference (a well-conditioned
+    optimization stays; a knife-edge one legitimately diverges). Safe regardless: reproducibility is anchored at
     the checkpoint boundary, so a committed CPU checkpoint is reused (not recomputed) on GPU, cannot
     restale -- only a fresh GPU-computed checkpoint would differ from a CPU one.
 
-    ``workers`` (default 1, sequential) fans the per-rotation searches over a thread pool, the
-    private's ``ThreadPoolExecutor(num_workers=8)`` pattern. Rotations are independent, the engine
-    and ``F_gb`` are read-only shared context, results keep plan order, and each
+    ``workers`` (default 1, sequential) fans the per-rotation searches over a thread pool.
+    Rotations are independent, the engine and ``F_gb`` are read-only shared context, results keep
+    plan order, and each
     rotation's gather cache is thread-local -- so the results are identical to a sequential run.
     Threads (not processes) suffice because torch's CPU linalg releases the GIL.
 
@@ -140,9 +145,9 @@ def fit_orientation(
     solve to machine precision (memory only), like ``device`` -- raise it to fill a larger GPU. See
     :func:`build_engine`.
 
-    ``logger`` receives an :class:`~diffBloch.observability.OrientationFitted` per rotation as its
-    search completes (the fit is the run's long phase, so this is the progress stream); the default
-    :data:`NULL_LOGGER` discards them. With ``workers > 1`` events arrive in completion order.
+    ``logger`` receives an :class:`~diffBloch.observability.OrientationOptimized` per rotation as its
+    search completes (the optimization is the run's long phase, so this is the progress stream); the
+    default :data:`NULL_LOGGER` discards them. With ``workers > 1`` events arrive in completion order.
 
     The greedy search restarts at the same radius on every accepting (improving) pass, so the
     radius schedule alone does not bound the pass count. Mirroring :func:`iterate_until`,
@@ -221,7 +226,7 @@ def fit_orientation(
             pattern_index = fitted.alignment.pattern_index
             n_matched = int(pattern_index.shape[0])
             logger.report(
-                OrientationFitted(
+                OrientationOptimized(
                     rotation_index=fitted.pattern.rotation_index,
                     wr2=wr2,
                     n_matched_hkl=n_matched,
@@ -267,7 +272,7 @@ def fit_orientation(
             for result in ordered_results
         ]
         logger.report(
-            OrientationFitSummary(
+            OrientationOptimizationSummary(
                 n_orientations=len(fitted_events),
                 mean_wr2=sum(item[0][1] for item in fitted_events) / len(fitted_events),
                 mean_r_obs=sum(item[0][2] for item in fitted_events) / len(fitted_events),
@@ -291,83 +296,97 @@ def fit_orientation(
     )
 
 
+def _comparable_score(wr2: float, plan: OrientationPlanLike, search: NelderMeadSearch) -> float:
+    """``wr2``, or ``wr2`` normalised by matched-reflection count when the search opts in.
+
+    A trial's SCORED set can vary in size (:func:`_coupled_trial` re-selects it per trial, and the
+    formula ``wR2 = sqrt(sum/sum)`` -- :func:`diffBloch.core.losses.w_rbragg` -- has no term
+    correcting for that), so comparing raw ``wr2`` lets a trial win by drifting to geometry that
+    matches a smaller, easier subset rather than by optimizing better.
+    ``search.penalize_fewer_reflections`` (default ``False``, matching the reference
+    implementation's own disabled-by-default normalisation) opts into dividing by the matched
+    count: a trial with fewer matched reflections then needs a proportionally lower ``wr2`` to be
+    accepted. ``0`` matched reflections scores ``inf`` (never accepted; ``wr2`` itself is
+    typically ``nan`` there already). With the flag off this is the identity on ``wr2``.
+    """
+    if not search.penalize_fewer_reflections:
+        return wr2
+    n_matched = int(plan.alignment.pattern_index.shape[0])
+    return wr2 / n_matched if n_matched > 0 else float("inf")
+
+
 def _refine_one(
     engine: RefinementEngine,
     fgb: Tensor | Callable[[OrientationPlanLike], Tensor],
     plan: Plan,
     op: OrientationPlanLike,
     *,
-    search: HexagonalSearch,
+    search: NelderMeadSearch,
     coupling: TrialCoupling | None,
     validate: bool = True,
 ) -> tuple[OrientationPlanLike, float, float, int, int]:
-    """Palatinus hexagonal search over one orientation.
+    """Local Nelder-Mead search over the goniometer correction ``(alpha, beta, omega)``.
 
-    Returns ``(fitted, wr2, n_trials, n_passes)``: the best-scoring plan, its final
-    scaling-optimised wR2, the number of trial orientations scored, and the number of
-    hexagonal-ring sweeps taken (the quantity ``search.max_iterations`` caps -- surfaced so a
-    search's cost and its headroom under the cap are observable, e.g. for recalibrating the cap on
-    a new compound).
-
-    With ``coupling=None`` each trial is ``current.with_orientation(grid, o)`` -- it rebuilds only
-    the orientation-dependent bases and reuses the F-gather, so the beam set, rocking-curve tilts,
-    and reduction are held fixed across the search. With a
-    :class:`~diffBloch.specs.TrialCoupling`, the seed *and* every trial are rebuilt through
-    :func:`_coupled_trial`, which re-couples the solve union and re-selects the scored set at that
-    orientation -- the deliberately non-stationary objective (see the module docstring).
+    Every trial composes directly off the fixed seed orientation: ``seed_orientation @
+    goniometer_rotation(alpha, beta, omega)`` -- the search explores the whole ``step_size``
+    neighbourhood at once rather than annealing a step down. ``scipy.optimize.minimize`` runs
+    ``method="Nelder-Mead"`` from a fixed initial simplex of edge length ``search.step_size``
+    around ``(alpha, beta, omega) = (0, 0, 0)``, exactly mirroring the reference implementation
+    this port is checked against. ``n_passes`` is scipy's reported iteration count (``result.nit``).
     """
     grid = plan.structure_factor_grid
     n_trials = 0
     # One rotation's search revisits the same excitation unions across many nearby trials, so the
-    # orientation-free per-segment F-gathers are memoized by beam set for the search's duration.
-    # Scoped per rotation: bounded, and trivially thread-safe if rotations ever fit in parallel.
+    # beam set across this rotation's trials.
     gather_cache: dict[bytes, StructureFactorGather] = {}
-    if coupling is None:
-        current = op
-    else:
-        current = _coupled_trial(
-            grid,
-            op,
-            np.asarray(op.orientation, dtype=np.float64),
-            coupling,
-            gather_cache,
-            validate=validate,
-        )
-    current_fgb = fgb(current) if callable(fgb) else fgb
-    current_score = float(engine.score_orientation(current, current_fgb))
-    search_angle = search.max_search_angle
-    n_passes = 0
-    for _ in range(search.max_iterations):
-        if search_angle <= search.min_search_angle:
-            current_fgb = fgb(current) if callable(fgb) else fgb
-            r_obs = float(engine.score_orientation_r_obs(current, current_fgb))
-            return current, current_score, r_obs, n_trials, n_passes
-        n_passes += 1  # noqa: SIM113 -- not enumerate: the floor-check iteration above returns before this, so this counts executed sweeps only
-        improved = False
-        for n in range(search.n_steps):
-            azimuth = n * 360.0 / search.n_steps  # hexagonal: 0, 60, ..., 300 deg at n_steps = 6
-            orientation = np.asarray(current.orientation, dtype=np.float64) @ hexagonal_tilt(
-                azimuth, search_angle
-            )
-            if coupling is None:
-                trial = current.with_orientation(grid, orientation)
-            else:
-                trial = _coupled_trial(
-                    grid, op, orientation, coupling, gather_cache, validate=validate
-                )
-            n_trials += 1
-            trial_fgb = fgb(trial) if callable(fgb) else fgb
-            trial_score = float(engine.score_orientation(trial, trial_fgb))
-            accepted = trial_score < current_score
-            if accepted:  # greedy first-improvement; restart at this radius
-                current, current_score = trial, trial_score
-                improved = True
-                break
-        if not improved:
-            search_angle /= 2.0
-    raise RuntimeError(
-        f"fit_orientation search did not converge within {search.max_iterations} iterations"
+    seed_orientation = np.asarray(op.orientation, dtype=np.float64)
+
+    def build_trial(orientation: NDArray[np.float64]) -> OrientationPlanLike:
+        if coupling is None:
+            return op.with_orientation(grid, orientation)
+        return _coupled_trial(grid, op, orientation, coupling, gather_cache, validate=validate)
+
+    def objective(params: NDArray[np.float64]) -> float:
+        nonlocal n_trials
+        alpha, beta, omega = params
+        orientation = seed_orientation @ goniometer_rotation(alpha, beta, omega)
+        trial = build_trial(orientation)
+        n_trials += 1
+        trial_fgb = fgb(trial) if callable(fgb) else fgb
+        raw = float(engine.score_orientation(trial, trial_fgb))
+        # scipy minimises this directly, so the (opt-in) fewer-reflections guard lives here: a
+        # trial cannot win merely by drifting to geometry that matches a smaller, easier subset.
+        return _comparable_score(raw, trial, search)
+
+    step = search.step_size
+    initial_simplex = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [step, 0.0, 0.0],
+            [0.0, step, 0.0],
+            [0.0, 0.0, step],
+        ]
     )
+    result = minimize(
+        objective,
+        x0=np.zeros(3),
+        method="Nelder-Mead",
+        options={
+            "initial_simplex": initial_simplex,
+            "maxiter": search.max_iterations,
+            "xatol": search.x_tolerance,
+            "fatol": search.f_tolerance,
+        },
+    )
+    alpha, beta, omega = result.x
+    best_orientation = seed_orientation @ goniometer_rotation(alpha, beta, omega)
+    current = build_trial(best_orientation)
+    n_trials += 1
+    current_fgb = fgb(current) if callable(fgb) else fgb
+    # result.fun is the comparable (penalized) score minimised above; report the plain wR2 instead.
+    wr2 = float(engine.score_orientation(current, current_fgb))
+    r_obs = float(engine.score_orientation_r_obs(current, current_fgb))
+    return current, wr2, r_obs, n_trials, int(result.nit)
 
 
 def _coupled_trial(
@@ -379,16 +398,17 @@ def _coupled_trial(
     *,
     validate: bool = True,
 ) -> CoupledOrientationPlan:
-    """Re-couple the solve union while pinning the scored set at ``orientation`` (one trial).
+    """Re-couple the solve union and re-select the scored set, both at ``orientation`` (one trial).
 
-    One objective evaluation: (1) ``build_coupling_segments`` re-derives
-    the per-tilt-segment excitation union at ``orientation`` (the changing SOLVE set); (2) the seed
-    alignment is added to every segment and retained as the fixed SCORED set. Thus every trial's
-    wR2 compares the same observations. The observed ``pattern``, ``thickness``, and
-    ``tilt_reduction`` are carried from ``op`` unchanged. The atomic ``F_gb`` is
-    untouched either way; ``gather_cache`` (keyed by a segment's beam-set bytes) reuses the
-    orientation-free per-segment F-gathers across a search's trials -- identical beam set, identical
-    gather -- collapsing the per-trial rebuild cost.
+    One objective evaluation: (1) ``build_coupling_segments`` re-derives the per-tilt-segment
+    excitation union at ``orientation`` (the SOLVE set); (2) ``coupling.scored`` (the Klar
+    rsg/dsg window + resolution cap) is re-applied to that fresh union's own lab-frame geometry at
+    this orientation, giving the SCORED set its own fresh selection every trial -- mirroring the
+    reference implementation's per-trial ``filter_hkls`` -- rather than pinning it to the seed's.
+    The observed ``pattern``, ``thickness``, and ``tilt_reduction`` are carried from ``op``
+    unchanged. The atomic ``F_gb`` is untouched either way; ``gather_cache`` (keyed by a segment's
+    beam-set bytes) reuses the orientation-free per-segment F-gathers across a search's trials --
+    identical beam set, identical gather -- collapsing the per-trial rebuild cost.
 
     ``validate`` (default ``True``) is forwarded to each cache-miss
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather`; ``False`` skips its O(N^2)
@@ -407,19 +427,21 @@ def _coupled_trial(
         energy=op.energy,
         u0=op.u0,
     )
-    scored_hkl = np.asarray(op.alignment.hkl, dtype=np.int64)
-    # A trial must not improve merely by dropping scored reflections. Keep the seed objective
-    # domain fixed and include it in every segment so scored ⊆ solved holds throughout the curve.
-    segments = tuple(
-        replace(
-            segment,
-            union_hkl=np.unique(
-                np.concatenate([segment.union_hkl, scored_hkl]),
-                axis=0,
-            ),
-        )
-        for segment in segments
+    union_hkl = np.unique(np.concatenate([segment.union_hkl for segment in segments]), axis=0)
+    basis = orientation_basis(cell, orientation)
+    g = g_vectors(union_hkl, basis)
+    keep = klar_beam_mask(
+        g,
+        energy=op.energy,
+        u0=op.u0,
+        rsg=coupling.scored.klar.rsg,
+        dsg=coupling.scored.klar.dsg,
+        semiangle=coupling.scored.klar.integration.semiangle,
+        geometry=coupling.scored.klar.integration.geometry,
     )
+    keep &= np.linalg.norm(g, axis=1) <= coupling.scored.g_max
+    keep |= (union_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
+    scored_hkl = union_hkl[keep]
     gathers = None
     if gather_cache is not None:
         structure_factor_hkl = np.asarray(grid.structure_factor_hkl)

@@ -15,7 +15,7 @@ the plain-sum reduction.
 
 Pure and geometry-preserving: the reduction is a per-orientation attribute, so this only
 ``dataclasses.replace``\\ s the reduction descriptor -- no beam plans are rebuilt (mirrors
-``fit_thickness`` swapping only the thickness). The mosaicity setting feeds both the orientation fit
+``optimize_thickness`` swapping only the thickness). The mosaicity setting feeds both the orientation fit
 and the final evaluation.
 """
 

@@ -202,7 +202,7 @@ class RefinementEngine:
         (:meth:`fgb`), aligns calculated vs observed intensities, and grid-searches the intensity
         scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple
         thicknesses the best-fitting thickness's score is returned -- thickness is a nuisance when
-        scoring orientation. This is the objective ``fit_orientation`` minimises.
+        scoring orientation. This is the objective ``optimize_orientation`` minimises.
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
 
@@ -237,11 +237,11 @@ class RefinementEngine:
         intensities are aligned once (alignment is thickness-independent), then for each thickness
         the intensity scale minimising wR2 is found (:func:`diffBloch.core.losses.optimal_scale`).
 
-        ``fit_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;
+        ``optimize_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;
         :meth:`score_orientation` collapses it with ``.min()`` (thickness is a nuisance there).
 
-        Runs under ``torch.no_grad()``: this is search scoring (``fit_orientation`` /
-        ``fit_thickness`` grid search + argmin), never backpropagated -- every caller consumes a
+        Runs under ``torch.no_grad()``: this is search scoring (``optimize_orientation`` /
+        ``optimize_thickness`` grid search + argmin), never backpropagated -- every caller consumes a
         detached scalar. Without it the ``T``-thickness solve builds an autograd graph whose
         retained ``matrix_exp`` intermediates accumulate across every propagator block, defeating
         the ``max_batch`` memory bound (:func:`~diffBloch.core.solver.propagate`) and OOMing a wide
@@ -465,7 +465,7 @@ class RefinementEngine:
         - **Normally**, each orientation carries its own fixed thickness
           (``orientation.thickness``), because the specimen presents a different path length at each
           tilt. It is seeded from the
-          sample thickness and later replaced by the best-fitting value found by ``fit_thickness``.
+          sample thickness and later replaced by the best-fitting value found by ``optimize_thickness``.
         Trainable thickness refinement is represented by model components that provide
         ``ForwardContext.thickness``. Without such a component, the settled per-orientation Plan
         thickness is the sole source used by the Bloch solve.

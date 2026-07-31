@@ -1,8 +1,7 @@
 """Phase 2b: the ``couple_beams`` step + engine reassembly of a ``CoupledOrientationPlan``.
 
-The tilt-segment coupling *geometry* is proven in :mod:`test_coupling` (segments match the private
-byte-for-byte) and the end-to-end forward parity in the ``test_coupling_parity`` e2e. Here we pin
-the
+The tilt-segment coupling *geometry* is proven in :mod:`test_coupling` and the end-to-end forward
+parity in the ``test_coupling_parity`` e2e. Here we pin the
 step's wiring/guards and the engine's reassemble-then-reduce invariant on the fast synthetic silicon
 (reusing ``test_inference``'s helpers): a segmentation whose chunks all carry the *full* beam set
 and
@@ -29,15 +28,15 @@ from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess import (
     couple_beams,
-    fit_orientation,
-    fit_thickness,
+    optimize_orientation,
+    optimize_thickness,
     run_inference,
 )
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
-    HexagonalSearch,
+    NelderMeadSearch,
     ScoredHklSelection,
     ThicknessGrid,
     TiltIndependent,
@@ -285,13 +284,13 @@ def test_fit_orientation_and_thickness_run_on_a_segmented_plan() -> None:
         grid, segments, observed, orientation=np.eye(3), **build_kwargs
     )
 
-    (refined,) = fit_orientation(refinement, HexagonalSearch(), method=_METHOD)(
+    (refined,) = optimize_orientation(refinement, NelderMeadSearch(), method=_METHOD)(
         Plan(structure_factor_grid=grid, orientations=(matched,))
     ).orientations
     assert isinstance(refined, CoupledOrientationPlan)  # segmented type preserved through the fit
     assert np.linalg.norm(np.asarray(refined.orientation) - np.eye(3)) < 1e-2  # stayed optimal
 
-    (thick,) = fit_thickness(
+    (thick,) = optimize_thickness(
         refinement,
         ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
         method=_METHOD,
@@ -356,10 +355,10 @@ def test_recouple_accepts_a_segmented_plan_and_preserves_the_scored_set() -> Non
     assert recoupled.alignment.hkl.tolist() == once.orientations[0].alignment.hkl.tolist()
 
 
-def test_fit_orientation_recouples_solve_beams_but_pins_scored_hkl_per_trial() -> None:
-    """Coupled trials may change SOLVE beams but always compare the same scored reflections."""
+def test_fit_orientation_recouples_solve_beams_and_rescoress_scored_hkl_per_trial() -> None:
+    """Coupled trials re-derive SOLVE beams *and* re-select scored reflections at their own tilt."""
     from diffBloch.preprocess.orientation import hexagonal_tilt
-    from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
+    from diffBloch.preprocess.steps.optimize_orientation import _coupled_trial
 
     grid, op, refinement = _quartz_rot13()
     coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
@@ -368,17 +367,16 @@ def test_fit_orientation_recouples_solve_beams_but_pins_scored_hkl_per_trial() -
     seed_trial = _coupled_trial(grid, op, seed_o, coupling)
     tilt_trial = _coupled_trial(grid, op, seed_o @ hexagonal_tilt(0.0, 3.0), coupling)
     assert isinstance(seed_trial, CoupledOrientationPlan)
-    # Additional SOLVE beams track the trial, but the objective domain stays fixed.
+    # Both SOLVE beams and the scored objective domain track the trial's own orientation -- a
+    # large tilt shifts which reflections are Klar-active, so the two trials' scored sets differ.
     assert seed_trial.beam_hkl.tolist() != tilt_trial.beam_hkl.tolist()
-    assert seed_trial.alignment.hkl.tolist() == tilt_trial.alignment.hkl.tolist()
-    assert seed_trial.alignment.hkl.tolist() == op.alignment.hkl.tolist()
+    assert seed_trial.alignment.hkl.tolist() != tilt_trial.alignment.hkl.tolist()
     for trial in (seed_trial, tilt_trial):
-        for segment in trial.segments:
-            segment_hkl = {tuple(row) for row in segment.plan.beam_hkl.tolist()}
-            assert all(tuple(row) in segment_hkl for row in op.alignment.hkl.tolist())
+        solved = {tuple(row) for row in trial.beam_hkl.tolist()}
+        assert all(tuple(row) in solved for row in trial.alignment.hkl.tolist())  # scored ⊆ solved
 
-    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
-    (fitted,) = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(
+    search = NelderMeadSearch(step_size=0.5)
+    (fitted,) = optimize_orientation(refinement, search, method=_METHOD, coupling=coupling)(
         Plan(structure_factor_grid=grid, orientations=(op,))
     ).orientations
     assert isinstance(fitted, CoupledOrientationPlan)  # seed rebuilt through the coupled builder
@@ -391,7 +389,7 @@ def test_coupled_trial_gather_cache_reuses_identical_beam_sets() -> None:
     reuse each segment's gather by identity where the re-derived beam sets coincide -- and the
     cached build is set-identical to a cache-free one (same union, same pinned scored set).
     """
-    from diffBloch.preprocess.steps.fit_orientation import _coupled_trial
+    from diffBloch.preprocess.steps.optimize_orientation import _coupled_trial
 
     grid, op, _refinement_unused = _quartz_rot13()
     coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
@@ -417,13 +415,13 @@ def test_fit_orientation_workers_match_sequential() -> None:
     """
     grid, op, refinement = _quartz_rot13()
     coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
-    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
+    search = NelderMeadSearch(step_size=0.5)
     plan = Plan(structure_factor_grid=grid, orientations=(op, op))
 
-    sequential = fit_orientation(refinement, search, method=_METHOD, coupling=coupling)(plan)
-    threaded = fit_orientation(refinement, search, method=_METHOD, coupling=coupling, workers=2)(
-        plan
-    )
+    sequential = optimize_orientation(refinement, search, method=_METHOD, coupling=coupling)(plan)
+    threaded = optimize_orientation(
+        refinement, search, method=_METHOD, coupling=coupling, workers=2
+    )(plan)
 
     for seq_op, par_op in zip(sequential.orientations, threaded.orientations, strict=True):
         assert np.array_equal(np.asarray(seq_op.orientation), np.asarray(par_op.orientation))
@@ -431,24 +429,24 @@ def test_fit_orientation_workers_match_sequential() -> None:
 
 
 def test_fit_orientation_emits_progress_events() -> None:
-    """fit_orientation streams one OrientationFitted per rotation (the run's long phase).
+    """optimize_orientation streams one OrientationOptimized per rotation (the run's long phase).
 
     Uses the coupled path: the fixture's plain op carries the private's *output* beam list (no
     000, so a plain solve is all-zero and its wR2 is nan -- which the event faithfully surfaces);
     a coupled trial re-derives its union with 000, giving a finite objective to assert on.
     """
-    from diffBloch.observability import OrientationFitted, RecordingLogger
+    from diffBloch.observability import OrientationOptimized, RecordingLogger
 
     grid, op, refinement = _quartz_rot13()
     coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
     recorder = RecordingLogger()
-    search = HexagonalSearch(max_search_angle=0.5, min_search_angle=0.25)
+    search = NelderMeadSearch(step_size=0.5)
 
-    fit_orientation(refinement, search, method=_METHOD, coupling=coupling, logger=recorder)(
+    optimize_orientation(refinement, search, method=_METHOD, coupling=coupling, logger=recorder)(
         Plan(structure_factor_grid=grid, orientations=(op, op))
     )
 
-    fits = [e for e in recorder.events if isinstance(e, OrientationFitted)]
+    fits = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
     assert [e.rotation_index for e in fits] == [op.pattern.rotation_index] * 2
     assert all(e.n_trials >= 1 and e.wr2 >= 0.0 for e in fits)
     # n_passes is the capped quantity and must be observable within its cap for calibration.
