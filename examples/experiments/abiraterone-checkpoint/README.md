@@ -43,7 +43,7 @@ checkpoint is then reused on CPU or GPU alike.
 
 `run refine` is the **default single-stage path**: it refines positions + ADPs with the optimizer /
 step budget in `experiment.yaml` (`refinement.steps`, `refinement.optimizer`, `refinement.trainable`,
-`refinement.objective`). Those are stable execution knobs; the config does **not** author a
+top-level `loss_metrics`). Those are stable execution knobs; the config does **not** author a
 scientific program.
 
 Scientific composition is typed Python, not config. Hydrogen **riding** — which the faithful

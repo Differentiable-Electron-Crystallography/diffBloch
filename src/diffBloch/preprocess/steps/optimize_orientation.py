@@ -23,12 +23,12 @@ beams *and* re-selects the SCORED set at every trial's own orientation (``coupli
 rsg/dsg window + resolution cap, reapplied to that trial's fresh lab-frame geometry) -- mirroring
 the reference implementation's per-trial ``filter_hkls``, rather than pinning scoring to the seed's
 selection. A trial's matched-reflection count can therefore differ from the seed's and from other
-trials'; the raw wR2 formula itself has no reflection-count term
+trials'; the default wR2 formula itself has no reflection-count term
 (:func:`diffBloch.core.losses.w_rbragg`: plain ``sum/sum``), so the search can in principle prefer
 a trial that improves partly by matching a different, easier subset --
 ``search.penalize_fewer_reflections`` (:class:`~diffBloch.specs.NelderMeadSearch`, off by default)
 guards against exactly this by dividing the comparison score by the matched count
-(:func:`_comparable_score`); the reported ``wr2`` stays the plain metric regardless. The seed is
+(:func:`_comparable_score`); the reported ``score`` stays the plain metric regardless. The seed is
 rebuilt through the same builder, and the last accepted trial is already the
 coupled-at-optimized-orientation plan -- no separate ``couple_beams`` step is needed. Atomic ``F_gb``
 values are cached lazily by support-grid row: each trial computes only previously unseen beam
@@ -60,7 +60,7 @@ from diffBloch.core.dynamical import (
 )
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.solver import SolverMethod
-from diffBloch.engine import RefinementEngine
+from diffBloch.engine import RefinementEngine, ScoresFn, wr2_scores
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import (
     NULL_LOGGER,
@@ -100,15 +100,28 @@ def optimize_orientation(
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
+    scores: ScoresFn = wr2_scores,
+    residual: str = "wr2",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by orientation search.
+
+    ``residual`` (default ``"wr2"``) is the display name for ``scores`` -- pass
+    ``cfg.loss_metrics.residual`` alongside ``scores=cfg.loss_metrics.to_scores()`` so
+    :class:`~diffBloch.observability.OrientationOptimized` reports the score under its real name.
+
+    ``scores`` (default :func:`~diffBloch.engine.wr2_scores`) is the per-thickness metric
+    :meth:`~diffBloch.engine.forward.RefinementEngine.score_orientation` searches -- pass
+    ``cfg.loss_metrics.to_scores()`` to search the same residual the gradient refinement stage
+    minimises (:func:`~diffBloch.config.schema.LossMetricsConfig.to_scores`). Execution-only like
+    ``method``: it changes what the search optimizes for, not the recipe's own identity (the
+    resolved ``ExperimentConfig.loss_metrics`` already rides in :func:`~diffBloch.config.manifest.config_digest`).
 
     ``refinement`` (constraint spec, ASU expansion, atomic numbers, seeded params) is captured
     read-only and rejoined to the geometry ``Plan`` via :func:`build_engine`; the
     orientation-invariant ``F_gb`` is computed once and reused across every orientation and trial.
     ``search`` is a pre-validated :class:`~diffBloch.specs.NelderMeadSearch` (invalid bounds are
     unrepresentable, so this function never re-validates). ``method`` configures the engine's
-    solver (``score_orientation`` uses a scaling-optimised wR2 internally).
+    solver (``score_orientation`` scores with ``scores``, a scaling-optimised wR2 by default).
 
     ``coupling`` (default ``None``) opts the optimization into per-trial re-coupling: a
     :class:`~diffBloch.specs.TrialCoupling` re-derives the solve union and re-selects the scored set
@@ -179,11 +192,12 @@ def optimize_orientation(
             method=method,
             max_batch=max_batch,
             absorption=absorption,
+            scores=scores,
         )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
 
-        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, float, int, int]:
+        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
             trial_fgb: Tensor | Callable[[OrientationPlanLike], Tensor] = fgb
             if coupling is not None:
                 cached = fgb.clone()
@@ -216,21 +230,22 @@ def optimize_orientation(
 
         built = require_built_plans(plan)
         logger.report(OrientationOptimizationStarted(total_rotations=len(built)))
-        results_by_index: dict[int, tuple[OrientationPlanLike, float, float, int, int]] = {}
+        results_by_index: dict[int, tuple[OrientationPlanLike, float, int, int]] = {}
         cap = search.max_iterations
 
         def report(
             index: int,
-            result: tuple[OrientationPlanLike, float, float, int, int],
+            result: tuple[OrientationPlanLike, float, int, int],
         ) -> None:
-            fitted, wr2, _r_obs, n_trials, n_passes = result
+            fitted, score, n_trials, n_passes = result
             results_by_index[index] = result
             pattern_index = fitted.alignment.pattern_index
             n_matched = int(pattern_index.shape[0])
             logger.report(
                 OrientationOptimized(
                     rotation_index=fitted.pattern.rotation_index,
-                    wr2=wr2,
+                    score=score,
+                    residual=residual,
                     n_matched_hkl=n_matched,
                     n_trials=n_trials,
                     n_passes=n_passes,
@@ -276,14 +291,14 @@ def optimize_orientation(
         logger.report(
             OrientationOptimizationSummary(
                 n_orientations=len(fitted_events),
-                mean_wr2=sum(item[0][1] for item in fitted_events) / len(fitted_events),
-                mean_r_obs=sum(item[0][2] for item in fitted_events) / len(fitted_events),
+                mean_score=sum(item[0][1] for item in fitted_events) / len(fitted_events),
+                residual=residual,
                 total_matched_hkl=sum(item[1] for item in fitted_events),
                 total_strong_hkl=sum(item[2] for item in fitted_events),
                 total_weak_hkl=sum(item[1] - item[2] for item in fitted_events),
                 total_observed_hkl=sum(item[3] for item in fitted_events),
-                total_trials=sum(item[0][3] for item in fitted_events),
-                max_passes=max(item[0][4] for item in fitted_events),
+                total_trials=sum(item[0][2] for item in fitted_events),
+                max_passes=max(item[0][3] for item in fitted_events),
             )
         )
         return replace(plan, orientations=ordered)
@@ -298,23 +313,22 @@ def optimize_orientation(
     )
 
 
-def _comparable_score(wr2: float, plan: OrientationPlanLike, search: NelderMeadSearch) -> float:
-    """``wr2``, or ``wr2`` normalised by matched-reflection count when the search opts in.
+def _comparable_score(score: float, plan: OrientationPlanLike, search: NelderMeadSearch) -> float:
+    """``score``, or ``score`` normalised by matched-reflection count when the search opts in.
 
     A trial's SCORED set can vary in size (:func:`_coupled_trial` re-selects it per trial, and the
-    formula ``wR2 = sqrt(sum/sum)`` -- :func:`diffBloch.core.losses.w_rbragg` -- has no term
-    correcting for that), so comparing raw ``wr2`` lets a trial win by drifting to geometry that
-    matches a smaller, easier subset rather than by optimizing better.
-    ``search.penalize_fewer_reflections`` (default ``False``, matching the reference
+    residual metrics have no term correcting for that), so comparing the raw ``score`` lets a trial
+    win by drifting to geometry that matches a smaller, easier subset rather than by optimizing
+    better. ``search.penalize_fewer_reflections`` (default ``False``, matching the reference
     implementation's own disabled-by-default normalisation) opts into dividing by the matched
-    count: a trial with fewer matched reflections then needs a proportionally lower ``wr2`` to be
-    accepted. ``0`` matched reflections scores ``inf`` (never accepted; ``wr2`` itself is
-    typically ``nan`` there already). With the flag off this is the identity on ``wr2``.
+    count: a trial with fewer matched reflections then needs a proportionally lower ``score`` to be
+    accepted. ``0`` matched reflections scores ``inf`` (never accepted; ``score`` itself is
+    typically ``nan`` there already). With the flag off this is the identity on ``score``.
     """
     if not search.penalize_fewer_reflections:
-        return wr2
+        return score
     n_matched = int(plan.alignment.pattern_index.shape[0])
-    return wr2 / n_matched if n_matched > 0 else float("inf")
+    return score / n_matched if n_matched > 0 else float("inf")
 
 
 def _refine_one(
@@ -326,7 +340,7 @@ def _refine_one(
     search: NelderMeadSearch,
     coupling: TrialCoupling | None,
     validate: bool = True,
-) -> tuple[OrientationPlanLike, float, float, int, int]:
+) -> tuple[OrientationPlanLike, float, int, int]:
     """Local Nelder-Mead search over the goniometer correction ``(alpha, beta, omega)``.
 
     Every trial composes directly off the fixed seed orientation: ``seed_orientation @
@@ -385,10 +399,10 @@ def _refine_one(
     current = build_trial(best_orientation)
     n_trials += 1
     current_fgb = fgb(current) if callable(fgb) else fgb
-    # result.fun is the comparable (penalized) score minimised above; report the plain wR2 instead.
-    wr2 = float(engine.score_orientation(current, current_fgb))
-    r_obs = float(engine.score_orientation_r_obs(current, current_fgb))
-    return current, wr2, r_obs, n_trials, int(result.nit)
+    # result.fun is the comparable (penalized) score minimised above; report the plain score
+    # instead (self.scores, under whichever residual ExperimentConfig.loss_metrics configures).
+    score = float(engine.score_orientation(current, current_fgb))
+    return current, score, n_trials, int(result.nit)
 
 
 def _coupled_trial(

@@ -1,10 +1,10 @@
 {
-  "best_epoch": 39,
-  "objective": 3.6315594376169145,
-  "wr2": 0.036682418561787014,
-  "r_obs": 0.047865695454018115,
-  "diff_loss": 3.6315594376169145,
-  "total_hkl": "1010 / 2512",
+  "best_epoch": 38,
+  "objective": 3.3371539307010942,
+  "wr2": 0.06484762646199511,
+  "r_obs": 0.03370862556263732,
+  "diff_loss": 3.3371539307010942,
+  "total_hkl": "916 / 2374",
   "artifacts": {
     "refined_structure": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refined_structure.cif",
     "refined_parameters": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption/refined_parameters.npz",

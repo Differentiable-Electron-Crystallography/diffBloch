@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from diffBloch.app.loggers import residual_label
 from diffBloch.observability import Event, ThicknessOptimized
 
 __all__ = ["ThicknessPlotLogger", "plot_thickness_nn_shape"]
@@ -39,15 +40,16 @@ def _apply_house_style(ax: Any) -> None:
 
 @dataclass
 class ThicknessPlotLogger:
-    """Save one ``{rotation_index}.png`` per rotation: wR2 vs. every scored candidate thickness.
+    """Save one ``{rotation_index}.png`` per rotation: score vs. every scored candidate thickness.
 
     Consumes :class:`~diffBloch.observability.ThicknessOptimized` (every other event is a no-op),
-    reading its ``candidate_thicknesses``/``candidate_wr2`` fields -- the full grid
-    ``optimize_thickness`` scored, not just the winner. Each point is one grid-search candidate; a
-    dashed vertical line marks the winning thickness that got baked onto the plan. ``output_dir`` is
-    created on first use. Being a no-op on every other event means this composes with
-    :class:`~diffBloch.app.loggers.ConsoleLogger` / :class:`~diffBloch.app.loggers.CSVLogger` via
-    :class:`~diffBloch.observability.MultiLogger` without stealing their events.
+    reading its ``candidate_thicknesses``/``candidate_score`` fields -- the full grid
+    ``optimize_thickness`` scored, not just the winner, under whichever residual
+    ``ExperimentConfig.loss_metrics`` configures (wR2 by default). Each point is one grid-search
+    candidate; a dashed vertical line marks the winning thickness that got baked onto the plan.
+    ``output_dir`` is created on first use. Being a no-op on every other event means this composes
+    with :class:`~diffBloch.app.loggers.ConsoleLogger` / :class:`~diffBloch.app.loggers.CSVLogger`
+    via :class:`~diffBloch.observability.MultiLogger` without stealing their events.
     """
 
     output_dir: Path
@@ -67,15 +69,16 @@ class ThicknessPlotLogger:
         fig, ax = plt.subplots()
         ax.scatter(
             event.candidate_thicknesses,
-            event.candidate_wr2,
+            event.candidate_score,
             facecolors="none",
             edgecolors=_BLUE,
             linewidths=1.5,
         )
         ax.axvline(event.thickness, color=_RED, linestyle="--", linewidth=1.5)
+        label = residual_label(event.residual)
         ax.set_xlabel("Thickness (Å)")
-        ax.set_ylabel("wR2")
-        ax.set_title(f"wR2 vs thickness — rotation {event.rotation_index}")
+        ax.set_ylabel(label)
+        ax.set_title(f"{label} vs thickness — rotation {event.rotation_index}")
         _apply_house_style(ax)
         fig.tight_layout()
         fig.savefig(self.output_dir / f"{event.rotation_index}.png")

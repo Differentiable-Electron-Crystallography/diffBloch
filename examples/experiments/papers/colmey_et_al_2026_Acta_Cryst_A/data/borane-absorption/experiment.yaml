@@ -33,6 +33,9 @@ preprocess:
     n_steps: 100
     plot: false
 
+loss_metrics:
+  residual: wr2
+
 refinement:
   steps: 40
   thickness_nn:
@@ -46,12 +49,10 @@ refinement:
   optimizer:
     name: adam
     lr: 0.001
-  objective:
-    data_term: wr2
   trainable:
     positions: all
     adp: all
     occupancy: none
   split:
-    train: all_except_validation
-    validation: every_10th_rotation
+    train_test: false
+    val_frac: 0.1

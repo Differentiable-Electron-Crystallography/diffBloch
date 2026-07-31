@@ -15,7 +15,15 @@ import pytest
 import torch
 
 from diffBloch.core.products import AlignedIntensities
-from diffBloch.engine import w_rbragg_loss, wr2_loss
+from diffBloch.engine import (
+    least_squares_scores,
+    rbragg_loss,
+    robs_scores,
+    w_rbragg_loss,
+    weighted_mse_loss,
+    wr2_loss,
+    wr2_scores,
+)
 
 
 def _aligned(calc: torch.Tensor, obs: torch.Tensor, sigmas: torch.Tensor) -> AlignedIntensities:
@@ -67,3 +75,38 @@ def test_scaled_loss_is_finite_for_degenerate_calculated(_shapes) -> None:
     assert torch.isfinite(value)
     value.backward()
     assert calc.grad is not None and torch.isfinite(calc.grad).all()
+
+
+def test_wr2_loss_is_wr2_scores_summed_over_thickness(_shapes) -> None:
+    obs, sigmas, factor = _shapes
+    aligned = _aligned(obs * factor, obs, sigmas)
+    assert torch.allclose(wr2_loss(aligned), wr2_scores(aligned).sum())
+    assert wr2_scores(aligned).shape == (obs.shape[0],)
+
+
+def test_robs_scores_fixes_a_pure_scale_mismatch(_shapes) -> None:
+    # Same scale-fit property as wr2_scores, but against the rbragg (R_obs) metric: a pure scale
+    # mismatch resolves to ~0 after fitting, matching how R_obs is reported everywhere else.
+    obs, sigmas, _ = _shapes
+    calc = 10.0 * obs
+    assert float(rbragg_loss(_aligned(calc, obs, sigmas))) < 1e-6
+    assert torch.allclose(
+        rbragg_loss(_aligned(calc, obs, sigmas)), robs_scores(_aligned(calc, obs, sigmas)).sum()
+    )
+
+
+def test_robs_scores_gradient_alive_on_shape_mismatch(_shapes) -> None:
+    obs, sigmas, factor = _shapes
+    calc = (obs * factor).clone().requires_grad_(True)
+    rbragg_loss(_aligned(calc, obs, sigmas)).backward()
+    assert calc.grad is not None and calc.grad.abs().sum() > 0
+
+
+def test_least_squares_scores_is_raw_unscaled_weighted_mse(_shapes) -> None:
+    # No scale-fit (unlike wr2/robs): a pure scale mismatch does NOT resolve to ~0.
+    obs, sigmas, factor = _shapes
+    aligned = _aligned(obs * factor, obs, sigmas)
+    assert torch.allclose(weighted_mse_loss(aligned), least_squares_scores(aligned).sum())
+    assert least_squares_scores(aligned).shape == (obs.shape[0],)
+    scaled = _aligned(10.0 * obs, obs, sigmas)
+    assert float(weighted_mse_loss(scaled)) > 0.5

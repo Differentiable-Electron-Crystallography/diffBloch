@@ -76,9 +76,9 @@ CsPbBr3, alpha-quartz, and borane data:
 
 |                          | CsPbBr3  | alpha-quartz | Borane   |
 | ------------------------ | :------: | :----------: | :------: |
-| **R_obs (%), elastic**   | pending  |    pending   | pending  |
-| **wR2 (%), elastic**     | pending  |    pending   | pending  |
-| **R_obs (%), absorptive**| pending  |     4.92     | pending  |
+| **R_obs (%), elastic**   |   6.66   |    XXX       |   10.00  |
+| **wR2 (%), elastic**     |   6.73   |    pending   |   8.52   |
+| **R_obs (%), absorptive**|      |     4.92     | pending  |
 | **wR2 (%), absorptive**  | pending  |     3.72     | pending  |
 
 Only `quartz-absorption` has a completed run recorded here so far (epoch 40/40). Fill in the rest

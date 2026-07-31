@@ -49,6 +49,7 @@ __all__ = [
     "RotationCoupling",
     "RotationScored",
     "ThicknessOptimized",
+    "ThicknessOptimizationStarted",
 ]
 
 
@@ -215,18 +216,23 @@ class OrientationOptimized:
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
-    PETS rotation index, ``wr2`` the final scaling-optimised objective, ``n_trials`` the
-    number of trial orientations the search scored, ``n_passes`` scipy's reported iteration count
-    (the quantity ``NelderMeadSearch.max_iterations`` caps), and
-    ``pass_cap`` that cap itself -- carried per event so a plot can show each rotation's headroom
-    (``n_passes`` vs ``pass_cap``) and flag any rotation that ran to the cap. With ``workers > 1``
-    events arrive in *completion* order (the plan itself stays ordered). The channel is shared
-    with the step's ``PlanStepCompleted`` summary line, like the refinement stream's events.
+    PETS rotation index, ``score`` the final orientation's value under ``residual`` -- the
+    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"least_squares"``/
+    ``"robs"``) that produced it, carried alongside so a consumer can label the number correctly
+    (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``) rather
+    than a generic, misleading ``wr2`` field under a different residual. ``n_trials`` the number of
+    trial orientations the search scored, ``n_passes`` scipy's reported iteration count (the
+    quantity ``NelderMeadSearch.max_iterations`` caps), and ``pass_cap`` that cap itself -- carried
+    per event so a plot can show each rotation's headroom (``n_passes`` vs ``pass_cap``) and flag
+    any rotation that ran to the cap. With ``workers > 1`` events arrive in *completion* order (the
+    plan itself stays ordered). The channel is shared with the step's ``PlanStepCompleted`` summary
+    line, like the refinement stream's events.
     """
 
     channel: ClassVar[str] = "orientation"
     rotation_index: int
-    wr2: float
+    score: float
+    residual: str
     n_matched_hkl: int
     n_trials: int
     n_passes: int
@@ -238,7 +244,7 @@ class OrientationOptimized:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {"wr2": self.wr2, "n_matched_hkl": float(self.n_matched_hkl)}
+        return {self.residual: self.score, "n_matched_hkl": float(self.n_matched_hkl)}
 
 
 @dataclass(frozen=True)
@@ -246,8 +252,8 @@ class OrientationOptimizationSummary:
     """Aggregate statistics after every rotation's orientation fit has completed."""
 
     n_orientations: int
-    mean_wr2: float
-    mean_r_obs: float
+    mean_score: float
+    residual: str
     total_matched_hkl: int
     total_strong_hkl: int
     total_weak_hkl: int
@@ -265,8 +271,7 @@ class OrientationOptimizationSummary:
     def measurements(self) -> Mapping[str, float]:
         return {
             "n_orientations": float(self.n_orientations),
-            "mean_wr2": self.mean_wr2,
-            "mean_r_obs": self.mean_r_obs,
+            f"mean_{self.residual}": self.mean_score,
             "total_matched_hkl": float(self.total_matched_hkl),
             "total_strong_hkl": float(self.total_strong_hkl),
             "total_weak_hkl": float(self.total_weak_hkl),
@@ -278,27 +283,56 @@ class OrientationOptimizationSummary:
 
 
 @dataclass(frozen=True)
+class ThicknessOptimizationStarted:
+    """The rotation count ``optimize_thickness`` is about to grid-search, emitted once up front.
+
+    Exists so a progress display can show a countdown (``n_seen / total_rotations``) against
+    :class:`ThicknessOptimized` without needing to know the plan size in advance -- mirrors
+    :class:`OrientationOptimizationStarted`. Deliberately a distinct channel from
+    ``ThicknessOptimized`` (not merely a different type) -- a consumer such as
+    :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
+    not mistake this for a per-rotation result.
+    """
+
+    channel: ClassVar[str] = "thickness_started"
+    total_rotations: int
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"total_rotations": float(self.total_rotations)}
+
+
+@dataclass(frozen=True)
 class ThicknessOptimized:
     """One rotation's finished thickness grid search, emitted per rotation by ``optimize_thickness``.
 
     The thickness fit is the memory-heavy tail phase (each rotation scores the whole
     ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationOptimized` this makes it a
     progress stream rather than a silent block: ``rotation_index`` is the original zero-based PETS
-    rotation index, ``wr2`` the scaling-optimised objective at the baked thickness, and
-    ``thickness`` that winning candidate (Angstrom). ``candidate_thicknesses``/``candidate_wr2``
-    carry the whole scored grid (same order, one entry per :class:`~diffBloch.specs.ThicknessGrid`
-    step) -- deliberately excluded from ``measurements`` (which stays flat-scalar for the
-    generic console/CSV/wandb/comet backends); a plotting backend such as
-    :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` pattern-matches the concrete
-    dataclass to read them. Emitted in plan order (the fit is sequential).
+    rotation index, ``score`` the baked thickness's value under ``residual`` -- the
+    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"least_squares"``/
+    ``"robs"``) that produced it, carried alongside so a consumer can label the number correctly
+    (:attr:`measurements` keys on it directly) rather than a generic, misleading ``wr2`` field
+    under a different residual, and ``thickness`` that winning candidate (Angstrom).
+    ``candidate_thicknesses``/``candidate_score`` carry the whole scored grid (same order, one
+    entry per :class:`~diffBloch.specs.ThicknessGrid` step) -- deliberately excluded from
+    ``measurements`` (which stays flat-scalar for the generic console/CSV/wandb/comet backends); a
+    plotting backend such as :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger`
+    pattern-matches the concrete dataclass to read them. Emitted in plan order (the fit is
+    sequential).
     """
 
     channel: ClassVar[str] = "optimize_thickness"
     rotation_index: int
-    wr2: float
+    score: float
+    residual: str
     thickness: float
     candidate_thicknesses: tuple[float, ...]
-    candidate_wr2: tuple[float, ...]
+    candidate_score: tuple[float, ...]
 
     @property
     def step(self) -> int | None:
@@ -306,7 +340,7 @@ class ThicknessOptimized:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {"wr2": self.wr2, "thickness": self.thickness}
+        return {self.residual: self.score, "thickness": self.thickness}
 
 
 @dataclass(frozen=True)
@@ -432,8 +466,11 @@ class RefinementStarted:
 class RefinementStep:
     """One refinement epoch.
 
-    ``wr2`` is the mean weighted-R2 across orientations when weighted-R2 is the data term.
-    Otherwise the optimizer loss is reported.
+    ``wr2``/``r_obs`` are always-computed reporting diagnostics (mean weighted-R2 / R_obs across
+    orientations), free regardless of ``ExperimentConfig.loss_metrics`` (which decides what
+    ``loss`` actually minimises, not what gets reported here) -- so both are always shown. Contrast
+    the preprocessing search's events (:class:`OrientationOptimized` / :class:`ThicknessOptimized`),
+    which report only the configured residual, since computing the other would cost an extra solve.
     """
 
     channel: ClassVar[str] = "refinement"

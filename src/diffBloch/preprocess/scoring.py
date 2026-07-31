@@ -29,7 +29,9 @@ from diffBloch.engine import (
     LossFn,
     OrientationPlanLike,
     RefinementEngine,
+    ScoresFn,
     wr2_loss,
+    wr2_scores,
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
@@ -43,6 +45,7 @@ def build_engine(
     refinement: RefinementSetup,
     *,
     loss: LossFn = wr2_loss,
+    scores: ScoresFn = wr2_scores,
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
     absorption: Absorption = NO_ABSORPTION,
@@ -57,11 +60,17 @@ def build_engine(
     ``Plan -> Plan`` preprocess steps, while ``refinement`` (constraint spec, ASU-expansion plan,
     ASU atomic numbers) is static structure context. ``build_engine`` is the single place that
     rejoins them when a simulation is actually needed; both ``score_orientations``
-    here and ``refine`` later go through it. ``loss`` is the per-orientation term ``refine`` would
-    minimise; it defaults to :func:`~diffBloch.engine.wr2_loss` (wR2 after matching
+    here and ``refine`` later go through it. ``loss``/``scores`` are the matching scalar/per-thickness
+    forms of one objective (see :mod:`diffBloch.engine.losses`): ``loss`` is the per-orientation term
+    ``refine`` minimises, ``scores`` is what :meth:`RefinementEngine.score_orientation` /
+    :meth:`~diffBloch.engine.forward.RefinementEngine.score_orientation_per_thickness` search over
+    (``optimize_orientation``/``optimize_thickness``). Both default to wR2
+    (:func:`~diffBloch.engine.wr2_loss`/:func:`~diffBloch.engine.wr2_scores`) after matching
     calculated total intensity to observed -- calc and obs are on different scales, so the raw
-    metric would be flat/gradient-free). It is irrelevant to :meth:`RefinementEngine.fgb` /
-    :meth:`RefinementEngine.score_orientation`, which apply their own scaling-optimised wR2.
+    metric would be flat/gradient-free. Callers should pass both from the same
+    ``ExperimentConfig.loss_metrics`` (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_loss` /
+    :meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`) so the search and the gradient
+    objective agree.
 
     ``max_batch`` (default ``None``) caps the ``matrix_exp`` propagator block; ``None`` lets each
     solve pick a memory-safe block from its beam count, bounding peak memory while matching the
@@ -96,6 +105,7 @@ def build_engine(
         grid=plan.structure_factor_grid,
         orientations=orientations,
         loss=loss,
+        scores=scores,
         method=method,
         max_batch=max_batch,
         absorption=absorption,

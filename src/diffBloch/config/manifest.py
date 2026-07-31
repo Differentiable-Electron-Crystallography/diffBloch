@@ -180,11 +180,14 @@ def config_digest(config: ExperimentConfig) -> str:
       restale a checkpoint over config that provably never touched it), and always excluding
       ``thickness.plot`` (reporting-only, never touches the Plan even when ``thickness`` is in
       scope);
+    - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search
+      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`), so it determines
+      the settled Plan exactly like ``refinement.split`` below;
     - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.
 
     Everything else is excluded because it cannot change the Plan: ``name`` (a label),
     ``solver.inference`` (terminal scoring only), and the rest of ``refinement``
-    (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` -- refinement-stage execution). This
+    (``optimizer`` / ``steps`` / ``trainable`` -- refinement-stage execution). This
     is the config axis of the preprocess lock only, not a whole-config identity.
     """
     dump = config.model_dump(mode="json")
@@ -205,6 +208,7 @@ def config_digest(config: ExperimentConfig) -> str:
         "sample": dump["sample"],
         "blochwave": blochwave,
         "preprocess": preprocess,
+        "loss_metrics": dump["loss_metrics"],
         "refinement": {"split": dump["refinement"]["split"]},
     }
     canonical = json.dumps(preprocess_identity, sort_keys=True, separators=(",", ":"))
@@ -215,11 +219,14 @@ def refinement_config_digest(config: ExperimentConfig) -> str:
     """SHA256 of the *refinement-determining* config -- the refinement lock's config identity.
 
     The complement of :func:`config_digest`: everything that function excludes from the preprocess
-    checkpoint's identity (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` /
-    ``thickness_nn``) is exactly what determines the gradient-refined result on top of an
+    checkpoint's identity (``optimizer`` / ``steps`` / ``trainable`` / ``thickness_nn``, all under
+    ``refinement``) is exactly what determines the gradient-refined result on top of an
     already-settled ``Plan``, so this hashes precisely that complement. ``refinement.split`` is
     omitted here too -- it shapes the ``Plan`` itself and is already covered by ``config_digest``
-    (and therefore by the ``plan.lock`` a refinement run is built from).
+    (and therefore by the ``plan.lock`` a refinement run is built from). ``loss_metrics`` is a
+    top-level ``ExperimentConfig`` field (not under ``refinement``, so this dump never sees it) for
+    exactly the same reason: it now determines the preprocess search too, so it belongs solely to
+    ``config_digest``.
     """
     dump = config.model_dump(mode="json")
     refinement = {k: v for k, v in dump["refinement"].items() if k != "split"}

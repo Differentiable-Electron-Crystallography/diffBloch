@@ -51,5 +51,5 @@ refinement:
     name: adam
     lr: 1.0e-3
   split:
-    train: all_except_validation
-    validation: every_10th_rotation
+    train_test: true
+    val_frac: 0.1

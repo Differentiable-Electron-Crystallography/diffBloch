@@ -104,7 +104,7 @@ def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     engine = build_engine(
         plan,
         setup.refinement,
-        loss=cfg.refinement.objective.to_loss(),
+        loss=cfg.loss_metrics.to_loss(),
         method=cfg.blochwave.solver.refine,
     )
     engine = dataclasses.replace(engine, orientations=engine.orientations[:1])

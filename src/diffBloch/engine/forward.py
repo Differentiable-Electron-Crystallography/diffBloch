@@ -49,7 +49,7 @@ from diffBloch.core.solver import (
 )
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
-from diffBloch.engine.losses import wr2_loss
+from diffBloch.engine.losses import wr2_scores
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlanLike,
@@ -84,6 +84,7 @@ __all__ = [
     "LossFn",
     "ModelComponent",
     "RotationMetrics",
+    "ScoresFn",
     "StructureComponent",
     "RefinementEngine",
     "RefinementModel",
@@ -97,6 +98,13 @@ __all__ = [
 # A loss reduces one orientation's aligned intensities to a scalar term (calculated vs observed).
 # The engine sums these per-orientation terms into the scalar objective refinement minimises.
 type LossFn = Callable[[AlignedIntensities], Tensor]
+
+# A scores fn reduces one orientation's aligned intensities to a per-thickness (T,) vector -- the
+# same metric a LossFn sums to a scalar, kept unreduced for a search that argmins over thickness
+# (score_orientation_per_thickness) or over trial orientations (score_orientation). ExperimentConfig
+# .objective supplies matching loss/scores pairs so the gradient refinement and the
+# orientation/thickness preprocessing search share one metric.
+type ScoresFn = Callable[[AlignedIntensities], Tensor]
 
 _log = logging.getLogger(__name__)
 
@@ -166,6 +174,11 @@ class RefinementEngine:
     grid: StructureFactorGrid
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
+    # The per-thickness counterpart of loss (see ScoresFn): what score_orientation /
+    # score_orientation_per_thickness search over. Defaults to wr2_scores, reproducing this
+    # engine's long-standing hardcoded search criterion; build_engine derives both loss and scores
+    # from the same ExperimentConfig.objective so the two stay in lockstep.
+    scores: ScoresFn = wr2_scores
     method: SolverMethod = "matrix_exp"
     # matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a
     # rounding-level ~1 ulp shift, never accuracy). None (default) lets each
@@ -214,48 +227,31 @@ class RefinementEngine:
         return self._structure_factor_values_from_state(state, indices)
 
     def score_orientation(self, orientation: OrientationPlanLike, fgb: Tensor) -> Tensor:
-        """Scaling-optimised weighted-R2 (wR2) for one orientation against its observed pattern.
+        """This engine's configured ``scores`` for one orientation against its observed pattern.
 
         Runs the forward Bloch simulation for ``orientation`` from a precomputed ``fgb``
-        (:meth:`fgb`), aligns calculated vs observed intensities, and grid-searches the intensity
-        scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple
-        thicknesses the best-fitting thickness's score is returned -- thickness is a nuisance when
-        scoring orientation. This is the objective ``optimize_orientation`` minimises.
+        (:meth:`fgb`), aligns calculated vs observed intensities, and reduces by ``self.scores``
+        (default wR2, grid-searching the intensity scale via
+        :func:`diffBloch.core.losses.optimal_scale`). With multiple thicknesses the best-fitting
+        thickness's score is returned -- thickness is a nuisance when scoring orientation. This is
+        the objective ``optimize_orientation`` minimises.
         """
         return self.score_orientation_per_thickness(orientation, fgb).min()
-
-    def score_orientation_r_obs(self, orientation: OrientationPlanLike, fgb: Tensor) -> Tensor:
-        """Return the best scaling-optimised R(obs) over this orientation's thicknesses."""
-        with torch.no_grad():
-            aligned = align(
-                self._solve(orientation, fgb, orientation.thickness),
-                orientation.pattern,
-                orientation.alignment,
-            )
-            return torch.stack(
-                [
-                    optimal_scale(
-                        aligned.calculated[t],
-                        aligned.observed[t],
-                        aligned.sigmas[t],
-                        metric=rbragg,
-                    )[1]
-                    for t in range(aligned.calculated.shape[0])
-                ]
-            ).min()
 
     def score_orientation_per_thickness(
         self, orientation: OrientationPlanLike, fgb: Tensor
     ) -> Tensor:
-        """Scaling-optimised wR2 for each of the orientation's thicknesses (shape ``(T,)``).
+        """This engine's configured ``scores`` for each of the orientation's thicknesses (``(T,)``).
 
         One forward Bloch simulation from a precomputed ``fgb`` (:meth:`fgb`) covers all ``T``
         thicknesses at once: the expensive eigendecomposition depends only on the orientation and
         ``fgb``, while thickness enters only the cheap propagation tail. The calculated and observed
-        intensities are aligned once (alignment is thickness-independent), then for each thickness
-        the intensity scale minimising wR2 is found (:func:`diffBloch.core.losses.optimal_scale`).
+        intensities are aligned once (alignment is thickness-independent), then reduced by
+        ``self.scores`` (default :func:`~diffBloch.engine.losses.wr2_scores`) -- the same per-metric
+        function ``self.loss`` sums for the gradient objective, so this search and the refinement
+        stage share one ``ExperimentConfig.objective``.
 
-        ``optimize_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;
+        ``optimize_thickness`` grid-searches this vector and bakes the lowest-scoring thickness;
         :meth:`score_orientation` collapses it with ``.min()`` (thickness is a nuisance there).
 
         Runs under ``torch.no_grad()``: this is search scoring (``optimize_orientation`` /
@@ -271,12 +267,7 @@ class RefinementEngine:
                 orientation.pattern,
                 orientation.alignment,
             )
-            return torch.stack(
-                [
-                    optimal_scale(aligned.calculated[t], aligned.observed[t], aligned.sigmas[t])[1]
-                    for t in range(aligned.calculated.shape[0])
-                ]
-            )
+            return self.scores(aligned)
 
     def objective_value(
         self,
@@ -1008,10 +999,13 @@ def run_refinement_model(
             raise RuntimeError("optimizer did not evaluate the refinement objective")
         losses.append(loss_value)
         diffraction_loss = _scalar_float(reported_objective.components["diffraction"].raw)
+        # wR2/R_obs diagnostics are always computed (see _objective_value) regardless of
+        # ExperimentConfig.loss_metrics, so refinement always reports both -- free, unlike the
+        # preprocessing search, which reports only the metric it actually spent a solve computing.
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
-            wr2=(reported_objective.diagnostics["wr2"] if engine.loss is wr2_loss else None),
+            wr2=reported_objective.diagnostics["wr2"],
             r_obs=reported_objective.diagnostics["r_obs"],
             diff_loss=diffraction_loss,
             objective_total=_scalar_float(reported_objective.total),

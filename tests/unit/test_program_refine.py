@@ -162,6 +162,28 @@ def _built_plan_matching(cell: np.ndarray) -> Plan:
     return build_orientation_plans()(seed)
 
 
+def _built_plan_with_two_rotations(cell: np.ndarray) -> Plan:
+    """Like :func:`_built_plan_matching`, but two rotations: index 0 (train) and 1 (validation)."""
+    grid = StructureFactorGrid.from_cell(cell, g_max=2.2)
+    beams = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]], dtype=np.int64)
+    candidates = tuple(
+        CandidatePlan.seed(
+            beams,
+            PatternBatch(
+                hkl=torch.tensor(beams, dtype=torch.int64),
+                intensities=torch.full((len(beams),), 10.0, dtype=torch.float64),
+                sigmas=torch.ones(len(beams), dtype=torch.float64),
+                rotation_index=index,
+            ),
+            energy=200e3,
+            thickness=(300.0,),
+        )
+        for index in range(2)
+    )
+    seed = Plan(structure_factor_grid=grid, orientations=candidates)
+    return build_orientation_plans()(seed)
+
+
 def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
     _write_refinement_outputs(tmp_path, cfg, refinement, result)
@@ -228,6 +250,73 @@ def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:
     pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
     assert (tmp_path / "thickness_nn_shape.png").is_file()
     assert "plot: thickness_nn_shape.png" in text
+
+
+def test_write_refinement_report_adds_a_validation_section_when_split_is_on(
+    tmp_path: Path,
+) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    plan = _built_plan_with_two_rotations(np.eye(3, dtype=np.float64) * 5.0)
+    engine = build_engine(plan, refinement)
+
+    report_path = _write_refinement_report(
+        tmp_path,
+        cfg,
+        IntegrationGeometry(semiangle=1.0),
+        engine,
+        result,
+        elapsed_seconds=1.0,
+        validation_rotation_indices=frozenset({1}),
+    )
+
+    text = report_path.read_text()
+    assert "Validation set (held out from the refinement objective)" in text
+    assert "n_rotations = 1" in text
+
+
+def test_write_refinement_report_omits_the_validation_section_when_split_is_off(
+    tmp_path: Path,
+) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    plan = _built_plan_matching(np.eye(3, dtype=np.float64) * 5.0)
+    engine = build_engine(plan, refinement)
+
+    report_path = _write_refinement_report(
+        tmp_path, cfg, IntegrationGeometry(semiangle=1.0), engine, result, elapsed_seconds=1.0
+    )
+
+    assert "Validation set" not in report_path.read_text()
+
+
+def test_write_refinement_outputs_adds_a_validation_block_to_the_summary(tmp_path: Path) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    plan = _built_plan_with_two_rotations(np.eye(3, dtype=np.float64) * 5.0)
+    engine = build_engine(plan, refinement)
+
+    _write_refinement_outputs(
+        tmp_path,
+        cfg,
+        refinement,
+        result,
+        engine=engine,
+        validation_rotation_indices=frozenset({1}),
+    )
+
+    summary = json.loads((tmp_path / "refinement_summary.json").read_text())
+    assert summary["validation"]["n_rotations"] == 1
+
+
+def test_write_refinement_outputs_omits_the_validation_block_when_split_is_off(
+    tmp_path: Path,
+) -> None:
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+
+    _write_refinement_outputs(tmp_path, cfg, refinement, result)
+
+    summary = json.loads((tmp_path / "refinement_summary.json").read_text())
+    assert "validation" not in summary
 
 
 def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(

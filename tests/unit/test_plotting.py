@@ -17,10 +17,11 @@ from diffBloch.observability import OrientationOptimized, ThicknessOptimized  # 
 
 _EVENT = ThicknessOptimized(
     rotation_index=3,
-    wr2=0.031,
+    score=0.031,
+    residual="wr2",
     thickness=460.0,
     candidate_thicknesses=(400.0, 430.0, 460.0, 490.0, 520.0),
-    candidate_wr2=(0.08, 0.05, 0.031, 0.045, 0.07),
+    candidate_score=(0.08, 0.05, 0.031, 0.045, 0.07),
 )
 
 
@@ -50,7 +51,13 @@ def test_report_ignores_events_that_are_not_thickness_optimized(tmp_path: Path) 
 
     logger.report(
         OrientationOptimized(
-            rotation_index=3, wr2=0.05, n_matched_hkl=100, n_trials=40, n_passes=12, pass_cap=60
+            rotation_index=3,
+            score=0.05,
+            residual="wr2",
+            n_matched_hkl=100,
+            n_trials=40,
+            n_passes=12,
+            pass_cap=60,
         )
     )
 
@@ -65,10 +72,11 @@ def test_report_writes_a_separate_png_per_rotation(tmp_path: Path) -> None:
     logger.report(
         ThicknessOptimized(
             rotation_index=4,
-            wr2=0.02,
+            score=0.02,
+            residual="wr2",
             thickness=500.0,
             candidate_thicknesses=(440.0, 470.0, 500.0),
-            candidate_wr2=(0.03, 0.025, 0.02),
+            candidate_score=(0.03, 0.025, 0.02),
         )
     )
 

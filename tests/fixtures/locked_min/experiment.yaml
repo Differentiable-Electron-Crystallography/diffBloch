@@ -7,4 +7,4 @@ refinement:
   optimizer:
     name: lbfgs
   split:
-    validation: every_10th_rotation
+    val_frac: 0.1
