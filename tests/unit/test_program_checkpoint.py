@@ -23,8 +23,12 @@ LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 def _experiment(tmp_path: Path) -> Path:
     exp = tmp_path / "experiment"
     exp.mkdir()
-    for name in ("experiment.yaml", "experiment.lock", "enantiomer_1.cif", "exp_data.cif_pets"):
+    (exp / "reproducibility").mkdir()
+    for name in ("experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"):
         shutil.copy(LOCKED / name, exp / name)
+    shutil.copy(
+        LOCKED / "reproducibility" / "experiment.lock", exp / "reproducibility" / "experiment.lock"
+    )
     return exp
 
 
@@ -48,7 +52,8 @@ def test_first_run_computes_and_writes_the_checkpoint(tmp_path: Path) -> None:
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)])
     assert calls == {"a": 1, "b": 1}  # both steps ran
-    assert (exp / "plan.npz").exists() and (exp / "plan.lock").exists()
+    assert (exp / "reproducibility" / "plan.npz").exists()
+    assert (exp / "reproducibility" / "plan.lock").exists()
 
 
 def test_identical_recipe_reuses_without_running_steps(tmp_path: Path) -> None:
@@ -91,7 +96,7 @@ def test_refresh_recomputes_even_when_fresh(tmp_path: Path) -> None:
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)], refresh=True)
     assert calls == {"a": 1, "b": 1}  # forced recompute despite a valid checkpoint
-    assert (exp / "plan.lock").exists()  # ...still regenerated
+    assert (exp / "reproducibility" / "plan.lock").exists()  # ...still regenerated
 
 
 def test_no_checkpoint_neither_reads_nor_writes(tmp_path: Path) -> None:
@@ -100,7 +105,8 @@ def test_no_checkpoint_neither_reads_nor_writes(tmp_path: Path) -> None:
     calls: dict[str, int] = {}
     _run(exp, base, calls, [("a", None), ("b", None)], checkpoint=False)
     assert calls == {"a": 1, "b": 1}
-    assert not (exp / "plan.npz").exists() and not (exp / "plan.lock").exists()
+    assert not (exp / "reproducibility" / "plan.npz").exists()
+    assert not (exp / "reproducibility" / "plan.lock").exists()
 
 
 def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path) -> None:

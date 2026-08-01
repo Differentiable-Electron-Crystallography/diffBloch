@@ -100,7 +100,7 @@ def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     structure = read_structure(_QUARTZ_ROOT / cfg.inputs.structure)
     experimental_data = read_experimental_data(_QUARTZ_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, experimental_data, cfg)
-    plan = read_plan(_QUARTZ_ROOT / "plan.npz")
+    plan = read_plan(_QUARTZ_ROOT / "reproducibility" / "plan.npz")
     engine = build_engine(
         plan,
         setup.refinement,

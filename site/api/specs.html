@@ -1,0 +1,922 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="Specs" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/api/specs.html" />
+<meta property="og:site_name" content="diffBloch" />
+<meta property="og:description" content="Validated value-types for the preprocess algorithms — beam selection, rocking-curve geometry, mosaicity, orientation search, convergence sweeps. Pydantic parses YAML at the boundary and hands these..." />
+<meta property="og:image:width" content="1146" />
+<meta property="og:image:height" content="600" />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_api_specs_be8f8701.png" />
+<meta property="og:image:alt" content="Validated value-types for the preprocess algorithms — beam selection, rocking-curve geometry, mosaicity, orientation search, convergence sweeps. Pydantic parses YAML at the boundary and hands these..." />
+<meta name="description" content="Validated value-types for the preprocess algorithms — beam selection, rocking-curve geometry, mosaicity, orientation search, convergence sweeps. Pydantic parses YAML at the boundary and hands these..." />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Engine" href="engine.html"><link rel="prev" title="Params" href="params.html">
+        <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/api/specs.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Specs - diffBloch</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">diffBloch</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">diffBloch</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inputs.html">Inputs and experiment directories</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../hyperparameter-selection.html">Hyperparameter selection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reproducibility.html">Reproducibility and checkpoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../refinement.html">Refinement</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../observability-guide.html">Observability and loggers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="config.html">Config And Manifests</a></li>
+<li class="toctree-l1"><a class="reference internal" href="io.html">IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="core.html">Core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="params.html">Params</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Specs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="engine.html">Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="preprocess.html">Preprocess</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">Observability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="app.html">App</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/api/specs.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="specs">
+<h1>Specs<a class="headerlink" href="#specs" title="Link to this heading">¶</a></h1>
+<p>Validated value-types for the preprocess algorithms — beam selection, rocking-curve geometry,
+mosaicity, orientation search, convergence sweeps. Pydantic parses YAML at the boundary and hands
+these frozen dataclasses to the steps, so the algorithm contract stays pydantic-free; invalid
+bounds are unrepresentable by construction.</p>
+<p id="module-diffBloch.specs">Validated parameter value-types for the preprocess calibration steps.</p>
+<p>These are the <em>parsed</em> forms of the sweep parameters (parse, don’t validate): each frozen dataclass
+validates its own invariants in <code class="docutils literal notranslate"><span class="pre">__post_init__</span></code>, so an invalid spec is unrepresentable and the
+pure <code class="docutils literal notranslate"><span class="pre">Plan</span> <span class="pre">-&gt;</span> <span class="pre">Plan</span></code> steps that consume them never re-validate. The pydantic config blocks at the
+YAML edge (<a class="reference internal" href="config.html#module-diffBloch.config.schema" title="diffBloch.config.schema"><code class="xref py py-mod docutils literal notranslate"><span class="pre">diffBloch.config.schema</span></code></a>) parse into these via <code class="docutils literal notranslate"><span class="pre">to_search</span></code> / <code class="docutils literal notranslate"><span class="pre">to_grid</span></code> and
+delegate their validation here – one home for each rule, no drift between config and function.</p>
+<p>They are plain frozen dataclasses (the codebase’s one value-object vocabulary, like
+<a class="reference internal" href="params.html#diffBloch.params.RefinableParams" title="diffBloch.params.RefinableParams"><code class="xref py py-class docutils literal notranslate"><span class="pre">RefinableParams</span></code></a>), so the algorithm contract stays pydantic-free: pydantic
+parses YAML at the edge but never rides into a step. A direct/test caller constructs them the same
+way the config does and gets the same construction-time error.</p>
+<p>Failures raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> (fail-fast): the callers are config-load and direct construction. A
+boundary adapter that needs to surface validation errors <em>as values</em> rather than as exceptions (for
+a TUI or batch runner) can wrap these raising constructors without changing the step contract.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.Absorption">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">Absorption</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#Absorption"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L70-L74"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.Absorption" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Enable the element/B-factor-dependent absorptive Bloch-wave model.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.Absorption.enabled">
+<span class="sig-name descname"><span class="pre">enabled</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#diffBloch.specs.Absorption.enabled" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">ApparentThicknessNetwork</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">enabled</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">40</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_thickness</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">form</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'min_thickness'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'min_thickness'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_thickness</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_thickness</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#ApparentThicknessNetwork"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L47-L67"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Legacy apparent-thickness MLP settings used by the default refinement path.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.enabled">
+<span class="sig-name descname"><span class="pre">enabled</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.enabled" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.num_samples">
+<span class="sig-name descname"><span class="pre">num_samples</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">40</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.num_samples" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.sample_thickness">
+<span class="sig-name descname"><span class="pre">sample_thickness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.sample_thickness" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.form">
+<span class="sig-name descname"><span class="pre">form</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'min_thickness'</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'min_thickness'</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.form" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.min_thickness">
+<span class="sig-name descname"><span class="pre">min_thickness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">100.0</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.min_thickness" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.max_thickness">
+<span class="sig-name descname"><span class="pre">max_thickness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2000.0</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.max_thickness" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ApparentThicknessNetwork.init_seed">
+<span class="sig-name descname"><span class="pre">init_seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#diffBloch.specs.ApparentThicknessNetwork.init_seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.BeamSelection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">BeamSelection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rsg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.9</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0015</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">integration</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><span class="pre">IntegrationGeometry</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#BeamSelection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L127-L149"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.BeamSelection" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Validated cutoffs for the <code class="docutils literal notranslate"><span class="pre">select_beams</span></code> Klar et al. (2023) active-set filter.</p>
+<p>The knobs <em>jointly</em> define each orientation’s active beam set. <code class="docutils literal notranslate"><span class="pre">rsg</span></code> (relative excitation
+error cutoff – a reflection is kept when <code class="docutils literal notranslate"><span class="pre">|Sg|</span> <span class="pre">/</span> <span class="pre">sg_max</span> <span class="pre">&lt;</span> <span class="pre">rsg</span></code>) must be positive, since at
+zero it rejects every reflection. <code class="docutils literal notranslate"><span class="pre">dsg</span></code> (the absolute excitation-error margin in the
+<code class="docutils literal notranslate"><span class="pre">sg_max</span> <span class="pre">-</span> <span class="pre">|Sg|</span> <span class="pre">&gt;</span> <span class="pre">dsg</span></code> test) carries no positivity invariant – a negative margin legitimately
+loosens the cone – so it is left unconstrained rather than fabricate a bound. <code class="docutils literal notranslate"><span class="pre">integration</span></code>
+(an <a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><code class="xref py py-class docutils literal notranslate"><span class="pre">IntegrationGeometry</span></code></a>) supplies the <code class="docutils literal notranslate"><span class="pre">semiangle</span></code> that scales <code class="docutils literal notranslate"><span class="pre">sg_max</span></code> and the
+<code class="docutils literal notranslate"><span class="pre">geometry</span></code> that fixes its lever arm; it is <em>shared</em> with the <a class="reference internal" href="#diffBloch.specs.RockingCurve" title="diffBloch.specs.RockingCurve"><code class="xref py py-class docutils literal notranslate"><span class="pre">RockingCurve</span></code></a> integrator
+(one physical angle, so the two cannot disagree).</p>
+<p>The default cutoffs are the values used by the default preprocess path.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.BeamSelection.rsg">
+<span class="sig-name descname"><span class="pre">rsg</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.9</span></span><a class="headerlink" href="#diffBloch.specs.BeamSelection.rsg" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.BeamSelection.dsg">
+<span class="sig-name descname"><span class="pre">dsg</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0015</span></span><a class="headerlink" href="#diffBloch.specs.BeamSelection.dsg" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.BeamSelection.integration">
+<span class="sig-name descname"><span class="pre">integration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><span class="pre">IntegrationGeometry</span></a></span><a class="headerlink" href="#diffBloch.specs.BeamSelection.integration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTest">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">ConvergenceTest</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g_max_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sg_max_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.005</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tilt_steps_step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_passes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#ConvergenceTest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L198-L216"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.ConvergenceTest" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Step sizes for simulation-convergence testing.</p>
+<p>The test increases <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and the number of rocking-curve tilt steps. Each
+control is advanced until consecutive simulations differ by less than the requested tolerance.
+Multiple passes revisit the controls after the others have changed.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTest.g_max_step">
+<span class="sig-name descname"><span class="pre">g_max_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.1</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTest.g_max_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTest.sg_max_step">
+<span class="sig-name descname"><span class="pre">sg_max_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.005</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTest.sg_max_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTest.tilt_steps_step">
+<span class="sig-name descname"><span class="pre">tilt_steps_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTest.tilt_steps_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTest.num_passes">
+<span class="sig-name descname"><span class="pre">num_passes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTest.num_passes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTolerance">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">ConvergenceTolerance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r_factor_threshold</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.005</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iterations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#ConvergenceTolerance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L175-L195"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.ConvergenceTolerance" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Stopping rule for a convergence sweep: stability threshold + a runaway cap.</p>
+<p>A convergence sweep grows a simulation-accuracy knob and stops the first time <em>consecutive</em>
+simulations stop changing: <code class="docutils literal notranslate"><span class="pre">r_factor_threshold</span></code> is the largest consecutive-simulation R-factor
+still counted as “converged”. <code class="docutils literal notranslate"><span class="pre">max_iterations</span></code> is the hard cap on sweep steps before
+non-convergence is raised; it also gives <code class="docutils literal notranslate"><span class="pre">iterate_until</span></code>’s otherwise-bare cap a home.</p>
+<p>The stopping rule is deliberately simple: the first below-threshold step stops the sweep – no
+patience window and no null-step handling.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTolerance.r_factor_threshold">
+<span class="sig-name descname"><span class="pre">r_factor_threshold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.005</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTolerance.r_factor_threshold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ConvergenceTolerance.max_iterations">
+<span class="sig-name descname"><span class="pre">max_iterations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">100</span></span><a class="headerlink" href="#diffBloch.specs.ConvergenceTolerance.max_iterations" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.FrameSelection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">FrameSelection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_observed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#FrameSelection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L152-L172"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.FrameSelection" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Validated criterion for the <code class="docutils literal notranslate"><span class="pre">select_frames</span></code> per-rotation (whole-frame) drop.</p>
+<p>The sibling of <a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BeamSelection</span></code></a>: where that prunes <em>reflections within</em> a frame,
+<code class="docutils literal notranslate"><span class="pre">select_frames</span></code> drops <em>whole frames</em> whose observed pattern is too sparse to inform the fit,
+for the beam-damaged tail of a rotation scan. <code class="docutils literal notranslate"><span class="pre">min_observed</span></code> is the fewest <em>strong</em> observed
+reflections (<code class="docutils literal notranslate"><span class="pre">intensity</span> <span class="pre">&gt;</span> <span class="pre">3</span> <span class="pre">*</span> <span class="pre">sigma</span></code>, strict) a frame must carry to be kept; frames below it
+are dropped. The count is <strong>model-independent</strong> – it reads the observed pattern only, never the
+calculated fit – so it cannot circularly keep the frames the current model already explains.</p>
+<p><code class="docutils literal notranslate"><span class="pre">min_observed</span> <span class="pre">==</span> <span class="pre">0</span></code> keeps every frame (the disabled / no-op default – opting in requires a
+positive threshold); a negative count is meaningless and rejected. The drop is derived from a
+data-quality floor rather than a hard-coded list of frame indices.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.FrameSelection.min_observed">
+<span class="sig-name descname"><span class="pre">min_observed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#diffBloch.specs.FrameSelection.min_observed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.IntegrationGeometry">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">IntegrationGeometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">semiangle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'continuous_rotation'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'precession'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'continuous_rotation'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#IntegrationGeometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L100-L124"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.IntegrationGeometry" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>The angular integration range a rotation frame sweeps – one shared physical value.</p>
+<p>As the crystal rocks, each reflection is integrated over an angular range. That range sets BOTH
+the Klar beam-selection window (the excitation-error span <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>) and the rocking-curve tilt
+span, because it is the <em>same physical angle</em>. Modelling it once here – shared by
+<a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BeamSelection</span></code></a> and <a class="reference internal" href="#diffBloch.specs.RockingCurve" title="diffBloch.specs.RockingCurve"><code class="xref py py-class docutils literal notranslate"><span class="pre">RockingCurve</span></code></a> rather than each declaring its own – makes it
+impossible to give the two consumers different values (the drift a duplicated field invites).</p>
+<p><code class="docutils literal notranslate"><span class="pre">semiangle</span></code> (degrees) is the tilt half-width / integration cone half-angle; it must be
+positive (zero rejects every reflection). <code class="docutils literal notranslate"><span class="pre">geometry</span></code> is the data-collection sweep – distance
+from the goniometer rock axis for <code class="docutils literal notranslate"><span class="pre">continuous_rotation</span></code>, distance from the beam for
+<code class="docutils literal notranslate"><span class="pre">precession</span></code> – which fixes the <code class="docutils literal notranslate"><span class="pre">sg_max</span></code> lever arm and the tilt axis, so both consumers must
+agree on it too.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.IntegrationGeometry.semiangle">
+<span class="sig-name descname"><span class="pre">semiangle</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.0</span></span><a class="headerlink" href="#diffBloch.specs.IntegrationGeometry.semiangle" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.IntegrationGeometry.geometry">
+<span class="sig-name descname"><span class="pre">geometry</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'continuous_rotation'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'precession'</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'continuous_rotation'</span></span><a class="headerlink" href="#diffBloch.specs.IntegrationGeometry.geometry" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.Mosaicity">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">Mosaicity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#Mosaicity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L271-L290"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.Mosaicity" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Mosaicity broadening of the rocking curve: a moving-average window over the tilt axis.</p>
+<p>Crystal mosaic spread smears each reflection’s rocking curve; diffBloch models it as a
+<code class="docutils literal notranslate"><span class="pre">window</span></code>-wide moving average of the per-tilt intensities before the sum-over-tilts
+integration. <code class="docutils literal notranslate"><span class="pre">window</span></code> is the number of consecutive tilts averaged; it must be <code class="docutils literal notranslate"><span class="pre">&gt;=</span> <span class="pre">1</span></code> and, at
+reduction time, <code class="docutils literal notranslate"><span class="pre">&lt;=</span> <span class="pre">sampling</span></code> (the tilt count). <code class="docutils literal notranslate"><span class="pre">window</span> <span class="pre">=</span> <span class="pre">1</span></code> is the identity (no
+broadening), so composing the <code class="docutils literal notranslate"><span class="pre">mosaicity</span></code> step with it is a no-op. This is a modifier on top
+of the rocking-curve integration (<a class="reference internal" href="#diffBloch.specs.RockingCurve" title="diffBloch.specs.RockingCurve"><code class="xref py py-class docutils literal notranslate"><span class="pre">RockingCurve</span></code></a>) – it only has meaning once the tilt
+set exists, so the <code class="docutils literal notranslate"><span class="pre">mosaicity</span></code> step is ordered after <code class="docutils literal notranslate"><span class="pre">integrate_rocking_curve</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">window</span></code> is a tunable config parameter; its default of 5 is the standard moving-average width.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.Mosaicity.window">
+<span class="sig-name descname"><span class="pre">window</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5</span></span><a class="headerlink" href="#diffBloch.specs.Mosaicity.window" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">NelderMeadSearch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iterations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">60</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_tolerance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f_tolerance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">penalize_fewer_reflections</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#NelderMeadSearch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L219-L245"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Bounds for the <code class="docutils literal notranslate"><span class="pre">optimize_orientation</span></code> local Nelder-Mead search (degrees).</p>
+<p>Optimizes the three goniometer-correction angles <code class="docutils literal notranslate"><span class="pre">(alpha,</span> <span class="pre">beta,</span> <span class="pre">omega)</span></code> (see
+<a class="reference internal" href="preprocess.html#diffBloch.preprocess.orientation.goniometer_rotation" title="diffBloch.preprocess.orientation.goniometer_rotation"><code class="xref py py-func docutils literal notranslate"><span class="pre">goniometer_rotation()</span></code></a>) directly with
+<code class="docutils literal notranslate"><span class="pre">scipy.optimize.minimize(method=&quot;Nelder-Mead&quot;)</span></code>, seeded from a fixed initial simplex of edge
+length <code class="docutils literal notranslate"><span class="pre">step_size</span></code> around the seed orientation (<code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">0,</span> <span class="pre">0)</span></code>) – pick <code class="docutils literal notranslate"><span class="pre">step_size</span></code>
+comfortably larger than the expected misorientation of the seed (PETS-derived) orientation.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch.step_size">
+<span class="sig-name descname"><span class="pre">step_size</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.05</span></span><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch.step_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch.max_iterations">
+<span class="sig-name descname"><span class="pre">max_iterations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">60</span></span><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch.max_iterations" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch.x_tolerance">
+<span class="sig-name descname"><span class="pre">x_tolerance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.001</span></span><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch.x_tolerance" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch.f_tolerance">
+<span class="sig-name descname"><span class="pre">f_tolerance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.001</span></span><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch.f_tolerance" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.NelderMeadSearch.penalize_fewer_reflections">
+<span class="sig-name descname"><span class="pre">penalize_fewer_reflections</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#diffBloch.specs.NelderMeadSearch.penalize_fewer_reflections" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.OrientationSelection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">OrientationSelection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ignore_orientations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">()</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#OrientationSelection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L80-L97"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.OrientationSelection" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Original PETS rotation indices excluded from every downstream experiment stage.</p>
+<p>Indices are zero-based in the source <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> rotation order. Filtering happens before
+the train/validation split, beam construction, orientation/thickness fitting, inference, and
+structure refinement. Duplicate or negative indices are rejected so the recorded experiment
+selection has one unambiguous identity; the experiment boundary checks the data-dependent upper
+bound once the number of PETS rotations is known.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.OrientationSelection.ignore_orientations">
+<span class="sig-name descname"><span class="pre">ignore_orientations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#diffBloch.specs.OrientationSelection.ignore_orientations" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.PerTiltCoupling">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">PerTiltCoupling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2.25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sg_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#PerTiltCoupling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L341-L355"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.PerTiltCoupling" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Independent beam selection and Bloch basis for every rocking-curve tilt.</p>
+<p>For each individual sub-tilt, recompute <code class="docutils literal notranslate"><span class="pre">Sg</span></code> over the radial <code class="docutils literal notranslate"><span class="pre">g_max</span></code> pool, retain only
+<code class="docutils literal notranslate"><span class="pre">|Sg|</span> <span class="pre">&lt;</span> <span class="pre">sg_max</span></code>, and build a structure-factor gather and structure matrix for that tilt’s
+exact beam set. No beam set is shared or unioned across tilts.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.PerTiltCoupling.g_max">
+<span class="sig-name descname"><span class="pre">g_max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2.25</span></span><a class="headerlink" href="#diffBloch.specs.PerTiltCoupling.g_max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.PerTiltCoupling.sg_max">
+<span class="sig-name descname"><span class="pre">sg_max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.01</span></span><a class="headerlink" href="#diffBloch.specs.PerTiltCoupling.sg_max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.RockingCurve">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">RockingCurve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sampling</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">42</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">integration</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><span class="pre">IntegrationGeometry</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#RockingCurve"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L248-L268"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.RockingCurve" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Validated geometry for rocking-curve integration (tilts as sub-orientations).</p>
+<p>A rotation-electron-diffraction frame integrates each reflection’s intensity as the crystal
+sweeps through the Ewald sphere, so the forward model samples <code class="docutils literal notranslate"><span class="pre">sampling</span></code> slightly-tilted
+sub-orientations spanning +/- the integration <code class="docutils literal notranslate"><span class="pre">semiangle</span></code> and sums their intensities.
+<code class="docutils literal notranslate"><span class="pre">sampling</span></code> is the number of tilts; <code class="docutils literal notranslate"><span class="pre">sampling</span> <span class="pre">=</span> <span class="pre">1</span></code> is the identity (a single static solve),
+which is how the integration composes off by default. <code class="docutils literal notranslate"><span class="pre">integration</span></code> (an
+<a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><code class="xref py py-class docutils literal notranslate"><span class="pre">IntegrationGeometry</span></code></a>) supplies the tilt half-width <code class="docutils literal notranslate"><span class="pre">semiangle</span></code> – the <em>same</em> physical
+angular range as the Klar beam-selection window, shared with <a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BeamSelection</span></code></a> so the two
+cannot disagree – and the <code class="docutils literal notranslate"><span class="pre">geometry</span></code> that selects the sweep (<code class="docutils literal notranslate"><span class="pre">continuous_rotation</span></code>,
+goniometer x-axis tilts, implemented; or <code class="docutils literal notranslate"><span class="pre">precession</span></code>, a deferred cone mode).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.RockingCurve.sampling">
+<span class="sig-name descname"><span class="pre">sampling</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">42</span></span><a class="headerlink" href="#diffBloch.specs.RockingCurve.sampling" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.RockingCurve.integration">
+<span class="sig-name descname"><span class="pre">integration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><span class="pre">IntegrationGeometry</span></a></span><a class="headerlink" href="#diffBloch.specs.RockingCurve.integration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.ScoredHklSelection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">ScoredHklSelection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">klar</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><span class="pre">BeamSelection</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">g_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#ScoredHklSelection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L401-L422"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.ScoredHklSelection" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>The SCORED selector: the Klar window intersected with a scoring-resolution cap.</p>
+<p>When a fit re-derives its reflection sets per trial under a coupling policy, the <em>scored</em> set is
+not the solve union – it is the union filtered back down to the reflections actually compared
+against the observed pattern. That is two filters: the Klar relative-excitation window followed
+by a radial <code class="docutils literal notranslate"><span class="pre">|g|</span></code> cap. <code class="docutils literal notranslate"><span class="pre">klar</span></code> supplies the former (<a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BeamSelection</span></code></a> – <code class="docutils literal notranslate"><span class="pre">rsg</span></code> /
+<code class="docutils literal notranslate"><span class="pre">dsg</span></code> + the shared <a class="reference internal" href="#diffBloch.specs.IntegrationGeometry" title="diffBloch.specs.IntegrationGeometry"><code class="xref py py-class docutils literal notranslate"><span class="pre">IntegrationGeometry</span></code></a>), and <code class="docutils literal notranslate"><span class="pre">g_max</span></code> the latter. No lower-shell
+bound is modelled; add one when a dataset needs it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">g_max</span></code> is the <em>scoring</em>-resolution cap, given its own named home here so it is distinct from
+the seed beam-pool radius – the two may be numerically equal but are separate quantities. It
+must be positive.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ScoredHklSelection.klar">
+<span class="sig-name descname"><span class="pre">klar</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><span class="pre">BeamSelection</span></a></span><a class="headerlink" href="#diffBloch.specs.ScoredHklSelection.klar" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ScoredHklSelection.g_max">
+<span class="sig-name descname"><span class="pre">g_max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.6</span></span><a class="headerlink" href="#diffBloch.specs.ScoredHklSelection.g_max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.ThicknessGrid">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">ThicknessGrid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_thickness</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_thickness</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_steps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#ThicknessGrid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L445-L464"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.ThicknessGrid" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Validated grid of candidate thicknesses for <code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code> (Angstroms).</p>
+<p><code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code> evaluates <code class="docutils literal notranslate"><span class="pre">n_steps</span></code> candidates spaced evenly from <code class="docutils literal notranslate"><span class="pre">min_thickness</span></code> to
+<code class="docutils literal notranslate"><span class="pre">max_thickness</span></code> (inclusive) and keeps the lowest-wR2 one. The defaults span 5 A to 2000 A in
+100 steps.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ThicknessGrid.min_thickness">
+<span class="sig-name descname"><span class="pre">min_thickness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5.0</span></span><a class="headerlink" href="#diffBloch.specs.ThicknessGrid.min_thickness" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ThicknessGrid.max_thickness">
+<span class="sig-name descname"><span class="pre">max_thickness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2000.0</span></span><a class="headerlink" href="#diffBloch.specs.ThicknessGrid.max_thickness" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.ThicknessGrid.n_steps">
+<span class="sig-name descname"><span class="pre">n_steps</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">100</span></span><a class="headerlink" href="#diffBloch.specs.ThicknessGrid.n_steps" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.TiltIndependent">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">TiltIndependent</span></span><a class="reference internal" href="../_modules/diffBloch/specs.html#TiltIndependent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L382-L391"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.TiltIndependent" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>The default coupling: one beam set shared across every rocking-curve tilt.</p>
+<p>The baseline: the active beam set <code class="docutils literal notranslate"><span class="pre">select_beams</span></code> picks for the nominal orientation is reused,
+unchanged, at every tilt of the rocking curve. Fieldless because it carries no policy of its own
+– the shared set is already fixed on the plan; it is the identity member of the coupling
+discriminated union, chosen by construction when a run does <em>not</em> want the tilt-dependent
+per-chunk re-selection.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">UnionCoupling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fixed_n_segments</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">12</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">g_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2.25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sg_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">union_adaptive</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">union_max_new_beams_pct</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#UnionCoupling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L293-L338"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.UnionCoupling" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.</p>
+<p>The coupling policy for rocking-curve integration: it partitions the
+<code class="docutils literal notranslate"><span class="pre">B</span></code> tilts into <code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code> contiguous, disjoint chunks and gives each chunk its own
+coupled beam set: the <strong>union</strong> of the excited-beam masks at the chunk’s two boundary tilts.
+A beam is excited at a tilt when <code class="docutils literal notranslate"><span class="pre">|Sg|</span> <span class="pre">&lt;</span> <span class="pre">sg_max</span></code> <em>and</em> <code class="docutils literal notranslate"><span class="pre">|g|</span> <span class="pre">&lt;</span> <span class="pre">g_max</span></code> (a hard
+excitation-error + coupling-radius cutoff, distinct from the Klar relative filter of
+<a class="reference internal" href="#diffBloch.specs.BeamSelection" title="diffBloch.specs.BeamSelection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BeamSelection</span></code></a>).
+Because a sharp reflection drifts through the Ewald sphere as the crystal rocks, the excited set
+genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
+beams a later tilt needs. The per-chunk union is the compromise this policy strikes. Each
+reflection’s full rocking curve is later reassembled across chunks before the mosaicity
+reduction (the window spans more tilts than one chunk holds).</p>
+<p><code class="docutils literal notranslate"><span class="pre">g_max</span></code> is the coupling radius: a beam couples when <code class="docutils literal notranslate"><span class="pre">|g|</span> <span class="pre">&lt;</span> <span class="pre">g_max</span></code>. The cutoff is the
+physical solve radius, with no additional margin.
+<code class="docutils literal notranslate"><span class="pre">sg_max</span></code> is the excitation-error cutoff. The mean-inner-potential <code class="docutils literal notranslate"><span class="pre">u0</span></code> and beam energy are
+experiment quantities threaded in at build time, not policy knobs.</p>
+<p><code class="docutils literal notranslate"><span class="pre">union_adaptive</span></code> chooses how the chunk boundaries are placed. <code class="docutils literal notranslate"><span class="pre">False</span></code> uses
+<code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code> fixed even-sized chunks. <code class="docutils literal notranslate"><span class="pre">True</span></code> places boundaries by recursive bisection:
+a tilt range is split further only while its midpoint adds more than <code class="docutils literal notranslate"><span class="pre">union_max_new_beams_pct</span></code>
+of the boundary union’s beams (else the range is frozen as one chunk), so segments are dense
+where the excited set drifts and sparse where it is stable. In the adaptive mode
+<code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code> is ignored.</p>
+<p>The defaults suit the standard rocking-curve recipe (12 fixed even-sized chunks, fixed mode).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling.fixed_n_segments">
+<span class="sig-name descname"><span class="pre">fixed_n_segments</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">12</span></span><a class="headerlink" href="#diffBloch.specs.UnionCoupling.fixed_n_segments" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling.g_max">
+<span class="sig-name descname"><span class="pre">g_max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2.25</span></span><a class="headerlink" href="#diffBloch.specs.UnionCoupling.g_max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling.sg_max">
+<span class="sig-name descname"><span class="pre">sg_max</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.01</span></span><a class="headerlink" href="#diffBloch.specs.UnionCoupling.sg_max" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling.union_adaptive">
+<span class="sig-name descname"><span class="pre">union_adaptive</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#diffBloch.specs.UnionCoupling.union_adaptive" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.UnionCoupling.union_max_new_beams_pct">
+<span class="sig-name descname"><span class="pre">union_max_new_beams_pct</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.01</span></span><a class="headerlink" href="#diffBloch.specs.UnionCoupling.union_max_new_beams_pct" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.specs.TrialCoupling">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">TrialCoupling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.UnionCoupling" title="diffBloch.specs.UnionCoupling"><span class="pre">UnionCoupling</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling" title="diffBloch.specs.PerTiltCoupling"><span class="pre">PerTiltCoupling</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">scored</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.ScoredHklSelection" title="diffBloch.specs.ScoredHklSelection"><span class="pre">ScoredHklSelection</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/specs.html#TrialCoupling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L425-L442"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.TrialCoupling" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Per-trial re-derivation of both reflection sets during an orientation fit.</p>
+<p>The orientation objective under this coupling re-runs the whole forward at every
+trial orientation: it re-couples the SOLVE union (the excitation coupling of <code class="docutils literal notranslate"><span class="pre">policy</span></code>) <em>and</em>
+re-selects the SCORED set (<code class="docutils literal notranslate"><span class="pre">scored</span></code>) from that fresh union, so both sets track the trial
+orientation rather than staying pinned to the seed. Passed to
+<a class="reference internal" href="preprocess.html#diffBloch.preprocess.steps.optimize_orientation.optimize_orientation" title="diffBloch.preprocess.steps.optimize_orientation.optimize_orientation"><code class="xref py py-func docutils literal notranslate"><span class="pre">optimize_orientation()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">coupling=...</span></code>) to opt a
+fit into that behaviour; its absence (<code class="docutils literal notranslate"><span class="pre">None</span></code>) keeps the tilt-independent fit (one fixed beam
+set across the search).</p>
+<p>Bundling both selectors makes the invalid state – coupling active but a selector missing –
+unrepresentable, so the fit takes one optional parameter with no cross-parameter guard.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.TrialCoupling.policy">
+<span class="sig-name descname"><span class="pre">policy</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.UnionCoupling" title="diffBloch.specs.UnionCoupling"><span class="pre">UnionCoupling</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling" title="diffBloch.specs.PerTiltCoupling"><span class="pre">PerTiltCoupling</span></a></span><a class="headerlink" href="#diffBloch.specs.TrialCoupling.policy" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.specs.TrialCoupling.scored">
+<span class="sig-name descname"><span class="pre">scored</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.ScoredHklSelection" title="diffBloch.specs.ScoredHklSelection"><span class="pre">ScoredHklSelection</span></a></span><a class="headerlink" href="#diffBloch.specs.TrialCoupling.scored" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.specs.assert_grid_covers_coupling">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.specs.</span></span><span class="sig-name descname"><span class="pre">assert_grid_covers_coupling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.specs.UnionCoupling" title="diffBloch.specs.UnionCoupling"><span class="pre">UnionCoupling</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling" title="diffBloch.specs.PerTiltCoupling"><span class="pre">PerTiltCoupling</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_g_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/specs.html#assert_grid_covers_coupling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/specs.py#L358-L379"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.specs.assert_grid_covers_coupling" title="Link to this definition">¶</a></dt>
+<dd><p>Guarantee the <code class="docutils literal notranslate"><span class="pre">|g|</span> <span class="pre">&lt;=</span> <span class="pre">grid_g_max</span></code> grid sphere spans every coupled beam difference (O(1)).</p>
+<p>A coupled solve union admits only beams with <code class="docutils literal notranslate"><span class="pre">|g|</span> <span class="pre">&lt;</span> <span class="pre">g_max</span></code>, so any pairwise difference is
+<code class="docutils literal notranslate"><span class="pre">|g_j</span> <span class="pre">-</span> <span class="pre">g_i|</span> <span class="pre">&lt;</span> <span class="pre">2</span> <span class="pre">*</span> <span class="pre">g_max</span></code> (triangle inequality). When <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">g_max</span> <span class="pre">&lt;=</span> <span class="pre">grid_g_max</span></code> the dense
+integer <code class="docutils literal notranslate"><span class="pre">structure_factor_hkl</span></code> sphere therefore contains every difference, so the per-segment
+gathers
+cannot address a reflection outside it – exactly the condition that makes
+<a class="reference internal" href="core.html#diffBloch.core.dynamical.build_structure_factor_gather" title="diffBloch.core.dynamical.build_structure_factor_gather"><code class="xref py py-func docutils literal notranslate"><span class="pre">build_structure_factor_gather()</span></code></a> <code class="docutils literal notranslate"><span class="pre">validate=False</span></code> sound on the
+coupled fit path (it closes the silent-zero coverage gap the O(N^2) integrity checks otherwise
+catch). The radius is orientation-independent, so this one scalar comparison covers every trial
+of every rotation – checked at fit setup, failing loudly before any solve rather than silently
+gathering zeros deep in the search. The default recipe derives the grid as <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">g_max</span></code>, so it
+only bites a programmatic caller that hand-builds a grid smaller than its coupling radius needs.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="engine.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Engine</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="params.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Params</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, diffBloch contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Specs</a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.Absorption"><code class="docutils literal notranslate"><span class="pre">Absorption</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.Absorption.enabled"><code class="docutils literal notranslate"><span class="pre">Absorption.enabled</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.enabled"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.enabled</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.num_samples"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.num_samples</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.sample_thickness"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.sample_thickness</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.form"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.form</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.min_thickness"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.min_thickness</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.max_thickness"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.max_thickness</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ApparentThicknessNetwork.init_seed"><code class="docutils literal notranslate"><span class="pre">ApparentThicknessNetwork.init_seed</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.BeamSelection"><code class="docutils literal notranslate"><span class="pre">BeamSelection</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.BeamSelection.rsg"><code class="docutils literal notranslate"><span class="pre">BeamSelection.rsg</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.BeamSelection.dsg"><code class="docutils literal notranslate"><span class="pre">BeamSelection.dsg</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.BeamSelection.integration"><code class="docutils literal notranslate"><span class="pre">BeamSelection.integration</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTest"><code class="docutils literal notranslate"><span class="pre">ConvergenceTest</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTest.g_max_step"><code class="docutils literal notranslate"><span class="pre">ConvergenceTest.g_max_step</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTest.sg_max_step"><code class="docutils literal notranslate"><span class="pre">ConvergenceTest.sg_max_step</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTest.tilt_steps_step"><code class="docutils literal notranslate"><span class="pre">ConvergenceTest.tilt_steps_step</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTest.num_passes"><code class="docutils literal notranslate"><span class="pre">ConvergenceTest.num_passes</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTolerance"><code class="docutils literal notranslate"><span class="pre">ConvergenceTolerance</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTolerance.r_factor_threshold"><code class="docutils literal notranslate"><span class="pre">ConvergenceTolerance.r_factor_threshold</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ConvergenceTolerance.max_iterations"><code class="docutils literal notranslate"><span class="pre">ConvergenceTolerance.max_iterations</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.FrameSelection"><code class="docutils literal notranslate"><span class="pre">FrameSelection</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.FrameSelection.min_observed"><code class="docutils literal notranslate"><span class="pre">FrameSelection.min_observed</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry"><code class="docutils literal notranslate"><span class="pre">IntegrationGeometry</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry.semiangle"><code class="docutils literal notranslate"><span class="pre">IntegrationGeometry.semiangle</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.IntegrationGeometry.geometry"><code class="docutils literal notranslate"><span class="pre">IntegrationGeometry.geometry</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.Mosaicity"><code class="docutils literal notranslate"><span class="pre">Mosaicity</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.Mosaicity.window"><code class="docutils literal notranslate"><span class="pre">Mosaicity.window</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch.step_size"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch.step_size</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch.max_iterations"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch.max_iterations</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch.x_tolerance"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch.x_tolerance</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch.f_tolerance"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch.f_tolerance</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.NelderMeadSearch.penalize_fewer_reflections"><code class="docutils literal notranslate"><span class="pre">NelderMeadSearch.penalize_fewer_reflections</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.OrientationSelection"><code class="docutils literal notranslate"><span class="pre">OrientationSelection</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.OrientationSelection.ignore_orientations"><code class="docutils literal notranslate"><span class="pre">OrientationSelection.ignore_orientations</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling"><code class="docutils literal notranslate"><span class="pre">PerTiltCoupling</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling.g_max"><code class="docutils literal notranslate"><span class="pre">PerTiltCoupling.g_max</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.PerTiltCoupling.sg_max"><code class="docutils literal notranslate"><span class="pre">PerTiltCoupling.sg_max</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.RockingCurve"><code class="docutils literal notranslate"><span class="pre">RockingCurve</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.RockingCurve.sampling"><code class="docutils literal notranslate"><span class="pre">RockingCurve.sampling</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.RockingCurve.integration"><code class="docutils literal notranslate"><span class="pre">RockingCurve.integration</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.ScoredHklSelection"><code class="docutils literal notranslate"><span class="pre">ScoredHklSelection</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.ScoredHklSelection.klar"><code class="docutils literal notranslate"><span class="pre">ScoredHklSelection.klar</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ScoredHklSelection.g_max"><code class="docutils literal notranslate"><span class="pre">ScoredHklSelection.g_max</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.ThicknessGrid"><code class="docutils literal notranslate"><span class="pre">ThicknessGrid</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.ThicknessGrid.min_thickness"><code class="docutils literal notranslate"><span class="pre">ThicknessGrid.min_thickness</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ThicknessGrid.max_thickness"><code class="docutils literal notranslate"><span class="pre">ThicknessGrid.max_thickness</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.ThicknessGrid.n_steps"><code class="docutils literal notranslate"><span class="pre">ThicknessGrid.n_steps</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.TiltIndependent"><code class="docutils literal notranslate"><span class="pre">TiltIndependent</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling"><code class="docutils literal notranslate"><span class="pre">UnionCoupling</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling.fixed_n_segments"><code class="docutils literal notranslate"><span class="pre">UnionCoupling.fixed_n_segments</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling.g_max"><code class="docutils literal notranslate"><span class="pre">UnionCoupling.g_max</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling.sg_max"><code class="docutils literal notranslate"><span class="pre">UnionCoupling.sg_max</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling.union_adaptive"><code class="docutils literal notranslate"><span class="pre">UnionCoupling.union_adaptive</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.UnionCoupling.union_max_new_beams_pct"><code class="docutils literal notranslate"><span class="pre">UnionCoupling.union_max_new_beams_pct</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.TrialCoupling"><code class="docutils literal notranslate"><span class="pre">TrialCoupling</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.specs.TrialCoupling.policy"><code class="docutils literal notranslate"><span class="pre">TrialCoupling.policy</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.specs.TrialCoupling.scored"><code class="docutils literal notranslate"><span class="pre">TrialCoupling.scored</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.specs.assert_grid_covers_coupling"><code class="docutils literal notranslate"><span class="pre">assert_grid_covers_coupling()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/tabs.js?v=3ee01567"></script>
+    </body>
+</html>

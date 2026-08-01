@@ -1,6 +1,5 @@
 """Output-writing behavior for the app-level refine path."""
 
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -100,7 +99,7 @@ def _refinement_result_for(
     return cfg, refinement, result
 
 
-def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path: Path) -> None:
+def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
 
     written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
@@ -108,7 +107,6 @@ def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path:
     assert set(written.artifacts) == {
         "refined_structure",
         "refined_parameters",
-        "summary",
         "plan",
         "plan_lock",
     }
@@ -117,12 +115,10 @@ def test_write_refinement_outputs_persists_best_cif_params_and_summary(tmp_path:
     assert np.allclose(refined.occupancies, [0.5, 0.5])
     assert np.isfinite(refined.adp.u_iso[0])
     assert np.all(np.isfinite(refined.adp.uij_cif[1]))
-    with np.load(tmp_path / "refined_parameters.npz") as params_file:
+    with np.load(tmp_path / "reproducibility" / "refined_parameters.npz") as params_file:
         assert params_file["asu_positions"].shape == (2, 3)
         assert params_file["occupancy_raw"].shape == (2,)
-    summary = json.loads((tmp_path / "refinement_summary.json").read_text())
-    assert summary["best_epoch"] == 0
-    assert summary["total_hkl"] == "8 / 12"
+    assert not (tmp_path / "refinement_summary.json").exists()  # superseded by the .txt report
 
 
 def test_write_refinement_outputs_skips_the_lock_without_a_plan_lock(tmp_path: Path) -> None:
@@ -131,21 +127,22 @@ def test_write_refinement_outputs_skips_the_lock_without_a_plan_lock(tmp_path: P
     written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
 
     assert "refinement_lock" not in written.artifacts
-    assert not (tmp_path / "refinement.lock").exists()
+    assert not (tmp_path / "reproducibility" / "refinement.lock").exists()
 
 
 def test_write_refinement_outputs_writes_a_refinement_lock_beside_an_existing_plan_lock(
     tmp_path: Path,
 ) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
-    (tmp_path / "plan.lock").write_text("fake-plan-lock-bytes")
+    (tmp_path / "reproducibility").mkdir()
+    (tmp_path / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
 
     written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
 
     assert "refinement_lock" in written.artifacts
-    lock = read_refinement_lock(tmp_path / "refinement.lock")
+    lock = read_refinement_lock(tmp_path / "reproducibility" / "refinement.lock")
     assert lock.refined_structure.path == "refined_structure.cif"
-    assert lock.refined_parameters.path == "refined_parameters.npz"
+    assert lock.refined_parameters.path == "reproducibility/refined_parameters.npz"
 
 
 def _built_plan_matching(cell: np.ndarray) -> Plan:
@@ -290,35 +287,6 @@ def test_write_refinement_report_omits_the_validation_section_when_split_is_off(
     assert "Validation set" not in report_path.read_text()
 
 
-def test_write_refinement_outputs_adds_a_validation_block_to_the_summary(tmp_path: Path) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    plan = _built_plan_with_two_rotations(np.eye(3, dtype=np.float64) * 5.0)
-    engine = build_engine(plan, refinement)
-
-    _write_refinement_outputs(
-        tmp_path,
-        cfg,
-        refinement,
-        result,
-        engine=engine,
-        validation_rotation_indices=frozenset({1}),
-    )
-
-    summary = json.loads((tmp_path / "refinement_summary.json").read_text())
-    assert summary["validation"]["n_rotations"] == 1
-
-
-def test_write_refinement_outputs_omits_the_validation_block_when_split_is_off(
-    tmp_path: Path,
-) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-
-    summary = json.loads((tmp_path / "refinement_summary.json").read_text())
-    assert "validation" not in summary
-
-
 def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -332,11 +300,11 @@ def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
     monkeypatch.chdir(tmp_path)
     relative_root = Path(".")
     cfg, refinement, result = _refinement_result_for(relative_root)
-    (relative_root / "plan.lock").write_text("fake-plan-lock-bytes")
+    (relative_root / "reproducibility").mkdir()
+    (relative_root / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
 
     written = _write_refinement_outputs(relative_root, cfg, refinement, result)
 
     assert "refinement_lock" in written.artifacts
-    assert read_refinement_lock(relative_root / "refinement.lock").refined_structure.path == (
-        "refined_structure.cif"
-    )
+    lock_path = relative_root / "reproducibility" / "refinement.lock"
+    assert read_refinement_lock(lock_path).refined_structure.path == "refined_structure.cif"

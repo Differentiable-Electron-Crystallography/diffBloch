@@ -1,0 +1,1114 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="IO" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/api/io.html" />
+<meta property="og:site_name" content="diffBloch" />
+<meta property="og:description" content="Input readers and validated records for experiment boundaries. Validated IO records. The core simulation code should receive arrays with stable shapes and units, not parser objects. These records a..." />
+<meta property="og:image:width" content="1146" />
+<meta property="og:image:height" content="600" />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_api_io_5b220397.png" />
+<meta property="og:image:alt" content="Input readers and validated records for experiment boundaries. Validated IO records. The core simulation code should receive arrays with stable shapes and units, not parser objects. These records a..." />
+<meta name="description" content="Input readers and validated records for experiment boundaries. Validated IO records. The core simulation code should receive arrays with stable shapes and units, not parser objects. These records a..." />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Core" href="core.html"><link rel="prev" title="Config And Manifests" href="config.html">
+        <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/api/io.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>IO - diffBloch</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">diffBloch</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">diffBloch</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inputs.html">Inputs and experiment directories</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../hyperparameter-selection.html">Hyperparameter selection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reproducibility.html">Reproducibility and checkpoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../refinement.html">Refinement</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../observability-guide.html">Observability and loggers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="config.html">Config And Manifests</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="core.html">Core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="params.html">Params</a></li>
+<li class="toctree-l1"><a class="reference internal" href="specs.html">Specs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="engine.html">Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="preprocess.html">Preprocess</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability.html">Observability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="app.html">App</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/api/io.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-diffBloch.io">
+<span id="io"></span><h1>IO<a class="headerlink" href="#module-diffBloch.io" title="Link to this heading">¶</a></h1>
+<p>Input readers and validated records for experiment boundaries.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">AdpRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Uiso'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'Uani'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'missing'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_cif</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_cif_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#AdpRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L46-L89"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.AdpRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Atomic displacement parameters, preserving CIF Uiso/Uani semantics and SUs.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Uiso'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'Uani'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'missing'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.kind" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.u_iso">
+<span class="sig-name descname"><span class="pre">u_iso</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.u_iso" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.u_iso_su">
+<span class="sig-name descname"><span class="pre">u_iso_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.u_iso_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.uij_cif">
+<span class="sig-name descname"><span class="pre">uij_cif</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.uij_cif" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.AdpRecord.uij_cif_su">
+<span class="sig-name descname"><span class="pre">uij_cif_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.AdpRecord.uij_cif_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">ExperimentalRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit_cell</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wavelength</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">ub_matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zone_axis_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zone_axes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precession_angles</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alphas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">betas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">omegas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scales</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hkl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intensities</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigmas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reflection_zone_axis_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#ExperimentalRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L189-L299"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.ExperimentalRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Experimental PETS reflection data keyed by rotation/zone-axis id.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.source_path">
+<span class="sig-name descname"><span class="pre">source_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.source_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.unit_cell">
+<span class="sig-name descname"><span class="pre">unit_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.unit_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.cell_parameters">
+<span class="sig-name descname"><span class="pre">cell_parameters</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.cell_parameters" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.cell_parameters_su">
+<span class="sig-name descname"><span class="pre">cell_parameters_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.cell_parameters_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.wavelength">
+<span class="sig-name descname"><span class="pre">wavelength</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.wavelength" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.ub_matrix">
+<span class="sig-name descname"><span class="pre">ub_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.ub_matrix" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.zone_axis_ids">
+<span class="sig-name descname"><span class="pre">zone_axis_ids</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.zone_axis_ids" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.zone_axes">
+<span class="sig-name descname"><span class="pre">zone_axes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.zone_axes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.precession_angles">
+<span class="sig-name descname"><span class="pre">precession_angles</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.precession_angles" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.alphas">
+<span class="sig-name descname"><span class="pre">alphas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.alphas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.betas">
+<span class="sig-name descname"><span class="pre">betas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.betas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.omegas">
+<span class="sig-name descname"><span class="pre">omegas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.omegas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.scales">
+<span class="sig-name descname"><span class="pre">scales</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.scales" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.hkl">
+<span class="sig-name descname"><span class="pre">hkl</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.hkl" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.intensities">
+<span class="sig-name descname"><span class="pre">intensities</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.intensities" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.sigmas">
+<span class="sig-name descname"><span class="pre">sigmas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.sigmas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.reflection_zone_axis_ids">
+<span class="sig-name descname"><span class="pre">reflection_zone_axis_ids</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.reflection_zone_axis_ids" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.integration_semiangle">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">integration_semiangle</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.integration_semiangle" title="Link to this definition">¶</a></dt>
+<dd><p>Angular integration semi-angle recorded consistently across the PETS virtual frames.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.n_rotations">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_rotations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.n_rotations" title="Link to this definition">¶</a></dt>
+<dd><p>Number of PETS zone-axis rows.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.ExperimentalRecord.n_reflections">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_reflections</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.ExperimentalRecord.n_reflections" title="Link to this definition">¶</a></dt>
+<dd><p>Number of measured reflections.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">StructureRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit_cell</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spacegroup_hm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">spacegroup_number</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symops_R</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symops_t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numbers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frac_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frac_positions_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.io.record.AdpRecord" title="diffBloch.io.record.AdpRecord"><span class="pre">AdpRecord</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#StructureRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L92-L186"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.StructureRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Asymmetric-unit structure data in CIF convention.</p>
+<p>Nominal arrays feed downstream kernels. The corresponding <code class="docutils literal notranslate"><span class="pre">*_su</span></code> arrays preserve CIF
+standard uncertainties as provenance metadata for reporting or later optional penalties.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.source_path">
+<span class="sig-name descname"><span class="pre">source_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.source_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.unit_cell">
+<span class="sig-name descname"><span class="pre">unit_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.unit_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.cell_parameters">
+<span class="sig-name descname"><span class="pre">cell_parameters</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.cell_parameters" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.cell_parameters_su">
+<span class="sig-name descname"><span class="pre">cell_parameters_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.cell_parameters_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.spacegroup_hm">
+<span class="sig-name descname"><span class="pre">spacegroup_hm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.spacegroup_hm" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.spacegroup_number">
+<span class="sig-name descname"><span class="pre">spacegroup_number</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.spacegroup_number" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.symops_R">
+<span class="sig-name descname"><span class="pre">symops_R</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.symops_R" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.symops_t">
+<span class="sig-name descname"><span class="pre">symops_t</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.symops_t" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.labels">
+<span class="sig-name descname"><span class="pre">labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.labels" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.numbers">
+<span class="sig-name descname"><span class="pre">numbers</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.numbers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.frac_positions">
+<span class="sig-name descname"><span class="pre">frac_positions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.frac_positions" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.frac_positions_su">
+<span class="sig-name descname"><span class="pre">frac_positions_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.frac_positions_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.occupancies">
+<span class="sig-name descname"><span class="pre">occupancies</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.occupancies" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.occupancies_su">
+<span class="sig-name descname"><span class="pre">occupancies_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.occupancies_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.adp">
+<span class="sig-name descname"><span class="pre">adp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.io.AdpRecord" title="diffBloch.io.AdpRecord"><span class="pre">AdpRecord</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.adp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.n_atoms">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_atoms</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.n_atoms" title="Link to this definition">¶</a></dt>
+<dd><p>Number of asymmetric-unit atom sites.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.n_symops">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_symops</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.StructureRecord.n_symops" title="Link to this definition">¶</a></dt>
+<dd><p>Number of symmetry operations provided by the source file.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.StructureRecord.uij_cif">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">uij_cif</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.StructureRecord.uij_cif" title="Link to this definition">¶</a></dt>
+<dd><p>Anisotropic ADP matrices; non-Uani rows are NaN.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.parse_experimental_block">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">parse_experimental_block</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Block</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord" title="diffBloch.io.record.ExperimentalRecord"><span class="pre">ExperimentalRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/pets.html#parse_experimental_block"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/pets.py#L23-L92"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.parse_experimental_block" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a Gemmi PETS CIF-like block into a validated <a class="reference internal" href="#diffBloch.io.ExperimentalRecord" title="diffBloch.io.ExperimentalRecord"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.parse_cif_number">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">parse_cif_number</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Any" title="(in Python v3.14)"><span class="pre">Any</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">CifNumber</span></span></span><a class="reference internal" href="../_modules/diffBloch/io/_cifio.html#parse_cif_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/_cifio.py#L31-L52"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.parse_cif_number" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a CIF number and optional standard uncertainty.</p>
+<p>A parenthesized SU is expressed in units of the final significant digit of the mantissa, so
+<code class="docutils literal notranslate"><span class="pre">0.0144(8)</span></code> has SU <code class="docutils literal notranslate"><span class="pre">0.0008</span></code> and <code class="docutils literal notranslate"><span class="pre">42(3)</span></code> has SU <code class="docutils literal notranslate"><span class="pre">3</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.parse_structure_block">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">parse_structure_block</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Block</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_hydrogens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.StructureRecord" title="diffBloch.io.record.StructureRecord"><span class="pre">StructureRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/cif.html#parse_structure_block"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/cif.py#L66-L106"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.parse_structure_block" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a Gemmi CIF block into a validated <a class="reference internal" href="#diffBloch.io.StructureRecord" title="diffBloch.io.StructureRecord"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructureRecord</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>block</strong> – Parsed Gemmi CIF block.</p></li>
+<li><p><strong>source_path</strong> – Optional source path to retain in the record.</p></li>
+<li><p><strong>load_hydrogens</strong> – Include hydrogen atom sites when present. The default mirrors electron
+diffraction refinement practice where H sites are usually excluded from this boundary.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.read_experimental_data">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">read_experimental_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord" title="diffBloch.io.record.ExperimentalRecord"><span class="pre">ExperimentalRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/pets.html#read_experimental_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/pets.py#L16-L20"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.read_experimental_data" title="Link to this definition">¶</a></dt>
+<dd><p>Read a PETS <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file into a validated <a class="reference internal" href="#diffBloch.io.ExperimentalRecord" title="diffBloch.io.ExperimentalRecord"><code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.read_structure">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">read_structure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_hydrogens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.StructureRecord" title="diffBloch.io.record.StructureRecord"><span class="pre">StructureRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/cif.html#read_structure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/cif.py#L53-L63"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.read_structure" title="Link to this definition">¶</a></dt>
+<dd><p>Read a structure CIF into a validated <a class="reference internal" href="#diffBloch.io.StructureRecord" title="diffBloch.io.StructureRecord"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructureRecord</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – CIF path.</p></li>
+<li><p><strong>load_hydrogens</strong> – Include hydrogen atom sites when present. The default mirrors electron
+diffraction refinement practice where H sites are usually excluded from this boundary.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.symmetry_constraints">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.</span></span><span class="sig-name descname"><span class="pre">symmetry_constraints</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">record</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.io.record.StructureRecord" title="diffBloch.io.record.StructureRecord"><span class="pre">StructureRecord</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">symprec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-3</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">SymmetryConstraints</span></span></span><a class="reference internal" href="../_modules/diffBloch/io/symmetry_setup.html#symmetry_constraints"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/symmetry_setup.py#L45-L77"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.symmetry_constraints" title="Link to this definition">¶</a></dt>
+<dd><p>Return special-position constraint data for a validated structure record.</p>
+<p>For each asymmetric-unit atom the site stabilizer <code class="docutils literal notranslate"><span class="pre">S</span> <span class="pre">=</span> <span class="pre">{(R,</span> <span class="pre">t)</span> <span class="pre">:</span> <span class="pre">R</span> <span class="pre">&#64;</span> <span class="pre">x0</span> <span class="pre">+</span> <span class="pre">t</span> <span class="pre">==</span> <span class="pre">x0</span> <span class="pre">(mod</span> <span class="pre">1)}</span></code> is
+collected from the record’s symmetry operators, and the projector onto the allowed-displacement
+subspace is the Reynolds average <code class="docutils literal notranslate"><span class="pre">P</span> <span class="pre">=</span> <span class="pre">(1/|S|)</span> <span class="pre">*</span> <span class="pre">sum_{R</span> <span class="pre">in</span> <span class="pre">S}</span> <span class="pre">R</span></code> with offset <code class="docutils literal notranslate"><span class="pre">(I</span> <span class="pre">-</span> <span class="pre">P)</span> <span class="pre">&#64;</span> <span class="pre">x0</span></code>.
+<code class="docutils literal notranslate"><span class="pre">P</span></code> is idempotent and its image is exactly the free degrees of freedom, so
+<code class="docutils literal notranslate"><span class="pre">P</span> <span class="pre">&#64;</span> <span class="pre">raw</span> <span class="pre">+</span> <span class="pre">offset</span></code> keeps the atom on its site for any <code class="docutils literal notranslate"><span class="pre">raw</span></code>. The projector is built from the
+record’s symmetry operators (no diffpy); the ADP (<code class="docutils literal notranslate"><span class="pre">Uij</span></code>) equalities are extracted from diffpy
+<code class="docutils literal notranslate"><span class="pre">SymmetryConstraints.Ueqns</span></code> keyed on the record’s H-M symbol.</p>
+</dd></dl>
+
+<p id="module-diffBloch.io.record">Validated IO records.</p>
+<p>The core simulation code should receive arrays with stable shapes and units, not parser objects.
+These records are the trust boundary between file formats and differentiable kernels.</p>
+<p>Record classes are pydantic models when they cross an IO/config boundary and need validation.
+Parser-local helpers can stay as lighter Python value objects, but public records should keep this
+validated boundary shape.</p>
+<p>Standard uncertainties are stored as shape-aligned <code class="docutils literal notranslate"><span class="pre">*_su</span></code> arrays next to their nominal values,
+with <code class="docutils literal notranslate"><span class="pre">NaN</span></code> meaning absent from the source file. Keep that parallel-array convention until an
+uncertainty group needs behavior beyond validation, covariance storage, or multiple competing
+representations. ADPs already use a grouped record because CIF Uiso, Uani, and missing ADPs have
+different semantics.</p>
+<p><code class="docutils literal notranslate"><span class="pre">uij_cif</span></code> names the CIF-source ADP convention at the IO boundary. Constrained tensors currently
+reuse that field name for ASU ADPs produced from raw parameters; downstream scattering code must
+explicitly convert to reciprocal-space <code class="docutils literal notranslate"><span class="pre">U*</span></code> if that is the representation it consumes.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.record.</span></span><span class="sig-name descname"><span class="pre">AdpRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Uiso'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'Uani'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'missing'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_cif</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_cif_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#AdpRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L46-L89"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.record.AdpRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Atomic displacement parameters, preserving CIF Uiso/Uani semantics and SUs.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Uiso'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'Uani'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'missing'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.kind" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.u_iso">
+<span class="sig-name descname"><span class="pre">u_iso</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.u_iso" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.u_iso_su">
+<span class="sig-name descname"><span class="pre">u_iso_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.u_iso_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.uij_cif">
+<span class="sig-name descname"><span class="pre">uij_cif</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.uij_cif" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.AdpRecord.uij_cif_su">
+<span class="sig-name descname"><span class="pre">uij_cif_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.AdpRecord.uij_cif_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.record.</span></span><span class="sig-name descname"><span class="pre">StructureRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit_cell</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spacegroup_hm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">spacegroup_number</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symops_R</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symops_t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numbers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frac_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frac_positions_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.io.record.AdpRecord" title="diffBloch.io.record.AdpRecord"><span class="pre">AdpRecord</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#StructureRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L92-L186"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.record.StructureRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Asymmetric-unit structure data in CIF convention.</p>
+<p>Nominal arrays feed downstream kernels. The corresponding <code class="docutils literal notranslate"><span class="pre">*_su</span></code> arrays preserve CIF
+standard uncertainties as provenance metadata for reporting or later optional penalties.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.source_path">
+<span class="sig-name descname"><span class="pre">source_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.source_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.unit_cell">
+<span class="sig-name descname"><span class="pre">unit_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.unit_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.cell_parameters">
+<span class="sig-name descname"><span class="pre">cell_parameters</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.cell_parameters" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.cell_parameters_su">
+<span class="sig-name descname"><span class="pre">cell_parameters_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.cell_parameters_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.spacegroup_hm">
+<span class="sig-name descname"><span class="pre">spacegroup_hm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.spacegroup_hm" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.spacegroup_number">
+<span class="sig-name descname"><span class="pre">spacegroup_number</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.spacegroup_number" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.symops_R">
+<span class="sig-name descname"><span class="pre">symops_R</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.symops_R" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.symops_t">
+<span class="sig-name descname"><span class="pre">symops_t</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.symops_t" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.labels">
+<span class="sig-name descname"><span class="pre">labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.labels" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.numbers">
+<span class="sig-name descname"><span class="pre">numbers</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.numbers" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.frac_positions">
+<span class="sig-name descname"><span class="pre">frac_positions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.frac_positions" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.frac_positions_su">
+<span class="sig-name descname"><span class="pre">frac_positions_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.frac_positions_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.occupancies">
+<span class="sig-name descname"><span class="pre">occupancies</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.occupancies" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.occupancies_su">
+<span class="sig-name descname"><span class="pre">occupancies_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.occupancies_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.adp">
+<span class="sig-name descname"><span class="pre">adp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#diffBloch.io.record.AdpRecord" title="diffBloch.io.record.AdpRecord"><span class="pre">AdpRecord</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.adp" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.n_atoms">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_atoms</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.n_atoms" title="Link to this definition">¶</a></dt>
+<dd><p>Number of asymmetric-unit atom sites.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.n_symops">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_symops</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.n_symops" title="Link to this definition">¶</a></dt>
+<dd><p>Number of symmetry operations provided by the source file.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.StructureRecord.uij_cif">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">uij_cif</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.StructureRecord.uij_cif" title="Link to this definition">¶</a></dt>
+<dd><p>Anisotropic ADP matrices; non-Uani rows are NaN.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.io.record.</span></span><span class="sig-name descname"><span class="pre">ExperimentalRecord</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit_cell</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_parameters_su</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wavelength</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">ub_matrix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zone_axis_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zone_axes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precession_angles</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alphas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">betas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">omegas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scales</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hkl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intensities</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigmas</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">FloatArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reflection_zone_axis_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">IntArray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/io/record.html#ExperimentalRecord"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/record.py#L189-L299"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://pydantic.dev/docs/validation/latest/api/pydantic/base_model/#pydantic.BaseModel" title="(in Pydantic v0.0.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Experimental PETS reflection data keyed by rotation/zone-axis id.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'arbitrary_types_allowed':</span> <span class="pre">True,</span> <span class="pre">'frozen':</span> <span class="pre">True}</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.source_path">
+<span class="sig-name descname"><span class="pre">source_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.source_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.unit_cell">
+<span class="sig-name descname"><span class="pre">unit_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.unit_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.cell_parameters">
+<span class="sig-name descname"><span class="pre">cell_parameters</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.cell_parameters" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.cell_parameters_su">
+<span class="sig-name descname"><span class="pre">cell_parameters_su</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.cell_parameters_su" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.wavelength">
+<span class="sig-name descname"><span class="pre">wavelength</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.wavelength" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.ub_matrix">
+<span class="sig-name descname"><span class="pre">ub_matrix</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.ub_matrix" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.zone_axis_ids">
+<span class="sig-name descname"><span class="pre">zone_axis_ids</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.zone_axis_ids" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.zone_axes">
+<span class="sig-name descname"><span class="pre">zone_axes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.zone_axes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.precession_angles">
+<span class="sig-name descname"><span class="pre">precession_angles</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.precession_angles" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.alphas">
+<span class="sig-name descname"><span class="pre">alphas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.alphas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.betas">
+<span class="sig-name descname"><span class="pre">betas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.betas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.omegas">
+<span class="sig-name descname"><span class="pre">omegas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.omegas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.scales">
+<span class="sig-name descname"><span class="pre">scales</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.scales" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.hkl">
+<span class="sig-name descname"><span class="pre">hkl</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.hkl" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.intensities">
+<span class="sig-name descname"><span class="pre">intensities</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.intensities" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.sigmas">
+<span class="sig-name descname"><span class="pre">sigmas</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FloatArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.sigmas" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.reflection_zone_axis_ids">
+<span class="sig-name descname"><span class="pre">reflection_zone_axis_ids</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">IntArray</span></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.reflection_zone_axis_ids" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.integration_semiangle">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">integration_semiangle</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.integration_semiangle" title="Link to this definition">¶</a></dt>
+<dd><p>Angular integration semi-angle recorded consistently across the PETS virtual frames.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.n_rotations">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_rotations</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.n_rotations" title="Link to this definition">¶</a></dt>
+<dd><p>Number of PETS zone-axis rows.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="diffBloch.io.record.ExperimentalRecord.n_reflections">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_reflections</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><a class="headerlink" href="#diffBloch.io.record.ExperimentalRecord.n_reflections" title="Link to this definition">¶</a></dt>
+<dd><p>Number of measured reflections.</p>
+</dd></dl>
+
+</dd></dl>
+
+<p id="module-diffBloch.io.cif">CIF structure reader backed by gemmi.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.cif.read_structure">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.cif.</span></span><span class="sig-name descname"><span class="pre">read_structure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_hydrogens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.StructureRecord" title="diffBloch.io.record.StructureRecord"><span class="pre">StructureRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/cif.html#read_structure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/cif.py#L53-L63"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.cif.read_structure" title="Link to this definition">¶</a></dt>
+<dd><p>Read a structure CIF into a validated <code class="xref py py-class docutils literal notranslate"><span class="pre">StructureRecord</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – CIF path.</p></li>
+<li><p><strong>load_hydrogens</strong> – Include hydrogen atom sites when present. The default mirrors electron
+diffraction refinement practice where H sites are usually excluded from this boundary.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.cif.parse_structure_block">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.cif.</span></span><span class="sig-name descname"><span class="pre">parse_structure_block</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Block</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_hydrogens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.StructureRecord" title="diffBloch.io.record.StructureRecord"><span class="pre">StructureRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/cif.html#parse_structure_block"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/cif.py#L66-L106"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.cif.parse_structure_block" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a Gemmi CIF block into a validated <code class="xref py py-class docutils literal notranslate"><span class="pre">StructureRecord</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>block</strong> – Parsed Gemmi CIF block.</p></li>
+<li><p><strong>source_path</strong> – Optional source path to retain in the record.</p></li>
+<li><p><strong>load_hydrogens</strong> – Include hydrogen atom sites when present. The default mirrors electron
+diffraction refinement practice where H sites are usually excluded from this boundary.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<p id="module-diffBloch.io.pets">PETS CIF-like experimental data reader.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.pets.read_experimental_data">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.pets.</span></span><span class="sig-name descname"><span class="pre">read_experimental_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord" title="diffBloch.io.record.ExperimentalRecord"><span class="pre">ExperimentalRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/pets.html#read_experimental_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/pets.py#L16-L20"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.pets.read_experimental_data" title="Link to this definition">¶</a></dt>
+<dd><p>Read a PETS <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file into a validated <code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="diffBloch.io.pets.parse_experimental_block">
+<span class="sig-prename descclassname"><span class="pre">diffBloch.io.pets.</span></span><span class="sig-name descname"><span class="pre">parse_experimental_block</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Block</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord" title="diffBloch.io.record.ExperimentalRecord"><span class="pre">ExperimentalRecord</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/io/pets.html#parse_experimental_block"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/io/pets.py#L23-L92"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.io.pets.parse_experimental_block" title="Link to this definition">¶</a></dt>
+<dd><p>Parse a Gemmi PETS CIF-like block into a validated <code class="xref py py-class docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code>.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="core.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Core</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="config.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Config And Manifests</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, diffBloch contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">IO</a><ul>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord"><code class="docutils literal notranslate"><span class="pre">AdpRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.model_config"><code class="docutils literal notranslate"><span class="pre">AdpRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.kind"><code class="docutils literal notranslate"><span class="pre">AdpRecord.kind</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.u_iso"><code class="docutils literal notranslate"><span class="pre">AdpRecord.u_iso</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.u_iso_su"><code class="docutils literal notranslate"><span class="pre">AdpRecord.u_iso_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.uij_cif"><code class="docutils literal notranslate"><span class="pre">AdpRecord.uij_cif</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.AdpRecord.uij_cif_su"><code class="docutils literal notranslate"><span class="pre">AdpRecord.uij_cif_su</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.model_config"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.source_path"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.source_path</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.unit_cell"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.unit_cell</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.cell_parameters"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.cell_parameters</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.cell_parameters_su"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.cell_parameters_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.wavelength"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.wavelength</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.ub_matrix"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.ub_matrix</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.zone_axis_ids"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.zone_axis_ids</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.zone_axes"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.zone_axes</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.precession_angles"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.precession_angles</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.alphas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.alphas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.betas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.betas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.omegas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.omegas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.scales"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.scales</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.hkl"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.hkl</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.intensities"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.intensities</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.sigmas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.sigmas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.reflection_zone_axis_ids"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.reflection_zone_axis_ids</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.integration_semiangle"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.integration_semiangle</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.n_rotations"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.n_rotations</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.ExperimentalRecord.n_reflections"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.n_reflections</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord"><code class="docutils literal notranslate"><span class="pre">StructureRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.model_config"><code class="docutils literal notranslate"><span class="pre">StructureRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.source_path"><code class="docutils literal notranslate"><span class="pre">StructureRecord.source_path</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.unit_cell"><code class="docutils literal notranslate"><span class="pre">StructureRecord.unit_cell</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.cell_parameters"><code class="docutils literal notranslate"><span class="pre">StructureRecord.cell_parameters</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.cell_parameters_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.cell_parameters_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.spacegroup_hm"><code class="docutils literal notranslate"><span class="pre">StructureRecord.spacegroup_hm</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.spacegroup_number"><code class="docutils literal notranslate"><span class="pre">StructureRecord.spacegroup_number</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.symops_R"><code class="docutils literal notranslate"><span class="pre">StructureRecord.symops_R</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.symops_t"><code class="docutils literal notranslate"><span class="pre">StructureRecord.symops_t</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.labels"><code class="docutils literal notranslate"><span class="pre">StructureRecord.labels</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.numbers"><code class="docutils literal notranslate"><span class="pre">StructureRecord.numbers</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.frac_positions"><code class="docutils literal notranslate"><span class="pre">StructureRecord.frac_positions</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.frac_positions_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.frac_positions_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.occupancies"><code class="docutils literal notranslate"><span class="pre">StructureRecord.occupancies</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.occupancies_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.occupancies_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.adp"><code class="docutils literal notranslate"><span class="pre">StructureRecord.adp</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.n_atoms"><code class="docutils literal notranslate"><span class="pre">StructureRecord.n_atoms</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.n_symops"><code class="docutils literal notranslate"><span class="pre">StructureRecord.n_symops</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.StructureRecord.uij_cif"><code class="docutils literal notranslate"><span class="pre">StructureRecord.uij_cif</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.parse_experimental_block"><code class="docutils literal notranslate"><span class="pre">parse_experimental_block()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.parse_cif_number"><code class="docutils literal notranslate"><span class="pre">parse_cif_number()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.parse_structure_block"><code class="docutils literal notranslate"><span class="pre">parse_structure_block()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.read_experimental_data"><code class="docutils literal notranslate"><span class="pre">read_experimental_data()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.read_structure"><code class="docutils literal notranslate"><span class="pre">read_structure()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.symmetry_constraints"><code class="docutils literal notranslate"><span class="pre">symmetry_constraints()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord"><code class="docutils literal notranslate"><span class="pre">AdpRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.model_config"><code class="docutils literal notranslate"><span class="pre">AdpRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.kind"><code class="docutils literal notranslate"><span class="pre">AdpRecord.kind</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.u_iso"><code class="docutils literal notranslate"><span class="pre">AdpRecord.u_iso</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.u_iso_su"><code class="docutils literal notranslate"><span class="pre">AdpRecord.u_iso_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.uij_cif"><code class="docutils literal notranslate"><span class="pre">AdpRecord.uij_cif</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.AdpRecord.uij_cif_su"><code class="docutils literal notranslate"><span class="pre">AdpRecord.uij_cif_su</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord"><code class="docutils literal notranslate"><span class="pre">StructureRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.model_config"><code class="docutils literal notranslate"><span class="pre">StructureRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.source_path"><code class="docutils literal notranslate"><span class="pre">StructureRecord.source_path</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.unit_cell"><code class="docutils literal notranslate"><span class="pre">StructureRecord.unit_cell</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.cell_parameters"><code class="docutils literal notranslate"><span class="pre">StructureRecord.cell_parameters</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.cell_parameters_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.cell_parameters_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.spacegroup_hm"><code class="docutils literal notranslate"><span class="pre">StructureRecord.spacegroup_hm</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.spacegroup_number"><code class="docutils literal notranslate"><span class="pre">StructureRecord.spacegroup_number</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.symops_R"><code class="docutils literal notranslate"><span class="pre">StructureRecord.symops_R</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.symops_t"><code class="docutils literal notranslate"><span class="pre">StructureRecord.symops_t</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.labels"><code class="docutils literal notranslate"><span class="pre">StructureRecord.labels</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.numbers"><code class="docutils literal notranslate"><span class="pre">StructureRecord.numbers</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.frac_positions"><code class="docutils literal notranslate"><span class="pre">StructureRecord.frac_positions</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.frac_positions_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.frac_positions_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.occupancies"><code class="docutils literal notranslate"><span class="pre">StructureRecord.occupancies</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.occupancies_su"><code class="docutils literal notranslate"><span class="pre">StructureRecord.occupancies_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.adp"><code class="docutils literal notranslate"><span class="pre">StructureRecord.adp</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.n_atoms"><code class="docutils literal notranslate"><span class="pre">StructureRecord.n_atoms</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.n_symops"><code class="docutils literal notranslate"><span class="pre">StructureRecord.n_symops</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.StructureRecord.uij_cif"><code class="docutils literal notranslate"><span class="pre">StructureRecord.uij_cif</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord</span></code></a><ul>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.model_config"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.model_config</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.source_path"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.source_path</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.unit_cell"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.unit_cell</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.cell_parameters"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.cell_parameters</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.cell_parameters_su"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.cell_parameters_su</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.wavelength"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.wavelength</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.ub_matrix"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.ub_matrix</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.zone_axis_ids"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.zone_axis_ids</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.zone_axes"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.zone_axes</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.precession_angles"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.precession_angles</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.alphas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.alphas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.betas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.betas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.omegas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.omegas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.scales"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.scales</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.hkl"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.hkl</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.intensities"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.intensities</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.sigmas"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.sigmas</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.reflection_zone_axis_ids"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.reflection_zone_axis_ids</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.integration_semiangle"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.integration_semiangle</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.n_rotations"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.n_rotations</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.record.ExperimentalRecord.n_reflections"><code class="docutils literal notranslate"><span class="pre">ExperimentalRecord.n_reflections</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#diffBloch.io.cif.read_structure"><code class="docutils literal notranslate"><span class="pre">read_structure()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.cif.parse_structure_block"><code class="docutils literal notranslate"><span class="pre">parse_structure_block()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.pets.read_experimental_data"><code class="docutils literal notranslate"><span class="pre">read_experimental_data()</span></code></a></li>
+<li><a class="reference internal" href="#diffBloch.io.pets.parse_experimental_block"><code class="docutils literal notranslate"><span class="pre">parse_experimental_block()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/tabs.js?v=3ee01567"></script>
+    </body>
+</html>

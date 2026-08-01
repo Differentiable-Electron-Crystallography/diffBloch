@@ -20,21 +20,18 @@ dist/
 build/
 docs/_build/
 
-# Preprocess checkpoints (generated per-experiment; regenerated on demand, never committed)
-plan.npz
-plan.lock
+# Preprocess/refinement bookkeeping: plan.npz + plan.lock (generated per-experiment, under each
+# experiment's reproducibility/ subfolder), regenerated on demand, never committed.
+**/reproducibility/plan.npz
+**/reproducibility/plan.lock
 # ...except the committed frozen checkpoints: the CI anchor fixture + the worked examples. These are
 # deliberately versioned (reused release-gated) and regenerated on a __version__ bump.
-!tests/fixtures/quartz_anchor/plan.npz
-!tests/fixtures/quartz_anchor/plan.lock
-!examples/experiments/quartz-checkpoint/plan.npz
-!examples/experiments/quartz-checkpoint/plan.lock
-!examples/experiments/abiraterone-checkpoint/plan.npz
-!examples/experiments/abiraterone-checkpoint/plan.lock
-!examples/experiments/quartz-chirality/matching-hand/plan.npz
-!examples/experiments/quartz-chirality/matching-hand/plan.lock
-!examples/experiments/quartz-chirality/opposite-hand/plan.npz
-!examples/experiments/quartz-chirality/opposite-hand/plan.lock
+!tests/fixtures/quartz_anchor/reproducibility/plan.npz
+!tests/fixtures/quartz_anchor/reproducibility/plan.lock
+!examples/experiments/quartz-checkpoint/reproducibility/plan.npz
+!examples/experiments/quartz-checkpoint/reproducibility/plan.lock
+!examples/experiments/abiraterone-checkpoint/reproducibility/plan.npz
+!examples/experiments/abiraterone-checkpoint/reproducibility/plan.lock
 # The verify-quartz-full stash: a from-scratch candidate checkpoint awaiting `just promote-quartz`
 # (the explicit step that replaces the committed reference). Never committed itself.
 .candidate/

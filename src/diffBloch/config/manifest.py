@@ -146,10 +146,11 @@ def artifact_hash_for(path: str | Path, *, root: str | Path) -> ArtifactHash:
 
 
 def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, ExperimentLock]:
-    """Load ``experiment.yaml`` and verify ``experiment.lock`` against input bytes."""
+    """Load ``experiment.yaml`` and verify ``experiment.lock`` (in ``reproducibility/``) against
+    input bytes."""
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
-    lock_path = root / "experiment.lock"
+    lock_path = root / "reproducibility" / "experiment.lock"
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
     _verify_input(root, cfg.inputs.exp_data, lock.experimental_data)

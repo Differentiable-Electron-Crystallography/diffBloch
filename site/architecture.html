@@ -1,0 +1,642 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="Architecture" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html" />
+<meta property="og:site_name" content="diffBloch" />
+<meta property="og:description" content="Building the potential: Everything below starts after the io boundary: positions, numbers, occupancies, uij_star are already validated tensors on the ASU. Symmetry expansion. The refined parameters..." />
+<meta property="og:image:width" content="1146" />
+<meta property="og:image:height" content="600" />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_architecture_60799f42.png" />
+<meta property="og:image:alt" content="Building the potential: Everything below starts after the io boundary: positions, numbers, occupancies, uij_star are already validated tensors on the ASU. Symmetry expansion. The refined parameters..." />
+<meta name="description" content="Building the potential: Everything below starts after the io boundary: positions, numbers, occupancies, uij_star are already validated tensors on the ASU. Symmetry expansion. The refined parameters..." />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Inputs and experiment directories" href="inputs.html"><link rel="prev" title="diffBloch" href="index.html">
+        <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Architecture - diffBloch</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">diffBloch</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <span class="sidebar-brand-text">diffBloch</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
+<li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
+<li class="toctree-l1"><a class="reference internal" href="observability-guide.html">Observability and loggers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/config.html">Config And Manifests</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/io.html">IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/core.html">Core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/params.html">Params</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/specs.html">Specs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/engine.html">Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/preprocess.html">Preprocess</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/observability.html">Observability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/app.html">App</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/architecture.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="architecture">
+<h1>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h1>
+<section id="building-the-potential">
+<h2>Building the potential<a class="headerlink" href="#building-the-potential" title="Link to this heading">¶</a></h2>
+<p>Everything below starts after the <code class="docutils literal notranslate"><span class="pre">io</span></code> boundary: <code class="docutils literal notranslate"><span class="pre">positions</span></code>, <code class="docutils literal notranslate"><span class="pre">numbers</span></code>, <code class="docutils literal notranslate"><span class="pre">occupancies</span></code>, <code class="docutils literal notranslate"><span class="pre">uij_star</span></code>
+are already validated tensors on the ASU.</p>
+<p><strong>Symmetry expansion.</strong> The refined parameters live only on the asymmetric unit. Before any
+scattering physics, every symmetry operation <span class="math notranslate nohighlight">\((R_m, \mathbf{t}_m)\)</span> of the space group is
+applied to each ASU atom <span class="math notranslate nohighlight">\(i\)</span>:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\mathbf{r}'_m = R_m \mathbf{r}_i + \mathbf{t}_m ,\]</div>
+</div>
+<p>producing the full-cell atom list (positions, atomic numbers, occupancies, ADPs all carried through
+the same expansion). This is <code class="docutils literal notranslate"><span class="pre">core.symmetry.expand_asu</span></code> — purely geometric, no scattering physics
+yet, differentiable in <code class="docutils literal notranslate"><span class="pre">positions</span></code> because <span class="math notranslate nohighlight">\(R_m\)</span>/<span class="math notranslate nohighlight">\(\mathbf{t}_m\)</span> are fixed constants and
+only <span class="math notranslate nohighlight">\(\mathbf{r}_i\)</span> carries gradient.</p>
+<p><strong>Elastic structure factor.</strong> For each reflection <span class="math notranslate nohighlight">\(\mathbf{h}\)</span>, sum a scattering contribution
+over every expanded atom:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[F_{\mathbf{g}}(\mathbf{h}) = \frac{1}{V}\sum_{j} f_j(s)\, T_j(\mathbf{h})\, O_j\,
+\exp(2\pi i\, \mathbf{h}\cdot\mathbf{r}_j) ,\]</div>
+</div>
+<p>with <span class="math notranslate nohighlight">\(s = |\mathbf{g}|/2\)</span> and <span class="math notranslate nohighlight">\(V\)</span> the cell volume. <span class="math notranslate nohighlight">\(f_j(s)\)</span> is the electron
+scattering factor: diffBloch hardcodes the Lobato &amp; Van Dyck (2014) parametrization — a
+five-Gaussian-rational fit, <span class="math notranslate nohighlight">\(f_e(s) = \sum_i a_i(2+b_i s^2)/(1+b_i s^2)^2\)</span>, coefficients
+vendored per element from the published table (<code class="docutils literal notranslate"><span class="pre">core/data/lobato.json</span></code>). There is no runtime
+switch: Kirkland and Peng <em>et al.</em> parametrizations were evaluated during design (see
+<code class="docutils literal notranslate"><span class="pre">REFERENCES.md</span></code>) but neither is wired in as a swappable option.</p>
+<p><span class="math notranslate nohighlight">\(T_j(\mathbf{h})\)</span> is the Debye–Waller factor. Every atom’s ADP is carried in the reciprocal
+<code class="docutils literal notranslate"><span class="pre">U*</span></code> frame regardless of whether the CIF gave <code class="docutils literal notranslate"><span class="pre">Uiso</span></code> or <code class="docutils literal notranslate"><span class="pre">Uani</span></code> (Trueblood <em>et al.</em>, 1996
+convention: <code class="docutils literal notranslate"><span class="pre">Uani</span></code> maps directly, <span class="math notranslate nohighlight">\(U^*_{ij} = d^*_i d^*_j\, U^{\mathrm{cif}}_{ij}\)</span>; <code class="docutils literal notranslate"><span class="pre">Uiso</span></code>
+maps via <span class="math notranslate nohighlight">\(U^* = U_{\mathrm{iso}} G^*\)</span>, <span class="math notranslate nohighlight">\(G^* = BB^\top\)</span>). One formula consumes both:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[T_j(\mathbf{h}) = \exp(-2\pi^2\, \mathbf{h}^\top U^*_j\, \mathbf{h}) .\]</div>
+</div>
+<p><strong>Absorption.</strong> With <code class="docutils literal notranslate"><span class="pre">absorption.enabled</span></code>, <span class="math notranslate nohighlight">\(f_j(s)\)</span> picks up an imaginary part:
+<span class="math notranslate nohighlight">\(f_j \to f_j + i f'_j(s, B_j)\)</span>, where <span class="math notranslate nohighlight">\(f'_j\)</span> is a fitted absorptive form factor
+(Gaussian-sum interpolation over the atom’s isotropic-equivalent <span class="math notranslate nohighlight">\(B_j\)</span>, converted from its
+<code class="docutils literal notranslate"><span class="pre">U*</span></code>), following Bird &amp; King (1990). <span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span> is then complex for every reflection —
+which is what later makes the structure matrix <span class="math notranslate nohighlight">\(A\)</span> non-Hermitian.</p>
+<p><span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span> is a setup constant with respect to orientation — computed once per
+parameter state (<code class="docutils literal notranslate"><span class="pre">core.scattering.structure_factors</span></code>) and reused across every rotation, since it
+depends only on the structure, not on the beam geometry.</p>
+</section>
+<section id="the-bloch-wave-forward-model">
+<h2>The Bloch-wave forward model<a class="headerlink" href="#the-bloch-wave-forward-model" title="Link to this heading">¶</a></h2>
+<p>The forward model maps a beam set, an orientation, an energy, and the structure factors built above
+to an exit-wave intensity vector.</p>
+<p><strong>Structure matrix.</strong> For a beam set <span class="math notranslate nohighlight">\(\{\mathbf{g}_i\}_{i=1}^{N}\)</span> at a given orientation,
+<code class="docutils literal notranslate"><span class="pre">core.dynamical.assembly</span></code> assembles the Hermitian (or, with absorption, non-Hermitian) <span class="math notranslate nohighlight">\(N \times N\)</span> structure matrix <span class="math notranslate nohighlight">\(A\)</span>:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[A_{ii} = 2 K_n \, S_{g_i} \, M_{ii}, \qquad
+A_{ij} = \sigma \, M_{ii} M_{jj} \, F(\mathbf{g}_j - \mathbf{g}_i) \;\; (i \neq j),\]</div>
+</div>
+<p>with Lorentz/obliquity factor <span class="math notranslate nohighlight">\(M_{ii} = (1 - g_{i,z}/K_n)^{-1/2}\)</span> (equal to 1 at
+<span class="math notranslate nohighlight">\(\mathbf{g}=0\)</span>), interaction constant <span class="math notranslate nohighlight">\(\sigma\)</span>, and in-crystal wavevector magnitude
+<span class="math notranslate nohighlight">\(K_n = \sqrt{1/\lambda^2 + U_0}\)</span>, where <span class="math notranslate nohighlight">\(U_0\)</span> is the mean inner potential correction,
+<span class="math notranslate nohighlight">\(U_0 = |F_{000}| \cdot \sigma / (\kappa \lambda \pi)\)</span>, computed once from the starting
+structure and held fixed through refinement. The off-diagonal is a differentiable gather of
+<span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span> onto every beam-pair difference; only <span class="math notranslate nohighlight">\(F\)</span> carries gradient — the
+gather indices are precomputed geometry.</p>
+<p>The excitation error <span class="math notranslate nohighlight">\(S_{g_i}\)</span> is the signed distance of <span class="math notranslate nohighlight">\(\mathbf{g}_i\)</span> from the Ewald
+sphere: with beam <span class="math notranslate nohighlight">\(\mathbf{K}\)</span> fixed along <span class="math notranslate nohighlight">\(-z\)</span> at magnitude <span class="math notranslate nohighlight">\(K_n\)</span>,</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[S_{g} = \frac{|\mathbf{K}|^2 - |\mathbf{K}+\mathbf{g}|^2}{2|\mathbf{K}|}\]</div>
+</div>
+<p>(Spence &amp; Zuo, 1992 convention); <span class="math notranslate nohighlight">\(S_{g}=0\)</span> exactly at <span class="math notranslate nohighlight">\(\mathbf{g}=0\)</span>, so the
+transmitted beam always sits on the diagonal at zero.</p>
+<p><span class="math notranslate nohighlight">\(N\)</span> is not fixed by the structure matrix code — it is whatever beam set preprocessing handed
+it, and that is entirely config-controlled: <code class="docutils literal notranslate"><span class="pre">blochwave.g_max</span></code> bounds the candidate pool radius
+(and sets the <span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span> support at <span class="math notranslate nohighlight">\(2\times g_{\max}\)</span>); <code class="docutils literal notranslate"><span class="pre">select_beams</span></code> prunes
+candidates to the active set with the Klar cutoffs <code class="docutils literal notranslate"><span class="pre">rsg</span></code>/<code class="docutils literal notranslate"><span class="pre">dsg</span></code> against
+<span class="math notranslate nohighlight">\(sg_{\max}=|g_\perp|\cdot\text{semiangle}\)</span>. On the default coupled path, <span class="math notranslate nohighlight">\(N\)</span> is the
+<em>union</em> of active beams across a whole tilt segment, not one orientation’s active set alone —
+governed by <code class="docutils literal notranslate"><span class="pre">coupling_mode</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code>, <code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code> (sub-tilts per segment),
+and <code class="docutils literal notranslate"><span class="pre">union_adaptive</span></code>/<code class="docutils literal notranslate"><span class="pre">union_max_new_beams_pct</span></code> (adaptive segment splitting). Since matrix assembly
+is <span class="math notranslate nohighlight">\(O(N^2)\)</span> and the dense solve worse, these are the knobs that set simulation cost.</p>
+<p><strong>Propagation.</strong> <code class="docutils literal notranslate"><span class="pre">psi0</span></code> is the boundary condition: amplitude 1 on the <span class="math notranslate nohighlight">\(\mathbf{g}=000\)</span> beam,
+0 on every other beam in the set — all incident amplitude in the transmitted beam at <span class="math notranslate nohighlight">\(t=0\)</span>.
+<code class="docutils literal notranslate"><span class="pre">core.solver.propagate</span></code> integrates the exit wavefunction through specimen thickness <span class="math notranslate nohighlight">\(t\)</span>:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\psi(t) = \exp\!\left(\frac{i \pi t}{K_n} A\right) \psi_0 .\]</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">thicknesses</span></code> is a scalar or <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> array of trial values (Å); <code class="docutils literal notranslate"><span class="pre">propagate</span></code> returns <code class="docutils literal notranslate"><span class="pre">psi</span></code> of shape
+<code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">N)</span></code> — one full <span class="math notranslate nohighlight">\(N\)</span>-beam amplitude vector per requested thickness, in a single batched
+call. Two propagators evaluate this, both over the same <code class="docutils literal notranslate"><span class="pre">BlochSystem</span></code> and swappable without
+touching geometry code:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">matrix_exp</span></code> — a dense matrix exponential per thickness (batched over <span class="math notranslate nohighlight">\(T\)</span>), stable
+autograd. The refinement default.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bloch_eigen</span></code> — diagonalize <span class="math notranslate nohighlight">\(A\)</span> once (<code class="docutils literal notranslate"><span class="pre">eigh</span></code>), then each of the <span class="math notranslate nohighlight">\(T\)</span> thicknesses is a
+cheap phase multiply on the eigenbasis-projected <code class="docutils literal notranslate"><span class="pre">psi0</span></code>: exact and fast for many thicknesses at
+once, but <code class="docutils literal notranslate"><span class="pre">eigh</span></code>’s backward is ill-conditioned near degenerate eigenvalues — routine in symmetric
+crystals — so it is eval-only, never on the differentiated path. The two coincide only where
+<span class="math notranslate nohighlight">\(M_{ii}=1\)</span> for every beam; otherwise one returns symmetrised amplitudes, the other physical
+ones — a property of the two formulations, not a bug in either.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">intensities</span> <span class="pre">=</span> <span class="pre">|psi|**2</span></code> gives shape <code class="docutils literal notranslate"><span class="pre">(T,</span> <span class="pre">N)</span></code>: the full simulated pattern for every candidate
+thickness in one shot. That single batched call is why the thickness grid search
+(<code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code>) is cheap — assembling and exponentiating/diagonalizing <span class="math notranslate nohighlight">\(A\)</span> is paid
+once, not once per candidate <span class="math notranslate nohighlight">\(t\)</span>.</p>
+<p><strong>Alignment.</strong> <code class="docutils literal notranslate"><span class="pre">core.products.align</span></code> places simulated and observed intensities on a common
+reflection index for loss evaluation. Before that comparison is meaningful, each virtual frame’s
+single-orientation exit wave above has to become the actual integrated pattern PETS measured — see
+<a class="reference internal" href="#rocking-curve-integration-and-mosaicity">Rocking-curve integration and mosaicity</a>.</p>
+<p><strong>SOLVE and SCORED reflection sets are independent.</strong> The SOLVE set is which beams couple
+dynamically inside the structure matrix; the SCORED set is which reflections enter the residual.
+Every scored reflection must be solved (SCORED <span class="math notranslate nohighlight">\(\subseteq\)</span> SOLVE), but widening the solve
+basis for numerical convergence must not silently change what is scored, and a scoring-set change
+must not perturb the dynamical coupling. <code class="docutils literal notranslate"><span class="pre">preprocess.select_beams</span></code> selects the SOLVE set from
+excitation error and resolution thresholds (<code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, <code class="docutils literal notranslate"><span class="pre">g_max</span></code>); alignment against the PETS
+experimental data determines the SCORED set independently.</p>
+</section>
+<section id="rocking-curve-integration-and-mosaicity">
+<h2>Rocking-curve integration and mosaicity<a class="headerlink" href="#rocking-curve-integration-and-mosaicity" title="Link to this heading">¶</a></h2>
+<p>Everything in <a class="reference internal" href="#the-bloch-wave-forward-model">The Bloch-wave forward model</a> above solves one static
+orientation. A continuous-rotation 3DED frame is not static — it integrates over the crystal
+sweeping through the Ewald sphere — so a single Bloch solve at the frame’s nominal orientation is
+not what was measured. <code class="docutils literal notranslate"><span class="pre">integrate_rocking_curve</span></code> closes that gap.</p>
+<p><strong>Building the tilt set.</strong> <code class="docutils literal notranslate"><span class="pre">preprocess.orientation.rocking_curve_tilts(semiangle,</span> <span class="pre">sampling)</span></code>
+generates <code class="docutils literal notranslate"><span class="pre">sampling</span></code> rotation matrices about the goniometer x-axis, at angles
+<span class="math notranslate nohighlight">\(\mathrm{linspace}(-\text{semiangle}, +\text{semiangle}, \text{sampling})\)</span>. These are pure,
+orientation-independent geometry, built once and reused for every rotation. For a virtual frame
+with nominal (already PETS-derived) orientation <span class="math notranslate nohighlight">\(M_i\)</span>, the sub-orientations are</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[M_i^{(k)} = R_{\mathrm{tilt}}(k)\, M_i, \qquad k = 1,\dots,\text{sampling} .\]</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sampling</span> <span class="pre">=</span> <span class="pre">1</span></code> is special-cased to the identity tilt at angle <span class="math notranslate nohighlight">\(0\)</span> exactly (not the
+<code class="docutils literal notranslate"><span class="pre">linspace</span></code>-start value), so composing this step with <code class="docutils literal notranslate"><span class="pre">sampling</span> <span class="pre">=</span> <span class="pre">1</span></code> leaves the <code class="docutils literal notranslate"><span class="pre">Plan</span></code> unchanged —
+the integration is opt-in, not baked into <code class="docutils literal notranslate"><span class="pre">from_experiment</span></code>. This step is pure geometry: it rebuilds
+each orientation with <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">=</span> <span class="pre">sampling</span></code> sub-orientations sharing the <em>same</em> beam set and gather, no
+engine or structure factors involved. It runs last in the default recipe, after
+<code class="docutils literal notranslate"><span class="pre">optimize_orientation</span></code>/<code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code>, because those fit against the fast single-solve at the
+nominal orientation; only once both are settled is the plan expanded to the full tilt set they will
+actually be evaluated at.</p>
+<p><strong>Summing the Bloch waves.</strong> Each of the <code class="docutils literal notranslate"><span class="pre">N</span></code> sub-orientations is solved independently — same beam
+set, same <span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span>, but a different structure matrix <span class="math notranslate nohighlight">\(A\)</span> per tilt, since
+<span class="math notranslate nohighlight">\(S_g\)</span> and <span class="math notranslate nohighlight">\(M_{ii}\)</span> depend on orientation. That gives <code class="docutils literal notranslate"><span class="pre">N</span></code> separate exit waves
+<span class="math notranslate nohighlight">\(\psi^{(k)}(t)\)</span>, reduced over the tilt axis as an <strong>incoherent</strong> sum of intensities
+(<code class="docutils literal notranslate"><span class="pre">core.products.BlochSolution.integrate</span></code> / <code class="docutils literal notranslate"><span class="pre">reduce_tilts</span></code>):</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[I_{\mathrm{frame}}(t) = \sum_{k=1}^{N} \left|\psi^{(k)}(t)\right|^2 ,\]</div>
+</div>
+<p>not <span class="math notranslate nohighlight">\(\bigl|\sum_k \psi^{(k)}(t)\bigr|^2\)</span>. This is the physical rotation-frame integration —
+summing counts across the sweep, not interfering amplitudes — so phase is deliberately discarded;
+the integrated solution stores only <span class="math notranslate nohighlight">\(\sqrt{I_{\mathrm{frame}}}\)</span> as a nominal amplitude with no
+downstream use, and only <code class="docutils literal notranslate"><span class="pre">intensities</span></code> feeds alignment and the loss.</p>
+<p><strong>Mosaicity.</strong> Off by default (<code class="docutils literal notranslate"><span class="pre">PlainSum</span></code>, the bare sum above). The <code class="docutils literal notranslate"><span class="pre">mosaicity</span></code> step swaps the
+reduction to <code class="docutils literal notranslate"><span class="pre">MosaicSmoothed(window)</span></code>: a <code class="docutils literal notranslate"><span class="pre">window</span></code>-wide moving average over consecutive tilts on the
+tilt axis, applied <em>before</em> the sum —</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[I_{\mathrm{frame}}(t) = \sum_{k} \left(\frac{1}{\text{window}}\sum_{l=0}^{\text{window}-1}
+\left|\psi^{(k+l)}(t)\right|^2\right) ,\]</div>
+</div>
+<p>modelling crystal mosaic spread as a blur of the sampled rocking curve before it is integrated,
+rather than integrating the sharp unbroadened curve. <code class="docutils literal notranslate"><span class="pre">window</span> <span class="pre">=</span> <span class="pre">1</span></code> is the identity. It can only
+compose after <code class="docutils literal notranslate"><span class="pre">integrate_rocking_curve</span></code> (raises below two tilts — a moving average over one point is
+meaningless) and must precede the fits: whatever reduction is used at evaluation has to be the same
+one the orientation/thickness fits saw, or the fit and the eval would be scoring against two
+different forward models — the fit/eval consistency invariant.</p>
+</section>
+<section id="scoring">
+<h2>Scoring<a class="headerlink" href="#scoring" title="Link to this heading">¶</a></h2>
+<p><strong>The reflection-comparison set.</strong> Not a union of anything — an intersection.
+<code class="docutils literal notranslate"><span class="pre">build_alignment_plan(solution_hkl,</span> <span class="pre">pattern_hkl,</span> <span class="pre">restrict_to=scored_hkl)</span></code> computes
+<span class="math notranslate nohighlight">\(\text{pattern} \cap \text{solution} \cap \text{restrict\_to}\)</span>: <code class="docutils literal notranslate"><span class="pre">pattern</span></code> is what PETS
+observed for that rotation, <code class="docutils literal notranslate"><span class="pre">solution</span></code> is what beams the Bloch solve actually computed (the SOLVE
+set), <code class="docutils literal notranslate"><span class="pre">restrict_to</span></code> is the SCORED set. A reflection not solved cannot be scored even if PETS
+measured it (SCORED <span class="math notranslate nohighlight">\(\subseteq\)</span> SOLVE); a reflection PETS did not record cannot be scored even
+if it was solved.</p>
+<p><strong>What decides the SCORED set — the fully-integrated filter.</strong> <code class="docutils literal notranslate"><span class="pre">klar_beam_mask</span></code>, applied via
+<code class="docutils literal notranslate"><span class="pre">scoring_selection</span></code> on the candidate pool before that intersection. Per reflection <span class="math notranslate nohighlight">\(\mathbf{g}\)</span>:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[sg_{\max} = |\mathbf{g}_{\mathrm{lever}}| \cdot \mathrm{deg2rad}(\text{semiangle})\]</div>
+</div>
+<p>is how far <span class="math notranslate nohighlight">\(S_g\)</span> <em>sweeps</em> for that reflection as the crystal rocks through the measured
+semiangle, with <span class="math notranslate nohighlight">\(\mathbf{g}_{\mathrm{lever}}\)</span> the component of <span class="math notranslate nohighlight">\(\mathbf{g}\)</span>
+perpendicular to the rock axis (<code class="docutils literal notranslate"><span class="pre">(g_y,</span> <span class="pre">g_z)</span></code> for continuous rotation about the goniometer x-axis) —
+reflections far from the rock axis sweep a bigger <span class="math notranslate nohighlight">\(S_g\)</span> range for the same tilt than
+reflections near it. A reflection is kept — judged fully integrated — when both</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\frac{|S_g|}{sg_{\max}} &lt; rsg, \qquad sg_{\max} - |S_g| &gt; dsg .\]</div>
+</div>
+<p>The first is relative: <span class="math notranslate nohighlight">\(S_g\)</span> small against the sweep range means the rocking curve’s peak
+(<span class="math notranslate nohighlight">\(S_g \approx 0\)</span>, exact Bragg) falls inside the measured window, not at or beyond its edge.
+The second is an absolute safety margin on top, so a reflection sitting right at the edge — which
+might narrowly pass the relative test alone — is still excluded. Fail either and the reflection is
+dropped from the SCORED candidate pool before the intersection runs: only part of its rocking curve
+was actually measured, so comparing it would compare a partial integration to an implicitly-full
+one.</p>
+<p><strong>Getting R.</strong> Once the intersection is fixed, <code class="docutils literal notranslate"><span class="pre">align(solution,</span> <span class="pre">pattern,</span> <span class="pre">plan)</span></code> gathers
+<code class="docutils literal notranslate"><span class="pre">calculated</span></code>/<code class="docutils literal notranslate"><span class="pre">observed</span></code>/<code class="docutils literal notranslate"><span class="pre">sigmas</span></code> onto that shared axis (index-gather, no further filtering). The
+conventional Bragg residual:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[R_{\mathrm{obs}} = \frac{\sum |\sqrt{I_{\mathrm{obs}}} - \sqrt{I_{\mathrm{calc}}}|}
+{\sum \sqrt{I_{\mathrm{obs}}}}, \quad \text{restricted to } I_{\mathrm{obs}} &gt; 3\sigma\]</div>
+</div>
+<p>— an extra runtime cut on top of the SCORED-set selection above: even a reflection that passed the
+<code class="docutils literal notranslate"><span class="pre">rsg</span></code>/<code class="docutils literal notranslate"><span class="pre">dsg</span></code> fully-integrated test only enters this particular sum if its measured intensity clears
+the conventional <span class="math notranslate nohighlight">\(3\sigma\)</span> significance threshold. <code class="docutils literal notranslate"><span class="pre">R_obs</span></code> is reported at every step but is
+not itself minimized; see <a class="reference internal" href="#refinement">Refinement</a> for <code class="docutils literal notranslate"><span class="pre">w_rbragg</span></code>, the quantity actually optimized.</p>
+</section>
+<section id="refinement">
+<h2>Refinement<a class="headerlink" href="#refinement" title="Link to this heading">¶</a></h2>
+<p>Refinement holds a settled <code class="docutils literal notranslate"><span class="pre">Plan</span></code> fixed and differentiates a scalar objective back to the
+structural parameters through the complete forward chain:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>RefinableParams
+  -&gt; constrain (crystallographic hard constraints)                  -&gt; PhysicalState
+  -&gt; expand_asu (space-group expansion)                             -&gt; Fgb (structure_factors)
+  -&gt; per rotation: build_bloch_system -&gt; propagate -&gt; intensities   -&gt; AlignedIntensities
+  -&gt; optional molecular constraints, components, penalties
+  -&gt; scalar objective (w_rbragg, Klar et al. 2023) + soft penalty terms
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">w_rbragg</span></code> is the directly minimized, scaling-optimized weighted residual; the conventional Bragg
+<span class="math notranslate nohighlight">\(R_{\mathrm{obs}} = \sum |{\sqrt{I_{\mathrm{obs}}}} - \sqrt{I_{\mathrm{calc}}}| / \sum \sqrt{I_{\mathrm{obs}}}\)</span>, restricted to <span class="math notranslate nohighlight">\(I_{\mathrm{obs}} &gt; 3\sigma\)</span>, is reported at every step
+as the standard crystallographic residual but is not itself optimized; each is independently
+scale-optimized against the same simulated intensities. Changes to the discrete problem — beam
+selection, orientation, thickness, tilt coupling — are <code class="docutils literal notranslate"><span class="pre">Plan</span> <span class="pre">-&gt;</span> <span class="pre">Plan</span></code> preprocessing steps and are
+held fixed during refinement; refinement only varies the structural parameters and any composed
+model components. Composition follows a fixed taxonomy: a value supplied to the forward model is a
+<code class="docutils literal notranslate"><span class="pre">ModelComponent</span></code>; an invariant enforced exactly is a <code class="docutils literal notranslate"><span class="pre">ConstraintTransform</span></code> (or lives inside
+<code class="docutils literal notranslate"><span class="pre">constrain</span></code>); an additive soft cost is a <code class="docutils literal notranslate"><span class="pre">PenaltyTerm</span></code>; a choice of which parameters vary is a
+<code class="docutils literal notranslate"><span class="pre">TrainableSpec</span></code>. The optimizer loop (<code class="docutils literal notranslate"><span class="pre">engine/refine.py</span></code>) is the only stateful, mutating corner of
+the codebase: it clones selected trainable leaves into fresh optimizer variables and never mutates
+caller-owned parameters in place. See <a class="reference internal" href="refinement.html"><span class="std std-doc">Refinement</span></a> for the config surface and CLI
+behaviour, and <a class="reference internal" href="preprocessing.html"><span class="std std-doc">Preprocessing</span></a> for how the <code class="docutils literal notranslate"><span class="pre">Plan</span></code> refinement holds fixed is
+itself constructed.</p>
+</section>
+<section id="reproducibility-and-provenance">
+<h2>Reproducibility and provenance<a class="headerlink" href="#reproducibility-and-provenance" title="Link to this heading">¶</a></h2>
+<p>Every stage that consumes a checkpoint verifies it before use rather than trusting it. <code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code>
+pins the raw structure and experimental-data files by content hash. <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> binds a preprocessing
+checkpoint to that input identity, the preprocessing-determining projection of the resolved
+configuration, the exact ordered recipe that produced it, and the producing code version.
+<code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code> extends the same discipline to the refinement stage: it records the <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code>
+this run refined from, the refinement-determining configuration, the code version, and hashes of the
+refined outputs, so a refined structure is independently verifiable against exactly what produced
+it. None of this is a performance optimization incidentally used for provenance; the reverse is
+true — the mechanism exists to make a result verifiable, and checkpoint reuse is a consequence of
+that verification succeeding. See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for the full guarantee and
+its limits.</p>
+</section>
+<section id="observability">
+<h2>Observability<a class="headerlink" href="#observability" title="Link to this heading">¶</a></h2>
+<p>The pure core communicates progress by returning or emitting typed <code class="docutils literal notranslate"><span class="pre">Event</span></code> values
+(<code class="docutils literal notranslate"><span class="pre">observability.py</span></code>); it runs correctly with no logger attached (<code class="docutils literal notranslate"><span class="pre">NULL_LOGGER</span></code>). Logger backends —
+console, CSV, Weights &amp; Biases, Comet — are attached at the application boundary and import their
+vendor SDKs lazily. Scientific results are never routed through the diagnostic <code class="docutils literal notranslate"><span class="pre">logging</span></code> channel,
+and no step reads back another step’s logged output as pipeline state; a log is a write-only report.
+See <a class="reference internal" href="observability-guide.html"><span class="std std-doc">Observability</span></a>.</p>
+</section>
+<section id="design-invariants">
+<h2>Design invariants<a class="headerlink" href="#design-invariants" title="Link to this heading">¶</a></h2>
+<p>The following properties are treated as defects when violated, independent of whether a forward
+value looks numerically correct:</p>
+<ul class="simple">
+<li><p><strong>Differentiability.</strong> The forward path is autograd-differentiable end to end, from
+<code class="docutils literal notranslate"><span class="pre">RefinableParams</span></code> to the scalar objective. An in-place operation on a leaf tensor, a stray
+<code class="docutils literal notranslate"><span class="pre">.item()</span></code>/<code class="docutils literal notranslate"><span class="pre">.detach()</span></code>, or non-differentiable indexing on the differentiated path is a defect even
+when the forward value is unchanged.</p></li>
+<li><p><strong>Determinism.</strong> Identical inputs produce identical outputs; the simulation carries no hidden
+state across calls.</p></li>
+<li><p><strong>Precision as a boundary condition.</strong> The Bloch solve runs at float32/complex64
+throughout (<code class="docutils literal notranslate"><span class="pre">core.solver.propagate</span></code>); precision is not threaded ad hoc through individual
+kernels.</p></li>
+<li><p><strong>Device/dtype preservation.</strong> Kernels preserve the device and dtype of their inputs; the
+authoritative device for a forward pass is <code class="docutils literal notranslate"><span class="pre">RefinableParams</span></code>’s own device, and invariants are
+co-located onto it at the point of use.</p></li>
+<li><p><strong>Strategy as value, not as class hierarchy.</strong> <code class="docutils literal notranslate"><span class="pre">SolverMethod</span></code> is a literal selecting between
+interchangeable propagators over one shared <code class="docutils literal notranslate"><span class="pre">BlochSystem</span></code>; geometry logic is not duplicated per
+solver.</p></li>
+<li><p><strong>Caching discipline.</strong> Geometry-only lookup structures (<code class="docutils literal notranslate"><span class="pre">StructureFactorGather</span></code>, <code class="docutils literal notranslate"><span class="pre">BeamPlan</span></code>
+constants) may be cached; differentiable values that can go stale, most importantly
+<span class="math notranslate nohighlight">\(F_{\mathbf{g}}\)</span>, are never cached.</p></li>
+</ul>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="inputs.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Inputs and experiment directories</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Home</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, diffBloch contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Architecture</a><ul>
+<li><a class="reference internal" href="#building-the-potential">Building the potential</a></li>
+<li><a class="reference internal" href="#the-bloch-wave-forward-model">The Bloch-wave forward model</a></li>
+<li><a class="reference internal" href="#rocking-curve-integration-and-mosaicity">Rocking-curve integration and mosaicity</a></li>
+<li><a class="reference internal" href="#scoring">Scoring</a></li>
+<li><a class="reference internal" href="#refinement">Refinement</a></li>
+<li><a class="reference internal" href="#reproducibility-and-provenance">Reproducibility and provenance</a></li>
+<li><a class="reference internal" href="#observability">Observability</a></li>
+<li><a class="reference internal" href="#design-invariants">Design invariants</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/tabs.js?v=3ee01567"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    </body>
+</html>
