@@ -1,0 +1,787 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html">
+        <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/_modules/diffBloch/core/dynamical/assembly.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>diffBloch.core.dynamical.assembly - diffBloch</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/tabs.css?v=4c969af8" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">diffBloch</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  
+  <span class="sidebar-brand-text">diffBloch</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../inputs.html">Inputs and experiment directories</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../hyperparameter-selection.html">Hyperparameter selection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../reproducibility.html">Reproducibility and checkpoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../refinement.html">Refinement</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../observability-guide.html">Observability and loggers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../examples.html">Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/config.html">Config And Manifests</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/io.html">IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/core.html">Core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/params.html">Params</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/specs.html">Specs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/engine.html">Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/preprocess.html">Preprocess</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/observability.html">Observability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/app.html">App</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for diffBloch.core.dynamical.assembly</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Differentiable structure-matrix assembly (the Bloch ``A`` path).</span>
+
+<span class="sd">Combines a geometry-only plan (precomputed, NumPy) with the refined structure factors ``Fgb``</span>
+<span class="sd">(torch, differentiable). It is built bottom-up: the gather maps ``Fgb`` onto the ``(N, N)``</span>
+<span class="sd">off-diagonal positions ``F(g_j - g_i)``, then :func:`structure_matrix` scales it</span>
+<span class="sd">(``prefactor * Mii_i * Mii_j``) and fills the diagonal (``2 * k_n * Sg * Mii``). The full</span>
+<span class="sd">``build_bloch_system`` (psi0, mask, propagators) follows, drawing its constants from the sibling</span>
+<span class="sd">``core.dynamical.primitives`` module.</span>
+
+<span class="sd">This is the torch half of ``core.dynamical``; ``primitives`` is the NumPy half. The split mirrors</span>
+<span class="sd">the codebase&#39;s ``core.reciprocal`` (geometry) vs ``core.scattering`` (differentiable) boundary.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy.typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">NDArray</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tensor</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.dynamical.primitives</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">excitation_errors</span><span class="p">,</span>
+    <span class="n">mii_factors</span><span class="p">,</span>
+    <span class="n">structure_matrix_prefactor</span><span class="p">,</span>
+    <span class="n">wavevector_magnitude</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.reciprocal</span><span class="w"> </span><span class="kn">import</span> <span class="n">g_vectors</span><span class="p">,</span> <span class="n">ravel_hkl</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.specs</span><span class="w"> </span><span class="kn">import</span> <span class="n">NO_ABSORPTION</span><span class="p">,</span> <span class="n">Absorption</span>
+
+<span class="nb">type</span> <span class="n">IntArray</span> <span class="o">=</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">]</span>
+<span class="nb">type</span> <span class="n">FloatArray</span> <span class="o">=</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">]</span>
+
+<span class="c1"># The off-diagonal of the Bloch structure matrix is ``A[i,j] = scale * F(g_j - g_i)`` — a gather of</span>
+<span class="c1"># the structure factors ``Fgb`` onto every pair of beams. ``F`` is the only refined (differentiable)</span>
+<span class="c1"># input; the gather *indices* are pure geometry, so they are precomputed once into a frozen plan.</span>
+<span class="c1"># The gather uses the ``gmh = hkl[None] - hkl[:, None]`` ordering</span>
+<span class="c1"># (so ``gmh[i,j] = hkl_j - hkl_i`` and ``A[i,j] = F(g_j - g_i)``).</span>
+
+
+<div class="viewcode-block" id="StructureFactorGather">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.StructureFactorGather">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">StructureFactorGather</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Precomputed indices mapping structure factors onto the ``(N, N)`` off-diagonal grid.</span>
+
+<span class="sd">    Geometry-only plan: ``structure_factor_indices`` ravel the ``Fgb`` support grid and</span>
+<span class="sd">    ``beam_difference_indices`` ravel the pairwise beam differences ``hkl_j - hkl_i``, both with the</span>
+<span class="sd">    same ``gpts`` box (the shared-grid contract — one ``gpts`` keeps the two from drifting).</span>
+<span class="sd">    Consumed by :func:`gather_structure_factors`, which scatters ``Fgb`` into a flat buffer and</span>
+<span class="sd">    indexes it, preserving gradients.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">structure_factor_indices</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">beam_difference_indices</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">n_beams</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">buffer_size</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">gpts</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="grid_source_indices">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.grid_source_indices">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">grid_source_indices</span><span class="p">(</span><span class="n">structure_factor_hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span> <span class="n">gpts</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">IntArray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The raveled ``structure_factor_hkl`` source offsets -- the grid-constant half of every gather index map.</span>
+
+<span class="sd">    ``build_structure_factor_gather`` ravels the support grid to these offsets on every call, but</span>
+<span class="sd">    they depend only on ``(structure_factor_hkl, gpts)`` -- invariant across beam sets, orientations, and</span>
+<span class="sd">    trials. Precompute once and pass via ``structure_factor_indices=`` to skip re-raveling the</span>
+<span class="sd">    (potentially</span>
+<span class="sd">    large) support grid on every per-trial coupled rebuild. Same values</span>
+<span class="sd">    ``build_structure_factor_gather`` would compute internally.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">ravel_hkl</span><span class="p">(</span><span class="n">_beam_index_array</span><span class="p">(</span><span class="n">structure_factor_hkl</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;structure_factor_hkl&quot;</span><span class="p">),</span> <span class="n">gpts</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_structure_factor_gather">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.build_structure_factor_gather">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_structure_factor_gather</span><span class="p">(</span>
+    <span class="n">structure_factor_hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span>
+    <span class="n">beam_hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span>
+    <span class="n">gpts</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">validate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">structure_factor_indices</span><span class="p">:</span> <span class="n">IntArray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">StructureFactorGather</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Precompute the structure-factor gather for a beam set against an ``Fgb`` support grid.</span>
+
+<span class="sd">    ``structure_factor_hkl`` ``(G, 3)`` are the Miller indices the structure factors are tabulated on;</span>
+<span class="sd">    ``beam_hkl`` ``(N, 3)`` are the selected beams. The pairwise differences ``hkl_j - hkl_i`` range</span>
+<span class="sd">    to ~2x the beam ``g_max``, so ``structure_factor_hkl`` must cover them (the difference-support constraint) —</span>
+<span class="sd">    validated here rather than silently gathering zeros. Both sets ravel through the same ``gpts``</span>
+<span class="sd">    box (:func:`diffBloch.core.reciprocal.ravel_hkl`, which rejects indices outside the box).</span>
+
+<span class="sd">    ``validate`` (default ``True``) runs three O(N^2 / N^2 log G) integrity checks: no duplicate</span>
+<span class="sd">    ``structure_factor_hkl``, every beam difference in-box, and ``structure_factor_hkl`` covers every difference. They are</span>
+<span class="sd">    the dominant cost when rebuilding a gather per trial over a large beam union, and are *pure</span>
+<span class="sd">    checks* -- when they pass, the returned indices are identical to skipping them.</span>
+
+<span class="sd">    ``validate=False`` skips them for a hot loop whose grid coverage is guaranteed **upstream** (a</span>
+<span class="sd">    ``g_max`` guard). It is *not* self-guarding: the two skipped classes fail differently. A</span>
+<span class="sd">    genuinely out-of-box difference still raises (``ravel_hkl``, numpy&#39;s terser message). But</span>
+<span class="sd">    ``structure_factor_hkl`` is the ``|g| &lt;= g_max`` sphere -- a subset of the rectangular box -- so an in-box</span>
+<span class="sd">    difference *outside that sphere* is absent from it yet ravels to a valid box index the scatter</span>
+<span class="sd">    never wrote: :func:`gather_structure_factors` reads a **silent zero**, with no runtime backstop.</span>
+<span class="sd">    So ``validate=False`` is sound *only* under the upstream coverage guarantee; that guard (not the</span>
+<span class="sd">    ``ravel_hkl`` check) is what keeps a mis-sized grid from silently gathering zeros.</span>
+
+<span class="sd">    ``structure_factor_indices`` optionally supplies the precomputed grid ravel</span>
+<span class="sd">    (:func:`grid_source_indices`)</span>
+<span class="sd">    so a hot rebuild loop skips re-raveling the (large) support grid every call -- it is</span>
+<span class="sd">    grid-constant, so one precompute serves every beam set. When ``None`` it is raveled here (also</span>
+<span class="sd">    validating ``gpts`` + the grid box, which a supplied one is trusted to have satisfied).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">beams</span> <span class="o">=</span> <span class="n">_beam_index_array</span><span class="p">(</span><span class="n">beam_hkl</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;beam_hkl&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Ordering convention: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).</span>
+    <span class="n">gmh</span> <span class="o">=</span> <span class="p">(</span><span class="n">beams</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">-</span> <span class="n">beams</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">structure_factor_indices</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">grid</span> <span class="o">=</span> <span class="n">_beam_index_array</span><span class="p">(</span><span class="n">structure_factor_hkl</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;structure_factor_hkl&quot;</span><span class="p">)</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">ravel_hkl</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">gpts</span><span class="p">)</span>  <span class="c1"># also validates gpts (len 3, positive) and the grid box</span>
+        <span class="k">if</span> <span class="n">validate</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">source</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">source</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;structure_factor_hkl must not contain duplicate Miller indices&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">structure_factor_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">validate</span><span class="p">:</span>
+        <span class="c1"># ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to</span>
+        <span class="c1"># span the difference support (the realistic failure: gpts sized to the beam g_max, not 2x).</span>
+        <span class="c1"># Catch it here with a clear message rather than letting ravel_hkl(gmh, ...) raise numpy&#39;s</span>
+        <span class="c1"># cryptic &quot;invalid entry in coordinates array&quot;.</span>
+        <span class="n">gpts_box</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">gpts</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">shifted</span> <span class="o">=</span> <span class="n">gmh</span> <span class="o">+</span> <span class="n">gpts_box</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">out_of_box</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">((</span><span class="n">shifted</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">shifted</span> <span class="o">&gt;=</span> <span class="n">gpts_box</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">out_of_box</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">missing</span> <span class="o">=</span> <span class="n">gmh</span><span class="p">[</span><span class="n">out_of_box</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;gpts is too small to contain the beam differences hkl_j - hkl_i; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;first out-of-box difference </span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">component</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">component</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;(size gpts to span the difference support, ~2x the beam g_max)&quot;</span>
+            <span class="p">)</span>
+
+    <span class="n">destination</span> <span class="o">=</span> <span class="n">ravel_hkl</span><span class="p">(</span><span class="n">gmh</span><span class="p">,</span> <span class="n">gpts</span><span class="p">)</span>  <span class="c1"># validate=False backstop: raises here on an out-of-box gmh</span>
+    <span class="k">if</span> <span class="n">validate</span><span class="p">:</span>
+        <span class="n">uncovered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">invert</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">uncovered</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">missing</span> <span class="o">=</span> <span class="n">gmh</span><span class="p">[</span><span class="n">uncovered</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;structure_factor_hkl must cover every beam difference hkl_j - hkl_i; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;missing </span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">component</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">component</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;(the grid must span the difference support, ~2x the beam g_max)&quot;</span>
+            <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">StructureFactorGather</span><span class="p">(</span>
+        <span class="n">structure_factor_indices</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">long</span><span class="p">),</span>
+        <span class="n">beam_difference_indices</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">long</span><span class="p">),</span>
+        <span class="n">n_beams</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">beams</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="n">buffer_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">gpts</span><span class="p">)),</span>
+        <span class="n">gpts</span><span class="o">=</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">gpts</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">gpts</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">gpts</span><span class="p">[</span><span class="mi">2</span><span class="p">])),</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="gather_structure_factors">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.gather_structure_factors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">gather_structure_factors</span><span class="p">(</span>
+    <span class="n">gather</span><span class="p">:</span> <span class="n">StructureFactorGather</span><span class="p">,</span>
+    <span class="n">structure_factors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Gather structure factors onto the ``(N, N)`` off-diagonal grid, preserving gradients.</span>
+
+<span class="sd">    ``structure_factors`` ``(G,)`` is the ``Fgb`` tensor aligned with the plan&#39;s ``structure_factor_hkl`` order.</span>
+<span class="sd">    Scatters it into a flat reciprocal buffer (out-of-place ``index_add``) and indexes the buffer at</span>
+<span class="sd">    the beam differences, so ``out[i, j] = F(beam_j - beam_i)``. Differentiable in</span>
+<span class="sd">    ``structure_factors``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">structure_factors</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span>
+        <span class="ow">or</span> <span class="n">structure_factors</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">gather</span><span class="o">.</span><span class="n">structure_factor_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;structure_factors must have shape (G,) matching the gather grid&quot;</span><span class="p">)</span>
+
+    <span class="n">source</span> <span class="o">=</span> <span class="n">gather</span><span class="o">.</span><span class="n">structure_factor_indices</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">structure_factors</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">destination</span> <span class="o">=</span> <span class="n">gather</span><span class="o">.</span><span class="n">beam_difference_indices</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">structure_factors</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">buffer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+        <span class="n">gather</span><span class="o">.</span><span class="n">buffer_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">structure_factors</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">structure_factors</span><span class="o">.</span><span class="n">device</span>
+    <span class="p">)</span>
+    <span class="n">buffer</span> <span class="o">=</span> <span class="n">buffer</span><span class="o">.</span><span class="n">index_add</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">buffer</span><span class="p">[</span><span class="n">destination</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">gather</span><span class="o">.</span><span class="n">n_beams</span><span class="p">,</span> <span class="n">gather</span><span class="o">.</span><span class="n">n_beams</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_beam_index_array</span><span class="p">(</span><span class="n">hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">IntArray</span><span class="p">:</span>
+    <span class="n">miller</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">hkl</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">miller</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="n">miller</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must have shape (N, 3)&quot;</span><span class="p">)</span>
+    <span class="c1"># Reject genuinely fractional / non-finite input rather than silently truncating (0.5 -&gt; 0);</span>
+    <span class="c1"># integer-valued floats (1.0) are accepted, matching the explicit-contract style elsewhere.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">miller</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
+        <span class="n">is_integral</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">miller</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">miller</span><span class="p">)))</span>
+            <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">miller</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">rint</span><span class="p">(</span><span class="n">miller</span><span class="p">)))</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_integral</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must contain integer Miller indices&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">miller</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Structure-matrix assembly: A = scale(geometry) ⊙ gather(F), diagonal replaced</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Adds the geometry-only scale and diagonal to the gather, completing the Bloch structure matrix A</span>
+<span class="c1"># (no-absorption path):</span>
+<span class="c1">#   off-diagonal  A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)</span>
+<span class="c1">#   diagonal      A[i,i] = 2 * k_n * Sg_i * Mii_i      (replaces, not adds)</span>
+<span class="c1"># Every constant is a native primitive (structure_matrix_prefactor, mii_factors, excitation_errors,</span>
+<span class="c1"># wavevector_magnitude); only F is refined, so all of it precomputes into a frozen plan.</span>
+
+
+<div class="viewcode-block" id="BeamPlan">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.BeamPlan">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BeamPlan</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Geometry/numerics-only plan for a beam set (immutable across refinement).</span>
+
+<span class="sd">    Everything fixed by geometry and beam energy, with no dependence on the refined ``Fgb``: the</span>
+<span class="sd">    ``gather`` of structure factors onto beam pairs, the symmetrisation factors ``mii``</span>
+<span class="sd">    (``(N,)``), the scalar off-diagonal ``prefactor``, the precomputed real structure-matrix</span>
+<span class="sd">    ``diagonal`` (``(N,)`` = ``2 * k_n * Sg * Mii``), the propagation constant ``k_n``, the incident</span>
+<span class="sd">    wavefunction ``psi0`` (``(N,)``, 1 at the 000 beam), and the active-beam ``mask`` (``(N,)``).</span>
+<span class="sd">    :func:`structure_matrix` consumes it with ``Fgb`` to produce ``A``; :func:`build_bloch_system`</span>
+<span class="sd">    wraps that into a :class:`BlochSystem` for the propagators.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">gather</span><span class="p">:</span> <span class="n">StructureFactorGather</span>
+    <span class="n">mii</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">prefactor</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">diagonal</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">k_n</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">psi0</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">mask</span><span class="p">:</span> <span class="n">Tensor</span></div>
+
+
+
+<div class="viewcode-block" id="build_beam_plan">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.build_beam_plan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_beam_plan</span><span class="p">(</span>
+    <span class="n">beam_hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span>
+    <span class="n">structure_factor_hkl</span><span class="p">:</span> <span class="n">IntArray</span><span class="p">,</span>
+    <span class="n">reciprocal_basis</span><span class="p">:</span> <span class="n">FloatArray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">energy</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">gpts</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+    <span class="n">u0</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="n">gather</span><span class="p">:</span> <span class="n">StructureFactorGather</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">validate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BeamPlan</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Precompute the geometry/numerics for a beam set.</span>
+
+<span class="sd">    ``beam_hkl`` ``(N, 3)`` selects the beams; ``structure_factor_hkl`` ``(G, 3)`` / ``gpts`` define the ``Fgb``</span>
+<span class="sd">    support grid; ``reciprocal_basis`` ``(3, 3)`` gives ``g = beam_hkl @</span>
+<span class="sd">    reciprocal_basis``. ``energy`` (eV) and ``u0`` (mean-inner-potential) set the wavevector.</span>
+<span class="sd">    Composes the native primitives into the off-diagonal scale (the no-absorption structure-matrix),</span>
+<span class="sd">    the structure-matrix diagonal, and the propagation pieces (``k_n``, ``psi0``, ``mask``), with</span>
+<span class="sd">    ``psi0`` the ``(hkl == 000)`` incident-beam convention. ``mask`` is all-True here: the beams are</span>
+<span class="sd">    the pre-selected active set (per-orientation ``sg_max`` selection is deferred).</span>
+
+<span class="sd">    ``gather`` may be a precomputed :class:`StructureFactorGather` for this exact ``(structure_factor_hkl,</span>
+<span class="sd">    beam_hkl, gpts)`` -- the F-gather is basis-independent, so callers rebuilding many plans over a</span>
+<span class="sd">    single beam set (rocking-curve tilts, orientation-search trials) build it once and pass it in,</span>
+<span class="sd">    skipping the per-call index-map construction and its validation (the dominant cost). When</span>
+<span class="sd">    ``None`` it is built here. A cheap shape guard rejects a gather that does not match this beam</span>
+<span class="sd">    set / box.</span>
+
+<span class="sd">    ``validate`` is forwarded to :func:`build_structure_factor_gather` when building the gather here</span>
+<span class="sd">    (default ``True``); pass ``False`` on a hot rebuild loop whose grid coverage is guaranteed by an</span>
+<span class="sd">    upstream ``g_max`` guard. Ignored when a precomputed ``gather`` is supplied.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">gather</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">gather</span> <span class="o">=</span> <span class="n">build_structure_factor_gather</span><span class="p">(</span>
+            <span class="n">structure_factor_hkl</span><span class="p">,</span> <span class="n">beam_hkl</span><span class="p">,</span> <span class="n">gpts</span><span class="p">,</span> <span class="n">validate</span><span class="o">=</span><span class="n">validate</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">gather</span><span class="o">.</span><span class="n">n_beams</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">beam_hkl</span><span class="p">)</span> <span class="ow">or</span> <span class="n">gather</span><span class="o">.</span><span class="n">gpts</span> <span class="o">!=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">gpts</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;precomputed gather does not match this beam_hkl / gpts&quot;</span><span class="p">)</span>
+    <span class="n">beams</span> <span class="o">=</span> <span class="n">_beam_index_array</span><span class="p">(</span><span class="n">beam_hkl</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;beam_hkl&quot;</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">g_vectors</span><span class="p">(</span><span class="n">beams</span><span class="p">,</span> <span class="n">reciprocal_basis</span><span class="p">)</span>
+    <span class="n">mii</span> <span class="o">=</span> <span class="n">mii_factors</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">u0</span><span class="o">=</span><span class="n">u0</span><span class="p">)</span>
+    <span class="n">sg</span> <span class="o">=</span> <span class="n">excitation_errors</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">u0</span><span class="o">=</span><span class="n">u0</span><span class="p">)</span>
+    <span class="n">k_n</span> <span class="o">=</span> <span class="n">wavevector_magnitude</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">u0</span><span class="o">=</span><span class="n">u0</span><span class="p">)</span>
+    <span class="n">prefactor</span> <span class="o">=</span> <span class="n">structure_matrix_prefactor</span><span class="p">(</span><span class="n">energy</span><span class="p">)</span>
+    <span class="n">diagonal</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">k_n</span> <span class="o">*</span> <span class="n">sg</span> <span class="o">*</span> <span class="n">mii</span>
+    <span class="n">psi0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">beams</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># incident beam: amplitude 1 at the 000 reflection</span>
+    <span class="k">return</span> <span class="n">BeamPlan</span><span class="p">(</span>
+        <span class="n">gather</span><span class="o">=</span><span class="n">gather</span><span class="p">,</span>
+        <span class="n">mii</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mii</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="n">prefactor</span><span class="o">=</span><span class="n">prefactor</span><span class="p">,</span>
+        <span class="n">diagonal</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">diagonal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="n">k_n</span><span class="o">=</span><span class="n">k_n</span><span class="p">,</span>
+        <span class="n">psi0</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">psi0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">complex128</span><span class="p">),</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">beams</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">bool</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="structure_matrix">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.structure_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">structure_matrix</span><span class="p">(</span>
+    <span class="n">plan</span><span class="p">:</span> <span class="n">BeamPlan</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">absorption</span><span class="p">:</span> <span class="n">Absorption</span> <span class="o">=</span> <span class="n">NO_ABSORPTION</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Assemble the Bloch structure matrix ``A`` from a plan and structure factors ``Fgb``.</span>
+
+<span class="sd">    Off-diagonal ``A[i,j] = prefactor * Mii_i * Mii_j * F(g_j - g_i)`` (gathered, then</span>
+<span class="sd">    broadcast-scaled); the diagonal is replaced by the precomputed ``2 * k_n * Sg_i * Mii_i``.</span>
+<span class="sd">    Differentiable in ``structure_factors`` (the diagonal is a geometry constant). Returns a complex</span>
+<span class="sd">    ``(N, N)`` tensor in the dtype of ``structure_factors``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gathered</span> <span class="o">=</span> <span class="n">gather_structure_factors</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">gather</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">)</span>
+    <span class="n">off</span> <span class="o">=</span> <span class="n">gathered</span>
+    <span class="n">mii</span> <span class="o">=</span> <span class="n">plan</span><span class="o">.</span><span class="n">mii</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">real</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">off</span> <span class="o">=</span> <span class="n">off</span> <span class="o">*</span> <span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">prefactor</span> <span class="o">*</span> <span class="n">mii</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">mii</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
+    <span class="n">diagonal</span> <span class="o">=</span> <span class="n">plan</span><span class="o">.</span><span class="n">diagonal</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">absorption</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+        <span class="n">f0_imag</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="n">gathered</span><span class="p">)</span><span class="o">.</span><span class="n">imag</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">u0_prime</span> <span class="o">=</span> <span class="n">plan</span><span class="o">.</span><span class="n">prefactor</span> <span class="o">*</span> <span class="n">f0_imag</span>
+        <span class="n">diagonal</span> <span class="o">=</span> <span class="n">diagonal</span> <span class="o">+</span> <span class="mf">1.0</span><span class="n">j</span> <span class="o">*</span> <span class="n">u0_prime</span> <span class="o">*</span> <span class="n">mii</span>
+    <span class="k">return</span> <span class="n">_fill_diagonal</span><span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">diagonal</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fill_diagonal</span><span class="p">(</span><span class="n">matrix</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">diagonal</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a copy of square ``matrix`` with its diagonal replaced by ``diagonal`` (out-of-place).</span>
+
+<span class="sd">    Gradient flows through the off-diagonal copy; the diagonal positions are overwritten. Rank-</span>
+<span class="sd">    polymorphic: ``matrix`` is ``(..., N, N)`` with any leading batch dims and ``diagonal`` is</span>
+<span class="sd">    ``(..., N)`` -- for a bare ``(N, N)`` this is exactly the single-matrix fill.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="ow">or</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;matrix must be square (..., N, N)&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">diagonal</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;diagonal must have shape (..., N) matching the matrix&quot;</span><span class="p">)</span>
+    <span class="n">filled</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">matrix</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">filled</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">diagonal</span>
+    <span class="k">return</span> <span class="n">filled</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># BlochSystem: the closed, solver-agnostic dynamical-diffraction problem</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="BlochSystem">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.BlochSystem">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BlochSystem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A fully specified, propagator-agnostic Bloch-wave system.</span>
+
+<span class="sd">    Reifies the coupled dynamical-diffraction equations ``dpsi/dz = (i pi / k_n) A psi`` with</span>
+<span class="sd">    ``psi(0) = psi0``: the structure-matrix operator ``A`` (``(N, N)`` complex), its symmetrisation</span>
+<span class="sd">    companion ``mii`` (``(N,)`` -- ``A`` is stored Hermitian-symmetrised so ``eigh`` applies;</span>
+<span class="sd">    ``mii`` un-does that to recover physical amplitudes), the incident wavefunction ``psi0``</span>
+<span class="sd">    (``(N,)``), the propagation constant ``k_n``, and the active-beam ``mask`` (``(N,)``).</span>
+
+<span class="sd">    Defining invariant: a propagator consumes *only* a ``BlochSystem`` -- no geometry, energy, or</span>
+<span class="sd">    hkl -- which is what makes it a closed system rather than a field bag. See ``core.solver``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">a</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">mii</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">psi0</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">k_n</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">mask</span><span class="p">:</span> <span class="n">Tensor</span></div>
+
+
+
+<div class="viewcode-block" id="build_bloch_system">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.build_bloch_system">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_bloch_system</span><span class="p">(</span>
+    <span class="n">plan</span><span class="p">:</span> <span class="n">BeamPlan</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">absorption</span><span class="p">:</span> <span class="n">Absorption</span> <span class="o">=</span> <span class="n">NO_ABSORPTION</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BlochSystem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Assemble the closed Bloch system for a beam plan and structure factors ``Fgb``.</span>
+
+<span class="sd">    ``A`` is built from the differentiable ``Fgb`` (so the system is differentiable in ``Fgb``); the</span>
+<span class="sd">    symmetrisation factors, incident wavefunction, propagation constant, and active mask are carried</span>
+<span class="sd">    straight from the geometry plan. The result is solver-agnostic -- see</span>
+<span class="sd">    :func:`core.solver.propagate`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">BlochSystem</span><span class="p">(</span>
+        <span class="n">a</span><span class="o">=</span><span class="n">structure_matrix</span><span class="p">(</span><span class="n">plan</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">,</span> <span class="n">absorption</span><span class="p">),</span>
+        <span class="n">mii</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">mii</span><span class="p">,</span>
+        <span class="n">psi0</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">psi0</span><span class="p">,</span>
+        <span class="n">k_n</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">k_n</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Batched assembly: one gather + one batched operator over a shared beam set</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># The rocking-curve tilts of one orientation share a single beam set (same hkl, energy), so their</span>
+<span class="c1"># structure matrices differ only in the geometry-per-tilt ``mii`` / ``diagonal`` (the excitation</span>
+<span class="c1"># errors move with the tilt). Stacking them lets the solver run ONE batched eigendecomposition /</span>
+<span class="c1"># matrix-exponential over ``(B, N, N)`` instead of a Python loop of B single solves -- the tilt-</span>
+<span class="c1"># batching perf path. The shared F-gather is done once and broadcast across the batch.</span>
+
+
+<div class="viewcode-block" id="BeamPlanBatch">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.BeamPlanBatch">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BeamPlanBatch</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A stack of :class:`BeamPlan`\\ s over one shared beam set (an orientation&#39;s rocking tilts).</span>
+
+<span class="sd">    Invariant (enforced by :func:`stack_beam_plans`): every plan shares the F-``gather``,</span>
+<span class="sd">    ``prefactor``, ``k_n``, ``psi0``, and ``mask`` -- only the geometry-per-tilt ``mii`` ``(B, N)``</span>
+<span class="sd">    and ``diagonal`` ``(B, N)`` are stacked. :func:`build_bloch_systems` consumes it with ``Fgb``</span>
+<span class="sd">    to produce a batched :class:`BlochSystem` (operator ``(B, N, N)``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">gather</span><span class="p">:</span> <span class="n">StructureFactorGather</span>
+    <span class="n">mii</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">prefactor</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">diagonal</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">k_n</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">psi0</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">mask</span><span class="p">:</span> <span class="n">Tensor</span></div>
+
+
+
+<div class="viewcode-block" id="stack_beam_plans">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.stack_beam_plans">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">stack_beam_plans</span><span class="p">(</span><span class="n">plans</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">BeamPlan</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">BeamPlanBatch</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Stack beam plans sharing one beam set into a :class:`BeamPlanBatch`.</span>
+
+<span class="sd">    Validates the shared-beam-set invariant -- identical gather indices, ``prefactor``, ``k_n``,</span>
+<span class="sd">    ``psi0``, and ``mask`` -- then stacks the per-tilt ``mii`` / ``diagonal`` along a new leading</span>
+<span class="sd">    batch axis. Raises if the plans do not share a beam set (the caller passed unrelated plans, not</span>
+<span class="sd">    rocking-curve tilts of one orientation). Pure geometry: no dependence on ``Fgb``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">plans</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;stack_beam_plans requires at least one beam plan&quot;</span><span class="p">)</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">plans</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">plan</span> <span class="ow">in</span> <span class="n">plans</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+        <span class="n">shares_beams</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span>
+            <span class="n">plan</span><span class="o">.</span><span class="n">gather</span><span class="o">.</span><span class="n">beam_difference_indices</span><span class="p">,</span> <span class="n">first</span><span class="o">.</span><span class="n">gather</span><span class="o">.</span><span class="n">beam_difference_indices</span>
+        <span class="p">)</span> <span class="ow">and</span> <span class="n">torch</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span>
+            <span class="n">plan</span><span class="o">.</span><span class="n">gather</span><span class="o">.</span><span class="n">structure_factor_indices</span><span class="p">,</span> <span class="n">first</span><span class="o">.</span><span class="n">gather</span><span class="o">.</span><span class="n">structure_factor_indices</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">shares_beams</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;stack_beam_plans requires plans sharing one beam set (gather)&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">plan</span><span class="o">.</span><span class="n">prefactor</span> <span class="o">!=</span> <span class="n">first</span><span class="o">.</span><span class="n">prefactor</span> <span class="ow">or</span> <span class="n">plan</span><span class="o">.</span><span class="n">k_n</span> <span class="o">!=</span> <span class="n">first</span><span class="o">.</span><span class="n">k_n</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;stack_beam_plans requires plans sharing energy (prefactor, k_n)&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">psi0</span><span class="p">,</span> <span class="n">first</span><span class="o">.</span><span class="n">psi0</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="n">first</span><span class="o">.</span><span class="n">mask</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;stack_beam_plans requires plans sharing psi0 and mask&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">BeamPlanBatch</span><span class="p">(</span>
+        <span class="n">gather</span><span class="o">=</span><span class="n">first</span><span class="o">.</span><span class="n">gather</span><span class="p">,</span>
+        <span class="n">mii</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">plan</span><span class="o">.</span><span class="n">mii</span> <span class="k">for</span> <span class="n">plan</span> <span class="ow">in</span> <span class="n">plans</span><span class="p">]),</span>
+        <span class="n">prefactor</span><span class="o">=</span><span class="n">first</span><span class="o">.</span><span class="n">prefactor</span><span class="p">,</span>
+        <span class="n">diagonal</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">plan</span><span class="o">.</span><span class="n">diagonal</span> <span class="k">for</span> <span class="n">plan</span> <span class="ow">in</span> <span class="n">plans</span><span class="p">]),</span>
+        <span class="n">k_n</span><span class="o">=</span><span class="n">first</span><span class="o">.</span><span class="n">k_n</span><span class="p">,</span>
+        <span class="n">psi0</span><span class="o">=</span><span class="n">first</span><span class="o">.</span><span class="n">psi0</span><span class="p">,</span>
+        <span class="n">mask</span><span class="o">=</span><span class="n">first</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_bloch_systems">
+<a class="viewcode-back" href="../../../../api/core.html#diffBloch.core.dynamical.build_bloch_systems">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_bloch_systems</span><span class="p">(</span>
+    <span class="n">batch</span><span class="p">:</span> <span class="n">BeamPlanBatch</span><span class="p">,</span>
+    <span class="n">structure_factors</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
+    <span class="n">absorption</span><span class="p">:</span> <span class="n">Absorption</span> <span class="o">=</span> <span class="n">NO_ABSORPTION</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BlochSystem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Assemble the batched Bloch system for a beam-plan batch and structure factors ``Fgb``.</span>
+
+<span class="sd">    Gathers ``Fgb`` **once** onto the shared ``(N, N)`` off-diagonal grid, then scales it per tilt</span>
+<span class="sd">    with the stacked ``mii`` and fills the per-tilt ``diagonal`` -- yielding a batched operator</span>
+<span class="sd">    ``a`` ``(B, N, N)``. The result is a :class:`BlochSystem` whose fields carry the batch dim</span>
+<span class="sd">    (``a`` ``(B, N, N)``, ``mii`` ``(B, N)``); :func:`core.solver.propagate` is rank-polymorphic</span>
+<span class="sd">    over it. Differentiable in ``Fgb`` (the shared gather feeds every tilt).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gathered</span> <span class="o">=</span> <span class="n">gather_structure_factors</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">gather</span><span class="p">,</span> <span class="n">structure_factors</span><span class="p">)</span>
+    <span class="n">mii</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">mii</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">gathered</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">gathered</span><span class="o">.</span><span class="n">real</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>  <span class="c1"># (B, N)</span>
+    <span class="n">off</span> <span class="o">=</span> <span class="n">gathered</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">prefactor</span> <span class="o">*</span> <span class="n">mii</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="n">mii</span><span class="p">[:,</span> <span class="p">:,</span> <span class="kc">None</span><span class="p">])</span>
+    <span class="n">diagonal</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">diagonal</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">off</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">absorption</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+        <span class="n">f0_imag</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="n">gathered</span><span class="p">)</span><span class="o">.</span><span class="n">imag</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">u0_prime</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">prefactor</span> <span class="o">*</span> <span class="n">f0_imag</span>
+        <span class="n">diagonal</span> <span class="o">=</span> <span class="n">diagonal</span> <span class="o">+</span> <span class="mf">1.0</span><span class="n">j</span> <span class="o">*</span> <span class="n">u0_prime</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">mii</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">_fill_diagonal</span><span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">diagonal</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">BlochSystem</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="n">a</span><span class="p">,</span> <span class="n">mii</span><span class="o">=</span><span class="n">batch</span><span class="o">.</span><span class="n">mii</span><span class="p">,</span> <span class="n">psi0</span><span class="o">=</span><span class="n">batch</span><span class="o">.</span><span class="n">psi0</span><span class="p">,</span> <span class="n">k_n</span><span class="o">=</span><span class="n">batch</span><span class="o">.</span><span class="n">k_n</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">batch</span><span class="o">.</span><span class="n">mask</span><span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, diffBloch contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/tabs.js?v=3ee01567"></script>
+    </body>
+</html>

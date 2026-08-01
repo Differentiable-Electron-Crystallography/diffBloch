@@ -290,8 +290,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {index:>2}. {record.name.replace('_', ' ').title()}")
         print()
         print("Output files")
-        print(f"  • {'Plan':<20} {(Path(args.experiment_directory) / 'plan.npz').resolve()}")
-        print(f"  • {'Plan Lock':<20} {(Path(args.experiment_directory) / 'plan.lock').resolve()}")
+        reproducibility_dir = Path(args.experiment_directory) / "reproducibility"
+        print(f"  • {'Plan':<20} {(reproducibility_dir / 'plan.npz').resolve()}")
+        print(f"  • {'Plan Lock':<20} {(reproducibility_dir / 'plan.lock').resolve()}")
         return 0
 
     if args.command == "run" and args.run_command == "refine":

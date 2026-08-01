@@ -10,8 +10,9 @@ different composition composes their own ``pipeline([...])`` with ``from_experim
 ``run_inference`` directly. The CLI stays thin by delegating here and holds no science.
 
 **Checkpoint / resume.** The preprocess (the coupled fit especially) is the run's expensive phase,
-so its settled ``Plan`` is checkpointed to the experiment dir (``plan.npz`` + ``plan.lock``) and
-reused when still valid. The lock binds the checkpoint to four axes -- input bytes, resolved config,
+so its settled ``Plan`` is checkpointed to ``<experiment_dir>/reproducibility/`` (``plan.npz`` +
+``plan.lock``, see :func:`_reproducibility_dir`) and reused when still valid. The lock binds the
+checkpoint to four axes -- input bytes, resolved config,
 software version, and the *recipe* (the Plan's own provenance) -- so it is reused only when all
 match. The match is a longest-prefix over the recipe: an identical recipe is a full **reuse**; a
 recipe that *appends* steps **resumes** from the snapshot and runs only the suffix (the append-only
@@ -22,7 +23,6 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections.abc import Sequence
@@ -101,6 +101,23 @@ _log = logging.getLogger(__name__)
 _PLAN_NPZ = "plan.npz"
 _PLAN_LOCK = "plan.lock"
 _REFINEMENT_LOCK = "refinement.lock"
+_REPRODUCIBILITY_DIRNAME = "reproducibility"
+
+
+def _reproducibility_dir(root: Path) -> Path:
+    """The ``root/reproducibility`` subdirectory for generated bookkeeping, created on first use.
+
+    Keeps ``root`` itself down to the handful of files someone actually reads (``experiment.yaml``,
+    the input structure/experimental-data files, ``refined_structure.cif``,
+    ``refinement_report.txt``, the thickness-NN shape plot) -- everything else, including
+    ``experiment.lock`` (input-identity verification, not a generated output, but bookkeeping all
+    the same), lives here instead: preprocess/refinement checkpoints and their locks, and the raw
+    parameter/component ``.npz`` snapshots.
+    """
+    directory = root / _REPRODUCIBILITY_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
 
 # Above this unit-cell volume the coupled orientation search runs its coarse pass with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
@@ -470,14 +487,7 @@ def refine_experiment(
         profile=profile,
     )
     elapsed_seconds = time.perf_counter() - started
-    result = _write_refinement_outputs(
-        root,
-        cfg,
-        refinement,
-        result,
-        engine=engine,
-        validation_rotation_indices=validation_rotation_indices,
-    )
+    result = _write_refinement_outputs(root, cfg, refinement, result)
     report_path = _write_refinement_report(
         root,
         cfg,
@@ -511,22 +521,19 @@ def _write_refinement_outputs(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     result: ModelRefinementResult,
-    *,
-    engine: RefinementEngine | None = None,
-    validation_rotation_indices: frozenset[int] = frozenset(),
 ) -> ModelRefinementResult:
-    """Persist the best structure, raw parameter snapshot, and machine-readable summary.
+    """Persist the best structure and raw parameter/component snapshots.
 
-    ``engine``/``validation_rotation_indices``, when the latter is non-empty (``train_test`` on),
-    add a ``"validation"`` block to ``refinement_summary.json``: mean wR2/R_obs over the rotations
-    held out from the gradient objective, scored against the same ``result.best_model`` -- ``engine``
-    must cover those rotations (the *reporting* engine over every rotation, not the training-only
-    one ``run_refinement_model`` consumed).
+    ``refined_structure.cif`` lands at ``root`` (the human-facing output); the raw ``.npz``
+    snapshots and the checkpoint/refinement locks go under :func:`_reproducibility_dir` --
+    bookkeeping nobody reads directly. See :func:`_write_refinement_report` for the actual
+    human-readable summary (``refinement_report.txt``), which supersedes the machine-readable
+    ``refinement_summary.json`` this function used to also write.
     """
+    reproducibility_dir = _reproducibility_dir(root)
     structure_path = (root / "refined_structure.cif").resolve()
-    params_path = (root / "refined_parameters.npz").resolve()
-    components_path = (root / "refined_components.npz").resolve()
-    summary_path = (root / "refinement_summary.json").resolve()
+    params_path = (reproducibility_dir / "refined_parameters.npz").resolve()
+    components_path = (reproducibility_dir / "refined_components.npz").resolve()
     state = constrain(result.best_params, refinement.spec)
     source_path = root / cfg.inputs.structure
     document = gemmi.cif.read_file(str(source_path))
@@ -612,19 +619,17 @@ def _write_refinement_outputs(
     if component_arrays:
         np.savez_compressed(str(components_path), **component_arrays)  # type: ignore[arg-type]
 
-    best = result.history[result.best_step]
     artifacts: dict[str, str] = {
         "refined_structure": str(structure_path),
         "refined_parameters": str(params_path),
-        "summary": str(summary_path),
-        "plan": str((root / _PLAN_NPZ).resolve()),
-        "plan_lock": str((root / _PLAN_LOCK).resolve()),
+        "plan": str((reproducibility_dir / _PLAN_NPZ).resolve()),
+        "plan_lock": str((reproducibility_dir / _PLAN_LOCK).resolve()),
     }
     if component_arrays:
         artifacts["refined_components"] = str(components_path)
-    plan_lock_path = root / _PLAN_LOCK
+    plan_lock_path = reproducibility_dir / _PLAN_LOCK
     if plan_lock_path.exists():
-        lock_path = (root / _REFINEMENT_LOCK).resolve()
+        lock_path = (reproducibility_dir / _REFINEMENT_LOCK).resolve()
         write_refinement_lock(
             lock_path,
             RefinementLock(
@@ -636,32 +641,6 @@ def _write_refinement_outputs(
             ),
         )
         artifacts["refinement_lock"] = str(lock_path)
-    summary: dict[str, object] = {
-        "best_epoch": result.best_step,
-        "objective": result.best_loss,
-        "wr2": best.wr2,
-        "r_obs": best.r_obs,
-        "diff_loss": best.diff_loss,
-        "total_hkl": (
-            f"{result.reflection_counts['matched_i_gt_3sigma']} / "
-            f"{result.reflection_counts['matched']}"
-        ),
-        "artifacts": artifacts,
-    }
-    if engine is not None and validation_rotation_indices:
-        val_rows = [
-            row
-            for row in engine.per_rotation_metrics(result.best_model)
-            if row.rotation_index in validation_rotation_indices
-        ]
-        finite_wr2 = [row.wr2 for row in val_rows if row.wr2 == row.wr2]  # drop NaN
-        finite_r_obs = [row.r_obs for row in val_rows if row.r_obs == row.r_obs]
-        summary["validation"] = {
-            "n_rotations": len(val_rows),
-            "wr2": sum(finite_wr2) / len(finite_wr2) if finite_wr2 else None,
-            "r_obs": sum(finite_r_obs) / len(finite_r_obs) if finite_r_obs else None,
-        }
-    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     return replace(result, artifacts=artifacts)
 
 
@@ -1095,13 +1074,14 @@ def _prepare(
     # A recipe with an unrecorded (opaque) step cannot be safely identified -> never checkpoint it.
     can_checkpoint = checkpoint and OPAQUE not in records
     recipe = [RecipeStep(name=r.name, params=r.params) for r in records]
-    npz, lock_path = root / _PLAN_NPZ, root / _PLAN_LOCK
+    reproducibility_dir = _reproducibility_dir(root)
+    npz, lock_path = reproducibility_dir / _PLAN_NPZ, reproducibility_dir / _PLAN_LOCK
 
     if can_checkpoint and not refresh and lock_path.exists() and npz.exists():
         lock = read_preprocess_lock(lock_path)
         status = preprocess_lock_status(
             lock,
-            experiment_lock_sha256=sha256_file(root / "experiment.lock"),
+            experiment_lock_sha256=sha256_file(root / "reproducibility" / "experiment.lock"),
             config_digest=config_digest(cfg),
             code_version=code_version(),
             recipe=recipe,
@@ -1141,7 +1121,7 @@ def _write_checkpoint(
     """Write ``plan.npz`` + regenerate ``plan.lock`` so the lock always describes the npz."""
     write_plan(plan, npz)
     lock = PreprocessLock(
-        experiment_lock_sha256=sha256_file(root / "experiment.lock"),
+        experiment_lock_sha256=sha256_file(root / "reproducibility" / "experiment.lock"),
         config_digest=config_digest(cfg),
         code_version=code_version(),
         recipe=recipe,

@@ -1,0 +1,58 @@
+data_cspbbr3
+_symmetry_cell_setting orthorhombic
+_symmetry_space_group_name_H-M 'P b n m'
+_symmetry_space_group_name_Hall '-P -2xab;-2yabc;-2zc'
+_symmetry_Int_Tables_number 62
+
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 x,y,z
+2 -x,-y,z+1/2
+3 -x+1/2,y+1/2,-z+1/2
+4 x+1/2,-y+1/2,-z
+5 -x,-y,-z
+6 x,y,-z+1/2
+7 x+1/2,-y+1/2,z+1/2
+8 -x+1/2,y+1/2,z
+
+_cell_length_a 8.1189(4)
+_cell_length_b 8.3590(4)
+_cell_length_c 11.759(1)
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_cell_volume 798.1(1)
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_thermal_displace_type
+_atom_site_U_iso_or_equiv
+_atom_site_site_symmetry_multiplicity
+_atom_site_occupancy
+_atom_site_calc_flag
+_atom_site_refinement_flags
+_atom_site_disorder_assembly
+_atom_site_disorder_group
+Cs1 Cs 0.5149448404 0.5532128203 0.75 Uani 0.0375(3) 4 1 d . . .
+Pb1 Pb 0.5 1 0.5 Uani 0.01530(10) 4 1 d . . .
+Br1 Br 0.3007223609 0.701517125 0.4685385962 Uani 0.0272(2) 8 1 d . . .
+Br2 Br 0.4400121463 0.9940244848 0.75 Uani 0.0353(4) 4 1 d . . .
+
+loop_
+_atom_site_aniso_label
+_atom_site_aniso_type_symbol
+_atom_site_aniso_U_11
+_atom_site_aniso_U_22
+_atom_site_aniso_U_33
+_atom_site_aniso_U_12
+_atom_site_aniso_U_13
+_atom_site_aniso_U_23
+Cs1 Cs 0.04134708198 0.04021364476 0.03106764711 0.008138406966 0 0
+Pb1 Pb 0.01568729601 0.01522991072 0.01411869529 -0.001884032062 -0.001531730307 0.0009594462858
+Br1 Br 0.02483514394 0.02216972777 0.03461844141 -0.01027413381 0.003343325995 -0.004384003031
+Br2 Br 0.0508118186 0.04240646416 0.01155359192 0.003411476735 0 0

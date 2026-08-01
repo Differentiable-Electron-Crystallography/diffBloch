@@ -1,0 +1,15 @@
+{
+  "best_epoch": 39,
+  "objective": 0.003070037040220655,
+  "wr2": 0.003070037040220655,
+  "r_obs": 0.00799979105575506,
+  "diff_loss": 0.003070037040220655,
+  "total_hkl": "8 / 4",
+  "artifacts": {
+    "refined_structure": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/quartz/refined_structure.cif",
+    "refined_parameters": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/quartz/refined_parameters.npz",
+    "summary": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/quartz/refinement_summary.json",
+    "plan": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/quartz/plan.npz",
+    "plan_lock": "/home/ben-colmey/Desktop/diffbloch_public_1.0/examples/experiments/quartz/plan.lock"
+  }
+}

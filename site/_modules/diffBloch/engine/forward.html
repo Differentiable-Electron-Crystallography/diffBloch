@@ -1,0 +1,1330 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/_modules/diffBloch/engine/forward.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>diffBloch.engine.forward - diffBloch</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">diffBloch</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <span class="sidebar-brand-text">diffBloch</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../inputs.html">Inputs and experiment directories</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../hyperparameter-selection.html">Hyperparameter selection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../reproducibility.html">Reproducibility and checkpoints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../refinement.html">Refinement</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../observability-guide.html">Observability and loggers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/config.html">Config And Manifests</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/io.html">IO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/core.html">Core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/params.html">Params</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/specs.html">Specs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/engine.html">Engine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/preprocess.html">Preprocess</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/observability.html">Observability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/app.html">App</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for diffBloch.engine.forward</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Forward composition spine: raw structure parameters -&gt; diffraction -&gt; scalar objective.</span>
+
+<span class="sd">A :class:`RefinementEngine` holds the refinement-invariant plans (constraint spec, ASU-expansion</span>
+<span class="sd">plan, the shared scattering grid, and one :class:`~diffBloch.engine.plan.OrientationPlan` per</span>
+<span class="sd">rotation) and maps :class:`~diffBloch.params.RefinableParams` to a differentiable objective:</span>
+
+<span class="sd">    constrain -&gt; expand ASU -&gt; structure_factors (Fgb on the shared grid)</span>
+<span class="sd">              -&gt; per orientation: build_bloch_system -&gt; propagate -&gt; intensities -&gt; align -&gt; loss</span>
+
+<span class="sd">``objective_value`` / ``simulate`` are pure and differentiable;</span>
+<span class="sd">:func:`run_refinement_model` delegates to the quarantined imperative loop in</span>
+<span class="sd">:mod:`diffBloch.engine.refine`. Engines are assembled from explicit per-orientation beam sets that</span>
+<span class="sd">preprocessing has already selected.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MappingProxyType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Protocol</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tensor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.checkpoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">checkpoint</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.dynamical</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">BeamPlanBatch</span><span class="p">,</span>
+    <span class="n">build_bloch_system</span><span class="p">,</span>
+    <span class="n">build_bloch_systems</span><span class="p">,</span>
+    <span class="n">stack_beam_plans</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.losses</span><span class="w"> </span><span class="kn">import</span> <span class="n">optimal_scale</span><span class="p">,</span> <span class="n">rbragg</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.products</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AlignedIntensities</span><span class="p">,</span>
+    <span class="n">BlochSolution</span><span class="p">,</span>
+    <span class="n">align</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">,</span>
+    <span class="n">reduce_tilts</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.scattering</span><span class="w"> </span><span class="kn">import</span> <span class="n">structure_factors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.solver</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">SolverMethod</span><span class="p">,</span>
+    <span class="n">memory_safe_max_batch</span><span class="p">,</span>
+    <span class="n">propagate</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.symmetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsuExpansionPlan</span><span class="p">,</span> <span class="n">expand_asu</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine.constraints</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstraintTransform</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine.losses</span><span class="w"> </span><span class="kn">import</span> <span class="n">wr2_loss</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine.plan</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CoupledOrientationPlan</span><span class="p">,</span>
+    <span class="n">OrientationPlanLike</span><span class="p">,</span>
+    <span class="n">StructureFactorGrid</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine.refine</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ObjectiveComponent</span><span class="p">,</span>
+    <span class="n">ObjectiveValue</span><span class="p">,</span>
+    <span class="n">OptimizerName</span><span class="p">,</span>
+    <span class="n">PenaltyTerm</span><span class="p">,</span>
+    <span class="n">TrainableSpec</span><span class="p">,</span>
+    <span class="n">_build_optimizer</span><span class="p">,</span>
+    <span class="n">_component_measurements</span><span class="p">,</span>
+    <span class="n">_detach_params</span><span class="p">,</span>
+    <span class="n">_resolve_trainable</span><span class="p">,</span>
+    <span class="n">_scalar_float</span><span class="p">,</span>
+    <span class="n">_to_trainable_params</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.observability</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">NULL_LOGGER</span><span class="p">,</span>
+    <span class="n">Logger</span><span class="p">,</span>
+    <span class="n">RefinementCompleted</span><span class="p">,</span>
+    <span class="n">RefinementOrientationStep</span><span class="p">,</span>
+    <span class="n">RefinementStep</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConstraintSpec</span><span class="p">,</span> <span class="n">PhysicalState</span><span class="p">,</span> <span class="n">RefinableParams</span><span class="p">,</span> <span class="n">constrain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.specs</span><span class="w"> </span><span class="kn">import</span> <span class="n">Absorption</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;ForwardContext&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;LossFn&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ModelComponent&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;StructureComponent&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RefinementEngine&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RefinementModel&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ModelRefinementResult&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RefinementProblem&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;build_refinement_model&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;build_refinement_problem&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;run_refinement_model&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1"># A loss reduces one orientation&#39;s aligned intensities to a scalar term (calculated vs observed).</span>
+<span class="c1"># The engine sums these per-orientation terms into the scalar objective refinement minimises.</span>
+<span class="nb">type</span> <span class="n">LossFn</span> <span class="o">=</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">AlignedIntensities</span><span class="p">],</span> <span class="n">Tensor</span><span class="p">]</span>
+
+<span class="n">_log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Timer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A no-op-unless-``enabled`` wall-clock timer, logged via stdlib diagnostics.</span>
+
+<span class="sd">    CUDA kernels queue asynchronously, so an accurate boundary needs ``torch.cuda.synchronize()``</span>
+<span class="sd">    around the measured block -- itself real overhead, so it (and the ``perf_counter`` call) only</span>
+<span class="sd">    runs when profiling is explicitly requested. Never on by default; this is diagnostics</span>
+<span class="sd">    (``logging``), not a domain-observation :class:`~diffBloch.observability.Event`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;label&quot;</span><span class="p">,</span> <span class="s2">&quot;device&quot;</span><span class="p">,</span> <span class="s2">&quot;enabled&quot;</span><span class="p">,</span> <span class="s2">&quot;_start&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">enabled</span> <span class="o">=</span> <span class="n">enabled</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_Timer</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;cuda&quot;</span><span class="p">:</span>
+                <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">exc_info</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;cuda&quot;</span><span class="p">:</span>
+                <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">synchronize</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">_log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;profile: </span><span class="si">%-28s</span><span class="s2"> </span><span class="si">%8.1f</span><span class="s2"> ms&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">,</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e3</span>
+            <span class="p">)</span>
+
+
+<div class="viewcode-block" id="RefinementEngine">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">RefinementEngine</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Forward from raw structure parameters to a differentiable scalar objective.</span>
+
+<span class="sd">    Holds the refinement-invariant context: the constraint ``spec``, the ASU-expansion ``asu_plan``,</span>
+<span class="sd">    the ASU atomic ``numbers``, the shared ``grid``, the per-rotation ``orientations`` (each</span>
+<span class="sd">    carrying its own frozen ``thickness``), the per-orientation ``loss``, and the propagation</span>
+<span class="sd">    ``method``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">spec</span><span class="p">:</span> <span class="n">ConstraintSpec</span>
+    <span class="n">asu_plan</span><span class="p">:</span> <span class="n">AsuExpansionPlan</span>
+    <span class="n">numbers</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">grid</span><span class="p">:</span> <span class="n">StructureFactorGrid</span>
+    <span class="n">orientations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">loss</span><span class="p">:</span> <span class="n">LossFn</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">SolverMethod</span> <span class="o">=</span> <span class="s2">&quot;matrix_exp&quot;</span>
+    <span class="c1"># matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a</span>
+    <span class="c1"># rounding-level ~1 ulp shift, never accuracy). None (default) lets each</span>
+    <span class="c1"># solve pick a memory-safe block from its beam count (memory_safe_max_batch), which bounds the</span>
+    <span class="c1"># (B, T, N, N) propagator that a wide coupled segment x a thickness grid would otherwise</span>
+    <span class="c1"># materialize all at once. A positive int pins the block</span>
+    <span class="c1"># for a specific device budget. Execution-only, like method.</span>
+    <span class="n">max_batch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">absorption</span><span class="p">:</span> <span class="n">Absorption</span> <span class="o">=</span> <span class="n">Absorption</span><span class="p">()</span>
+    <span class="n">active_structure_factor_indices</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Execution-only diagnostics switch (like method): logs per-phase wall time</span>
+    <span class="c1"># (structure factors, each rotation&#39;s solve) via stdlib logging. Off by default -- zero cost.</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1"># Execution-only memory/compute tradeoff (like max_batch): checkpoint each per-orientation /</span>
+    <span class="c1"># per-segment solve so its intermediates (including every matrix_exp block) are freed after</span>
+    <span class="c1"># forward and recomputed on backward, bounding peak memory at the cost of a second forward pass.</span>
+    <span class="c1"># On by default (the memory-safe choice for the wide coupled-union solves this was added for);</span>
+    <span class="c1"># disabling it trades that memory headroom for one fewer full recompute per step. Gradients are</span>
+    <span class="c1"># identical either way -- checkpointing changes only what is retained, never any value.</span>
+    <span class="n">checkpoint_activations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_max_batch_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_beams</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The matrix_exp block cap for a solve over ``n_beams`` beams (explicit pin, else safe).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_batch</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_batch</span>
+        <span class="k">return</span> <span class="n">memory_safe_max_batch</span><span class="p">(</span><span class="n">n_beams</span><span class="p">)</span>
+
+<div class="viewcode-block" id="RefinementEngine.simulate">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.simulate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">simulate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">BlochSolution</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the calculated :class:`BlochSolution` for every orientation (no loss).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;engine has no orientations to evaluate&quot;</span><span class="p">)</span>
+        <span class="n">fgb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factors</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_solve</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thickness_for</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">params</span><span class="p">))</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.fgb">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.fgb">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fgb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The calculated structure factors ``F_gb`` on the shared grid.</span>
+
+<span class="sd">        The orientation-invariant part of the forward model: compute once and reuse across</span>
+<span class="sd">        orientations (e.g. when scoring many trial orientations of one structure).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factors</span><span class="p">(</span><span class="n">params</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.structure_factor_values">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.structure_factor_values">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">structure_factor_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">,</span> <span class="n">indices</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate ``Fgb`` only for selected rows of the shared support grid.&quot;&quot;&quot;</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physical_state</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factor_values_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">indices</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.score_orientation">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">score_orientation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="n">fgb</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Scaling-optimised weighted-R2 (wR2) for one orientation against its observed pattern.</span>
+
+<span class="sd">        Runs the forward Bloch simulation for ``orientation`` from a precomputed ``fgb``</span>
+<span class="sd">        (:meth:`fgb`), aligns calculated vs observed intensities, and grid-searches the intensity</span>
+<span class="sd">        scale minimising wR2 (:func:`diffBloch.core.losses.optimal_scale`). With multiple</span>
+<span class="sd">        thicknesses the best-fitting thickness&#39;s score is returned -- thickness is a nuisance when</span>
+<span class="sd">        scoring orientation. This is the objective ``optimize_orientation`` minimises.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_orientation_per_thickness</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.score_orientation_r_obs">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation_r_obs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">score_orientation_r_obs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="n">fgb</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the best scaling-optimised R(obs) over this orientation&#39;s thicknesses.&quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="n">align</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_solve</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">orientation</span><span class="o">.</span><span class="n">thickness</span><span class="p">),</span>
+                <span class="n">orientation</span><span class="o">.</span><span class="n">pattern</span><span class="p">,</span>
+                <span class="n">orientation</span><span class="o">.</span><span class="n">alignment</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="n">optimal_scale</span><span class="p">(</span>
+                        <span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                        <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                        <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                        <span class="n">metric</span><span class="o">=</span><span class="n">rbragg</span><span class="p">,</span>
+                    <span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="p">]</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.score_orientation_per_thickness">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation_per_thickness">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">score_orientation_per_thickness</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="n">fgb</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Scaling-optimised wR2 for each of the orientation&#39;s thicknesses (shape ``(T,)``).</span>
+
+<span class="sd">        One forward Bloch simulation from a precomputed ``fgb`` (:meth:`fgb`) covers all ``T``</span>
+<span class="sd">        thicknesses at once: the expensive eigendecomposition depends only on the orientation and</span>
+<span class="sd">        ``fgb``, while thickness enters only the cheap propagation tail. The calculated and observed</span>
+<span class="sd">        intensities are aligned once (alignment is thickness-independent), then for each thickness</span>
+<span class="sd">        the intensity scale minimising wR2 is found (:func:`diffBloch.core.losses.optimal_scale`).</span>
+
+<span class="sd">        ``optimize_thickness`` grid-searches this vector and bakes the lowest-wR2 thickness;</span>
+<span class="sd">        :meth:`score_orientation` collapses it with ``.min()`` (thickness is a nuisance there).</span>
+
+<span class="sd">        Runs under ``torch.no_grad()``: this is search scoring (``optimize_orientation`` /</span>
+<span class="sd">        ``optimize_thickness`` grid search + argmin), never backpropagated -- every caller consumes a</span>
+<span class="sd">        detached scalar. Without it the ``T``-thickness solve builds an autograd graph whose</span>
+<span class="sd">        retained ``matrix_exp`` intermediates accumulate across every propagator block, defeating</span>
+<span class="sd">        the ``max_batch`` memory bound (:func:`~diffBloch.core.solver.propagate`) and OOMing a wide</span>
+<span class="sd">        coupled segment on the GPU. Grad-off does not change the returned scores.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="n">align</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_solve</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">orientation</span><span class="o">.</span><span class="n">thickness</span><span class="p">),</span>
+                <span class="n">orientation</span><span class="o">.</span><span class="n">pattern</span><span class="p">,</span>
+                <span class="n">orientation</span><span class="o">.</span><span class="n">alignment</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="n">optimal_scale</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="n">t</span><span class="p">])[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="p">]</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.objective_value">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.objective_value">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">objective_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">,</span>
+        <span class="n">penalties</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PenaltyTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+        <span class="n">constraints</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstraintTransform</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObjectiveValue</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the objective as a scalar total plus named scalar components.</span>
+
+<span class="sd">        Differentiable in ``params``. The objective is composed in a fixed order that separates hard</span>
+<span class="sd">        *constraints* (enforced transforms) from soft *penalties* (additive terms)::</span>
+
+<span class="sd">            raw RefinableParams</span>
+<span class="sd">              -&gt; crystallographic constraints (constrain / ConstraintSpec):</span>
+<span class="sd">                   site-symmetry position projector, ADP equalities, positivity/bounded transforms</span>
+<span class="sd">              -&gt; PhysicalState</span>
+<span class="sd">              -&gt; molecular hard constraints  (the `constraints` ConstraintTransform layer)</span>
+<span class="sd">              -&gt; diffraction term + soft penalties</span>
+<span class="sd">              -&gt; scalar objective</span>
+
+<span class="sd">        ``self.physical_state(params)`` applies the crystallographic constraints; each</span>
+<span class="sd">        ``ConstraintTransform`` in ``constraints`` then reparameterizes that state in tuple order</span>
+<span class="sd">        (duplicate names rejected), so both the diffraction term and the ``penalties`` see the</span>
+<span class="sd">        transformed state. The ``&quot;diffraction&quot;`` component is always present; ``penalties`` add</span>
+<span class="sd">        weighted soft-penalty components (bond-length, etc.) without making the optimizer know their</span>
+<span class="sd">        details. Hydrogen riding (:class:`~diffBloch.engine.constraints.HydrogenRiding`) is one such</span>
+<span class="sd">        ``ConstraintTransform``; a soft penalty and a hard constraint are distinct -- a constraint</span>
+<span class="sd">        reparameterizes, it is not a cost term.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_objective_value</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">,</span>
+            <span class="n">penalties</span><span class="o">=</span><span class="n">penalties</span><span class="p">,</span>
+            <span class="n">constraints</span><span class="o">=</span><span class="n">constraints</span><span class="p">,</span>
+            <span class="n">forward_context_for</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.objective_value_model">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.objective_value_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">objective_value_model</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">penalties</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PenaltyTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObjectiveValue</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the objective for a :class:`RefinementModel`.</span>
+
+<span class="sd">        Structure-only models delegate to :meth:`objective_value` for exact behavior parity. Models</span>
+<span class="sd">        with components use the same objective order, but let components supply forward-context</span>
+<span class="sd">        values such as per-orientation thickness before falling back to the built-in thickness path.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_objective_value</span><span class="p">(</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">,</span>
+            <span class="n">penalties</span><span class="o">=</span><span class="n">penalties</span><span class="p">,</span>
+            <span class="n">constraints</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">constraints</span><span class="p">,</span>
+            <span class="n">forward_context_for</span><span class="o">=</span><span class="n">_component_forward_context_for</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">components</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RefinementEngine.refinement_metrics">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.refinement_metrics">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">refinement_metrics</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return mean R_obs and reflection counts for one refinement-model snapshot.</span>
+
+<span class="sd">        Counts are over PETS rows in the selected rotations: matched rows enter the diffraction</span>
+<span class="sd">        alignment, unmatched rows do not; strong/weak split matched rows at ``I &gt; 3 sigma``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physical_state</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">constraints</span><span class="p">:</span>
+                <span class="n">state</span> <span class="o">=</span> <span class="n">constraint</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="n">fgb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factors_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+            <span class="n">r_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">n_matched</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">n_strong</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">n_weak</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">n_unmatched</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">):</span>
+                <span class="n">context</span> <span class="o">=</span> <span class="n">_forward_context</span><span class="p">(</span>
+                    <span class="n">model</span><span class="p">,</span> <span class="n">rotation_index</span><span class="o">=</span><span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="n">orientation</span>
+                <span class="p">)</span>
+                <span class="n">thickness</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">thickness</span>
+                <span class="k">if</span> <span class="n">thickness</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">thickness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thickness_for</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">)</span>
+                <span class="n">aligned</span> <span class="o">=</span> <span class="n">align</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_solve</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">thickness</span><span class="p">),</span>
+                    <span class="n">orientation</span><span class="o">.</span><span class="n">pattern</span><span class="p">,</span>
+                    <span class="n">orientation</span><span class="o">.</span><span class="n">alignment</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">scores</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="n">optimal_scale</span><span class="p">(</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">metric</span><span class="o">=</span><span class="n">rbragg</span><span class="p">,</span>
+                        <span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">finite</span> <span class="o">=</span> <span class="n">scores</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">scores</span><span class="p">)]</span>
+                <span class="k">if</span> <span class="n">finite</span><span class="o">.</span><span class="n">numel</span><span class="p">():</span>
+                    <span class="n">r_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">finite</span><span class="o">.</span><span class="n">min</span><span class="p">()))</span>
+                <span class="n">strong</span> <span class="o">=</span> <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">3.0</span> <span class="o">*</span> <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">matched</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">strong</span><span class="o">.</span><span class="n">numel</span><span class="p">())</span>
+                <span class="n">n_matched</span> <span class="o">+=</span> <span class="n">matched</span>
+                <span class="n">n_strong</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">strong</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+                <span class="n">n_weak</span> <span class="o">+=</span> <span class="n">matched</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">strong</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+                <span class="n">n_unmatched</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">orientation</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">matched</span>
+        <span class="n">mean_r_obs</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">r_values</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">r_values</span><span class="p">)</span> <span class="k">if</span> <span class="n">r_values</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mean_r_obs</span><span class="p">,</span> <span class="n">n_matched</span><span class="p">,</span> <span class="n">n_strong</span><span class="p">,</span> <span class="n">n_weak</span><span class="p">,</span> <span class="n">n_unmatched</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_objective_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">penalties</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PenaltyTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+        <span class="n">constraints</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstraintTransform</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+        <span class="n">forward_context_for</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="n">OrientationPlanLike</span><span class="p">],</span> <span class="n">ForwardContext</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObjectiveValue</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Shared objective implementation for structure-only and component model paths.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;engine has no orientations to evaluate&quot;</span><span class="p">)</span>
+        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="n">constraint</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">constraints</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">names</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;duplicate constraint name among </span><span class="si">{</span><span class="n">names</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physical_state</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">constraint</span> <span class="ow">in</span> <span class="n">constraints</span><span class="p">:</span>
+            <span class="n">state</span> <span class="o">=</span> <span class="n">constraint</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">fgb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factors_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">asu_positions</span><span class="o">.</span><span class="n">new_zeros</span><span class="p">(())</span>
+        <span class="n">wr2_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">r_obs_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">per_rotation</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">):</span>
+            <span class="n">context</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">ForwardContext</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">forward_context_for</span> <span class="ow">is</span> <span class="kc">None</span>
+                <span class="k">else</span> <span class="n">forward_context_for</span><span class="p">(</span><span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">thickness</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">thickness</span>
+            <span class="k">if</span> <span class="n">thickness</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">thickness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_thickness_for</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">_Timer</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;solve[rotation=</span><span class="si">{</span><span class="n">rotation_index</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">,</span> <span class="n">fgb</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile</span><span class="p">):</span>
+                <span class="n">solution</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_solve</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">thickness</span><span class="p">)</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="n">align</span><span class="p">(</span><span class="n">solution</span><span class="p">,</span> <span class="n">orientation</span><span class="o">.</span><span class="n">pattern</span><span class="p">,</span> <span class="n">orientation</span><span class="o">.</span><span class="n">alignment</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+                <span class="n">wr2_scores</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="n">optimal_scale</span><span class="p">(</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                        <span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">finite_wr2</span> <span class="o">=</span> <span class="n">wr2_scores</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">wr2_scores</span><span class="p">)]</span>
+                <span class="n">rotation_wr2</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">finite_wr2</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="k">if</span> <span class="n">finite_wr2</span><span class="o">.</span><span class="n">numel</span><span class="p">()</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">finite_wr2</span><span class="o">.</span><span class="n">numel</span><span class="p">():</span>
+                    <span class="n">wr2_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rotation_wr2</span><span class="p">)</span>
+                <span class="n">scores</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="n">optimal_scale</span><span class="p">(</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">observed</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">aligned</span><span class="o">.</span><span class="n">sigmas</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                            <span class="n">metric</span><span class="o">=</span><span class="n">rbragg</span><span class="p">,</span>
+                        <span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">aligned</span><span class="o">.</span><span class="n">calculated</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">finite</span> <span class="o">=</span> <span class="n">scores</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">scores</span><span class="p">)]</span>
+                <span class="n">rotation_r_obs</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">finite</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="k">if</span> <span class="n">finite</span><span class="o">.</span><span class="n">numel</span><span class="p">()</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">finite</span><span class="o">.</span><span class="n">numel</span><span class="p">():</span>
+                    <span class="n">r_obs_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rotation_r_obs</span><span class="p">)</span>
+            <span class="n">term</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loss</span><span class="p">(</span><span class="n">aligned</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">term</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;loss must return a scalar, got shape </span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">total</span> <span class="o">=</span> <span class="n">total</span> <span class="o">+</span> <span class="n">term</span>
+            <span class="n">per_rotation</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;rotation_index&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">rotation_index</span><span class="p">),</span>
+                    <span class="s2">&quot;wr2&quot;</span><span class="p">:</span> <span class="n">rotation_wr2</span><span class="p">,</span>
+                    <span class="s2">&quot;r_obs&quot;</span><span class="p">:</span> <span class="n">rotation_r_obs</span><span class="p">,</span>
+                    <span class="s2">&quot;diff_loss&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">term</span><span class="o">.</span><span class="n">detach</span><span class="p">()),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="n">components</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;diffraction&quot;</span><span class="p">:</span> <span class="n">ObjectiveComponent</span><span class="p">(</span><span class="n">raw</span><span class="o">=</span><span class="n">total</span><span class="p">)}</span>
+        <span class="k">for</span> <span class="n">penalty</span> <span class="ow">in</span> <span class="n">penalties</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">penalty</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">components</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;duplicate objective component name </span><span class="si">{</span><span class="n">penalty</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">components</span><span class="p">[</span><span class="n">penalty</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">ObjectiveComponent</span><span class="p">(</span>
+                <span class="n">raw</span><span class="o">=</span><span class="n">penalty</span><span class="o">.</span><span class="n">value</span><span class="p">(</span><span class="n">state</span><span class="p">),</span> <span class="n">weight</span><span class="o">=</span><span class="n">penalty</span><span class="o">.</span><span class="n">weight</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">ObjectiveValue</span><span class="p">(</span>
+            <span class="n">components</span><span class="p">,</span>
+            <span class="n">diagnostics</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;wr2&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">wr2_values</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">wr2_values</span><span class="p">)</span> <span class="k">if</span> <span class="n">wr2_values</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)),</span>
+                <span class="s2">&quot;r_obs&quot;</span><span class="p">:</span> <span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">r_obs_values</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">r_obs_values</span><span class="p">)</span> <span class="k">if</span> <span class="n">r_obs_values</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)),</span>
+            <span class="p">},</span>
+            <span class="n">per_rotation</span><span class="o">=</span><span class="n">per_rotation</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_thickness_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The thickness ``(T,)`` the forward model uses for one orientation.</span>
+
+<span class="sd">        There are two sources of thickness, and this picks between them:</span>
+
+<span class="sd">        - **Normally**, each orientation carries its own fixed thickness</span>
+<span class="sd">          (``orientation.thickness``), because the specimen presents a different path length at each</span>
+<span class="sd">          tilt. It is seeded from the</span>
+<span class="sd">          sample thickness and later replaced by the best-fitting value found by ``optimize_thickness``.</span>
+<span class="sd">        Trainable thickness refinement is represented by model components that provide</span>
+<span class="sd">        ``ForwardContext.thickness``. Without such a component, the settled per-orientation Plan</span>
+<span class="sd">        thickness is the sole source used by the Bloch solve.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">orientation</span><span class="o">.</span><span class="n">thickness</span>
+
+<div class="viewcode-block" id="RefinementEngine.physical_state">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementEngine.physical_state">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">physical_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PhysicalState</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return bounded physical ASU quantities for ``params``.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">constrain</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_structure_factors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">physical_state</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factors_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_structure_factors_from_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">PhysicalState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_Timer</span><span class="p">(</span><span class="s2">&quot;structure_factors&quot;</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">positions</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile</span><span class="p">):</span>
+            <span class="n">active</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">active_structure_factor_indices</span>
+            <span class="k">if</span> <span class="n">active</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factor_values_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_structure_factor_values_from_state</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">active</span><span class="p">)</span>
+            <span class="n">full</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">new_zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">structure_factor_hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">full</span><span class="o">.</span><span class="n">index_copy</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">active</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">values</span><span class="o">.</span><span class="n">device</span><span class="p">),</span> <span class="n">values</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_structure_factor_values_from_state</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">PhysicalState</span><span class="p">,</span> <span class="n">indices</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">positions</span><span class="o">.</span><span class="n">device</span>  <span class="c1"># the active (params) device; co-locate invariants here</span>
+        <span class="n">expanded</span> <span class="o">=</span> <span class="n">expand_asu</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">asu_plan</span><span class="p">,</span>
+            <span class="n">state</span><span class="o">.</span><span class="n">positions</span><span class="p">,</span>
+            <span class="n">numbers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">numbers</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span>
+            <span class="n">uij</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">uij_star</span><span class="p">,</span>
+            <span class="n">occupancies</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">occupancies</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">assert</span> <span class="n">expanded</span><span class="o">.</span><span class="n">numbers</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">expanded</span><span class="o">.</span><span class="n">uij</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">assert</span> <span class="n">expanded</span><span class="o">.</span><span class="n">occupancies</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="n">hkl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">structure_factor_hkl</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="n">indices</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">hkl</span> <span class="o">=</span> <span class="n">hkl</span><span class="o">.</span><span class="n">index_select</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">indices</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">structure_factors</span><span class="p">(</span>
+            <span class="n">expanded</span><span class="o">.</span><span class="n">positions</span><span class="p">,</span>
+            <span class="n">expanded</span><span class="o">.</span><span class="n">numbers</span><span class="p">,</span>
+            <span class="n">expanded</span><span class="o">.</span><span class="n">occupancies</span><span class="p">,</span>
+            <span class="n">expanded</span><span class="o">.</span><span class="n">uij</span><span class="p">,</span>
+            <span class="n">hkl</span><span class="o">=</span><span class="n">hkl</span><span class="p">,</span>
+            <span class="n">reciprocal_basis</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">reciprocal_basis</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span>
+            <span class="n">cell_volume</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">cell_volume</span><span class="p">,</span>
+            <span class="n">g_max</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">g_max</span><span class="p">,</span>
+            <span class="n">absorption</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">absorption</span><span class="p">,</span>
+            <span class="n">energy</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">orientations</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">energy</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_solve</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span> <span class="n">fgb</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BlochSolution</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">CoupledOrientationPlan</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_solve_segmented</span><span class="p">(</span><span class="n">orientation</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">)</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">fgb</span><span class="o">.</span><span class="n">device</span>  <span class="c1"># fgb is param-derived; thicknesses/beam_hkl must co-locate with it</span>
+        <span class="n">thicknesses</span> <span class="o">=</span> <span class="n">thicknesses</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">beam_hkl</span> <span class="o">=</span> <span class="n">orientation</span><span class="o">.</span><span class="n">beam_hkl</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="c1"># Untilted (length 1): the static single solve.</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">orientation</span><span class="o">.</span><span class="n">beam_plans</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">amplitudes</span> <span class="o">=</span> <span class="n">propagate</span><span class="p">(</span>
+                <span class="n">build_bloch_system</span><span class="p">(</span><span class="n">orientation</span><span class="o">.</span><span class="n">beam_plans</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fgb</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">absorption</span><span class="p">),</span>
+                <span class="n">thicknesses</span><span class="p">,</span>
+                <span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+                <span class="n">max_batch</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_max_batch_for</span><span class="p">(</span><span class="n">beam_hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">BlochSolution</span><span class="o">.</span><span class="n">from_propagation</span><span class="p">(</span><span class="n">amplitudes</span><span class="p">,</span> <span class="n">beam_hkl</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">)</span>
+        <span class="c1"># Rocking-curve integration: the tilts share this orientation&#39;s beam set, so ONE batched</span>
+        <span class="c1"># solve over (B, N, N) replaces a Python loop of B single solves (the tilt-batching perf</span>
+        <span class="c1"># path). The engine then reduces |psi|^2 over the tilt axis (incoherent rotation-frame</span>
+        <span class="c1"># integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.</span>
+        <span class="n">batch</span> <span class="o">=</span> <span class="n">stack_beam_plans</span><span class="p">(</span><span class="n">orientation</span><span class="o">.</span><span class="n">beam_plans</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">solve_batch</span><span class="p">(</span><span class="n">fgb_</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">thicknesses_</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">propagate</span><span class="p">(</span>
+                <span class="n">build_bloch_systems</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">fgb_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">absorption</span><span class="p">),</span>
+                <span class="n">thicknesses_</span><span class="p">,</span>
+                <span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+                <span class="n">max_batch</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_max_batch_for</span><span class="p">(</span><span class="n">beam_hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+            <span class="p">)</span>
+
+        <span class="n">amplitudes</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">checkpoint</span><span class="p">(</span><span class="n">solve_batch</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">,</span> <span class="n">use_reentrant</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_activations</span>
+            <span class="ow">and</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_grad_enabled</span><span class="p">()</span>
+            <span class="ow">and</span> <span class="p">(</span><span class="n">fgb</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">or</span> <span class="n">thicknesses</span><span class="o">.</span><span class="n">requires_grad</span><span class="p">)</span>
+            <span class="k">else</span> <span class="n">solve_batch</span><span class="p">(</span><span class="n">fgb</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">)</span>
+        <span class="p">)</span>  <span class="c1"># (B, T, N)</span>
+        <span class="k">return</span> <span class="n">BlochSolution</span><span class="o">.</span><span class="n">integrate_batched</span><span class="p">(</span>
+            <span class="n">amplitudes</span><span class="p">,</span> <span class="n">beam_hkl</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">,</span> <span class="n">reduction</span><span class="o">=</span><span class="n">orientation</span><span class="o">.</span><span class="n">tilt_reduction</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_solve_segmented</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">plan</span><span class="p">:</span> <span class="n">CoupledOrientationPlan</span><span class="p">,</span> <span class="n">fgb</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BlochSolution</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.</span>
+
+<span class="sd">        The tilt-dependent coupling path: each :class:`SegmentPlan` is solved over its</span>
+<span class="sd">        covered tilts with the batched propagator, and its per-tilt intensities are scattered onto</span>
+<span class="sd">        the shared ``(N_tilts, T, N_union)`` rocking curve (each tilt belongs to exactly one</span>
+<span class="sd">        segment; a beam absent from a chunk stays 0 at that chunk&#39;s tilts). Only once the whole</span>
+<span class="sd">        curve is reassembled is the tilt reduction applied -- the mosaicity window spans more tilts</span>
+<span class="sd">        than any single chunk holds -- and the result is returned as an ordinary</span>
+<span class="sd">        :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">fgb</span><span class="o">.</span><span class="n">device</span>
+        <span class="n">thicknesses</span> <span class="o">=</span> <span class="n">thicknesses</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">n_tilts</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">tilts</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">n_union</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">beam_hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">n_thick</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">thicknesses</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">curve</span> <span class="o">=</span> <span class="n">fgb</span><span class="o">.</span><span class="n">new_zeros</span><span class="p">((</span><span class="n">n_tilts</span><span class="p">,</span> <span class="n">n_thick</span><span class="p">,</span> <span class="n">n_union</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">thicknesses</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">segment</span> <span class="ow">in</span> <span class="n">plan</span><span class="o">.</span><span class="n">segments</span><span class="p">:</span>
+            <span class="n">batch</span> <span class="o">=</span> <span class="n">stack_beam_plans</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">plan</span><span class="o">.</span><span class="n">beam_plans</span><span class="p">)</span>
+            <span class="n">n_segment_beams</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">segment</span><span class="o">.</span><span class="n">union_beam_index</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">solve_segment</span><span class="p">(</span>
+                <span class="n">fgb_</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
+                <span class="n">thicknesses_</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
+                <span class="o">*</span><span class="p">,</span>
+                <span class="n">batch_</span><span class="p">:</span> <span class="n">BeamPlanBatch</span> <span class="o">=</span> <span class="n">batch</span><span class="p">,</span>
+                <span class="n">n_segment_beams_</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">n_segment_beams</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">propagate</span><span class="p">(</span>
+                    <span class="n">build_bloch_systems</span><span class="p">(</span><span class="n">batch_</span><span class="p">,</span> <span class="n">fgb_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">absorption</span><span class="p">),</span>
+                    <span class="n">thicknesses_</span><span class="p">,</span>
+                    <span class="n">method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+                    <span class="n">max_batch</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_max_batch_for</span><span class="p">(</span><span class="n">n_segment_beams_</span><span class="p">),</span>
+                <span class="p">)</span>
+
+            <span class="n">amplitudes</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">checkpoint</span><span class="p">(</span><span class="n">solve_segment</span><span class="p">,</span> <span class="n">fgb</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">,</span> <span class="n">use_reentrant</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_activations</span>
+                <span class="ow">and</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_grad_enabled</span><span class="p">()</span>
+                <span class="ow">and</span> <span class="p">(</span><span class="n">fgb</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">or</span> <span class="n">thicknesses</span><span class="o">.</span><span class="n">requires_grad</span><span class="p">)</span>
+                <span class="k">else</span> <span class="n">solve_segment</span><span class="p">(</span><span class="n">fgb</span><span class="p">,</span> <span class="n">thicknesses</span><span class="p">)</span>
+            <span class="p">)</span>  <span class="c1"># (C, T, n_seg)</span>
+            <span class="n">cover</span> <span class="o">=</span> <span class="n">segment</span><span class="o">.</span><span class="n">cover</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">union_beam_index</span> <span class="o">=</span> <span class="n">segment</span><span class="o">.</span><span class="n">union_beam_index</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">block</span> <span class="o">=</span> <span class="n">curve</span><span class="p">[</span><span class="n">cover</span><span class="p">]</span>  <span class="c1"># (C, T, n_union) gathered copy</span>
+            <span class="n">block</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">union_beam_index</span><span class="p">]</span> <span class="o">=</span> <span class="n">intensities</span><span class="p">(</span><span class="n">amplitudes</span><span class="p">)</span>
+            <span class="n">curve</span><span class="p">[</span><span class="n">cover</span><span class="p">]</span> <span class="o">=</span> <span class="n">block</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="n">reduce_tilts</span><span class="p">(</span><span class="n">curve</span><span class="p">,</span> <span class="n">plan</span><span class="o">.</span><span class="n">tilt_reduction</span><span class="p">)</span>  <span class="c1"># (T, n_union)</span>
+        <span class="c1"># The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;</span>
+        <span class="c1"># store the magnitude sqrt(total) in the solve&#39;s complex64 format (matching the</span>
+        <span class="c1"># static/batched paths).</span>
+        <span class="k">return</span> <span class="n">BlochSolution</span><span class="p">(</span>
+            <span class="n">total</span><span class="o">.</span><span class="n">sqrt</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">complex64</span><span class="p">),</span> <span class="n">total</span><span class="p">,</span> <span class="n">plan</span><span class="o">.</span><span class="n">beam_hkl</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">thicknesses</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ForwardContext">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.ForwardContext">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ForwardContext</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Forward-model values supplied by refinement model components.</span>
+
+<span class="sd">    Deliberately narrow: apparent thickness is the only value admitted, since it is the only value a</span>
+<span class="sd">    component currently supplies. Scale/background/damage fields should be added only when consumed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">thickness</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="ModelComponent">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.ModelComponent">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ModelComponent</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A trainable/differentiable model component that can feed the forward simulation.&quot;&quot;&quot;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">key</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stable component parameter-tree key for validation and optimizer grouping.&quot;&quot;&quot;</span>
+        <span class="o">...</span>
+
+<div class="viewcode-block" id="ModelComponent.initial_params">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.ModelComponent.initial_params">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initial_params</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">dtype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+        <span class="n">device</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return initial parameter tensors for this component.&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="ModelComponent.forward_context">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.ModelComponent.forward_context">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward_context</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">params</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">],</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">rotation_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ForwardContext</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return this component&#39;s values for one orientation.&quot;&quot;&quot;</span>
+        <span class="o">...</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="StructureComponent">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.StructureComponent">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">StructureComponent</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The physical-structure component of a refinement model.</span>
+
+<span class="sd">    A thin wrapper around the structure refinement inputs: ``initial`` is the</span>
+<span class="sd">    :class:`~diffBloch.params.RefinableParams`, and ``constraints`` is the tuple of hard molecular</span>
+<span class="sd">    transforms applied after the crystallographic ``constrain``. Structure-local hard</span>
+<span class="sd">    parameterizations belong here.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">initial</span><span class="p">:</span> <span class="n">RefinableParams</span>
+    <span class="n">constraints</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstraintTransform</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="RefinementModel">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementModel">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">RefinementModel</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Trainable refinement model value, currently structure-only.</span>
+
+<span class="sd">    The model is the value optimized against a static :class:`RefinementEngine`. Non-structure</span>
+<span class="sd">    components provide forward-context values such as apparent thickness.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">structure</span><span class="p">:</span> <span class="n">StructureComponent</span>
+    <span class="n">components</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ModelComponent</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">component_params</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]</span> <span class="o">=</span> <span class="n">MappingProxyType</span><span class="p">({})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">component</span><span class="o">.</span><span class="n">key</span> <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">components</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">keys</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;duplicate refinement component key among </span><span class="si">{</span><span class="n">keys</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">component_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">{})))</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">}</span>
+        <span class="n">unexpected</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">component_params</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">unexpected</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;component_params has no matching component for </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">unexpected</span><span class="p">)</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;component_params&quot;</span><span class="p">,</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="n">params</span><span class="p">))</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_component_forward_context_for</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="n">OrientationPlanLike</span><span class="p">],</span> <span class="n">ForwardContext</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward_context_for</span><span class="p">(</span>
+        <span class="n">rotation_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ForwardContext</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_forward_context</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">rotation_index</span><span class="o">=</span><span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="n">orientation</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">forward_context_for</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_forward_context</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">rotation_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">orientation</span><span class="p">:</span> <span class="n">OrientationPlanLike</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ForwardContext</span><span class="p">:</span>
+    <span class="n">thickness</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">component_params</span><span class="p">[</span><span class="n">component</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">component</span><span class="o">.</span><span class="n">forward_context</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">,</span> <span class="n">rotation_index</span><span class="o">=</span><span class="n">rotation_index</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="n">orientation</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">context</span><span class="o">.</span><span class="n">thickness</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">thickness</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;multiple refinement components provided thickness&quot;</span><span class="p">)</span>
+            <span class="n">thickness</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">thickness</span>
+    <span class="k">return</span> <span class="n">ForwardContext</span><span class="p">(</span><span class="n">thickness</span><span class="o">=</span><span class="n">thickness</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="build_refinement_model">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.build_refinement_model">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_refinement_model</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">initial</span><span class="p">:</span> <span class="n">RefinableParams</span><span class="p">,</span>
+    <span class="n">constraints</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ConstraintTransform</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="n">components</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ModelComponent</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+    <span class="n">component_params</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]</span> <span class="o">=</span> <span class="n">MappingProxyType</span><span class="p">({}),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RefinementModel</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct a :class:`RefinementModel`.</span>
+
+<span class="sd">    With no components supplied it is behavior-equivalent to structure-only refinement; supplied</span>
+<span class="sd">    components contribute forward-context values (e.g. apparent thickness) to that structure core.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">RefinementModel</span><span class="p">(</span>
+        <span class="n">structure</span><span class="o">=</span><span class="n">StructureComponent</span><span class="p">(</span><span class="n">initial</span><span class="o">=</span><span class="n">initial</span><span class="p">,</span> <span class="n">constraints</span><span class="o">=</span><span class="n">constraints</span><span class="p">),</span>
+        <span class="n">components</span><span class="o">=</span><span class="n">components</span><span class="p">,</span>
+        <span class="n">component_params</span><span class="o">=</span><span class="n">component_params</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ModelRefinementResult">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.ModelRefinementResult">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ModelRefinementResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The outcome of optimizing a refinement model.</span>
+
+<span class="sd">    Returns the optimized model value. ``params``/``best_params`` properties</span>
+<span class="sd">    preserve the structure-only convenience used by the default app path and existing tests.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span>
+    <span class="n">losses</span><span class="p">:</span> <span class="n">Tensor</span>
+    <span class="n">best_model</span><span class="p">:</span> <span class="n">RefinementModel</span>
+    <span class="n">best_step</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">history</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RefinementStep</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">reflection_counts</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">artifacts</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">params</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RefinableParams</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Final refined structure parameters.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">best_params</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RefinableParams</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Best recorded structure parameters.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">best_model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">best_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The lowest recorded (pre-update) loss.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">losses</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">best_step</span><span class="p">])</span></div>
+
+
+
+<div class="viewcode-block" id="RefinementProblem">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.RefinementProblem">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">RefinementProblem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Objective-side scientific composition for one refinement run.</span>
+
+<span class="sd">    The trainable model value is passed separately to ``run_refinement_model``. The problem records</span>
+<span class="sd">    only additive objective terms such as bond, angle, and planarity penalties.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">penalties</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PenaltyTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="build_refinement_problem">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.build_refinement_problem">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_refinement_problem</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">penalties</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PenaltyTerm</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RefinementProblem</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct objective-side refinement composition data.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">RefinementProblem</span><span class="p">(</span><span class="n">penalties</span><span class="o">=</span><span class="n">penalties</span><span class="p">)</span></div>
+
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_TrainableComponentParams</span><span class="p">:</span>
+    <span class="n">params_by_component</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]</span>
+    <span class="n">leaves</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Tensor</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">params</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">params_by_component</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_to_trainable_component_params</span><span class="p">(</span>
+    <span class="n">component_params</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_TrainableComponentParams</span><span class="p">:</span>
+    <span class="n">params_by_component</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">leaves</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Tensor</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">component_key</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">component_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">cloned</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">tensor_name</span><span class="p">,</span> <span class="n">tensor</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">leaf</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span><span class="o">.</span><span class="n">requires_grad_</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">cloned</span><span class="p">[</span><span class="n">tensor_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">leaf</span>
+            <span class="n">leaves</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span>
+        <span class="n">params_by_component</span><span class="p">[</span><span class="n">component_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="n">cloned</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_TrainableComponentParams</span><span class="p">(</span>
+        <span class="n">params_by_component</span><span class="o">=</span><span class="n">MappingProxyType</span><span class="p">(</span><span class="n">params_by_component</span><span class="p">),</span> <span class="n">leaves</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">leaves</span><span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_detach_component_params</span><span class="p">(</span>
+    <span class="n">component_params</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]:</span>
+    <span class="n">params_by_component</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">component_key</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">component_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">params_by_component</span><span class="p">[</span><span class="n">component_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">MappingProxyType</span><span class="p">(</span>
+            <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">tensor</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">tensor</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="n">params_by_component</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_detach_model</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RefinementModel</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="n">structure</span><span class="o">=</span><span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">_detach_params</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="n">component_params</span><span class="o">=</span><span class="n">_detach_component_params</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">component_params</span><span class="p">),</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="run_refinement_model">
+<a class="viewcode-back" href="../../../api/engine.html#diffBloch.engine.forward.run_refinement_model">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_refinement_model</span><span class="p">(</span>
+    <span class="n">engine</span><span class="p">:</span> <span class="n">RefinementEngine</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">RefinementModel</span><span class="p">,</span>
+    <span class="n">problem</span><span class="p">:</span> <span class="n">RefinementProblem</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">trainable</span><span class="p">:</span> <span class="n">TrainableSpec</span><span class="p">,</span>
+    <span class="n">steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">optimizer</span><span class="p">:</span> <span class="n">OptimizerName</span> <span class="o">=</span> <span class="s2">&quot;lbfgs&quot;</span><span class="p">,</span>
+    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
+    <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ModelRefinementResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Optimize a refinement model against the supplied engine/static context and problem terms.</span>
+
+<span class="sd">    ``verbose`` (&quot;verbose refinement&quot;) additionally reports one</span>
+<span class="sd">    :class:`~diffBloch.observability.RefinementOrientationStep` per rotation per step (wr2/r_obs/</span>
+<span class="sd">    diff_loss), for diagnosing which orientations drive the epoch mean reported by the ordinary</span>
+<span class="sd">    :class:`~diffBloch.observability.RefinementStep`. Off by default: the per-rotation stream is</span>
+<span class="sd">    ``n_orientations``x louder and is a diagnosis tool, not the default reporting shape. It is</span>
+<span class="sd">    execution-only, like ``logger`` itself -- it changes what gets reported, never the objective or</span>
+<span class="sd">    the optimizer trajectory, so it is a function argument / CLI flag, not an ``experiment.yaml``</span>
+<span class="sd">    field (a config field would enter the preprocess/refinement identity for no scientific reason).</span>
+
+<span class="sd">    ``profile`` logs per-phase wall time (structure factors, each rotation&#39;s solve, backward,</span>
+<span class="sd">    optimizer step) via stdlib diagnostics logging (``logging.getLogger(__name__)``, level INFO,</span>
+<span class="sd">    the ``&quot;profile: &quot;``-prefixed lines) -- see ``diffBloch.engine.forward._Timer``. Execution-only</span>
+<span class="sd">    and off by default: it forces a CUDA sync around every measured block, which is itself real</span>
+<span class="sd">    overhead, so it is a diagnosis tool for one run, not something to leave on. ``engine.profile``</span>
+<span class="sd">    must also be set (:func:`~diffBloch.preprocess.scoring.build_engine` threads it through) for the</span>
+<span class="sd">    structure-factor/solve breakdown; this flag alone only times backward/optimizer-step.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">steps</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;steps must be &gt;= 1&quot;</span><span class="p">)</span>
+    <span class="n">trainable_params</span> <span class="o">=</span> <span class="n">_to_trainable_params</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">,</span>
+        <span class="n">_resolve_trainable</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="p">,</span> <span class="n">trainable</span><span class="p">,</span> <span class="n">atomic_numbers</span><span class="o">=</span><span class="n">engine</span><span class="o">.</span><span class="n">numbers</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">component_params</span> <span class="o">=</span> <span class="n">_to_trainable_component_params</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">component_params</span><span class="p">)</span>
+    <span class="n">opt</span> <span class="o">=</span> <span class="n">_build_optimizer</span><span class="p">(</span>
+        <span class="n">optimizer</span><span class="p">,</span>
+        <span class="p">[</span><span class="o">*</span><span class="n">trainable_params</span><span class="o">.</span><span class="n">leaves</span><span class="p">,</span> <span class="o">*</span><span class="n">component_params</span><span class="o">.</span><span class="n">leaves</span><span class="p">],</span>
+        <span class="n">lr</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">reported_objective</span><span class="p">:</span> <span class="n">ObjectiveValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">profile_device</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">initial</span><span class="o">.</span><span class="n">asu_positions</span><span class="o">.</span><span class="n">device</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">current_model</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">RefinementModel</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span>
+            <span class="n">structure</span><span class="o">=</span><span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">trainable_params</span><span class="o">.</span><span class="n">params</span><span class="p">()),</span>
+            <span class="n">component_params</span><span class="o">=</span><span class="n">component_params</span><span class="o">.</span><span class="n">params</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">closure</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">reported_objective</span>
+        <span class="n">opt</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+        <span class="k">with</span> <span class="n">_Timer</span><span class="p">(</span><span class="s2">&quot;forward (total)&quot;</span><span class="p">,</span> <span class="n">profile_device</span><span class="p">,</span> <span class="n">profile</span><span class="p">):</span>
+            <span class="n">current_objective</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">objective_value_model</span><span class="p">(</span>
+                <span class="n">current_model</span><span class="p">(),</span> <span class="n">penalties</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">penalties</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">reported_objective</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">reported_objective</span> <span class="o">=</span> <span class="n">current_objective</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">current_objective</span><span class="o">.</span><span class="n">total</span>
+        <span class="k">with</span> <span class="n">_Timer</span><span class="p">(</span><span class="s2">&quot;backward&quot;</span><span class="p">,</span> <span class="n">profile_device</span><span class="p">,</span> <span class="n">profile</span><span class="p">):</span>
+            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>  <span class="c1"># type: ignore[no-untyped-call]</span>
+        <span class="k">for</span> <span class="n">leaf</span> <span class="ow">in</span> <span class="p">[</span><span class="o">*</span><span class="n">trainable_params</span><span class="o">.</span><span class="n">leaves</span><span class="p">,</span> <span class="o">*</span><span class="n">component_params</span><span class="o">.</span><span class="n">leaves</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">leaf</span><span class="o">.</span><span class="n">grad</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">leaf</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">is_contiguous</span><span class="p">():</span>
+                <span class="n">leaf</span><span class="o">.</span><span class="n">grad</span> <span class="o">=</span> <span class="n">leaf</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">loss</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span>
+
+    <span class="n">losses</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">history</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RefinementStep</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">best_loss</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">)</span>
+    <span class="n">best_step</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">best_model</span> <span class="o">=</span> <span class="n">_detach_model</span><span class="p">(</span><span class="n">current_model</span><span class="p">())</span>
+    <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">steps</span><span class="p">):</span>
+        <span class="n">snapshot</span> <span class="o">=</span> <span class="n">_detach_model</span><span class="p">(</span><span class="n">current_model</span><span class="p">())</span>
+        <span class="n">reported_objective</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">with</span> <span class="n">_Timer</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;epoch </span><span class="si">{</span><span class="n">step</span><span class="si">}</span><span class="s2"> (total)&quot;</span><span class="p">,</span> <span class="n">profile_device</span><span class="p">,</span> <span class="n">profile</span><span class="p">):</span>
+            <span class="n">loss_value</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">closure</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">loss_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="n">loss_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">loss_value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">reported_objective</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;optimizer did not evaluate the refinement objective&quot;</span><span class="p">)</span>
+        <span class="n">losses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">loss_value</span><span class="p">)</span>
+        <span class="n">diffraction_loss</span> <span class="o">=</span> <span class="n">_scalar_float</span><span class="p">(</span><span class="n">reported_objective</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">&quot;diffraction&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">raw</span><span class="p">)</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="n">RefinementStep</span><span class="p">(</span>
+            <span class="n">iteration</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
+            <span class="n">loss</span><span class="o">=</span><span class="n">loss_value</span><span class="p">,</span>
+            <span class="n">wr2</span><span class="o">=</span><span class="p">(</span><span class="n">reported_objective</span><span class="o">.</span><span class="n">diagnostics</span><span class="p">[</span><span class="s2">&quot;wr2&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">engine</span><span class="o">.</span><span class="n">loss</span> <span class="ow">is</span> <span class="n">wr2_loss</span> <span class="k">else</span> <span class="kc">None</span><span class="p">),</span>
+            <span class="n">r_obs</span><span class="o">=</span><span class="n">reported_objective</span><span class="o">.</span><span class="n">diagnostics</span><span class="p">[</span><span class="s2">&quot;r_obs&quot;</span><span class="p">],</span>
+            <span class="n">diff_loss</span><span class="o">=</span><span class="n">diffraction_loss</span><span class="p">,</span>
+            <span class="n">objective_total</span><span class="o">=</span><span class="n">_scalar_float</span><span class="p">(</span><span class="n">reported_objective</span><span class="o">.</span><span class="n">total</span><span class="p">),</span>
+            <span class="n">components</span><span class="o">=</span><span class="n">_component_measurements</span><span class="p">(</span><span class="n">reported_objective</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">reported_objective</span><span class="o">.</span><span class="n">per_rotation</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span>
+                    <span class="n">RefinementOrientationStep</span><span class="p">(</span>
+                        <span class="n">iteration</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
+                        <span class="n">rotation_index</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">entry</span><span class="p">[</span><span class="s2">&quot;rotation_index&quot;</span><span class="p">]),</span>
+                        <span class="n">wr2</span><span class="o">=</span><span class="n">entry</span><span class="p">[</span><span class="s2">&quot;wr2&quot;</span><span class="p">],</span>
+                        <span class="n">r_obs</span><span class="o">=</span><span class="n">entry</span><span class="p">[</span><span class="s2">&quot;r_obs&quot;</span><span class="p">],</span>
+                        <span class="n">diff_loss</span><span class="o">=</span><span class="n">entry</span><span class="p">[</span><span class="s2">&quot;diff_loss&quot;</span><span class="p">],</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="n">loss_value</span> <span class="o">&lt;</span> <span class="n">best_loss</span><span class="p">:</span>
+            <span class="n">best_loss</span><span class="p">,</span> <span class="n">best_step</span><span class="p">,</span> <span class="n">best_model</span> <span class="o">=</span> <span class="n">loss_value</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">snapshot</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="n">RefinementCompleted</span><span class="p">(</span><span class="n">n_steps</span><span class="o">=</span><span class="n">steps</span><span class="p">,</span> <span class="n">best_step</span><span class="o">=</span><span class="n">best_step</span><span class="p">,</span> <span class="n">best_loss</span><span class="o">=</span><span class="n">best_loss</span><span class="p">))</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">n_matched</span><span class="p">,</span> <span class="n">n_strong</span><span class="p">,</span> <span class="n">n_weak</span><span class="p">,</span> <span class="n">n_unmatched</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">refinement_metrics</span><span class="p">(</span><span class="n">best_model</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ModelRefinementResult</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="n">_detach_model</span><span class="p">(</span><span class="n">current_model</span><span class="p">()),</span>
+        <span class="n">losses</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">losses</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="n">best_model</span><span class="o">=</span><span class="n">best_model</span><span class="p">,</span>
+        <span class="n">best_step</span><span class="o">=</span><span class="n">best_step</span><span class="p">,</span>
+        <span class="n">history</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">history</span><span class="p">),</span>
+        <span class="n">reflection_counts</span><span class="o">=</span><span class="n">MappingProxyType</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;matched&quot;</span><span class="p">:</span> <span class="n">n_matched</span><span class="p">,</span>
+                <span class="s2">&quot;matched_i_gt_3sigma&quot;</span><span class="p">:</span> <span class="n">n_strong</span><span class="p">,</span>
+                <span class="s2">&quot;matched_i_le_3sigma&quot;</span><span class="p">:</span> <span class="n">n_weak</span><span class="p">,</span>
+                <span class="s2">&quot;unmatched_observed&quot;</span><span class="p">:</span> <span class="n">n_unmatched</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, diffBloch contributors
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/tabs.js?v=3ee01567"></script>
+    </body>
+</html>

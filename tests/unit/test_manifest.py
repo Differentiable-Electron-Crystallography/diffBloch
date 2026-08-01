@@ -37,7 +37,7 @@ def _lock_and_recipe(tmp_path: Path):
     npz = tmp_path / "plan.npz"
     npz.write_bytes(b"fake-checkpoint-bytes")
     lock = PreprocessLock(
-        experiment_lock_sha256=sha256_file(LOCKED / "experiment.lock"),
+        experiment_lock_sha256=sha256_file(LOCKED / "reproducibility" / "experiment.lock"),
         config_digest=config_digest(cfg),
         code_version=code_version(),
         recipe=recipe,
@@ -56,8 +56,12 @@ def test_load_experiment_verifies_locked_input_bytes() -> None:
 def test_load_experiment_detects_input_drift(tmp_path: Path) -> None:
     experiment = tmp_path / "experiment"
     experiment.mkdir()
-    for name in ["experiment.yaml", "experiment.lock", "enantiomer_1.cif", "exp_data.cif_pets"]:
+    (experiment / "reproducibility").mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
         (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    (experiment / "reproducibility" / "experiment.lock").write_bytes(
+        (LOCKED / "reproducibility" / "experiment.lock").read_bytes()
+    )
     (experiment / "enantiomer_1.cif").write_text("changed\n")
 
     with pytest.raises(ValueError, match="input drift"):
@@ -368,7 +372,7 @@ def test_preprocess_lock_round_trips(tmp_path: Path) -> None:
 
 def _args(cfg, recipe, npz, tmp_path):
     return dict(
-        experiment_lock_sha256=sha256_file(LOCKED / "experiment.lock"),
+        experiment_lock_sha256=sha256_file(LOCKED / "reproducibility" / "experiment.lock"),
         config_digest=config_digest(cfg),
         code_version=code_version(),
         recipe=recipe,
