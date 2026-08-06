@@ -825,6 +825,7 @@ class ModelRefinementResult:
     losses: Tensor
     best_model: RefinementModel
     best_step: int
+    selection_losses: Tensor | None = None
     history: tuple[RefinementStep, ...] = ()
     reflection_counts: Mapping[str, int] = field(default_factory=dict)
     artifacts: Mapping[str, str] = field(default_factory=dict)
@@ -841,8 +842,14 @@ class ModelRefinementResult:
 
     @property
     def best_loss(self) -> float:
-        """The lowest recorded (pre-update) loss."""
-        return float(self.losses[self.best_step])
+        """The loss used to select ``best_step``.
+
+        By default this is the training objective. When ``run_refinement_model`` is given a
+        selection engine (the app's held-out validation split), it is the corresponding selection
+        objective instead.
+        """
+        losses = self.selection_losses if self.selection_losses is not None else self.losses
+        return float(losses[self.best_step])
 
 
 @dataclass(frozen=True)
@@ -923,6 +930,7 @@ def run_refinement_model(
     logger: Logger = NULL_LOGGER,
     verbose: bool = False,
     profile: bool = False,
+    selection_engine: RefinementEngine | None = None,
 ) -> ModelRefinementResult:
     """Optimize a refinement model against the supplied engine/static context and problem terms.
 
@@ -942,6 +950,11 @@ def run_refinement_model(
     overhead, so it is a diagnosis tool for one run, not something to leave on. ``engine.profile``
     must also be set (:func:`~diffBloch.preprocess.scoring.build_engine` threads it through) for the
     structure-factor/solve breakdown; this flag alone only times backward/optimizer-step.
+
+    ``selection_engine`` is an optional held-out objective used only to choose ``best_model`` /
+    ``best_step``. It does not contribute gradients or alter the optimizer trajectory. The app uses
+    it for ``refinement.split.train_test`` validation selection; without it, best selection remains
+    the training objective.
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
@@ -983,6 +996,7 @@ def run_refinement_model(
         return float(loss.detach())
 
     losses: list[float] = []
+    selection_losses: list[float] = []
     history: list[RefinementStep] = []
     best_loss = float("inf")
     best_step = 0
@@ -1024,8 +1038,16 @@ def run_refinement_model(
                         diff_loss=entry["diff_loss"],
                     )
                 )
-        if loss_value < best_loss:
-            best_loss, best_step, best_model = loss_value, step, snapshot
+        selection_loss = loss_value
+        if selection_engine is not None:
+            with torch.no_grad():
+                selection_objective = selection_engine.objective_value_model(
+                    snapshot, penalties=problem.penalties
+                )
+            selection_loss = _scalar_float(selection_objective.total)
+            selection_losses.append(selection_loss)
+        if selection_loss < best_loss:
+            best_loss, best_step, best_model = selection_loss, step, snapshot
     logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
     _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)
     return ModelRefinementResult(
@@ -1033,6 +1055,11 @@ def run_refinement_model(
         losses=torch.tensor(losses, dtype=torch.float64),
         best_model=best_model,
         best_step=best_step,
+        selection_losses=(
+            torch.tensor(selection_losses, dtype=torch.float64)
+            if selection_engine is not None
+            else None
+        ),
         history=tuple(history),
         reflection_counts=MappingProxyType(
             {

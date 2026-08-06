@@ -54,7 +54,7 @@ the observed classification uses the conventional `I > 3 sigma` test internally.
 
 ## Refinement outputs
 
-The default app writes the best recorded epoch, not merely the final optimizer state:
+The default app writes the best recorded epoch, not merely the final optimizer state. With the default `refinement.split.train_test = false`, “best” means the lowest recorded training objective in the optimizer loop. When `train_test` is enabled, validation rotations are genuinely held out from the training engine and the best epoch is selected by the held-out validation objective. Validation still does not stop the run early; the loop always runs the configured `refinement.steps`.
 
 | File | Contents |
 |---|---|

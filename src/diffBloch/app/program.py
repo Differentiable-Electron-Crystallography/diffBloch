@@ -427,14 +427,30 @@ def refine_experiment(
         checkpoint_activations=checkpoint_activations,
     )
     train_engine = engine
+    selection_engine = None
     if validation_rotation_indices:
         train_only = tuple(
             op
             for op in prepared.orientations
             if op.pattern.rotation_index not in validation_rotation_indices
         )
+        validation_only = tuple(
+            op
+            for op in prepared.orientations
+            if op.pattern.rotation_index in validation_rotation_indices
+        )
         train_engine = build_engine(
             replace(prepared, orientations=train_only),
+            refinement,
+            loss=cfg.loss_metrics.to_loss(),
+            method=cfg.blochwave.solver.refine,
+            max_batch=max_batch,
+            absorption=cfg.blochwave.to_absorption(),
+            profile=profile,
+            checkpoint_activations=checkpoint_activations,
+        )
+        selection_engine = build_engine(
+            replace(prepared, orientations=validation_only),
             refinement,
             loss=cfg.loss_metrics.to_loss(),
             method=cfg.blochwave.solver.refine,
@@ -485,6 +501,7 @@ def refine_experiment(
         logger=logger,
         verbose=verbose,
         profile=profile,
+        selection_engine=selection_engine,
     )
     elapsed_seconds = time.perf_counter() - started
     result = _write_refinement_outputs(root, cfg, refinement, result)
@@ -738,6 +755,13 @@ def _write_refinement_report(
         ["Seed thickness (A)", ", ".join(f"{t:g}" for t in cfg.sample.thicknesses)],
         ["Epochs (configured)", f"{cfg.refinement.steps:g}"],
         ["Best epoch", f"{result.best_step + 1:g}"],
+        [
+            "Best epoch selection",
+            "held-out validation objective"
+            if result.selection_losses is not None
+            else "training objective",
+        ],
+        ["Best selection objective", f"{result.best_loss:.6g}"],
         ["Optimizer", cfg.refinement.optimizer.name],
         ["Learning rate", f"{cfg.refinement.optimizer.lr:g}"],
         ["R_obs (%)", r_obs_pct],
