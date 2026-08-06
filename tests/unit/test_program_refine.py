@@ -185,3 +185,26 @@ def _built_plan_with_two_rotations(cell: np.ndarray) -> Plan:
     )
     seed = Plan(structure_factor_grid=grid, orientations=candidates)
     return build_orientation_plans()(seed)
+
+
+def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: ``root`` is whatever the CLI's ``experiment_dir`` arg was -- often relative.
+
+    ``structure_path``/``params_path`` are ``.resolve()``d (absolute); passing the unresolved
+    (possibly relative) ``root`` straight to ``artifact_hash_for`` mismatched an absolute path
+    against a relative base and raised ``ValueError: ... is not in the subpath of ...`` the moment
+    a real run used a relative experiment directory (every CLI invocation does).
+    """
+    monkeypatch.chdir(tmp_path)
+    relative_root = Path(".")
+    cfg, refinement, result = _refinement_result_for(relative_root)
+    (relative_root / "reproducibility").mkdir()
+    (relative_root / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
+
+    written = _write_refinement_outputs(relative_root, cfg, refinement, result)
+
+    assert "refinement_lock" in written.artifacts
+    lock_path = relative_root / "reproducibility" / "refinement.lock"
+    assert read_refinement_lock(lock_path).refined_structure.path == "refined_structure.cif"
