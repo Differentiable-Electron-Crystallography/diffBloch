@@ -175,9 +175,13 @@ summing counts across the sweep, not interfering amplitudes — so phase is deli
 the integrated solution stores only {math}`\sqrt{I_{\mathrm{frame}}}` as a nominal amplitude with no
 downstream use, and only `intensities` feeds alignment and the loss.
 
-**Mosaicity.** Off by default (`PlainSum`, the bare sum above). The `mosaicity` step swaps the
-reduction to `MosaicSmoothed(window)`: a `window`-wide moving average over consecutive tilts on the
-tilt axis, applied *before* the sum —
+**Mosaicity.** At the low-level step-composition API, omitting mosaicity (`mosaicity=None`)
+keeps `PlainSum`, the bare sum above. The default app/CLI recipe is different: it passes the
+configured `blochwave.mosaicity` into `build_orientation_plans`, and that config currently defaults
+to `Mosaicity(window=5)`. The window is a sampled-tilt moving-average width recorded in the plan
+recipe/provenance; it is not derived from the PETS free-text mosaicity value. The `mosaicity` step
+or configured build reduction swaps the reduction to `MosaicSmoothed(window)`: a `window`-wide moving
+average over consecutive tilts on the tilt axis, applied *before* the sum —
 
 ```{math}
 I_{\mathrm{frame}}(t) = \sum_{k} \left(\frac{1}{\text{window}}\sum_{l=0}^{\text{window}-1}
