@@ -38,6 +38,8 @@ __all__ = [
     "Logger",
     "MultiLogger",
     "NullLogger",
+    "ObjectiveManifest",
+    "ObjectiveTerm",
     "OrientationOptimized",
     "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
@@ -467,6 +469,57 @@ class InferenceCompleted:
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
         }
+
+
+@dataclass(frozen=True)
+class ObjectiveTerm:
+    """One declared soft-penalty term: the objective name it reports under and its weight."""
+
+    name: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class ObjectiveManifest:
+    """What the refinement objective is composed of, declared once before the first step.
+
+    The refinement-side counterpart to the preprocess pipeline's ``StepRecord`` provenance: penalties,
+    constraints, and components are typed Python composition rather than config, so nothing else in a
+    run states which of them are actually in play. This says so up front, before any compute -- the
+    "startup summary listing which restraints are active with which weights" that a bare per-epoch
+    loss cannot provide.
+
+    Reporting the *empty* case is the point as much as the populated one: the default CLI path
+    composes no penalties at all, and a run that says ``penalties: none`` is making a scientific fact
+    legible rather than leaving it to be inferred from a missing line. ``measurements`` carries the
+    three counts plus each penalty's declared weight; the categorical names ride on the dataclass for
+    a backend that pattern-matches it (as :class:`ThicknessOptimized` does for its candidate grid).
+
+    This is a *report*, not an identity: it is deliberately not folded into ``refinement.lock`` or
+    :func:`~diffBloch.config.manifest.refinement_config_digest`. Refinement outputs are not
+    checkpoint-reused, so hashing a composed-recipe axis would be identity infrastructure built ahead
+    of the need for it.
+    """
+
+    channel: ClassVar[str] = "objective"
+    penalties: tuple[ObjectiveTerm, ...] = ()
+    constraints: tuple[str, ...] = ()
+    components: tuple[str, ...] = ()
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level declaration has no position on the per-iteration axis
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        values: dict[str, float] = {
+            "n_penalties": float(len(self.penalties)),
+            "n_constraints": float(len(self.constraints)),
+            "n_components": float(len(self.components)),
+        }
+        for term in self.penalties:
+            values[f"{term.name}/weight"] = term.weight
+        return values
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ from diffBloch.engine import (
     build_refinement_model,
 )
 from diffBloch.io import read_structure
-from diffBloch.observability import RefinementStep
+from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.preprocess.scoring import build_engine
@@ -100,6 +100,9 @@ def _refinement_result_for(
             "matched_i_le_3sigma": 4,
             "unmatched_observed": 3,
         },
+        objective_manifest=ObjectiveManifest(
+            penalties=(ObjectiveTerm(name="bond_length", weight=3.0),)
+        ),
     )
     return cfg, refinement, result
 
@@ -213,6 +216,10 @@ def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     assert "12.5" in text  # elapsed time was reported
     # Every composed objective term reports raw, weight, and contribution separately, so a
     # zero-weighted term still shows a live scientific raw value.
+    # The declared composition is stated up front, including the terms that are absent.
+    assert "Objective terms (declared)" in text
+    assert "penalties  : bond_length (weight 3)" in text
+    assert "constraints: none" in text
     assert "Objective components (best epoch)" in text
     assert "bond_length" in text
     assert "0.05" in text and "0.15" in text

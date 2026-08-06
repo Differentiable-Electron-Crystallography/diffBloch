@@ -32,6 +32,8 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
+    ObjectiveManifest,
+    ObjectiveTerm,
     OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
@@ -285,6 +287,40 @@ def test_console_logger_formats_refinement_epoch_metrics(
     assert caplog.records[-1].getMessage() == (
         "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a"
     )
+
+
+def test_objective_manifest_declares_composition_including_the_empty_case() -> None:
+    empty = ObjectiveManifest()
+    assert empty.channel == "objective"
+    assert empty.step is None  # a run-level declaration, not a per-step observation
+    assert empty.measurements == {"n_penalties": 0.0, "n_constraints": 0.0, "n_components": 0.0}
+
+    composed = ObjectiveManifest(
+        penalties=(ObjectiveTerm(name="bond_length", weight=3.0),),
+        constraints=("hydrogen_riding",),
+        components=("apparent_thickness",),
+    )
+    assert composed.measurements == {
+        "n_penalties": 1.0,
+        "n_constraints": 1.0,
+        "n_components": 1.0,
+        "bond_length/weight": 3.0,
+    }
+
+
+def test_console_logger_states_an_empty_objective_as_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The default path composes no penalties; the report says so instead of omitting the line."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(ObjectiveManifest(components=("apparent_thickness",)))
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "Objective │ penalties  : none",
+        "Objective │ constraints: none",
+        "Objective │ components : apparent_thickness",
+    ]
 
 
 def test_refinement_step_measurements_carry_only_composed_objective_terms() -> None:

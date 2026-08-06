@@ -34,6 +34,7 @@ from diffBloch.observability import (
     DeviceSelected,
     Event,
     Logger,
+    ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
     PlanStepCompleted,
@@ -162,6 +163,22 @@ class ConsoleLogger:
     def report(self, event: Event) -> None:
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
+            return
+        if isinstance(event, ObjectiveManifest):
+            # "none" is printed rather than the line being dropped: an objective composing no
+            # restraints is a scientific fact worth stating, not an absence to be inferred.
+            _log.log(
+                self.level,
+                "Objective │ penalties  : %s",
+                ", ".join(f"{term.name} (weight {term.weight:g})" for term in event.penalties)
+                or "none",
+            )
+            _log.log(
+                self.level, "Objective │ constraints: %s", ", ".join(event.constraints) or "none"
+            )
+            _log.log(
+                self.level, "Objective │ components : %s", ", ".join(event.components) or "none"
+            )
             return
         if isinstance(event, RefinementStarted):
             self._refinement_total = event.total_steps

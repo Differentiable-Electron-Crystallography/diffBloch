@@ -33,6 +33,8 @@ from diffBloch.engine import (
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
+    ObjectiveManifest,
+    ObjectiveTerm,
     RecordingLogger,
     RefinementCompleted,
     RefinementOrientationStep,
@@ -276,6 +278,39 @@ def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
         assert orientation_event.wr2 == pytest.approx(epoch.wr2)
         assert orientation_event.r_obs == pytest.approx(epoch.r_obs)
         assert orientation_event.diff_loss == pytest.approx(epoch.diff_loss)
+
+
+def test_run_refinement_model_declares_the_objective_before_the_first_step() -> None:
+    """The manifest opens the stream and is returned on the result, empty penalties included."""
+
+    @dataclasses.dataclass(frozen=True)
+    class _Penalty:
+        name: str = "bond_length"
+        weight: float = 2.5
+
+        def value(self, state: PhysicalState) -> torch.Tensor:
+            return state.positions.new_zeros(())
+
+    engine = _engine(loss=mse_loss)
+    model = build_refinement_model(initial=_params())
+    logger = RecordingLogger()
+
+    result = run_refinement_model(
+        engine,
+        model,
+        RefinementProblem(penalties=(_Penalty(),)),
+        trainable=TrainableSpec.positions_and_adp(),
+        steps=2,
+        optimizer="adam",
+        lr=1e-3,
+        logger=logger,
+    )
+
+    (manifest,) = [e for e in logger.events if isinstance(e, ObjectiveManifest)]
+    assert logger.events.index(manifest) == 0  # declared before any compute is reported
+    assert manifest.penalties == (ObjectiveTerm(name="bond_length", weight=2.5),)
+    assert manifest.constraints == () and manifest.components == ()
+    assert result.objective_manifest == manifest
 
 
 def test_run_refinement_model_default_omits_per_rotation_steps() -> None:

@@ -805,6 +805,18 @@ def _write_refinement_report(
     ]
     lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
 
+    rule("Objective terms (declared)")
+    manifest = result.objective_manifest
+    if manifest is None:
+        lines.append(" n/a (no recorded objective manifest)")
+    else:
+        # "none" rather than an omitted line: the default CLI path composes no penalties, and that
+        # is a scientific fact a reader should not have to infer from a missing section.
+        penalties = ", ".join(f"{t.name} (weight {t.weight:g})" for t in manifest.penalties)
+        lines.append(f" penalties  : {penalties or 'none'}")
+        lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
+        lines.append(f" components : {', '.join(manifest.components) or 'none'}")
+
     rule("Objective components (best epoch)")
     if best is not None and best.components:
         lines.append(
