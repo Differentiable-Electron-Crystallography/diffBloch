@@ -32,6 +32,7 @@ __all__ = [
     "ConvergenceTrial",
     "ConvergencePassStarted",
     "ConvergenceSweepStarted",
+    "DeviceSelected",
     "Event",
     "InferenceCompleted",
     "Logger",
@@ -84,6 +85,34 @@ class Logger(Protocol):
     """
 
     def report(self, event: Event) -> None: ...
+
+
+@dataclass(frozen=True)
+class DeviceSelected:
+    """Execution-device selection for an app run.
+
+    Device placement is an execution knob, not scientific provenance. This run-level event makes the
+    selected backend visible to console/CSV/vendor sinks without entering config or checkpoint
+    identity. Presentation wording stays with concrete logger backends; this event carries only
+    stable selection data plus numeric measurements for generic metric sinks.
+    """
+
+    requested: str
+    selected: str
+    cuda_available: bool
+
+    channel: ClassVar[str] = "device"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "cuda_available": float(self.cuda_available),
+            "selected_cuda": float(self.selected.startswith("cuda")),
+        }
 
 
 @dataclass(frozen=True)

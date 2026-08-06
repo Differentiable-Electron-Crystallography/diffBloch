@@ -30,6 +30,7 @@ from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceSweepStarted,
     ConvergenceTrial,
+    DeviceSelected,
     Event,
     Logger,
     OrientationOptimizationStarted,
@@ -87,6 +88,16 @@ def _format_eta(seconds: float) -> str:
     return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
 
 
+def _format_device_selection(event: DeviceSelected) -> str:
+    if event.selected.startswith("cuda"):
+        return "CUDA detected, using CUDA"
+    if event.selected == "cpu" and event.requested.startswith("cuda"):
+        return "No CUDA detected, using CPU, diffBloch is optimized for CUDA"
+    if event.selected == "cpu":
+        return "Using CPU, diffBloch is optimized for CUDA"
+    return f"Using {event.selected}"
+
+
 def _render_progress_bar(current: int, total: int, elapsed: float, suffix: str) -> None:
     """Write an in-place (``\\r``-updated) progress bar + ETA to stdout; newline once it completes.
 
@@ -135,6 +146,9 @@ class ConsoleLogger:
     _thickness_started_at: float = field(default=0.0, init=False, repr=False)
 
     def report(self, event: Event) -> None:
+        if isinstance(event, DeviceSelected):
+            _log.log(self.level, _format_device_selection(event))
+            return
         if isinstance(event, RefinementStarted):
             self._refinement_total = event.total_steps
             self._refinement_started_at = time.perf_counter()

@@ -32,6 +32,7 @@ from pathlib import Path
 
 import gemmi
 import numpy as np
+import torch
 
 from diffBloch.config import (
     ExperimentConfig,
@@ -61,7 +62,7 @@ from diffBloch.engine import (
     run_refinement_model,
 )
 from diffBloch.io import read_experimental_data, read_structure
-from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
+from diffBloch.observability import NULL_LOGGER, DeviceSelected, Logger, MultiLogger
 from diffBloch.params import Device, constrain
 from diffBloch.preprocess import (
     OPAQUE,
@@ -119,6 +120,24 @@ def _reproducibility_dir(root: Path) -> Path:
     return directory
 
 
+def _select_device(device: Device | None, *, logger: Logger = NULL_LOGGER) -> Device:
+    """Resolve the execution device, falling back from CUDA to CPU when this host lacks CUDA."""
+    requested = "cpu" if device is None else str(device)
+    cuda_available = torch.cuda.is_available()
+    selected: Device = "cpu" if device is None else device
+    if torch.device(requested).type == "cuda" and not cuda_available:
+        selected = "cpu"
+    selected_name = str(selected)
+    logger.report(
+        DeviceSelected(
+            requested=requested,
+            selected=selected_name,
+            cuda_available=cuda_available,
+        )
+    )
+    return selected
+
+
 # Above this unit-cell volume the coupled orientation search runs its coarse pass with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
 # exact, fully-validated path. The eigensolve is O(N^3) in the beam count
@@ -151,6 +170,7 @@ def converge_experiment(
     smallest settled values found.
     """
     root = Path(experiment_dir)
+    device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
 
     structure = read_structure(
@@ -207,7 +227,7 @@ def preprocess_experiment(
     logger: Logger = NULL_LOGGER,
     checkpoint: bool = True,
     refresh: bool = False,
-    device: Device | None = None,
+    device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
     orientations_csv: str | Path | None = None,
@@ -236,10 +256,11 @@ def preprocess_experiment(
     writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)
     while still regenerating the checkpoint. ``checkpoint=False`` neither reads nor writes.
 
-    ``device`` (default ``None`` = CPU) runs the forward solve on the given accelerator (e.g.
-    ``"cuda"``) for the coupled preprocess fits. The preprocess *geometry* (beam selection, coupling
-    unions) stays CPU-side numpy; only the eigensolve -- the O(N^3) cost -- moves to the device (the
-    fits move the seed params, so ``fgb`` and every per-trial score co-locate there). Device is
+    ``device`` (default ``"cuda"``) runs the forward solve on the selected accelerator for the
+    coupled preprocess fits. If CUDA is requested on a host without CUDA, the app falls back to CPU
+    and emits a device-selection event. The preprocess *geometry* (beam selection, coupling unions)
+    stays CPU-side numpy; only the eigensolve -- the O(N^3) cost -- moves to the device (the fits
+    move the seed params, so ``fgb`` and every per-trial score co-locate there). Device is
     execution-only: it does not enter the checkpoint lock, so a committed CPU checkpoint is still
     reused when a run moves to GPU.
 
@@ -275,6 +296,7 @@ def preprocess_experiment(
     Execution-only like ``device``/``workers``, out of the checkpoint lock.
     """
     root = Path(experiment_dir)
+    device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
     _refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
@@ -298,7 +320,7 @@ def run_experiment(
     logger: Logger = NULL_LOGGER,
     checkpoint: bool = True,
     refresh: bool = False,
-    device: Device | None = None,
+    device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
     orientations_csv: str | Path | None = None,
@@ -317,6 +339,7 @@ def run_experiment(
     ``device`` also runs the terminal eigensolve on the accelerator.
     """
     root = Path(experiment_dir)
+    device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
     refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
@@ -348,7 +371,7 @@ def refine_experiment(
     logger: Logger = NULL_LOGGER,
     checkpoint: bool = True,
     refresh: bool = False,
-    device: Device | None = None,
+    device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
     verbose: bool = False,
@@ -398,6 +421,7 @@ def refine_experiment(
     """
     started = time.perf_counter()
     root = Path(experiment_dir)
+    device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
     refinement, integration, prepared, validation_rotation_indices = _preprocess(
         root,

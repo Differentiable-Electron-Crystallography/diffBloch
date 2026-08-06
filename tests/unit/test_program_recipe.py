@@ -12,10 +12,18 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from diffBloch.app.program import _LARGE_CELL_THRESHOLD_A3, _preprocess, _recipe_steps
+import pytest
+
+from diffBloch.app.program import (
+    _LARGE_CELL_THRESHOLD_A3,
+    _preprocess,
+    _recipe_steps,
+    _select_device,
+    preprocess_experiment,
+)
 from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
-from diffBloch.observability import NULL_LOGGER
+from diffBloch.observability import NULL_LOGGER, DeviceSelected, RecordingLogger
 from diffBloch.preprocess import from_experiment, resolve_recipe, step_records
 from diffBloch.preprocess.pipeline import Fork
 
@@ -35,6 +43,46 @@ def _the_fork() -> Fork:
     forks = [s for s in _steps() if isinstance(s, Fork)]
     assert len(forks) == 1, "the fit tail should be exactly one fork"
     return forks[0]
+
+
+def test_select_device_falls_back_from_cuda_to_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = RecordingLogger()
+    monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
+
+    selected = _select_device("cuda", logger=logger)
+
+    assert selected == "cpu"
+    assert logger.events == [DeviceSelected(requested="cuda", selected="cpu", cuda_available=False)]
+
+
+def test_select_device_keeps_cuda_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    logger = RecordingLogger()
+    monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: True)
+
+    selected = _select_device("cuda", logger=logger)
+
+    assert selected == "cuda"
+    assert logger.events == [DeviceSelected(requested="cuda", selected="cuda", cuda_available=True)]
+
+
+def test_preprocess_experiment_default_device_falls_back_to_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+    plan = SimpleNamespace()
+
+    def fake_preprocess(*args: object, **kwargs: object) -> tuple[object, object, object, object]:
+        seen["device"] = kwargs["device"]
+        return object(), object(), plan, object()
+
+    monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
+    monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
+    monkeypatch.setattr("diffBloch.app.program._preprocess", fake_preprocess)
+
+    assert preprocess_experiment("experiment-dir") is plan
+    assert seen["device"] == "cpu"
 
 
 def test_fork_predicate_routes_at_the_threshold() -> None:
