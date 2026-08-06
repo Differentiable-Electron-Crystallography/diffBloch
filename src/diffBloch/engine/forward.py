@@ -954,7 +954,10 @@ def run_refinement_model(
     ``selection_engine`` is an optional held-out objective used only to choose ``best_model`` /
     ``best_step``. It does not contribute gradients or alter the optimizer trajectory. The app uses
     it for ``refinement.split.train_test`` validation selection; without it, best selection remains
-    the training objective.
+    the training objective. It costs one extra no-grad forward pass per step over the held-out
+    rotations -- roughly ``val_frac`` of a training forward, paid every epoch with no opt-out --
+    and it changes which objective :class:`~diffBloch.observability.RefinementCompleted` reports
+    (see that event's ``selection`` field).
     """
     if steps < 1:
         raise ValueError("steps must be >= 1")
@@ -1048,7 +1051,14 @@ def run_refinement_model(
             selection_losses.append(selection_loss)
         if selection_loss < best_loss:
             best_loss, best_step, best_model = selection_loss, step, snapshot
-    logger.report(RefinementCompleted(n_steps=steps, best_step=best_step, best_loss=best_loss))
+    logger.report(
+        RefinementCompleted(
+            n_steps=steps,
+            best_step=best_step,
+            best_loss=best_loss,
+            selection="validation" if selection_engine is not None else "training",
+        )
+    )
     _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)
     return ModelRefinementResult(
         model=_detach_model(current_model()),

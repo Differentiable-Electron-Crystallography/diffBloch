@@ -198,7 +198,24 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     refinement_done = RefinementCompleted(n_steps=20, best_step=17, best_loss=0.3)
     assert refinement_done.channel == "refinement"  # shares the stream's channel
     assert refinement_done.step is None  # separated from the stream by step, not channel
-    assert refinement_done.measurements == {"n_steps": 20.0, "best_step": 17.0, "best_loss": 0.3}
+    assert refinement_done.selection == "training"  # the default selection objective
+    assert refinement_done.measurements == {
+        "n_steps": 20.0,
+        "best_step": 17.0,
+        "best_training_loss": 0.3,
+    }
+
+    # A validation-selected run reports the same number under a *different* key, so a generic
+    # backend cannot plot the two populations as one series -- the key is absent, not wrong.
+    validation_done = RefinementCompleted(
+        n_steps=20, best_step=17, best_loss=0.3, selection="validation"
+    )
+    assert validation_done.measurements == {
+        "n_steps": 20.0,
+        "best_step": 17.0,
+        "best_validation_loss": 0.3,
+    }
+    assert "best_training_loss" not in validation_done.measurements
 
 
 def test_events_and_loggers_satisfy_the_protocols_structurally() -> None:

@@ -54,14 +54,29 @@ the observed classification uses the conventional `I > 3 sigma` test internally.
 
 ## Refinement outputs
 
-The default app writes the best recorded epoch, not merely the final optimizer state. With the default `refinement.split.train_test = false`, “best” means the lowest recorded training objective in the optimizer loop. When `train_test` is enabled, validation rotations are genuinely held out from the training engine and the best epoch is selected by the held-out validation objective. Validation still does not stop the run early; the loop always runs the configured `refinement.steps`.
+The default app writes the best recorded epoch, not merely the final optimizer state. With the
+default `refinement.split.train_test = false`, "best" means the lowest recorded training objective
+in the optimizer loop. When `train_test` is enabled, validation rotations are genuinely held out
+from the training engine and the best epoch is selected by the held-out validation objective.
+Validation still does not stop the run early; the loop always runs the configured
+`refinement.steps`.
+
+Which objective did the selecting is reported, not implied: `refinement_report.txt` carries a
+`Best epoch selection` row, and the `RefinementCompleted` event reports its number under
+`best_training_loss` or `best_validation_loss` accordingly. The per-epoch stream is always the
+training objective.
 
 | File | Contents |
 |---|---|
 | `refined_structure.cif` | Best constrained coordinates, occupancies, and ADPs in CIF form. |
+| `refinement_report.txt` | Best epoch metrics, which objective selected it, and the compact HKL count. |
 | `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
-| `refinement_summary.json` | Best epoch metrics, the compact HKL count, and artifact paths. |
+| `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. |
 | `plan.npz` / `plan.lock` | Settled preprocessing plan and its provenance lock. |
+| `refinement.lock` | Binds the refined outputs to the plan lock, config digest, and code version. |
+
+`refined_structure.cif` and `refinement_report.txt` land in the experiment directory; the `.npz`
+snapshots and locks go under `reproducibility/`.
 
 The completion summary prints the absolute location of every output.
 
