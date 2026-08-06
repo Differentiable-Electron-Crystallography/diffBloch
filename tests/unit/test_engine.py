@@ -546,7 +546,15 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     # (mse_loss here) -- both are real numbers and both appear in measurements.
     assert first.wr2 is not None
     assert first.r_obs is not None
-    assert first.measurements == {"wr2": first.wr2, "r_obs": first.r_obs, "diff_loss": first.loss}
+    assert first.measurements == {
+        "wr2": first.wr2,
+        "r_obs": first.r_obs,
+        "diff_loss": first.loss,
+        # The sole composed term reports its raw value, weight, and weighted contribution.
+        "diffraction/raw": first.loss,
+        "diffraction/weight": 1.0,
+        "diffraction/contribution": first.loss,
+    }
     assert completed.n_steps == 6
     assert completed.best_step == result.best_step
     assert completed.best_loss == result.best_loss
@@ -573,7 +581,14 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
     assert step.loss == float(result.losses[0])
     assert step.objective_total == step.loss
     assert step.r_obs is not None  # always-computed reporting diagnostic, independent of loss
-    assert step.measurements == {"wr2": step.wr2, "r_obs": step.r_obs, "diff_loss": step.loss}
+    assert step.measurements == {
+        "wr2": step.wr2,
+        "r_obs": step.r_obs,
+        "diff_loss": step.loss,
+        "diffraction/raw": step.loss,
+        "diffraction/weight": 1.0,
+        "diffraction/contribution": step.loss,
+    }
 
 
 def test_refine_element_selection_freezes_excluded_position_rows() -> None:

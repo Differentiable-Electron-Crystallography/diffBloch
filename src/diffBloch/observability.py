@@ -500,6 +500,14 @@ class RefinementStep:
     ``loss`` actually minimises, not what gets reported here) -- so both are always shown. Contrast
     the preprocessing search's events (:class:`OrientationOptimized` / :class:`ThicknessOptimized`),
     which report only the configured residual, since computing the other would cost an extra solve.
+
+    ``components`` carries each named objective term's ``raw`` scientific diagnostic, its
+    ``weight``, and the ``contribution`` that weight produces, and :attr:`measurements` flattens
+    every one of them to a ``"{term}/{field}"`` key so the generic backends (console, CSV, W&B,
+    Comet) report a restraint's state without knowing any term by name. A term that was never
+    composed into the objective has **no entry**, so it cannot surface as a satisfied ``0.0``; that
+    absence is the reportable fact, and it is why the flattening is unconditional rather than keyed
+    on a fixed term list.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -530,6 +538,9 @@ class RefinementStep:
             values["diff_loss"] = self.diff_loss
         if not values:
             values["loss"] = self.loss
+        for term, entries in self.components.items():
+            for name, value in entries.items():
+                values[f"{term}/{name}"] = value
         return values
 
 

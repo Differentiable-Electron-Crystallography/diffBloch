@@ -22,6 +22,7 @@ import logging
 import math
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -78,6 +79,19 @@ _RESIDUAL_LABELS = {"wr2": "wR2", "robs": "R_obs", "least_squares": "least_squar
 
 def residual_label(residual: str) -> str:
     return _RESIDUAL_LABELS.get(residual, residual)
+
+
+def _penalty_components(event: RefinementStep) -> tuple[tuple[str, Mapping[str, float]], ...]:
+    """The epoch's composed soft-penalty terms, in objective order.
+
+    ``diffraction`` is dropped because the same number is already reported as ``diff_loss``; what
+    remains is exactly the restraints the objective actually composed. An absent restraint has no
+    entry at all, so an empty result means *no penalty was applied*, never *a penalty evaluated to
+    zero* -- the distinction the console would otherwise be unable to draw.
+    """
+    return tuple(
+        (term, values) for term, values in event.components.items() if term != "diffraction"
+    )
 
 
 def _format_eta(seconds: float) -> str:
@@ -194,11 +208,16 @@ class ConsoleLogger:
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
             r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
+            # than as extra log lines that would overwrite it.
+            for term, values in _penalty_components(event):
+                suffix += f" │ {term} {values['contribution']:.4g}"
             _render_progress_bar(
                 event.iteration + 1,
                 self._refinement_total,
                 time.perf_counter() - self._refinement_started_at,
-                f"epoch │ wR2 {wr2} │ R_obs {r_obs}",
+                suffix,
             )
             return
         if isinstance(event, ConvergencePassStarted):
@@ -248,6 +267,15 @@ class ConsoleLogger:
                 r_obs,
                 diff_loss,
             )
+            for term, values in _penalty_components(event):
+                _log.log(
+                    self.level,
+                    "  penalty %-20s │ raw %.6g │ weight %g │ contribution %.6g",
+                    term,
+                    values["raw"],
+                    values["weight"],
+                    values["contribution"],
+                )
             return
         elif isinstance(event, RefinementOrientationStep):
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"

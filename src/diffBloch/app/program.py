@@ -805,6 +805,31 @@ def _write_refinement_report(
     ]
     lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
 
+    rule("Objective components (best epoch)")
+    if best is not None and best.components:
+        lines.append(
+            _ascii_table(
+                ["Component", "Raw", "Weight", "Contribution"],
+                [
+                    [
+                        term,
+                        f"{values['raw']:.6g}",
+                        f"{values['weight']:g}",
+                        f"{values['contribution']:.6g}",
+                    ]
+                    for term, values in best.components.items()
+                ],
+            )
+        )
+        lines.append("")
+        total = "n/a" if best.objective_total is None else f"{best.objective_total:.6g}"
+        lines.append(f" objective total = {total}")
+        # Every row is a term the objective actually composed. A restraint that was not composed
+        # has no row, so this table never reports an inactive term as a satisfied zero.
+        lines.append(" (terms not composed into the objective have no row)")
+    else:
+        lines.append(" n/a (no recorded objective components)")
+
     def rotation_metrics_block(rows: Sequence[RotationMetrics]) -> None:
         lines.append(
             _ascii_table(

@@ -82,6 +82,11 @@ def _refinement_result_for(
         wr2=0.1,
         r_obs=0.05,
         diff_loss=0.2,
+        objective_total=0.35,
+        components={
+            "diffraction": {"raw": 0.2, "weight": 1.0, "contribution": 0.2},
+            "bond_length": {"raw": 0.05, "weight": 3.0, "contribution": 0.15},
+        },
     )
     result = ModelRefinementResult(
         model=model,
@@ -206,6 +211,12 @@ def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     assert "atom_site" in text
     assert "C1" in text and "O1" in text  # the CIF's own atom labels came through
     assert "12.5" in text  # elapsed time was reported
+    # Every composed objective term reports raw, weight, and contribution separately, so a
+    # zero-weighted term still shows a live scientific raw value.
+    assert "Objective components (best epoch)" in text
+    assert "bond_length" in text
+    assert "0.05" in text and "0.15" in text
+    assert "objective total = 0.35" in text
 
 
 def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:

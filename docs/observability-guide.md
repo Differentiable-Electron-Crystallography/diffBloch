@@ -1,3 +1,3 @@
 # Observability and loggers
 
-A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure refinement. A logger is any object with one method:
+A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure refinement. Each epoch also reports every objective term the run actually composed, as `{term}/raw`, `{term}/weight`, and `{term}/contribution` measurements — so a weighted restraint's scientific value stays legible next to the number the optimizer minimises. A restraint that was not composed into the objective produces no measurement at all, which is what distinguishes an inactive term from a satisfied one. A logger is any object with one method:
