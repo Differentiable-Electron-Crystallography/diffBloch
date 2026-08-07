@@ -40,9 +40,12 @@ from diffBloch.observability import (
 
 __all__ = ["TuiLogger"]
 
-# How many of the most recent rows each scrolling panel keeps. The display is a fixed-height
-# dashboard, not a scrollback: older rows are already in the CSV/summary sinks.
-_RECENT = 8
+# Rows reserved for the panels, headers and progress bar that frame the tables, so the live window
+# can be sized against the real terminal height instead of a magic number.
+_CHROME_ROWS = 26
+
+# Floor for the live window when the terminal is very short: fewer rows than this is not a table.
+_MIN_WINDOW = 4
 
 
 @dataclass
@@ -80,6 +83,7 @@ class TuiLogger:
     _epochs: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
+    _other: list[tuple[str, int | None, str]] = field(default_factory=list, init=False, repr=False)
 
     def report(self, event: Event) -> None:
         if not self._absorb(event):
@@ -92,10 +96,19 @@ class TuiLogger:
             self.close()
 
     def close(self) -> None:
-        """Release the terminal. Idempotent, so a caller may also call it on an aborted run."""
-        if self._live is not None:
-            self._live.stop()
-            self._live = None
+        """Release the terminal, then print the complete tables. Idempotent.
+
+        A live in-place display cannot exceed the terminal height, so while the run is going the
+        tables show a trailing window. That constraint disappears the moment ``Live`` stops, and the
+        settled result is exactly what a reader wants in full -- so the final render is unwindowed
+        and lands in the scrollback like ordinary output.
+        """
+        if self._live is None:
+            return
+        self._live.stop()
+        self._live = None
+        if self._console is not None:
+            self._console.print(self._render(window=None))
 
     # -- state ---------------------------------------------------------------------------------
 
@@ -129,7 +142,14 @@ class TuiLogger:
             case RefinementOutputsWritten():
                 self._phase.detail = "outputs written"
             case _:
-                return False
+                # No silent drop. An event this dashboard does not model is still an observation,
+                # and for some of them (the convergence sweep) the terminal is the only sink a user
+                # has attached -- so it falls back to a generic row rather than vanishing. The cost
+                # of a new event going unstyled is a plain line; the cost of it going unseen is the
+                # class of defect this whole observability effort exists to remove.
+                from diffBloch.app.loggers import format_measurements
+
+                self._other.append((event.channel, event.step, format_measurements(event)))
         return True
 
     # -- rendering -----------------------------------------------------------------------------
@@ -145,18 +165,33 @@ class TuiLogger:
         self._live = Live(console=console, refresh_per_second=self.refresh_per_second)
         self._live.start()
 
-    def _render(self) -> Any:
+    def _window(self) -> int | None:
+        """Rows each table may show while live, from the real terminal height (``None`` = all).
+
+        Split across however many tables are currently on screen, so three tables on a short
+        terminal each shrink rather than the last one being pushed off the bottom.
+        """
+        height = self._console.size.height if self._console is not None else 24
+        on_screen = (self._stages, self._epochs, self._rotations, self._other)
+        tables = sum(bool(x) for x in on_screen) or 1
+        return max(_MIN_WINDOW, (height - _CHROME_ROWS) // tables)
+
+    def _render(self, window: int | None = -1) -> Any:
+        """Compose the dashboard. ``window`` rows per table; ``None`` shows every row."""
         from rich.console import Group
 
+        rows = self._window() if window == -1 else window
         blocks: list[Any] = [block for block in (self._header(), self._objective()) if block]
         if self._stages:
-            blocks.append(self._stage_table())
+            blocks.append(self._stage_table(rows))
         if self._phase.total:
             blocks.append(self._progress())
         if self._epochs:
-            blocks.append(self._epoch_table())
+            blocks.append(self._epoch_table(rows))
         if self._rotations:
-            blocks.append(self._rotation_table())
+            blocks.append(self._rotation_table(rows))
+        if self._other:
+            blocks.append(self._other_table(rows))
         return Group(*blocks)
 
     def _header(self) -> Any:
@@ -187,13 +222,15 @@ class TuiLogger:
         body = f"penalties   {penalties}\nconstraints {constraints}\ncomponents  {components}"
         return Panel(body, title="objective", border_style="magenta")
 
-    def _stage_table(self) -> Any:
+    def _stage_table(self, window: int | None) -> Any:
         from rich.table import Table
 
-        table = Table(title="preprocess", title_justify="left", expand=False)
+        table = Table(
+            title=_titled("preprocess", self._stages, window), title_justify="left", expand=False
+        )
         for column in ("stage", "rotations", "solve beams", "max/rot", "observed", "matched"):
             table.add_column(column, justify="right" if column != "stage" else "left")
-        for name, values in self._stages[-_RECENT:]:
+        for name, values in _tail(self._stages, window):
             table.add_row(
                 name.replace("_", " "),
                 *(
@@ -231,10 +268,12 @@ class TuiLogger:
         )
         return grid
 
-    def _epoch_table(self) -> Any:
+    def _epoch_table(self, window: int | None) -> Any:
         from rich.table import Table
 
-        table = Table(title="refinement", title_justify="left", expand=False)
+        table = Table(
+            title=_titled("refinement", self._epochs, window), title_justify="left", expand=False
+        )
         table.add_column("epoch", justify="right")
         table.add_column("wR2", justify="right")
         table.add_column("R_obs", justify="right")
@@ -243,7 +282,7 @@ class TuiLogger:
         for name in penalty_names:
             table.add_column(name, justify="right")
         best = self._completed.best_step if self._completed else None
-        for epoch in self._epochs[-_RECENT:]:
+        for epoch in _tail(self._epochs, window):
             marker = " *" if best is not None and epoch.iteration == best else ""
             row = [
                 f"{epoch.iteration + 1}{marker}",
@@ -258,22 +297,24 @@ class TuiLogger:
             table.add_row(*row)
         return table
 
-    def _rotation_table(self) -> Any:
+    def _rotation_table(self, window: int | None) -> Any:
         from rich.table import Table
 
         finite_wr2 = [row.wr2 for row in self._rotations if row.wr2 == row.wr2]
         mean = f"{sum(finite_wr2) / len(finite_wr2):.6f}" if finite_wr2 else "n/a"
         table = Table(
-            title=(
-                f"settled per-rotation  ({len(self._rotations)} rotations, "
-                f"mean wR2 {mean} [{len(finite_wr2)}/{len(self._rotations)}])"
+            title=_titled(
+                f"settled per-rotation  (mean wR2 {mean} "
+                f"[{len(finite_wr2)}/{len(self._rotations)}])",
+                self._rotations,
+                window,
             ),
             title_justify="left",
             expand=False,
         )
         for column in ("rotation", "wR2", "R_obs", "matched", ""):
             table.add_column(column, justify="right" if column else "left")
-        for row in self._rotations[-_RECENT:]:
+        for row in _tail(self._rotations, window):
             table.add_row(
                 str(row.rotation_index),
                 f"{row.wr2:.6f}",
@@ -281,6 +322,27 @@ class TuiLogger:
                 str(row.n_matched),
                 "validation" if row.is_validation else "",
             )
+        return table
+
+    def _other_table(self, window: int | None) -> Any:
+        """Events the dashboard has no dedicated view for, rendered generically.
+
+        Its presence is the point: a channel showing up here says the display is behind the event
+        vocabulary, which is a prompt to give it a real view -- not a reason to have hidden it.
+        """
+        from rich.table import Table
+
+        table = Table(
+            title=_titled("other events", self._other, window),
+            title_justify="left",
+            expand=False,
+            style="dim",
+        )
+        table.add_column("channel")
+        table.add_column("step", justify="right")
+        table.add_column("measurements")
+        for channel, step, measurements in _tail(self._other, window):
+            table.add_row(channel, "-" if step is None else str(step), measurements)
         return table
 
 
@@ -291,3 +353,19 @@ def _mean(value: float | None, evaluated: int | None, total: int | None) -> str:
     if evaluated is None or total is None:
         return f"{value:.6f}"
     return f"{value:.6f} [{evaluated}/{total}]"
+
+
+def _tail[T](rows: list[T], window: int | None) -> list[T]:
+    """The last ``window`` rows, or every row when ``window`` is ``None``."""
+    return rows if window is None else rows[-window:]
+
+
+def _titled(label: str, rows: list[Any], window: int | None) -> str:
+    """A table title that admits when it is showing a trailing window rather than everything.
+
+    A silently truncated table misreads as a complete one -- the same failure as a mean printed
+    without the denominator it was taken over.
+    """
+    if window is None or len(rows) <= window:
+        return f"{label}  ({len(rows)})"
+    return f"{label}  (last {window} of {len(rows)})"

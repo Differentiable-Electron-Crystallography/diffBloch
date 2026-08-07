@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from diffBloch.observability import (
+    ConvergenceTrial,
     ExperimentDeclared,
     ObjectiveManifest,
     ObjectiveTerm,
@@ -34,6 +35,16 @@ def _rendered(logger: TuiLogger, width: int = 110) -> str:
     console = Console(file=None, width=width, record=True, force_terminal=False)
     console.begin_capture()
     console.print(logger._render())
+    return console.end_capture()
+
+
+def _rendered_window(logger: TuiLogger, window: int | None, width: int = 110) -> str:
+    """The dashboard at an explicit window size, bypassing terminal-height detection."""
+    from rich.console import Console
+
+    console = Console(width=width, force_terminal=False)
+    console.begin_capture()
+    console.print(logger._render(window=window))
     return console.end_capture()
 
 
@@ -82,11 +93,45 @@ def test_off_a_terminal_the_display_never_starts(monkeypatch: pytest.MonkeyPatch
     assert logger._live is None
 
 
-def test_unhandled_events_do_not_trigger_a_redraw() -> None:
-    """A backend redraws only for events it displays; everything else is a cheap no-op."""
+def test_unmodelled_events_surface_generically_instead_of_vanishing() -> None:
+    """No event is dropped by omission -- an unstyled row beats an unseen observation.
+
+    The convergence sweep is the case that matters: for a `run converge` the terminal is often the
+    only sink attached, so an event the dashboard has no dedicated view for still has to appear.
+    """
     logger = TuiLogger()
-    assert logger._absorb(RotationScored(index=0, r_obs=0.1, n_observed=5, n_beams=9)) is False
-    assert logger._absorb(_experiment()) is True
+    assert logger._absorb(RotationScored(index=0, r_obs=0.1, n_observed=5, n_beams=9)) is True
+    assert (
+        logger._absorb(
+            ConvergenceTrial(
+                control="g_max",
+                trial_index=0,
+                pass_index=0,
+                previous=2.25,
+                candidate=2.45,
+                r_factor=0.031,
+                n_compared_hkl=612,
+            )
+        )
+        is True
+    )
+
+    text = _rendered(logger)
+    assert "other events" in text
+    assert "convergence g_max" in text
+    assert "r_factor=0.031" in text and "n_compared_hkl=612" in text
+
+
+def test_tables_say_when_they_are_showing_a_window() -> None:
+    """A silently truncated table misreads as a complete one."""
+    logger = TuiLogger()
+    logger._absorb(RefinementStarted(total_steps=12))
+    for iteration in range(12):
+        logger._absorb(_epoch(iteration, 0.2))
+
+    assert "refinement  (last 4 of 12)" in _rendered_window(logger, 4)
+    # On close the display releases the terminal, so the settled tables are rendered in full.
+    assert "refinement  (12)" in _rendered_window(logger, None)
 
 
 def test_dashboard_renders_the_declaration_and_objective() -> None:
