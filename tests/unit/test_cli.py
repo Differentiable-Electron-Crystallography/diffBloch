@@ -240,10 +240,12 @@ class _FakePlan:
             SimpleNamespace(
                 pattern=SimpleNamespace(hkl=torch.empty((3, 3))),
                 alignment=SimpleNamespace(hkl=torch.empty((2, 3))),
+                beam_hkl=torch.empty((9, 3)),
             ),
             SimpleNamespace(
                 pattern=SimpleNamespace(hkl=torch.empty((4, 3))),
                 alignment=SimpleNamespace(hkl=torch.empty((3, 3))),
+                beam_hkl=torch.empty((7, 3)),
             ),
         )
         self.provenance = (

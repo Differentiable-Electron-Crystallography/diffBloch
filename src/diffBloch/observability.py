@@ -43,6 +43,7 @@ __all__ = [
     "OrientationOptimized",
     "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
+    "PlanSeeded",
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
@@ -394,6 +395,28 @@ class PlanStepCompleted:
     @property
     def step(self) -> int | None:
         return self.index
+
+
+@dataclass(frozen=True)
+class PlanSeeded:
+    """The Plan a preprocess pipeline is about to run on, summarised before the first step.
+
+    Exists so every :class:`PlanStepCompleted` has a predecessor to be read against: a step's counts
+    are only a *survival* count if the incoming counts were reported too, and the seed is produced
+    by ``from_experiment`` (or loaded from a checkpoint on resume) rather than by any step, so no
+    ``PlanStepCompleted`` covers it. ``measurements`` is
+    :func:`diffBloch.preprocess.plan.summarize_plan` of that incoming plan.
+
+    Deliberately a distinct channel from the per-step stream, and ``step`` is ``None``: a consumer
+    filtering on channel alone must not mistake the baseline for a stage result.
+    """
+
+    channel: ClassVar[str] = "plan_seeded"
+    measurements: Mapping[str, float]
+
+    @property
+    def step(self) -> int | None:
+        return None  # the baseline sits before the recipe's x-axis, not on it
 
 
 @dataclass(frozen=True)

@@ -281,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
                 ("Stages", str(len(plan.provenance))),
                 ("Total HKLs", str(total_hkl)),
                 ("Matched HKLs", str(matched_hkl)),
+                ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
                 (mean_label, mean_loss),
             ),
         )

@@ -37,6 +37,7 @@ from diffBloch.observability import (
     ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
+    PlanSeeded,
     PlanStepCompleted,
     RefinementOrientationStep,
     RefinementStarted,
@@ -306,6 +307,14 @@ class ConsoleLogger:
                 wr2,
                 r_obs,
                 diff_loss,
+            )
+            return
+        elif isinstance(event, PlanSeeded):
+            _log.log(
+                self.level,
+                "Preprocess seed  │ %-27s │ %s",
+                "(incoming plan)",
+                format_measurements(event),
             )
             return
         elif isinstance(event, PlanStepCompleted):

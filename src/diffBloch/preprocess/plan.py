@@ -224,9 +224,25 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
 def summarize_plan(plan: Plan) -> dict[str, float]:
     """Plan-level shape as numeric measurements (the observability summary of a settled/mid Plan).
 
-    Reports only the number of orientations and the shared structure-factor table size.
+    Emitted after every pipeline step (and once for the seed, as :class:`PlanSeeded`), so consecutive
+    summaries *are* the per-stage survival counts: how many solve beams and scored reflections each
+    filtering step left behind. The names are scoped because the sets are independent -- SOLVE
+    (``n_solve_beams_*``, the beams that couple dynamically) is not SCORED (``n_matched_hkl``, the
+    reflections that enter the R-factor) is not the structure-factor support (``n_grid_hkl``).
+
+    ``n_matched_hkl`` is **absent**, not zero, before ``build_orientation_plans`` runs: a
+    :class:`CandidatePlan` has no alignment, and reporting ``0`` there would make "not built yet"
+    indistinguishable from "matched nothing".
     """
-    return {
+    beams = [coupling_stats(op)["n_union_beams"] for op in plan.orientations]
+    summary = {
         "n_orientations": float(len(plan.orientations)),
         "n_grid_hkl": float(plan.structure_factor_grid.structure_factor_hkl.shape[0]),
+        "n_solve_beams_total": float(sum(beams)),
+        "n_solve_beams_max": float(max(beams, default=0)),
+        "n_observed_hkl": float(sum(int(op.pattern.hkl.shape[0]) for op in plan.orientations)),
     }
+    built = [op for op in plan.orientations if not isinstance(op, CandidatePlan)]
+    if len(built) == len(plan.orientations):
+        summary["n_matched_hkl"] = float(sum(int(op.alignment.hkl.shape[0]) for op in built))
+    return summary

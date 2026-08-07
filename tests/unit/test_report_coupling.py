@@ -99,11 +99,30 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     assert summaries[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
 
 
-def test_summarize_plan_reports_only_basic_shape() -> None:
+def test_summarize_plan_reports_solve_and_scored_counts_for_a_built_plan() -> None:
     grid, *_ = _silicon()
-    plan = Plan(structure_factor_grid=grid, orientations=(_segmented(grid),))
+    built = _segmented(grid)
+    plan = Plan(structure_factor_grid=grid, orientations=(built,))
     summary = summarize_plan(plan)
     assert summary == {
         "n_orientations": 1.0,
         "n_grid_hkl": float(grid.structure_factor_hkl.shape[0]),
+        # SOLVE (which beams couple dynamically) and SCORED (which reflections enter the R-factor)
+        # are separate sets and are reported under separately scoped names.
+        "n_solve_beams_total": 3.0,
+        "n_solve_beams_max": 3.0,
+        "n_observed_hkl": float(len(_BEAM_HKL)),
+        "n_matched_hkl": float(built.alignment.hkl.shape[0]),
     }
+
+
+def test_summarize_plan_omits_the_matched_count_before_the_build() -> None:
+    """A candidate has no alignment: absent, not zero -- 0 would mean "matched nothing"."""
+    grid, *_ = _silicon()
+    candidate = CandidatePlan.seed(
+        np.asarray(_BEAM_HKL, dtype=np.int64), _pattern(), energy=_ENERGY, thickness=(300.0,)
+    )
+    summary = summarize_plan(Plan(structure_factor_grid=grid, orientations=(candidate,)))
+    assert "n_matched_hkl" not in summary
+    assert summary["n_solve_beams_total"] == float(len(_BEAM_HKL))
+    assert summary["n_observed_hkl"] == float(len(_BEAM_HKL))
