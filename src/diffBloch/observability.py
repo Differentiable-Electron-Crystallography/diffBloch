@@ -584,6 +584,14 @@ class RefinementStep:
     composed into the objective has **no entry**, so it cannot surface as a satisfied ``0.0``; that
     absence is the reportable fact, and it is why the flattening is unconditional rather than keyed
     on a fixed term list.
+
+    ``wr2``/``r_obs`` are means over the rotations that produced a finite score, so each carries its
+    own denominator: ``n_rotations`` is how many the objective covered (the *training* set when a
+    validation split is on) and ``n_wr2_evaluated``/``n_r_obs_evaluated`` how many actually entered
+    each mean. They are separate counts because the two metrics are NaN-filtered independently -- a
+    rotation can contribute to one and not the other -- and a mean whose denominator is implicit can
+    improve simply by evaluating fewer rotations. Compare
+    :class:`InferenceCompleted`, which has always reported ``n_evaluated`` beside its mean.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -594,6 +602,9 @@ class RefinementStep:
     diff_loss: float | None = None
     objective_total: float | None = None
     components: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    n_rotations: int | None = None
+    n_wr2_evaluated: int | None = None
+    n_r_obs_evaluated: int | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -614,6 +625,12 @@ class RefinementStep:
             values["diff_loss"] = self.diff_loss
         if not values:
             values["loss"] = self.loss
+        if self.n_rotations is not None:
+            values["n_rotations"] = float(self.n_rotations)
+        if self.n_wr2_evaluated is not None:
+            values["n_wr2_evaluated"] = float(self.n_wr2_evaluated)
+        if self.n_r_obs_evaluated is not None:
+            values["n_r_obs_evaluated"] = float(self.n_r_obs_evaluated)
         for term, entries in self.components.items():
             for name, value in entries.items():
                 values[f"{term}/{name}"] = value

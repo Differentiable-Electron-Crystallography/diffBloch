@@ -323,6 +323,45 @@ def test_console_logger_states_an_empty_objective_as_none(
     ]
 
 
+def test_refinement_step_reports_each_mean_with_its_own_denominator() -> None:
+    """wR2 and R_obs are NaN-filtered independently, so they carry separate counts."""
+    step = RefinementStep(
+        iteration=0,
+        loss=1.0,
+        wr2=0.05,
+        r_obs=0.07,
+        n_rotations=99,
+        n_wr2_evaluated=97,
+        n_r_obs_evaluated=95,
+    )
+    assert step.measurements["n_rotations"] == 99.0
+    assert step.measurements["n_wr2_evaluated"] == 97.0
+    assert step.measurements["n_r_obs_evaluated"] == 95.0
+
+
+def test_console_logger_prints_the_epoch_mean_denominators(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementStep(
+                iteration=0,
+                loss=1.0,
+                wr2=0.05,
+                r_obs=0.07,
+                n_rotations=99,
+                n_wr2_evaluated=97,
+                n_r_obs_evaluated=95,
+            )
+        )
+
+    assert caplog.records[-1].getMessage() == (
+        "Refinement epoch   1 │ wR2 0.050000 [97/99] │ R_obs 0.070000 [95/99] │ "
+        "diffraction loss n/a"
+    )
+
+
 def test_refinement_step_measurements_carry_only_composed_objective_terms() -> None:
     """An absent restraint has no measurement at all -- it can never read as a satisfied zero."""
     without_penalty = RefinementStep(

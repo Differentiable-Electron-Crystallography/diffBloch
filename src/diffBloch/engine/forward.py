@@ -522,6 +522,12 @@ class RefinementEngine:
             diagnostics={
                 "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
                 "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan")),
+                # Each mean's own denominator, reported beside it. wR2 and R_obs are NaN-filtered
+                # independently, so a rotation can contribute to one and not the other -- one
+                # shared count would misstate at least one of the two means.
+                "n_rotations": float(len(self.orientations)),
+                "n_wr2_evaluated": float(len(wr2_values)),
+                "n_r_obs_evaluated": float(len(r_obs_values)),
             },
             per_rotation=per_rotation,
         )
@@ -1041,14 +1047,18 @@ def run_refinement_model(
         # wR2/R_obs diagnostics are always computed (see _objective_value) regardless of
         # ExperimentConfig.loss_metrics, so refinement always reports both -- free, unlike the
         # preprocessing search, which reports only the metric it actually spent a solve computing.
+        diagnostics = reported_objective.diagnostics
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
-            wr2=reported_objective.diagnostics["wr2"],
-            r_obs=reported_objective.diagnostics["r_obs"],
+            wr2=diagnostics["wr2"],
+            r_obs=diagnostics["r_obs"],
             diff_loss=diffraction_loss,
             objective_total=_scalar_float(reported_objective.total),
             components=_component_measurements(reported_objective),
+            n_rotations=int(diagnostics["n_rotations"]),
+            n_wr2_evaluated=int(diagnostics["n_wr2_evaluated"]),
+            n_r_obs_evaluated=int(diagnostics["n_r_obs_evaluated"]),
         )
         history.append(event)
         logger.report(event)

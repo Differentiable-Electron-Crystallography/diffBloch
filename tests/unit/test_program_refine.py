@@ -83,6 +83,9 @@ def _refinement_result_for(
         r_obs=0.05,
         diff_loss=0.2,
         objective_total=0.35,
+        n_rotations=4,
+        n_wr2_evaluated=3,
+        n_r_obs_evaluated=2,
         components={
             "diffraction": {"raw": 0.2, "weight": 1.0, "contribution": 0.2},
             "bond_length": {"raw": 0.05, "weight": 3.0, "contribution": 0.15},
@@ -224,6 +227,11 @@ def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     assert "bond_length" in text
     assert "0.05" in text and "0.15" in text
     assert "objective total = 0.35" in text
+    # Every reported mean states the rotation count it was averaged over -- a mean over fewer
+    # rotations is a different quantity, not a better one.
+    assert "10.00 [3/4]" in text  # best-epoch wR2 (%), 3 of 4 rotations finite
+    assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
+    assert "mean wR2   = " in text and "[1/1]" in text  # per-rotation table mean + denominator
 
 
 def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:

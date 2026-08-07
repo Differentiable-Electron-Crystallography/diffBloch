@@ -589,6 +589,10 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
         "diffraction/raw": first.loss,
         "diffraction/weight": 1.0,
         "diffraction/contribution": first.loss,
+        # Each mean carries the denominator it was taken over.
+        "n_rotations": 1.0,
+        "n_wr2_evaluated": 1.0,
+        "n_r_obs_evaluated": 1.0,
     }
     assert completed.n_steps == 6
     assert completed.best_step == result.best_step
@@ -623,6 +627,9 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
         "diffraction/raw": step.loss,
         "diffraction/weight": 1.0,
         "diffraction/contribution": step.loss,
+        "n_rotations": 1.0,
+        "n_wr2_evaluated": 1.0,
+        "n_r_obs_evaluated": 1.0,
     }
 
 

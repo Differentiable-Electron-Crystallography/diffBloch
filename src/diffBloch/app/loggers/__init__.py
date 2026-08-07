@@ -83,6 +83,20 @@ def residual_label(residual: str) -> str:
     return _RESIDUAL_LABELS.get(residual, residual)
 
 
+def _mean_over(value: float | None, evaluated: int | None, total: int | None) -> str:
+    """Format an epoch mean with the denominator it was actually taken over.
+
+    ``0.061 [97/99]`` rather than a bare ``0.061``: the mean covers only the rotations that produced
+    a finite score, so a run that quietly evaluates fewer of them would otherwise look like a run
+    that got better.
+    """
+    if value is None:
+        return "n/a"
+    if evaluated is None or total is None:
+        return f"{value:.6f}"
+    return f"{value:.6f} [{evaluated}/{total}]"
+
+
 def _penalty_components(event: RefinementStep) -> tuple[tuple[str, Mapping[str, float]], ...]:
     """The epoch's composed soft-penalty terms, in objective order.
 
@@ -224,8 +238,8 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
-            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
-            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
+            r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
@@ -274,8 +288,8 @@ class ConsoleLogger:
         elif isinstance(event, ThicknessOptimized):
             label = f"thickness optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, RefinementStep):
-            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
-            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
+            r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
             _log.log(
                 self.level,
