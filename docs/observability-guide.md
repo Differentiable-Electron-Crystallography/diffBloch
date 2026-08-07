@@ -4,4 +4,6 @@ A refinement run reports relevant quantities: wR2 and R_obs per rotation during 
 
 A preprocess run reports the plan's shape as the recipe reshapes it: one `PlanSeeded` for the incoming plan, then one `PlanStepCompleted` per step, each carrying the orientation count, the structure-factor support size, the solve-beam totals, and the observed/matched reflection counts. Read consecutively these are per-stage survival counts — how many beams and reflections each filter left behind — which is why the seed baseline is emitted at all: without it the first stage's numbers are absolutes with nothing to compare against. `n_matched_hkl` is absent rather than zero before `build_orientation_plans` runs, since a candidate plan has no alignment and a `0` would mean "matched nothing".
 
+Two console-facing sinks exist and are alternatives, never both: `ConsoleLogger` bridges events onto stdlib `logging` as a scrolling log, and `TuiLogger` (the `diffBloch[tui]` extra, `--tui` on the CLI) repaints the same stream as a live dashboard — experiment and objective panels, a per-phase progress bar, the epoch table with its denominators, and the settled per-rotation table. A live display owns the terminal, so composing both would interleave; file and vendor sinks compose with either.
+
 A logger is any object with one method:
