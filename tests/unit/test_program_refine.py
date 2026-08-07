@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from diffBloch.app.program import _write_refinement_outputs
