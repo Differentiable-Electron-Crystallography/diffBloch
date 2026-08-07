@@ -46,3 +46,6 @@ examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/**/*.csv
 .DS_Store
 .idea/
 .ssec.env
+
+# Claude Code local tool config (permission allowlists, session state)
+.claude/
