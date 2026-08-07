@@ -21,6 +21,7 @@ from diffBloch.app.loggers import (
     EarlyAbortLogger,
     FitAbortedError,
     _format_eta,
+    _mean_over,
 )
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
@@ -360,6 +361,15 @@ def test_console_logger_prints_the_epoch_mean_denominators(
         "Refinement epoch   1 │ wR2 0.050000 [97/99] │ R_obs 0.070000 [95/99] │ "
         "diffraction loss n/a"
     )
+
+
+def test_mean_over_renders_a_non_finite_mean_as_na_with_its_denominator() -> None:
+    """NaN means nothing was evaluated -- the count says so, so the bare ``nan`` adds nothing."""
+    assert _mean_over(0.05, 97, 99) == "0.050000 [97/99]"
+    assert _mean_over(float("nan"), 0, 99) == "n/a [0/99]"
+    # None is the distinct case of a metric not reported at all: no counts to attach.
+    assert _mean_over(None, None, None) == "n/a"
+    assert _mean_over(0.05, None, None) == "0.050000"
 
 
 def test_refinement_step_measurements_carry_only_composed_objective_terms() -> None:

@@ -234,6 +234,38 @@ def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     assert "mean wR2   = " in text and "[1/1]" in text  # per-rotation table mean + denominator
 
 
+def test_write_refinement_report_renders_an_unevaluated_mean_as_na(tmp_path: Path) -> None:
+    """One spelling for "nothing was evaluated" across every mean the report prints."""
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    (event,) = result.history
+    result = replace(
+        result,
+        history=(
+            replace(
+                event,
+                wr2=float("nan"),
+                r_obs=float("nan"),
+                n_wr2_evaluated=0,
+                n_r_obs_evaluated=0,
+            ),
+        ),
+    )
+    _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    engine = build_engine(_built_plan_matching(np.eye(3, dtype=np.float64) * 5.0), refinement)
+
+    text = _write_refinement_report(
+        tmp_path,
+        cfg,
+        IntegrationGeometry(semiangle=1.0),
+        engine,
+        result,
+        elapsed_seconds=1.0,
+    ).read_text()
+
+    assert "n/a [0/4]" in text  # the best-epoch wR2 and R_obs rows
+    assert "nan [" not in text  # ...spelled the same way the per-rotation means already were
+
+
 def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
     _write_refinement_outputs(tmp_path, cfg, refinement, result)

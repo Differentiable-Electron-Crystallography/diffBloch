@@ -24,6 +24,7 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Sequence
 from dataclasses import replace
@@ -765,12 +766,18 @@ def _write_refinement_report(
     rule("Simulation / refinement parameters")
 
     def epoch_mean_pct(value: float | None, evaluated: int | None) -> str:
-        """A best-epoch mean as a percentage, with the rotation count it was averaged over."""
+        """A best-epoch mean as a percentage, with the rotation count it was averaged over.
+
+        A non-finite mean renders ``n/a``, the same spelling the per-rotation means below this table
+        use: the objective averages only finite scores, so non-finite means nothing was evaluated --
+        already stated by the count beside it.
+        """
         if best is None or value is None:
             return "n/a"
+        rendered = f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
         if evaluated is None or best.n_rotations is None:
-            return f"{100.0 * value:.2f}"
-        return f"{100.0 * value:.2f} [{evaluated}/{best.n_rotations}]"
+            return rendered
+        return f"{rendered} [{evaluated}/{best.n_rotations}]"
 
     r_obs_pct = epoch_mean_pct(
         best.r_obs if best else None, best.n_r_obs_evaluated if best else None

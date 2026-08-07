@@ -89,12 +89,19 @@ def _mean_over(value: float | None, evaluated: int | None, total: int | None) ->
     ``0.061 [97/99]`` rather than a bare ``0.061``: the mean covers only the rotations that produced
     a finite score, so a run that quietly evaluates fewer of them would otherwise look like a run
     that got better.
+
+    A non-finite mean renders ``n/a [0/99]``, matching the refinement report's per-rotation means.
+    The objective averages only the finite per-rotation scores, so its mean is non-finite in exactly
+    one case -- nothing was evaluated -- which the ``[0/99]`` already states; the bare ``nan`` adds
+    nothing and reads as a numerical failure rather than an empty denominator. ``None`` is the
+    distinct case of a metric not reported at all, and carries no counts to attach.
     """
     if value is None:
         return "n/a"
+    rendered = f"{value:.6f}" if math.isfinite(value) else "n/a"
     if evaluated is None or total is None:
-        return f"{value:.6f}"
-    return f"{value:.6f} [{evaluated}/{total}]"
+        return rendered
+    return f"{rendered} [{evaluated}/{total}]"
 
 
 def _penalty_components(event: RefinementStep) -> tuple[tuple[str, Mapping[str, float]], ...]:
