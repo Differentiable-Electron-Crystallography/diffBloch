@@ -33,12 +33,14 @@ from diffBloch.observability import (
     ConvergenceTrial,
     DeviceSelected,
     Event,
+    ExperimentDeclared,
     Logger,
     ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
     PlanSeeded,
     PlanStepCompleted,
+    RefinedRotationMetrics,
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
@@ -149,7 +151,10 @@ def _render_progress_bar(current: int, total: int, elapsed: float, suffix: str) 
     if current > 0 and current < total:
         remaining = (elapsed / current) * (total - current)
         eta = f" eta {_format_eta(remaining)}"
-    sys.stdout.write(f"\r[{bar}] {current}/{total} ({100.0 * fraction:.0f}%){eta} {suffix}")
+    # `\r` returns the cursor but does not erase, so a shorter line leaves the tail of a longer one
+    # behind ("wR2 0.057427" over "wR2 0.0398710.039671"). `\033[K` clears to end of line; it is the
+    # one escape used here, and only on the tty path this function is already gated behind.
+    sys.stdout.write(f"\r[{bar}] {current}/{total} ({100.0 * fraction:.0f}%){eta} {suffix}\033[K")
     sys.stdout.flush()
     if current >= total:
         sys.stdout.write("\n")
@@ -173,6 +178,10 @@ class ConsoleLogger:
     """
 
     level: int = logging.INFO
+    # The settled per-rotation stream: one line per rotation, once, after the run. On by default
+    # -- unlike the per-epoch verbose stream (n_orientations x n_steps lines) this fires once, and
+    # the final score of every rotation is a result worth reading, not a diagnostic.
+    per_rotation: bool = True
     _refinement_total: int = field(default=0, init=False, repr=False)
     _refinement_started_at: float = field(default=0.0, init=False, repr=False)
     _orientation_total: int = field(default=0, init=False, repr=False)
@@ -185,6 +194,40 @@ class ConsoleLogger:
     def report(self, event: Event) -> None:
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
+            return
+        if isinstance(event, ExperimentDeclared):
+            _log.log(
+                self.level,
+                "Experiment │ %s │ %s + %s",
+                event.name,
+                event.structure,
+                event.experimental_data,
+            )
+            _log.log(
+                self.level,
+                "Experiment │ %s lr=%g │ %d epoch(s) │ g_max(solve)=%g sg_max=%g │ absorption %s",
+                event.optimizer,
+                event.learning_rate,
+                event.steps,
+                event.solve_g_max,
+                event.sg_max,
+                "on" if event.absorption else "off",
+            )
+            return
+        if isinstance(event, RefinedRotationMetrics):
+            # Gated at the sink, not the emitter: the event must always be emitted -- the
+            # SummaryLogger builds its per-rotation table from it and W&B/Comet want the settled
+            # scores -- so a console that wants less says so here.
+            if self.per_rotation:
+                _log.log(
+                    self.level,
+                    "  rotation %3d │ wR2 %.6f │ R_obs %.6f │ %d matched%s",
+                    event.rotation_index,
+                    event.wr2,
+                    event.r_obs,
+                    event.n_matched,
+                    " │ validation" if event.is_validation else "",
+                )
             return
         if isinstance(event, ObjectiveManifest):
             # "none" is printed rather than the line being dropped: an objective composing no

@@ -406,11 +406,15 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_logger(*, console: bool, csv: str | None) -> Logger:
-    """Combine the requested observation sinks (none => the null logger that discards events)."""
+def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = False) -> Logger:
+    """Combine the requested observation sinks (none => the null logger that discards events).
+
+    ``per_rotation`` opts the console into the settled per-rotation stream; it is off by default
+    because one line per rotation is n_orientations x louder than the run summary.
+    """
     sinks: list[Logger] = []
     if console:
-        sinks.append(ConsoleLogger())
+        sinks.append(ConsoleLogger(per_rotation=per_rotation))
     if csv is not None:
         sinks.append(CSVLogger(Path(csv)))
     if not sinks:
