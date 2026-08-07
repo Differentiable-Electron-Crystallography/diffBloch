@@ -95,8 +95,11 @@ A `Plan` deliberately separates sets of hkls by purpose or origin:
 The virtual frame's angular range is represented by tilt sub-orientations around its central
 orientation. In the default app recipe, `build_orientation_plans` constructs those sub-tilts,
 selects each tilt-dependent SOLVE basis from `g_max` and `sg_max`, builds the Bloch geometry, and
-attaches the configured mosaic reduction. Rocking integration and mosaicity are parts of the built
-orientation plan, not separately displayed default stages.
+attaches the configured mosaic reduction. The configured reduction currently defaults to
+`Mosaicity(window=5)`: a five-sampled-tilt moving average, not a value estimated from PETS
+mosaic-spread metadata. Passing `mosaicity=None` at the lower-level API keeps the bare `PlainSum`.
+Rocking integration and mosaicity are parts of the built orientation plan, not separately displayed
+default stages.
 
 ## API shape: from experiment records to an initial `Plan`
 
@@ -164,7 +167,7 @@ base_plan = setup.plans.combined
 prepare = pipeline([
     build_orientation_plans(
         cfg.blochwave.to_rocking_curve(setup.integration),
-        cfg.blochwave.mosaicity,
+        cfg.blochwave.mosaicity,  # default app config is Mosaicity(window=5); use None for PlainSum
         coupling=cfg.blochwave.to_policy(),
         scoring_selection=cfg.blochwave.to_beam_selection(setup.integration),
     ),
