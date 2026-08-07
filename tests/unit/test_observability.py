@@ -26,6 +26,7 @@ from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
     CouplingSummary,
+    DeviceSelected,
     Event,
     InferenceCompleted,
     Logger,
@@ -60,6 +61,11 @@ def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptim
 
 
 def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
+
+    device = DeviceSelected(requested="cuda", selected="cpu", cuda_available=False)
+    assert device.channel == "device"
+    assert device.step is None
+    assert device.measurements == {"cuda_available": 0.0, "selected_cuda": 0.0}
 
     rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
     assert rotation.channel == "rotation"
@@ -235,6 +241,16 @@ def test_console_logger_logs_channel_step_and_measurements(
     assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
     assert "r_obs=0.5" in rotation_msg
     assert inference_msg.startswith("inference ")  # aggregate has no step bracket
+
+
+def test_console_logger_formats_device_selection(caplog: pytest.LogCaptureFixture) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(DeviceSelected(requested="cuda", selected="cpu", cuda_available=False))
+
+    assert caplog.records[-1].getMessage() == (
+        "No CUDA detected, using CPU, diffBloch is optimized for CUDA"
+    )
 
 
 def test_console_logger_formats_refinement_epoch_metrics(
