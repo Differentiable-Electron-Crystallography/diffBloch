@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Literal, Protocol, runtime_checkable
 
 __all__ = [
     "NULL_LOGGER",
@@ -573,16 +573,24 @@ class RefinementOrientationStep:
 class RefinementCompleted:
     """The refinement-run aggregate, emitted once when ``run_refinement`` finishes.
 
-    Shares the ``"refinement"`` channel with :class:`RefinementStep`: unlike inference (where a
-    per-rotation score and the run mean are distinct entities on distinct channels), a run's
-    per-step loss and its best-loss summary are the same quantity at different granularities, so
-    ``step`` -- the iteration index vs ``None`` -- is what separates the stream from the summary.
+    Shares the ``"refinement"`` channel with :class:`RefinementStep`, separated from the stream by
+    ``step`` (the iteration index vs ``None``). The two are *not* the same quantity at different
+    granularities: :class:`RefinementStep` always reports the training objective, whereas
+    ``best_loss`` is whichever objective actually selected the epoch. ``selection`` names that
+    objective -- ``"training"`` by default, or ``"validation"`` when ``run_refinement_model`` was
+    given a held-out selection engine.
+
+    Because those two populations are not comparable, ``measurements`` emits ``best_loss`` under a
+    *different key* per mode (``best_training_loss`` / ``best_validation_loss``) rather than one
+    shared key plus a flag. A generic backend cannot then plot a train-selected and a val-selected
+    run as one series: the key is absent instead of silently wrong.
     """
 
     channel: ClassVar[str] = "refinement"
     n_steps: int
     best_step: int
     best_loss: float
+    selection: Literal["training", "validation"] = "training"
 
     @property
     def step(self) -> int | None:
@@ -590,10 +598,13 @@ class RefinementCompleted:
 
     @property
     def measurements(self) -> Mapping[str, float]:
+        best_key = (
+            "best_validation_loss" if self.selection == "validation" else "best_training_loss"
+        )
         return {
             "n_steps": float(self.n_steps),
             "best_step": float(self.best_step),
-            "best_loss": self.best_loss,
+            best_key: self.best_loss,
         }
 
 

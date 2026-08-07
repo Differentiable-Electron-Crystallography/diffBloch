@@ -476,10 +476,49 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
         lr=0.2,
     )
 
+    assert result.selection_losses is None
     assert 0 <= result.best_step < 12
     assert result.best_loss == float(result.losses.min())
     assert result.best_params.occupancy_raw.shape == (1,)
     assert not result.best_params.occupancy_raw.requires_grad
+
+
+def test_refine_best_params_can_track_a_selection_engine() -> None:
+    train_engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
+    selection_engine = _engine(
+        loss=mse_loss,
+        pattern=_observed_pattern(_params(occupancy_logit=0.0)),
+    )
+    initial = _params(occupancy_logit=0.0)
+    recorder = RecordingLogger()
+
+    result = run_refinement_model(
+        train_engine,
+        build_refinement_model(initial=initial),
+        RefinementProblem(),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        steps=8,
+        optimizer="adam",
+        lr=0.2,
+        selection_engine=selection_engine,
+        logger=recorder,
+    )
+
+    assert result.selection_losses is not None
+    assert result.losses[-1] < result.losses[0]  # the training objective still improves
+    assert result.best_step == int(torch.argmin(result.selection_losses))
+    assert result.best_loss == float(result.selection_losses[result.best_step])
+    assert result.best_step != int(torch.argmin(result.losses))
+    assert torch.allclose(result.best_params.occupancy_raw, initial.occupancy_raw)
+
+    # The completion event must name the objective that selected the epoch, and must not report a
+    # held-out number under the training key -- the per-step stream stays the training objective.
+    (completed,) = [e for e in recorder.events if isinstance(e, RefinementCompleted)]
+    assert completed.selection == "validation"
+    assert completed.measurements["best_validation_loss"] == result.best_loss
+    assert "best_training_loss" not in completed.measurements
+    steps_reported = [e.loss for e in recorder.events if isinstance(e, RefinementStep)]
+    assert steps_reported == [float(x) for x in result.losses]
 
 
 def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
@@ -511,6 +550,9 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     assert completed.n_steps == 6
     assert completed.best_step == result.best_step
     assert completed.best_loss == result.best_loss
+    # No selection engine: the summary's best is the training objective, and says so.
+    assert completed.selection == "training"
+    assert "best_training_loss" in completed.measurements
 
 
 def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
