@@ -89,8 +89,7 @@ the best refined CIF, exact raw parameter snapshot, and JSON summary into the ex
 
 ## Citation
 
-If you use diffBloch in your research, please cite it (see
-[CITATION.cff](https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/main/CITATION.cff)):
+If you use diffBloch in your research, please cite it:
 
 ```bibtex
 @misc{diffBloch,
