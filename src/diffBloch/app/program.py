@@ -24,11 +24,7 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 from __future__ import annotations
 
 import logging
-import math
-import time
-from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 
 import gemmi
@@ -51,19 +47,24 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
-from diffBloch.core.crystal import cell_volume
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
     RefinementEngine,
-    RotationMetrics,
     ThicknessBounds,
     build_refinement_model,
     build_refinement_problem,
     run_refinement_model,
 )
 from diffBloch.io import read_experimental_data, read_structure
-from diffBloch.observability import NULL_LOGGER, DeviceSelected, Logger, MultiLogger
+from diffBloch.observability import (
+    NULL_LOGGER,
+    DeviceSelected,
+    Logger,
+    MultiLogger,
+    RefinedRotationMetrics,
+    RefinementOutputsWritten,
+)
 from diffBloch.params import Device, constrain
 from diffBloch.preprocess import (
     OPAQUE,
@@ -420,7 +421,6 @@ def refine_experiment(
     solve intermediates until backward. Execution-only -- gradients are unaffected. See
     :class:`~diffBloch.engine.RefinementEngine`.
     """
-    started = time.perf_counter()
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
@@ -484,6 +484,7 @@ def refine_experiment(
             profile=profile,
             checkpoint_activations=checkpoint_activations,
         )
+    logger.report(cfg.to_declaration(integration))
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
     thickness_nn: ApparentThicknessNN | None = None
@@ -528,21 +529,59 @@ def refine_experiment(
         profile=profile,
         selection_engine=selection_engine,
     )
-    elapsed_seconds = time.perf_counter() - started
     result = _write_refinement_outputs(root, cfg, refinement, result)
-    report_path = _write_refinement_report(
-        root,
-        cfg,
-        integration,
+    # The settled-result events, then the terminal one: SummaryLogger writes the file on the latter.
+    _report_refinement_outcome(
+        logger,
         engine,
         result,
-        elapsed_seconds=elapsed_seconds,
         validation_rotation_indices=validation_rotation_indices,
         thickness_nn=thickness_nn,
         raw_alphas=raw_alphas,
     )
-    result = replace(result, artifacts={**result.artifacts, "refinement_report": str(report_path)})
     return result
+
+
+def _report_refinement_outcome(
+    logger: Logger,
+    engine: RefinementEngine,
+    result: ModelRefinementResult,
+    *,
+    validation_rotation_indices: frozenset[int],
+    thickness_nn: ApparentThicknessNN | None,
+    raw_alphas: np.ndarray | None,
+) -> None:
+    """Emit the settled-result events the refinement loop itself cannot produce.
+
+    ``run_refinement_model`` only ever sees the *training* engine, so the final per-rotation scores
+    (which cover held-out rotations too) and the trained thickness curve have to be emitted here,
+    where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`
+    goes last and is the run's terminal event -- a sink that must write exactly once, after
+    everything else, acts on it.
+    """
+    for row in engine.per_rotation_metrics(result.best_model):
+        logger.report(
+            RefinedRotationMetrics(
+                rotation_index=row.rotation_index,
+                wr2=row.wr2,
+                r_obs=row.r_obs,
+                n_matched=row.n_matched,
+                is_validation=row.rotation_index in validation_rotation_indices,
+            )
+        )
+    if thickness_nn is not None and raw_alphas is not None:
+        logger.report(
+            thickness_nn.profile(
+                result.best_model.component_params[thickness_nn.key],
+                engine.orientations,
+                raw_alphas,
+            )
+        )
+    logger.report(
+        RefinementOutputsWritten(
+            structure=result.artifacts["refined_structure"], artifacts=result.artifacts
+        )
+    )
 
 
 def _normalized_pets_alphas(alphas: np.ndarray) -> tuple[float, ...]:
@@ -568,9 +607,9 @@ def _write_refinement_outputs(
 
     ``refined_structure.cif`` lands at ``root`` (the human-facing output); the raw ``.npz``
     snapshots and the checkpoint/refinement locks go under :func:`_reproducibility_dir` --
-    bookkeeping nobody reads directly. See :func:`_write_refinement_report` for the actual
-    human-readable summary (``refinement_report.txt``), which supersedes the machine-readable
-    ``refinement_summary.json`` this function used to also write.
+    bookkeeping nobody reads directly. See :class:`~diffBloch.app.loggers.summary.SummaryLogger`
+    for the actual human-readable summary (``refinement_report.txt``), which supersedes the
+    machine-readable ``refinement_summary.json`` this function used to also write.
     """
     reproducibility_dir = _reproducibility_dir(root)
     structure_path = (root / "refined_structure.cif").resolve()
@@ -684,272 +723,6 @@ def _write_refinement_outputs(
         )
         artifacts["refinement_lock"] = str(lock_path)
     return replace(result, artifacts=artifacts)
-
-
-def _ascii_table(headers: list[str], rows: list[list[str]]) -> str:
-    """Column-aligned plain-text table: a header row, a rule, then the data rows."""
-    widths = [
-        max(len(headers[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(headers))
-    ]
-
-    def fmt(cells: list[str]) -> str:
-        return "  ".join(cell.ljust(width) for cell, width in zip(cells, widths, strict=True))
-
-    lines = [fmt(headers), "  ".join("-" * width for width in widths)]
-    lines.extend(fmt(row) for row in rows)
-    return "\n".join(lines)
-
-
-def _format_cif_loop_as_table(block: gemmi.cif.Block, first_tag: str) -> str | None:
-    """Render a CIF loop (identified by its first column tag) as a plain aligned ASCII table.
-
-    ``None`` if the loop is absent (e.g. no ``_atom_site_aniso_*`` loop when every ADP is Uiso).
-    """
-    column = block.find_loop(first_tag)
-    if not column:
-        return None
-    loop = column.get_loop()
-    tags = list(loop.tags)
-    width = loop.width()
-    rows = [
-        [loop.values[row * width + col] for col in range(width)] for row in range(loop.length())
-    ]
-    return _ascii_table(tags, rows)
-
-
-def _write_refinement_report(
-    root: Path,
-    cfg: ExperimentConfig,
-    integration: IntegrationGeometry,
-    engine: RefinementEngine,
-    result: ModelRefinementResult,
-    *,
-    elapsed_seconds: float,
-    validation_rotation_indices: frozenset[int] = frozenset(),
-    thickness_nn: ApparentThicknessNN | None = None,
-    raw_alphas: np.ndarray | None = None,
-) -> Path:
-    """Write ``refinement_report.txt``: paper-table-ready stats, no prose, tables/loops only.
-
-    Reads the just-written ``refined_structure.cif`` back (rather than recomputing its atom-site
-    values a second time) so the reported unit cell / space group / atom-site tables are guaranteed
-    byte-for-byte consistent with the committed CIF -- this function runs after
-    :func:`_write_refinement_outputs`. ``engine`` covers every rotation (the per-rotation table is
-    never restricted to train); ``validation_rotation_indices`` non-empty (``train_test`` on) adds a
-    held-out-only section after it.
-    """
-    blochwave = cfg.blochwave
-    best = result.history[result.best_step] if result.history else None
-    structure_path = root / "refined_structure.cif"
-    document = gemmi.cif.read_file(str(structure_path))
-    block = document.sole_block()
-    structure = read_structure(structure_path)
-    volume = cell_volume(structure.unit_cell)
-
-    lines: list[str] = []
-
-    def banner(title: str) -> None:
-        lines.append("=" * 78)
-        lines.append(f" {title}")
-        lines.append("=" * 78)
-
-    def rule(title: str) -> None:
-        lines.append("")
-        lines.append(f"--- {title} " + "-" * max(0, 74 - len(title)))
-
-    banner(f"diffBloch refinement report -- {root.name}")
-    lines.append(f" structure   : {cfg.inputs.structure}")
-    lines.append(f" exp_data    : {cfg.inputs.exp_data}")
-    lines.append(f" generated   : {datetime.now(UTC).isoformat(timespec='seconds')}")
-    lines.append(f" elapsed     : {elapsed_seconds:.1f} s ({elapsed_seconds / 60.0:.2f} min)")
-
-    rule("Simulation / refinement parameters")
-
-    def epoch_mean_pct(value: float | None, evaluated: int | None) -> str:
-        """A best-epoch mean as a percentage, with the rotation count it was averaged over.
-
-        A non-finite mean renders ``n/a``, the same spelling the per-rotation means below this table
-        use: the objective averages only finite scores, so non-finite means nothing was evaluated --
-        already stated by the count beside it.
-        """
-        if best is None or value is None:
-            return "n/a"
-        rendered = f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
-        if evaluated is None or best.n_rotations is None:
-            return rendered
-        return f"{rendered} [{evaluated}/{best.n_rotations}]"
-
-    r_obs_pct = epoch_mean_pct(
-        best.r_obs if best else None, best.n_r_obs_evaluated if best else None
-    )
-    wr2_pct = epoch_mean_pct(best.wr2 if best else None, best.n_wr2_evaluated if best else None)
-    counts = result.reflection_counts
-    hkls_matched = f"{counts['matched_i_gt_3sigma']} / {counts['matched']}"
-    param_rows = [
-        ["Integration semiangle (deg)", f"{integration.semiangle:g}"],
-        ["Rocking-curve sampling", f"{blochwave.rocking_curve_sampling:g}"],
-        ["D_sg", f"{blochwave.dsg:g}"],
-        ["R_sg", f"{blochwave.rsg:g}"],
-        ["g_max (solve cutoff, A^-1)", f"{blochwave.g_max:g}"],
-        ["structure-factor support (2 x g_max, A^-1)", f"{2.0 * blochwave.g_max:g}"],
-        ["sg_max (A^-1)", f"{blochwave.sg_max:g}"],
-        ["Absorption (T/F)", "T" if blochwave.absorption else "F"],
-        ["Seed thickness (A)", ", ".join(f"{t:g}" for t in cfg.sample.thicknesses)],
-        ["Epochs (configured)", f"{cfg.refinement.steps:g}"],
-        ["Best epoch", f"{result.best_step + 1:g}"],
-        [
-            "Best epoch selection",
-            "held-out validation objective"
-            if result.selection_losses is not None
-            else "training objective",
-        ],
-        ["Best selection objective", f"{result.best_loss:.6g}"],
-        ["Optimizer", cfg.refinement.optimizer.name],
-        ["Learning rate", f"{cfg.refinement.optimizer.lr:g}"],
-        ["R_obs (%)", r_obs_pct],
-        ["wR2 (%)", wr2_pct],
-        ["HKLs (Observed/total)", hkls_matched],
-    ]
-    lines.append(_ascii_table(["Parameter", "Value"], param_rows))
-
-    rule("Crystallographic parameters")
-    a, b, c, alpha, beta, gamma = (float(v) for v in structure.cell_parameters)
-    cell_rows = [
-        ["Space group", f"{structure.spacegroup_hm} (#{structure.spacegroup_number})"],
-        ["a, b, c (A)", f"{a:.4f}, {b:.4f}, {c:.4f}"],
-        ["alpha, beta, gamma (deg)", f"{alpha:.2f}, {beta:.2f}, {gamma:.2f}"],
-        ["Volume (A^3)", f"{volume:.1f}"],
-        ["N atoms (ASU)", f"{len(structure.labels)}"],
-    ]
-    lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
-
-    rule("Objective terms (declared)")
-    manifest = result.objective_manifest
-    if manifest is None:
-        lines.append(" n/a (no recorded objective manifest)")
-    else:
-        # "none" rather than an omitted line: the default CLI path composes no penalties, and that
-        # is a scientific fact a reader should not have to infer from a missing section.
-        penalties = ", ".join(f"{t.name} (weight {t.weight:g})" for t in manifest.penalties)
-        lines.append(f" penalties  : {penalties or 'none'}")
-        lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
-        lines.append(f" components : {', '.join(manifest.components) or 'none'}")
-
-    rule("Objective components (best epoch)")
-    if best is not None and best.components:
-        lines.append(
-            _ascii_table(
-                ["Component", "Raw", "Weight", "Contribution"],
-                [
-                    [
-                        term,
-                        f"{values['raw']:.6g}",
-                        f"{values['weight']:g}",
-                        f"{values['contribution']:.6g}",
-                    ]
-                    for term, values in best.components.items()
-                ],
-            )
-        )
-        lines.append("")
-        total = "n/a" if best.objective_total is None else f"{best.objective_total:.6g}"
-        lines.append(f" objective total = {total}")
-        # Every row is a term the objective actually composed. A restraint that was not composed
-        # has no row, so this table never reports an inactive term as a satisfied zero.
-        lines.append(" (terms not composed into the objective have no row)")
-    else:
-        lines.append(" n/a (no recorded objective components)")
-
-    def rotation_metrics_block(rows: Sequence[RotationMetrics]) -> None:
-        lines.append(
-            _ascii_table(
-                ["Rotation", "wR2", "R_obs", "N matched"],
-                [
-                    [
-                        str(row.rotation_index),
-                        f"{row.wr2:.6f}",
-                        f"{row.r_obs:.6f}",
-                        str(row.n_matched),
-                    ]
-                    for row in rows
-                ],
-            )
-        )
-        finite_wr2 = [row.wr2 for row in rows if row.wr2 == row.wr2]
-        finite_r_obs = [row.r_obs for row in rows if row.r_obs == row.r_obs]
-        lines.append("")
-
-        def mean_line(label: str, finite: list[float]) -> str:
-            # Each mean states the denominator it was taken over: a mean that covers fewer
-            # rotations is a different quantity, not a better one.
-            if not finite:
-                return f" mean {label} = n/a [0/{len(rows)}]"
-            return f" mean {label} = {sum(finite) / len(finite):.6f} [{len(finite)}/{len(rows)}]"
-
-        lines.append(mean_line("wR2  ", finite_wr2))
-        lines.append(mean_line("R_obs", finite_r_obs))
-
-    rule("Per-rotation wR2 / R_obs (final refined model)")
-    per_rotation = engine.per_rotation_metrics(result.best_model)
-    rotation_metrics_block(per_rotation)
-
-    if validation_rotation_indices:
-        rule("Validation set (held out from the refinement objective)")
-        validation_rows = tuple(
-            row for row in per_rotation if row.rotation_index in validation_rotation_indices
-        )
-        lines.append(f" n_rotations = {len(validation_rows)}")
-        lines.append("")
-        rotation_metrics_block(validation_rows)
-
-    rule("Thickness NN")
-    if thickness_nn is not None and raw_alphas is not None:
-        component_params = result.best_model.component_params[thickness_nn.key]
-        shape_rows: list[list[str]] = []
-        plot_rows: list[tuple[float, float]] = []
-        for orientation in engine.orientations:
-            index = orientation.pattern.rotation_index
-            context = thickness_nn.forward_context(
-                component_params, rotation_index=index, orientation=orientation
-            )
-            assert context.thickness is not None
-            thickness = float(context.thickness.reshape(-1)[0])
-            angle = float(raw_alphas[index])
-            shape_rows.append([str(index), f"{angle:.4f}", f"{thickness:.2f}"])
-            plot_rows.append((angle, thickness))
-        lines.append(
-            f" enabled: yes ({thickness_nn.form}, bounds "
-            f"[{thickness_nn.bounds.min_angstrom:g}, {thickness_nn.bounds.max_angstrom:g}] A)"
-        )
-        lines.append("")
-        lines.append(_ascii_table(["Rotation", "alpha (degrees)", "Thickness (A)"], shape_rows))
-        plot_path = root / "thickness_nn_shape.png"
-        try:
-            from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
-
-            plot_thickness_nn_shape(plot_rows, plot_path)
-            lines.append("")
-            lines.append(f" plot: {plot_path.name}")
-        except ModuleNotFoundError:
-            lines.append("")
-            lines.append(
-                " plot: skipped (matplotlib not installed -- see the diffBloch[plot] extra)"
-            )
-    else:
-        lines.append(" enabled: no (preprocess-baked per-rotation thickness only)")
-
-    rule("Refined structure -- atom_site")
-    atom_table = _format_cif_loop_as_table(block, "_atom_site_label")
-    if atom_table is not None:
-        lines.append(atom_table)
-    aniso_table = _format_cif_loop_as_table(block, "_atom_site_aniso_label")
-    if aniso_table is not None:
-        lines.append("")
-        lines.append(aniso_table)
-
-    report_path = (root / "refinement_report.txt").resolve()
-    report_path.write_text("\n".join(lines) + "\n")
-    return report_path
 
 
 def _preprocess(

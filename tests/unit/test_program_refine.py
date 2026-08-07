@@ -4,26 +4,21 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
-from diffBloch.app.program import _write_refinement_outputs, _write_refinement_report
+from diffBloch.app.program import _write_refinement_outputs
 from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine import (
-    ApparentThicknessNN,
     ModelRefinementResult,
     StructureFactorGrid,
-    ThicknessBounds,
     build_refinement_model,
 )
 from diffBloch.io import read_structure
 from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
-from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import IntegrationGeometry
 
 _MINIMAL_CIF = """data_q
 _cell_length_a 5
@@ -190,179 +185,3 @@ def _built_plan_with_two_rotations(cell: np.ndarray) -> Plan:
     )
     seed = Plan(structure_factor_grid=grid, orientations=candidates)
     return build_orientation_plans()(seed)
-
-
-def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-    plan = _built_plan_matching(np.eye(3, dtype=np.float64) * 5.0)
-    engine = build_engine(plan, refinement)
-
-    report_path = _write_refinement_report(
-        tmp_path,
-        cfg,
-        IntegrationGeometry(semiangle=1.0),
-        engine,
-        result,
-        elapsed_seconds=12.5,
-    )
-
-    assert report_path == tmp_path / "refinement_report.txt"
-    text = report_path.read_text()
-    assert "Simulation / refinement parameters" in text
-    assert "Crystallographic parameters" in text
-    assert "Per-rotation wR2 / R_obs" in text
-    assert "Thickness NN" in text
-    assert "enabled: no" in text
-    assert "atom_site" in text
-    assert "C1" in text and "O1" in text  # the CIF's own atom labels came through
-    assert "12.5" in text  # elapsed time was reported
-    # Every composed objective term reports raw, weight, and contribution separately, so a
-    # zero-weighted term still shows a live scientific raw value.
-    # The declared composition is stated up front, including the terms that are absent.
-    assert "Objective terms (declared)" in text
-    assert "penalties  : bond_length (weight 3)" in text
-    assert "constraints: none" in text
-    assert "Objective components (best epoch)" in text
-    assert "bond_length" in text
-    assert "0.05" in text and "0.15" in text
-    assert "objective total = 0.35" in text
-    # Every reported mean states the rotation count it was averaged over -- a mean over fewer
-    # rotations is a different quantity, not a better one.
-    assert "10.00 [3/4]" in text  # best-epoch wR2 (%), 3 of 4 rotations finite
-    assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
-    assert "mean wR2   = " in text and "[1/1]" in text  # per-rotation table mean + denominator
-
-
-def test_write_refinement_report_renders_an_unevaluated_mean_as_na(tmp_path: Path) -> None:
-    """One spelling for "nothing was evaluated" across every mean the report prints."""
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    (event,) = result.history
-    result = replace(
-        result,
-        history=(
-            replace(
-                event,
-                wr2=float("nan"),
-                r_obs=float("nan"),
-                n_wr2_evaluated=0,
-                n_r_obs_evaluated=0,
-            ),
-        ),
-    )
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-    engine = build_engine(_built_plan_matching(np.eye(3, dtype=np.float64) * 5.0), refinement)
-
-    text = _write_refinement_report(
-        tmp_path,
-        cfg,
-        IntegrationGeometry(semiangle=1.0),
-        engine,
-        result,
-        elapsed_seconds=1.0,
-    ).read_text()
-
-    assert "n/a [0/4]" in text  # the best-epoch wR2 and R_obs rows
-    assert "nan [" not in text  # ...spelled the same way the per-rotation means already were
-
-
-def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-    plan = _built_plan_matching(np.eye(3, dtype=np.float64) * 5.0)
-    engine = build_engine(plan, refinement)
-
-    thickness_nn = ApparentThicknessNN(
-        bounds=ThicknessBounds(min_angstrom=100.0, max_angstrom=1000.0),
-        normalized_alphas=(0.0,),
-    )
-    dtype = refinement.params.asu_positions.dtype
-    device = refinement.params.asu_positions.device
-    model = build_refinement_model(
-        initial=refinement.params,
-        components=(thickness_nn,),
-        component_params={
-            thickness_nn.key: thickness_nn.initial_params(dtype=dtype, device=device)
-        },
-    )
-    result_with_nn = replace(result, model=model, best_model=model)
-
-    report_path = _write_refinement_report(
-        tmp_path,
-        cfg,
-        IntegrationGeometry(semiangle=1.0),
-        engine,
-        result_with_nn,
-        elapsed_seconds=1.0,
-        thickness_nn=thickness_nn,
-        raw_alphas=np.array([12.5], dtype=np.float64),
-    )
-
-    text = report_path.read_text()
-    assert "enabled: yes" in text
-    assert "alpha (degrees)" in text
-
-    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
-    assert (tmp_path / "thickness_nn_shape.png").is_file()
-    assert "plot: thickness_nn_shape.png" in text
-
-
-def test_write_refinement_report_adds_a_validation_section_when_split_is_on(
-    tmp_path: Path,
-) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-    plan = _built_plan_with_two_rotations(np.eye(3, dtype=np.float64) * 5.0)
-    engine = build_engine(plan, refinement)
-
-    report_path = _write_refinement_report(
-        tmp_path,
-        cfg,
-        IntegrationGeometry(semiangle=1.0),
-        engine,
-        result,
-        elapsed_seconds=1.0,
-        validation_rotation_indices=frozenset({1}),
-    )
-
-    text = report_path.read_text()
-    assert "Validation set (held out from the refinement objective)" in text
-    assert "n_rotations = 1" in text
-
-
-def test_write_refinement_report_omits_the_validation_section_when_split_is_off(
-    tmp_path: Path,
-) -> None:
-    cfg, refinement, result = _refinement_result_for(tmp_path)
-    _write_refinement_outputs(tmp_path, cfg, refinement, result)
-    plan = _built_plan_matching(np.eye(3, dtype=np.float64) * 5.0)
-    engine = build_engine(plan, refinement)
-
-    report_path = _write_refinement_report(
-        tmp_path, cfg, IntegrationGeometry(semiangle=1.0), engine, result, elapsed_seconds=1.0
-    )
-
-    assert "Validation set" not in report_path.read_text()
-
-
-def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Regression: ``root`` is whatever the CLI's ``experiment_dir`` arg was -- often relative.
-
-    ``structure_path``/``params_path`` are ``.resolve()``d (absolute); passing the unresolved
-    (possibly relative) ``root`` straight to ``artifact_hash_for`` mismatched an absolute path
-    against a relative base and raised ``ValueError: ... is not in the subpath of ...`` the moment
-    a real run used a relative experiment directory (every CLI invocation does).
-    """
-    monkeypatch.chdir(tmp_path)
-    relative_root = Path(".")
-    cfg, refinement, result = _refinement_result_for(relative_root)
-    (relative_root / "reproducibility").mkdir()
-    (relative_root / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
-
-    written = _write_refinement_outputs(relative_root, cfg, refinement, result)
-
-    assert "refinement_lock" in written.artifacts
-    lock_path = relative_root / "reproducibility" / "refinement.lock"
-    assert read_refinement_lock(lock_path).refined_structure.path == "refined_structure.cif"

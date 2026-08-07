@@ -1083,15 +1083,24 @@ def run_refinement_model(
             selection_losses.append(selection_loss)
         if selection_loss < best_loss:
             best_loss, best_step, best_model = selection_loss, step, snapshot
+    _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)
+    reflection_counts = MappingProxyType(
+        {
+            "matched": n_matched,
+            "matched_i_gt_3sigma": n_strong,
+            "matched_i_le_3sigma": n_weak,
+            "unmatched_observed": n_unmatched,
+        }
+    )
     logger.report(
         RefinementCompleted(
             n_steps=steps,
             best_step=best_step,
             best_loss=best_loss,
             selection="validation" if selection_engine is not None else "training",
+            reflection_counts=reflection_counts,
         )
     )
-    _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)
     return ModelRefinementResult(
         model=_detach_model(current_model()),
         losses=torch.tensor(losses, dtype=torch.float64),
@@ -1103,13 +1112,6 @@ def run_refinement_model(
             else None
         ),
         history=tuple(history),
-        reflection_counts=MappingProxyType(
-            {
-                "matched": n_matched,
-                "matched_i_gt_3sigma": n_strong,
-                "matched_i_le_3sigma": n_weak,
-                "unmatched_observed": n_unmatched,
-            }
-        ),
+        reflection_counts=reflection_counts,
         objective_manifest=manifest,
     )

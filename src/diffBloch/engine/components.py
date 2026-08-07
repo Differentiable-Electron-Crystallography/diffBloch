@@ -7,13 +7,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
 import torch
 import torch.nn.functional as F
+from numpy.typing import NDArray
 from torch import Tensor
 
 from diffBloch.core.constraints import positive
 from diffBloch.engine.forward import ForwardContext
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.observability import ThicknessProfile
 
 __all__ = [
     "ApparentThicknessNN",
@@ -226,6 +229,34 @@ class ApparentThicknessNN:
             "layer2.weight": w2,
             "layer2.bias": b2,
         }
+
+    def profile(
+        self,
+        params: Mapping[str, Tensor],
+        orientations: Sequence[OrientationPlanLike],
+        raw_alphas: Sequence[float] | NDArray[np.float64],
+    ) -> ThicknessProfile:
+        """Evaluate the trained curve at every orientation's tilt angle, as a reportable value.
+
+        The component owns this because it owns the behaviour: sampling its own output is not
+        something an orchestrator or a logger should reimplement, and a sink must never run the
+        forward model itself. ``raw_alphas`` is indexed by source PETS rotation index.
+        """
+        indices = [orientation.pattern.rotation_index for orientation in orientations]
+        thicknesses: list[float] = []
+        for index, orientation in zip(indices, orientations, strict=True):
+            context = self.forward_context(params, rotation_index=index, orientation=orientation)
+            if context.thickness is None:
+                raise ValueError("thickness component produced no thickness")
+            thicknesses.append(float(context.thickness.reshape(-1)[0]))
+        return ThicknessProfile(
+            form=self.form,
+            min_thickness=self.bounds.min_angstrom,
+            max_thickness=self.bounds.max_angstrom,
+            rotation_indices=tuple(indices),
+            alphas=tuple(float(raw_alphas[index]) for index in indices),
+            thicknesses=tuple(thicknesses),
+        )
 
     def forward_context(
         self,
