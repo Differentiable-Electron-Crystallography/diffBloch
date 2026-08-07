@@ -33,6 +33,8 @@ from diffBloch.engine import (
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
+    ObjectiveManifest,
+    ObjectiveTerm,
     RecordingLogger,
     RefinementCompleted,
     RefinementOrientationStep,
@@ -276,6 +278,39 @@ def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
         assert orientation_event.wr2 == pytest.approx(epoch.wr2)
         assert orientation_event.r_obs == pytest.approx(epoch.r_obs)
         assert orientation_event.diff_loss == pytest.approx(epoch.diff_loss)
+
+
+def test_run_refinement_model_declares_the_objective_before_the_first_step() -> None:
+    """The manifest opens the stream and is returned on the result, empty penalties included."""
+
+    @dataclasses.dataclass(frozen=True)
+    class _Penalty:
+        name: str = "bond_length"
+        weight: float = 2.5
+
+        def value(self, state: PhysicalState) -> torch.Tensor:
+            return state.positions.new_zeros(())
+
+    engine = _engine(loss=mse_loss)
+    model = build_refinement_model(initial=_params())
+    logger = RecordingLogger()
+
+    result = run_refinement_model(
+        engine,
+        model,
+        RefinementProblem(penalties=(_Penalty(),)),
+        trainable=TrainableSpec.positions_and_adp(),
+        steps=2,
+        optimizer="adam",
+        lr=1e-3,
+        logger=logger,
+    )
+
+    (manifest,) = [e for e in logger.events if isinstance(e, ObjectiveManifest)]
+    assert logger.events.index(manifest) == 0  # declared before any compute is reported
+    assert manifest.penalties == (ObjectiveTerm(name="bond_length", weight=2.5),)
+    assert manifest.constraints == () and manifest.components == ()
+    assert result.objective_manifest == manifest
 
 
 def test_run_refinement_model_default_omits_per_rotation_steps() -> None:
@@ -546,7 +581,19 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     # (mse_loss here) -- both are real numbers and both appear in measurements.
     assert first.wr2 is not None
     assert first.r_obs is not None
-    assert first.measurements == {"wr2": first.wr2, "r_obs": first.r_obs, "diff_loss": first.loss}
+    assert first.measurements == {
+        "wr2": first.wr2,
+        "r_obs": first.r_obs,
+        "diff_loss": first.loss,
+        # The sole composed term reports its raw value, weight, and weighted contribution.
+        "diffraction/raw": first.loss,
+        "diffraction/weight": 1.0,
+        "diffraction/contribution": first.loss,
+        # Each mean carries the denominator it was taken over.
+        "n_rotations": 1.0,
+        "n_wr2_evaluated": 1.0,
+        "n_r_obs_evaluated": 1.0,
+    }
     assert completed.n_steps == 6
     assert completed.best_step == result.best_step
     assert completed.best_loss == result.best_loss
@@ -573,7 +620,17 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
     assert step.loss == float(result.losses[0])
     assert step.objective_total == step.loss
     assert step.r_obs is not None  # always-computed reporting diagnostic, independent of loss
-    assert step.measurements == {"wr2": step.wr2, "r_obs": step.r_obs, "diff_loss": step.loss}
+    assert step.measurements == {
+        "wr2": step.wr2,
+        "r_obs": step.r_obs,
+        "diff_loss": step.loss,
+        "diffraction/raw": step.loss,
+        "diffraction/weight": 1.0,
+        "diffraction/contribution": step.loss,
+        "n_rotations": 1.0,
+        "n_wr2_evaluated": 1.0,
+        "n_r_obs_evaluated": 1.0,
+    }
 
 
 def test_refine_element_selection_freezes_excluded_position_rows() -> None:

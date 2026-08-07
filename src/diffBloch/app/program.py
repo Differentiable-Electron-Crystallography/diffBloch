@@ -24,6 +24,7 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Sequence
 from dataclasses import replace
@@ -763,8 +764,25 @@ def _write_refinement_report(
     lines.append(f" elapsed     : {elapsed_seconds:.1f} s ({elapsed_seconds / 60.0:.2f} min)")
 
     rule("Simulation / refinement parameters")
-    r_obs_pct = f"{100.0 * best.r_obs:.2f}" if best and best.r_obs is not None else "n/a"
-    wr2_pct = f"{100.0 * best.wr2:.2f}" if best and best.wr2 is not None else "n/a"
+
+    def epoch_mean_pct(value: float | None, evaluated: int | None) -> str:
+        """A best-epoch mean as a percentage, with the rotation count it was averaged over.
+
+        A non-finite mean renders ``n/a``, the same spelling the per-rotation means below this table
+        use: the objective averages only finite scores, so non-finite means nothing was evaluated --
+        already stated by the count beside it.
+        """
+        if best is None or value is None:
+            return "n/a"
+        rendered = f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
+        if evaluated is None or best.n_rotations is None:
+            return rendered
+        return f"{rendered} [{evaluated}/{best.n_rotations}]"
+
+    r_obs_pct = epoch_mean_pct(
+        best.r_obs if best else None, best.n_r_obs_evaluated if best else None
+    )
+    wr2_pct = epoch_mean_pct(best.wr2 if best else None, best.n_wr2_evaluated if best else None)
     counts = result.reflection_counts
     hkls_matched = f"{counts['matched_i_gt_3sigma']} / {counts['matched']}"
     param_rows = [
@@ -805,6 +823,43 @@ def _write_refinement_report(
     ]
     lines.append(_ascii_table(["Parameter", "Value"], cell_rows))
 
+    rule("Objective terms (declared)")
+    manifest = result.objective_manifest
+    if manifest is None:
+        lines.append(" n/a (no recorded objective manifest)")
+    else:
+        # "none" rather than an omitted line: the default CLI path composes no penalties, and that
+        # is a scientific fact a reader should not have to infer from a missing section.
+        penalties = ", ".join(f"{t.name} (weight {t.weight:g})" for t in manifest.penalties)
+        lines.append(f" penalties  : {penalties or 'none'}")
+        lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
+        lines.append(f" components : {', '.join(manifest.components) or 'none'}")
+
+    rule("Objective components (best epoch)")
+    if best is not None and best.components:
+        lines.append(
+            _ascii_table(
+                ["Component", "Raw", "Weight", "Contribution"],
+                [
+                    [
+                        term,
+                        f"{values['raw']:.6g}",
+                        f"{values['weight']:g}",
+                        f"{values['contribution']:.6g}",
+                    ]
+                    for term, values in best.components.items()
+                ],
+            )
+        )
+        lines.append("")
+        total = "n/a" if best.objective_total is None else f"{best.objective_total:.6g}"
+        lines.append(f" objective total = {total}")
+        # Every row is a term the objective actually composed. A restraint that was not composed
+        # has no row, so this table never reports an inactive term as a satisfied zero.
+        lines.append(" (terms not composed into the objective have no row)")
+    else:
+        lines.append(" n/a (no recorded objective components)")
+
     def rotation_metrics_block(rows: Sequence[RotationMetrics]) -> None:
         lines.append(
             _ascii_table(
@@ -823,16 +878,16 @@ def _write_refinement_report(
         finite_wr2 = [row.wr2 for row in rows if row.wr2 == row.wr2]
         finite_r_obs = [row.r_obs for row in rows if row.r_obs == row.r_obs]
         lines.append("")
-        lines.append(
-            f" mean wR2   = {sum(finite_wr2) / len(finite_wr2):.6f}"
-            if finite_wr2
-            else " mean wR2   = n/a"
-        )
-        lines.append(
-            f" mean R_obs = {sum(finite_r_obs) / len(finite_r_obs):.6f}"
-            if finite_r_obs
-            else " mean R_obs = n/a"
-        )
+
+        def mean_line(label: str, finite: list[float]) -> str:
+            # Each mean states the denominator it was taken over: a mean that covers fewer
+            # rotations is a different quantity, not a better one.
+            if not finite:
+                return f" mean {label} = n/a [0/{len(rows)}]"
+            return f" mean {label} = {sum(finite) / len(finite):.6f} [{len(finite)}/{len(rows)}]"
+
+        lines.append(mean_line("wR2  ", finite_wr2))
+        lines.append(mean_line("R_obs", finite_r_obs))
 
     rule("Per-rotation wR2 / R_obs (final refined model)")
     per_rotation = engine.per_rotation_metrics(result.best_model)

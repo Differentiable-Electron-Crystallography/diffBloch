@@ -71,6 +71,8 @@ from diffBloch.engine.refine import (
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
+    ObjectiveManifest,
+    ObjectiveTerm,
     RefinementCompleted,
     RefinementOrientationStep,
     RefinementStarted,
@@ -520,6 +522,12 @@ class RefinementEngine:
             diagnostics={
                 "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
                 "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan")),
+                # Each mean's own denominator, reported beside it. wR2 and R_obs are NaN-filtered
+                # independently, so a rotation can contribute to one and not the other -- one
+                # shared count would misstate at least one of the two means.
+                "n_rotations": float(len(self.orientations)),
+                "n_wr2_evaluated": float(len(wr2_values)),
+                "n_r_obs_evaluated": float(len(r_obs_values)),
             },
             per_rotation=per_rotation,
         )
@@ -829,6 +837,9 @@ class ModelRefinementResult:
     history: tuple[RefinementStep, ...] = ()
     reflection_counts: Mapping[str, int] = field(default_factory=dict)
     artifacts: Mapping[str, str] = field(default_factory=dict)
+    # The same value emitted as the run's opening event, carried here so a report can state the
+    # composed objective without the caller re-threading the problem/model it was built from.
+    objective_manifest: ObjectiveManifest | None = None
 
     @property
     def params(self) -> RefinableParams:
@@ -934,6 +945,13 @@ def run_refinement_model(
 ) -> ModelRefinementResult:
     """Optimize a refinement model against the supplied engine/static context and problem terms.
 
+    Before the first step this emits an :class:`~diffBloch.observability.ObjectiveManifest` naming
+    the penalties (with weights), constraints, and components the run actually composed, and returns
+    the same value on the result. This is the one place that holds the problem and the model
+    together, so it is the only place that can state the objective's composition; the structure-only
+    :func:`~diffBloch.engine.refine.run_refinement` receives a bare objective callable and therefore
+    declares nothing.
+
     ``verbose`` ("verbose refinement") additionally reports one
     :class:`~diffBloch.observability.RefinementOrientationStep` per rotation per step (wr2/r_obs/
     diff_loss), for diagnosing which orientations drive the epoch mean reported by the ordinary
@@ -1004,6 +1022,16 @@ def run_refinement_model(
     best_loss = float("inf")
     best_step = 0
     best_model = _detach_model(current_model())
+    # Declared before the first step, so the composed objective is legible from the run's opening
+    # lines rather than inferred later from which per-term measurements happened to appear.
+    manifest = ObjectiveManifest(
+        penalties=tuple(
+            ObjectiveTerm(name=penalty.name, weight=penalty.weight) for penalty in problem.penalties
+        ),
+        constraints=tuple(constraint.name for constraint in model.structure.constraints),
+        components=tuple(component.key for component in model.components),
+    )
+    logger.report(manifest)
     logger.report(RefinementStarted(total_steps=steps))
     for step in range(steps):
         snapshot = _detach_model(current_model())
@@ -1019,14 +1047,18 @@ def run_refinement_model(
         # wR2/R_obs diagnostics are always computed (see _objective_value) regardless of
         # ExperimentConfig.loss_metrics, so refinement always reports both -- free, unlike the
         # preprocessing search, which reports only the metric it actually spent a solve computing.
+        diagnostics = reported_objective.diagnostics
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
-            wr2=reported_objective.diagnostics["wr2"],
-            r_obs=reported_objective.diagnostics["r_obs"],
+            wr2=diagnostics["wr2"],
+            r_obs=diagnostics["r_obs"],
             diff_loss=diffraction_loss,
             objective_total=_scalar_float(reported_objective.total),
             components=_component_measurements(reported_objective),
+            n_rotations=int(diagnostics["n_rotations"]),
+            n_wr2_evaluated=int(diagnostics["n_wr2_evaluated"]),
+            n_r_obs_evaluated=int(diagnostics["n_r_obs_evaluated"]),
         )
         history.append(event)
         logger.report(event)
@@ -1079,4 +1111,5 @@ def run_refinement_model(
                 "unmatched_observed": n_unmatched,
             }
         ),
+        objective_manifest=manifest,
     )

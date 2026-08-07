@@ -22,6 +22,7 @@ import logging
 import math
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,8 +34,10 @@ from diffBloch.observability import (
     DeviceSelected,
     Event,
     Logger,
+    ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
+    PlanSeeded,
     PlanStepCompleted,
     RefinementOrientationStep,
     RefinementStarted,
@@ -78,6 +81,40 @@ _RESIDUAL_LABELS = {"wr2": "wR2", "robs": "R_obs", "least_squares": "least_squar
 
 def residual_label(residual: str) -> str:
     return _RESIDUAL_LABELS.get(residual, residual)
+
+
+def _mean_over(value: float | None, evaluated: int | None, total: int | None) -> str:
+    """Format an epoch mean with the denominator it was actually taken over.
+
+    ``0.061 [97/99]`` rather than a bare ``0.061``: the mean covers only the rotations that produced
+    a finite score, so a run that quietly evaluates fewer of them would otherwise look like a run
+    that got better.
+
+    A non-finite mean renders ``n/a [0/99]``, matching the refinement report's per-rotation means.
+    The objective averages only the finite per-rotation scores, so its mean is non-finite in exactly
+    one case -- nothing was evaluated -- which the ``[0/99]`` already states; the bare ``nan`` adds
+    nothing and reads as a numerical failure rather than an empty denominator. ``None`` is the
+    distinct case of a metric not reported at all, and carries no counts to attach.
+    """
+    if value is None:
+        return "n/a"
+    rendered = f"{value:.6f}" if math.isfinite(value) else "n/a"
+    if evaluated is None or total is None:
+        return rendered
+    return f"{rendered} [{evaluated}/{total}]"
+
+
+def _penalty_components(event: RefinementStep) -> tuple[tuple[str, Mapping[str, float]], ...]:
+    """The epoch's composed soft-penalty terms, in objective order.
+
+    ``diffraction`` is dropped because the same number is already reported as ``diff_loss``; what
+    remains is exactly the restraints the objective actually composed. An absent restraint has no
+    entry at all, so an empty result means *no penalty was applied*, never *a penalty evaluated to
+    zero* -- the distinction the console would otherwise be unable to draw.
+    """
+    return tuple(
+        (term, values) for term, values in event.components.items() if term != "diffraction"
+    )
 
 
 def _format_eta(seconds: float) -> str:
@@ -149,6 +186,22 @@ class ConsoleLogger:
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
             return
+        if isinstance(event, ObjectiveManifest):
+            # "none" is printed rather than the line being dropped: an objective composing no
+            # restraints is a scientific fact worth stating, not an absence to be inferred.
+            _log.log(
+                self.level,
+                "Objective │ penalties  : %s",
+                ", ".join(f"{term.name} (weight {term.weight:g})" for term in event.penalties)
+                or "none",
+            )
+            _log.log(
+                self.level, "Objective │ constraints: %s", ", ".join(event.constraints) or "none"
+            )
+            _log.log(
+                self.level, "Objective │ components : %s", ", ".join(event.components) or "none"
+            )
+            return
         if isinstance(event, RefinementStarted):
             self._refinement_total = event.total_steps
             self._refinement_started_at = time.perf_counter()
@@ -192,13 +245,18 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
-            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
-            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
+            r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
+            suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
+            # than as extra log lines that would overwrite it.
+            for term, values in _penalty_components(event):
+                suffix += f" │ {term} {values['contribution']:.4g}"
             _render_progress_bar(
                 event.iteration + 1,
                 self._refinement_total,
                 time.perf_counter() - self._refinement_started_at,
-                f"epoch │ wR2 {wr2} │ R_obs {r_obs}",
+                suffix,
             )
             return
         if isinstance(event, ConvergencePassStarted):
@@ -237,8 +295,8 @@ class ConsoleLogger:
         elif isinstance(event, ThicknessOptimized):
             label = f"thickness optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, RefinementStep):
-            wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
-            r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
+            wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
+            r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
             _log.log(
                 self.level,
@@ -248,6 +306,15 @@ class ConsoleLogger:
                 r_obs,
                 diff_loss,
             )
+            for term, values in _penalty_components(event):
+                _log.log(
+                    self.level,
+                    "  penalty %-20s │ raw %.6g │ weight %g │ contribution %.6g",
+                    term,
+                    values["raw"],
+                    values["weight"],
+                    values["contribution"],
+                )
             return
         elif isinstance(event, RefinementOrientationStep):
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
@@ -261,6 +328,14 @@ class ConsoleLogger:
                 wr2,
                 r_obs,
                 diff_loss,
+            )
+            return
+        elif isinstance(event, PlanSeeded):
+            _log.log(
+                self.level,
+                "Preprocess seed  │ %-27s │ %s",
+                "(incoming plan)",
+                format_measurements(event),
             )
             return
         elif isinstance(event, PlanStepCompleted):

@@ -21,6 +21,7 @@ from diffBloch.app.loggers import (
     EarlyAbortLogger,
     FitAbortedError,
     _format_eta,
+    _mean_over,
 )
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
@@ -32,6 +33,8 @@ from diffBloch.observability import (
     Logger,
     MultiLogger,
     NullLogger,
+    ObjectiveManifest,
+    ObjectiveTerm,
     OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
@@ -187,7 +190,12 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         objective_total=2.0,
         components={"diffraction": {"raw": 1.0, "weight": 2.0, "contribution": 2.0}},
     )
-    assert structured_refinement.measurements == {"wr2": 0.05}
+    assert structured_refinement.measurements == {
+        "wr2": 0.05,
+        "diffraction/raw": 1.0,
+        "diffraction/weight": 2.0,
+        "diffraction/contribution": 2.0,
+    }
 
     orientation_step = RefinementOrientationStep(
         iteration=5, rotation_index=3, wr2=0.04, r_obs=0.05, diff_loss=0.02
@@ -280,6 +288,138 @@ def test_console_logger_formats_refinement_epoch_metrics(
     assert caplog.records[-1].getMessage() == (
         "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a"
     )
+
+
+def test_objective_manifest_declares_composition_including_the_empty_case() -> None:
+    empty = ObjectiveManifest()
+    assert empty.channel == "objective"
+    assert empty.step is None  # a run-level declaration, not a per-step observation
+    assert empty.measurements == {"n_penalties": 0.0, "n_constraints": 0.0, "n_components": 0.0}
+
+    composed = ObjectiveManifest(
+        penalties=(ObjectiveTerm(name="bond_length", weight=3.0),),
+        constraints=("hydrogen_riding",),
+        components=("apparent_thickness",),
+    )
+    assert composed.measurements == {
+        "n_penalties": 1.0,
+        "n_constraints": 1.0,
+        "n_components": 1.0,
+        "bond_length/weight": 3.0,
+    }
+
+
+def test_console_logger_states_an_empty_objective_as_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The default path composes no penalties; the report says so instead of omitting the line."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(ObjectiveManifest(components=("apparent_thickness",)))
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "Objective │ penalties  : none",
+        "Objective │ constraints: none",
+        "Objective │ components : apparent_thickness",
+    ]
+
+
+def test_refinement_step_reports_each_mean_with_its_own_denominator() -> None:
+    """wR2 and R_obs are NaN-filtered independently, so they carry separate counts."""
+    step = RefinementStep(
+        iteration=0,
+        loss=1.0,
+        wr2=0.05,
+        r_obs=0.07,
+        n_rotations=99,
+        n_wr2_evaluated=97,
+        n_r_obs_evaluated=95,
+    )
+    assert step.measurements["n_rotations"] == 99.0
+    assert step.measurements["n_wr2_evaluated"] == 97.0
+    assert step.measurements["n_r_obs_evaluated"] == 95.0
+
+
+def test_console_logger_prints_the_epoch_mean_denominators(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementStep(
+                iteration=0,
+                loss=1.0,
+                wr2=0.05,
+                r_obs=0.07,
+                n_rotations=99,
+                n_wr2_evaluated=97,
+                n_r_obs_evaluated=95,
+            )
+        )
+
+    assert caplog.records[-1].getMessage() == (
+        "Refinement epoch   1 │ wR2 0.050000 [97/99] │ R_obs 0.070000 [95/99] │ "
+        "diffraction loss n/a"
+    )
+
+
+def test_mean_over_renders_a_non_finite_mean_as_na_with_its_denominator() -> None:
+    """NaN means nothing was evaluated -- the count says so, so the bare ``nan`` adds nothing."""
+    assert _mean_over(0.05, 97, 99) == "0.050000 [97/99]"
+    assert _mean_over(float("nan"), 0, 99) == "n/a [0/99]"
+    # None is the distinct case of a metric not reported at all: no counts to attach.
+    assert _mean_over(None, None, None) == "n/a"
+    assert _mean_over(0.05, None, None) == "0.050000"
+
+
+def test_refinement_step_measurements_carry_only_composed_objective_terms() -> None:
+    """An absent restraint has no measurement at all -- it can never read as a satisfied zero."""
+    without_penalty = RefinementStep(
+        iteration=0,
+        loss=1.0,
+        wr2=0.05,
+        components={"diffraction": {"raw": 1.0, "weight": 1.0, "contribution": 1.0}},
+    )
+    with_penalty = RefinementStep(
+        iteration=0,
+        loss=1.0,
+        wr2=0.05,
+        components={
+            "diffraction": {"raw": 1.0, "weight": 1.0, "contribution": 1.0},
+            "bond_length": {"raw": 0.0, "weight": 3.0, "contribution": 0.0},
+        },
+    )
+
+    assert not any(key.startswith("bond_length/") for key in without_penalty.measurements)
+    # Composed but currently satisfied: the raw value is 0.0, yet the weight proves it was applied.
+    assert with_penalty.measurements["bond_length/raw"] == 0.0
+    assert with_penalty.measurements["bond_length/weight"] == 3.0
+
+
+def test_console_logger_reports_composed_penalties_beneath_the_epoch_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementStep(
+                iteration=0,
+                loss=1.25,
+                wr2=0.05,
+                diff_loss=1.0,
+                components={
+                    "diffraction": {"raw": 1.0, "weight": 1.0, "contribution": 1.0},
+                    "bond_length": {"raw": 0.125, "weight": 2.0, "contribution": 0.25},
+                },
+            )
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    # diffraction is not repeated as a penalty line -- it is already the epoch line's diff_loss.
+    assert messages[-1] == (
+        "  penalty bond_length          │ raw 0.125 │ weight 2 │ contribution 0.25"
+    )
+    assert not any("penalty diffraction" in message for message in messages)
 
 
 def test_console_logger_formats_refinement_orientation_step(

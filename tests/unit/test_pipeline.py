@@ -14,7 +14,7 @@ import numpy as np
 from tests.unit.synthetic import seed_system
 
 from diffBloch.engine import StructureFactorGrid
-from diffBloch.observability import PlanStepCompleted, RecordingLogger
+from diffBloch.observability import PlanSeeded, PlanStepCompleted, RecordingLogger
 from diffBloch.preprocess import (
     build_orientation_plans,
     integrate_rocking_curve,
@@ -36,6 +36,7 @@ from diffBloch.preprocess.pipeline import (
     stateful_plan_step,
     step_records,
 )
+from diffBloch.preprocess.plan import summarize_plan
 from diffBloch.specs import (
     BeamSelection,
     IntegrationGeometry,
@@ -70,6 +71,21 @@ def test_pipeline_emits_plan_step_completed_per_step_with_the_step_name() -> Non
     assert [event.channel for event in events] == ["select_beams", "fit_orientation"]
     assert [event.step for event in events] == [0, 1]
     assert events[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
+
+
+def test_pipeline_emits_a_seed_baseline_before_the_first_step() -> None:
+    """Without a baseline, a step's counts are absolutes; with one they are survival counts."""
+    grid = StructureFactorGrid.from_cell(np.eye(3) * 5.0, g_max=0.45)
+    plan = Plan(structure_factor_grid=grid, orientations=())
+    rec = RecordingLogger()
+
+    pipeline([_tag("select_beams")], logger=rec)(plan)
+
+    seeded, completed = rec.events
+    assert isinstance(seeded, PlanSeeded)
+    assert seeded.step is None  # the baseline sits before the recipe's x-axis, not on it
+    assert seeded.channel != completed.channel  # a channel filter cannot confuse the two
+    assert seeded.measurements == summarize_plan(plan)
 
 
 def test_pipeline_default_logger_emits_nothing_and_skips_summary() -> None:

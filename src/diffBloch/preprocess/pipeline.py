@@ -22,7 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
 from typing import TYPE_CHECKING, Any
 
-from diffBloch.observability import NULL_LOGGER, Logger, PlanStepCompleted
+from diffBloch.observability import NULL_LOGGER, Logger, PlanSeeded, PlanStepCompleted
 from diffBloch.preprocess.plan import Plan, summarize_plan
 
 if TYPE_CHECKING:
@@ -163,16 +163,23 @@ def pipeline(steps: Sequence[PlanStep], *, logger: Logger = NULL_LOGGER) -> Plan
     to the plan's ``provenance``, so the composed result records the ordered recipe. An empty list
     yields the identity (provenance unchanged).
 
-    ``logger`` (default the null sink) receives a
+    ``logger`` (default the null sink) receives one
+    :class:`~diffBloch.observability.PlanSeeded` for the incoming plan and then a
     :class:`~diffBloch.observability.PlanStepCompleted` after each step -- the step's name as the
     event channel, its ordinal as the step, and :func:`~diffBloch.preprocess.plan.summarize_plan`
     of the resulting plan -- so a fresh preprocess run streams the plan's shape as it evolves.
+    The baseline is what makes the stream *survival* counts rather than absolute ones: each stage's
+    beam and reflection totals are only legible as a filter's effect against what entered it.
     Reusing a checkpoint bypasses this runner, so those fire only on a fresh run (the boundary
     :class:`~diffBloch.observability.CouplingSummary` covers the reuse case). Emission is alongside
     the provenance ``tell``; the null default keeps the pure composition path unchanged.
     """
 
     def run(plan: Plan) -> Plan:
+        if logger is not NULL_LOGGER:
+            # The baseline the first step's counts are read against; the seed is built by
+            # from_experiment (or loaded on resume), so no step summary would ever cover it.
+            logger.report(PlanSeeded(measurements=summarize_plan(plan)))
         for index, step in enumerate(steps):
             result = step(plan)
             result = replace(result, provenance=(*plan.provenance, _record_of(step)))

@@ -38,9 +38,12 @@ __all__ = [
     "Logger",
     "MultiLogger",
     "NullLogger",
+    "ObjectiveManifest",
+    "ObjectiveTerm",
     "OrientationOptimized",
     "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
+    "PlanSeeded",
     "PlanStepCompleted",
     "RecordingLogger",
     "RefinementCompleted",
@@ -395,6 +398,28 @@ class PlanStepCompleted:
 
 
 @dataclass(frozen=True)
+class PlanSeeded:
+    """The Plan a preprocess pipeline is about to run on, summarised before the first step.
+
+    Exists so every :class:`PlanStepCompleted` has a predecessor to be read against: a step's counts
+    are only a *survival* count if the incoming counts were reported too, and the seed is produced
+    by ``from_experiment`` (or loaded from a checkpoint on resume) rather than by any step, so no
+    ``PlanStepCompleted`` covers it. ``measurements`` is
+    :func:`diffBloch.preprocess.plan.summarize_plan` of that incoming plan.
+
+    Deliberately a distinct channel from the per-step stream, and ``step`` is ``None``: a consumer
+    filtering on channel alone must not mistake the baseline for a stage result.
+    """
+
+    channel: ClassVar[str] = "plan_seeded"
+    measurements: Mapping[str, float]
+
+    @property
+    def step(self) -> int | None:
+        return None  # the baseline sits before the recipe's x-axis, not on it
+
+
+@dataclass(frozen=True)
 class RotationCoupling:
     """One rotation's coupled solve geometry, emitted per rotation at the consumer boundary.
 
@@ -470,6 +495,57 @@ class InferenceCompleted:
 
 
 @dataclass(frozen=True)
+class ObjectiveTerm:
+    """One declared soft-penalty term: the objective name it reports under and its weight."""
+
+    name: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class ObjectiveManifest:
+    """What the refinement objective is composed of, declared once before the first step.
+
+    The refinement-side counterpart to the preprocess pipeline's ``StepRecord`` provenance: penalties,
+    constraints, and components are typed Python composition rather than config, so nothing else in a
+    run states which of them are actually in play. This says so up front, before any compute -- the
+    "startup summary listing which restraints are active with which weights" that a bare per-epoch
+    loss cannot provide.
+
+    Reporting the *empty* case is the point as much as the populated one: the default CLI path
+    composes no penalties at all, and a run that says ``penalties: none`` is making a scientific fact
+    legible rather than leaving it to be inferred from a missing line. ``measurements`` carries the
+    three counts plus each penalty's declared weight; the categorical names ride on the dataclass for
+    a backend that pattern-matches it (as :class:`ThicknessOptimized` does for its candidate grid).
+
+    This is a *report*, not an identity: it is deliberately not folded into ``refinement.lock`` or
+    :func:`~diffBloch.config.manifest.refinement_config_digest`. Refinement outputs are not
+    checkpoint-reused, so hashing a composed-recipe axis would be identity infrastructure built ahead
+    of the need for it.
+    """
+
+    channel: ClassVar[str] = "objective"
+    penalties: tuple[ObjectiveTerm, ...] = ()
+    constraints: tuple[str, ...] = ()
+    components: tuple[str, ...] = ()
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level declaration has no position on the per-iteration axis
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        values: dict[str, float] = {
+            "n_penalties": float(len(self.penalties)),
+            "n_constraints": float(len(self.constraints)),
+            "n_components": float(len(self.components)),
+        }
+        for term in self.penalties:
+            values[f"{term.name}/weight"] = term.weight
+        return values
+
+
+@dataclass(frozen=True)
 class RefinementStarted:
     """The epoch budget ``run_refinement_model`` is about to run, emitted once before the loop.
 
@@ -500,6 +576,22 @@ class RefinementStep:
     ``loss`` actually minimises, not what gets reported here) -- so both are always shown. Contrast
     the preprocessing search's events (:class:`OrientationOptimized` / :class:`ThicknessOptimized`),
     which report only the configured residual, since computing the other would cost an extra solve.
+
+    ``components`` carries each named objective term's ``raw`` scientific diagnostic, its
+    ``weight``, and the ``contribution`` that weight produces, and :attr:`measurements` flattens
+    every one of them to a ``"{term}/{field}"`` key so the generic backends (console, CSV, W&B,
+    Comet) report a restraint's state without knowing any term by name. A term that was never
+    composed into the objective has **no entry**, so it cannot surface as a satisfied ``0.0``; that
+    absence is the reportable fact, and it is why the flattening is unconditional rather than keyed
+    on a fixed term list.
+
+    ``wr2``/``r_obs`` are means over the rotations that produced a finite score, so each carries its
+    own denominator: ``n_rotations`` is how many the objective covered (the *training* set when a
+    validation split is on) and ``n_wr2_evaluated``/``n_r_obs_evaluated`` how many actually entered
+    each mean. They are separate counts because the two metrics are NaN-filtered independently -- a
+    rotation can contribute to one and not the other -- and a mean whose denominator is implicit can
+    improve simply by evaluating fewer rotations. Compare
+    :class:`InferenceCompleted`, which has always reported ``n_evaluated`` beside its mean.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -510,6 +602,9 @@ class RefinementStep:
     diff_loss: float | None = None
     objective_total: float | None = None
     components: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    n_rotations: int | None = None
+    n_wr2_evaluated: int | None = None
+    n_r_obs_evaluated: int | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -530,6 +625,15 @@ class RefinementStep:
             values["diff_loss"] = self.diff_loss
         if not values:
             values["loss"] = self.loss
+        if self.n_rotations is not None:
+            values["n_rotations"] = float(self.n_rotations)
+        if self.n_wr2_evaluated is not None:
+            values["n_wr2_evaluated"] = float(self.n_wr2_evaluated)
+        if self.n_r_obs_evaluated is not None:
+            values["n_r_obs_evaluated"] = float(self.n_r_obs_evaluated)
+        for term, entries in self.components.items():
+            for name, value in entries.items():
+                values[f"{term}/{name}"] = value
         return values
 
 

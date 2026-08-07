@@ -19,7 +19,7 @@ from diffBloch.engine import (
     build_refinement_model,
 )
 from diffBloch.io import read_structure
-from diffBloch.observability import RefinementStep
+from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.preprocess.scoring import build_engine
@@ -82,6 +82,14 @@ def _refinement_result_for(
         wr2=0.1,
         r_obs=0.05,
         diff_loss=0.2,
+        objective_total=0.35,
+        n_rotations=4,
+        n_wr2_evaluated=3,
+        n_r_obs_evaluated=2,
+        components={
+            "diffraction": {"raw": 0.2, "weight": 1.0, "contribution": 0.2},
+            "bond_length": {"raw": 0.05, "weight": 3.0, "contribution": 0.15},
+        },
     )
     result = ModelRefinementResult(
         model=model,
@@ -95,6 +103,9 @@ def _refinement_result_for(
             "matched_i_le_3sigma": 4,
             "unmatched_observed": 3,
         },
+        objective_manifest=ObjectiveManifest(
+            penalties=(ObjectiveTerm(name="bond_length", weight=3.0),)
+        ),
     )
     return cfg, refinement, result
 
@@ -206,6 +217,53 @@ def test_write_refinement_report_without_a_thickness_nn(tmp_path: Path) -> None:
     assert "atom_site" in text
     assert "C1" in text and "O1" in text  # the CIF's own atom labels came through
     assert "12.5" in text  # elapsed time was reported
+    # Every composed objective term reports raw, weight, and contribution separately, so a
+    # zero-weighted term still shows a live scientific raw value.
+    # The declared composition is stated up front, including the terms that are absent.
+    assert "Objective terms (declared)" in text
+    assert "penalties  : bond_length (weight 3)" in text
+    assert "constraints: none" in text
+    assert "Objective components (best epoch)" in text
+    assert "bond_length" in text
+    assert "0.05" in text and "0.15" in text
+    assert "objective total = 0.35" in text
+    # Every reported mean states the rotation count it was averaged over -- a mean over fewer
+    # rotations is a different quantity, not a better one.
+    assert "10.00 [3/4]" in text  # best-epoch wR2 (%), 3 of 4 rotations finite
+    assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
+    assert "mean wR2   = " in text and "[1/1]" in text  # per-rotation table mean + denominator
+
+
+def test_write_refinement_report_renders_an_unevaluated_mean_as_na(tmp_path: Path) -> None:
+    """One spelling for "nothing was evaluated" across every mean the report prints."""
+    cfg, refinement, result = _refinement_result_for(tmp_path)
+    (event,) = result.history
+    result = replace(
+        result,
+        history=(
+            replace(
+                event,
+                wr2=float("nan"),
+                r_obs=float("nan"),
+                n_wr2_evaluated=0,
+                n_r_obs_evaluated=0,
+            ),
+        ),
+    )
+    _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    engine = build_engine(_built_plan_matching(np.eye(3, dtype=np.float64) * 5.0), refinement)
+
+    text = _write_refinement_report(
+        tmp_path,
+        cfg,
+        IntegrationGeometry(semiangle=1.0),
+        engine,
+        result,
+        elapsed_seconds=1.0,
+    ).read_text()
+
+    assert "n/a [0/4]" in text  # the best-epoch wR2 and R_obs rows
+    assert "nan [" not in text  # ...spelled the same way the per-rotation means already were
 
 
 def test_write_refinement_report_with_a_thickness_nn(tmp_path: Path) -> None:
