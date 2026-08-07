@@ -36,9 +36,14 @@ from diffBloch.observability import (
 
 
 def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
-    """Print a consistently aligned 62-column completion summary."""
+    """Print a consistently aligned 62-column completion summary.
+
+    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
+    not truncate, so a longer label silently pushes its value past the box border and misaligns that
+    row against every other.
+    """
     width = 62
-    label_width = 22
+    label_width = 26
     value_width = width - label_width - 3
     heading = f" {title} "
     print(f"╭{heading:─^{width}}╮")

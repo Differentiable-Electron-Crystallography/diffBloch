@@ -1,5 +1,6 @@
 """The thin CLI validates an experiment file and reports success."""
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,15 @@ from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimize
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
+
+
+def _summary_row(out: str, label: str, value: str) -> bool:
+    """Whether the summary box shows ``value`` on ``label``'s row, ignoring the column padding.
+
+    The box pads labels to a fixed width; asserting on that spacing would make every test here fail
+    on a label-width change that broke nothing, so match the pair rather than the layout.
+    """
+    return re.search(rf"{re.escape(label)}\s+{re.escape(value)}(\s|$)", out) is not None
 
 
 def test_validate_returns_zero(capsys: pytest.CaptureFixture[str]) -> None:
@@ -310,10 +320,10 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
     assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
     assert "PREPROCESS COMPLETE" in out
-    assert "Rotations              2" in out
-    assert "Total HKLs             7" in out
-    assert "Matched HKLs           5" in out
-    assert "Mean wR2               0.375" in out
+    assert _summary_row(out, "Rotations", "2")
+    assert _summary_row(out, "Total HKLs", "7")
+    assert _summary_row(out, "Matched HKLs", "5")
+    assert _summary_row(out, "Mean wR2", "0.375")
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
     assert "R_obs" not in out
@@ -427,11 +437,11 @@ def test_run_refine_delegates_and_reports(
     assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
     out = capsys.readouterr().out
     assert "REFINEMENT COMPLETE" in out
-    assert "Best epoch             2" in out
-    assert "wR2                    0.1" in out
-    assert "R_obs                  0.2" in out
-    assert "Diffraction loss       1" in out
-    assert "HKLs (Observed/total)  8 / 12" in out
+    assert _summary_row(out, "Best epoch", "2")
+    assert _summary_row(out, "wR2", "0.1")
+    assert _summary_row(out, "R_obs", "0.2")
+    assert _summary_row(out, "Diffraction loss", "1")
+    assert _summary_row(out, "HKLs (Observed/total)", "8 / 12")
     assert "Refined Structure" in out
     assert "/tmp/refined_structure.cif" in out
 
