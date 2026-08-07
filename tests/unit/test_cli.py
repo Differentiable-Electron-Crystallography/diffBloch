@@ -434,7 +434,11 @@ def test_run_refine_delegates_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
+    # The refine path fans out to the console and to the summary sink that writes
+    # refinement_report.txt -- composed here, not inside refine_experiment.
+    logger = captured["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "SummaryLogger"]
     out = capsys.readouterr().out
     assert "REFINEMENT COMPLETE" in out
     assert _summary_row(out, "Best epoch", "2")

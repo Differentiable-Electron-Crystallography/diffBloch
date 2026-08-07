@@ -34,6 +34,7 @@ __all__ = [
     "ConvergenceSweepStarted",
     "DeviceSelected",
     "Event",
+    "ExperimentDeclared",
     "InferenceCompleted",
     "Logger",
     "MultiLogger",
@@ -46,14 +47,17 @@ __all__ = [
     "PlanSeeded",
     "PlanStepCompleted",
     "RecordingLogger",
+    "RefinedRotationMetrics",
     "RefinementCompleted",
     "RefinementOrientationStep",
+    "RefinementOutputsWritten",
     "RefinementStarted",
     "RefinementStep",
     "RotationCoupling",
     "RotationScored",
     "ThicknessOptimized",
     "ThicknessOptimizationStarted",
+    "ThicknessProfile",
 ]
 
 
@@ -495,6 +499,155 @@ class InferenceCompleted:
 
 
 @dataclass(frozen=True)
+class ExperimentDeclared:
+    """The run's identity and its result-determining knobs, declared once before any compute.
+
+    The counterpart to :class:`ObjectiveManifest` for everything the objective does *not* cover: which
+    inputs are being refined and under which simulation/optimizer settings. A sink that writes a
+    standalone artifact (the refinement report) needs this to describe the run without being handed
+    the :class:`~diffBloch.config.schema.ExperimentConfig` directly -- which is what keeps such a sink
+    an ordinary :class:`Logger` rather than a component wired into the app's orchestration.
+
+    Paths, the optimizer name, and the seed-thickness list ride on the dataclass rather than in
+    ``measurements``, which stays flat-scalar for the generic backends -- the same split
+    :class:`ThicknessOptimized` makes for its candidate grid.
+    """
+
+    channel: ClassVar[str] = "experiment"
+    name: str
+    structure: str
+    experimental_data: str
+    optimizer: str
+    seed_thicknesses: tuple[float, ...]
+    integration_semiangle: float
+    rocking_curve_sampling: int
+    dsg: float
+    rsg: float
+    solve_g_max: float
+    sg_max: float
+    absorption: bool
+    steps: int
+    learning_rate: float
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "integration_semiangle": self.integration_semiangle,
+            "rocking_curve_sampling": float(self.rocking_curve_sampling),
+            "dsg": self.dsg,
+            "rsg": self.rsg,
+            # Scoped per the SOLVE/SCORED/support rule: a bare g_max has no owning object here.
+            "solve_g_max": self.solve_g_max,
+            "sg_max": self.sg_max,
+            "absorption": float(self.absorption),
+            "steps": float(self.steps),
+            "learning_rate": self.learning_rate,
+        }
+
+
+@dataclass(frozen=True)
+class RefinedRotationMetrics:
+    """One rotation's wR2/R_obs under the *final refined* model, emitted after the loop.
+
+    Distinct from :class:`RefinementOrientationStep`, which is a per-epoch training diagnostic: this
+    is the settled result, scored once on the best model by the *reporting* engine, so it covers
+    every rotation including the held-out ones (``is_validation`` marks those). The refinement loop
+    cannot emit it -- the loop only ever sees the training engine -- so the app boundary emits it
+    once the run has finished.
+    """
+
+    channel: ClassVar[str] = "refined rotation"
+    rotation_index: int
+    wr2: float
+    r_obs: float
+    n_matched: int
+    is_validation: bool
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "wr2": self.wr2,
+            "r_obs": self.r_obs,
+            "n_matched": float(self.n_matched),
+            "is_validation": float(self.is_validation),
+        }
+
+
+@dataclass(frozen=True)
+class ThicknessProfile:
+    """The trained apparent-thickness curve, sampled at every rotation's tilt angle.
+
+    Emitted once after refinement when a thickness component was composed. The whole curve rides on
+    the dataclass as parallel tuples (one entry per rotation, in plan order) rather than as ~100
+    separate events or ~300 flat measurement keys -- the shape :class:`ThicknessOptimized` already
+    uses for its candidate grid. ``measurements`` carries only the scalar summary.
+    """
+
+    channel: ClassVar[str] = "thickness_profile"
+    form: str
+    min_thickness: float
+    max_thickness: float
+    rotation_indices: tuple[int, ...]
+    alphas: tuple[float, ...]
+    thicknesses: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        lengths = {len(self.rotation_indices), len(self.alphas), len(self.thicknesses)}
+        if len(lengths) != 1:
+            raise ValueError("thickness profile columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_rotations": float(len(self.rotation_indices)),
+            "min_thickness": self.min_thickness,
+            "max_thickness": self.max_thickness,
+        }
+
+
+@dataclass(frozen=True)
+class RefinementOutputsWritten:
+    """The refined artifacts are on disk -- the run's terminal event.
+
+    This is what lets a report be a plain :class:`Logger` despite having to be written exactly once,
+    after everything else, without adding a ``close``/``finalize`` method to the protocol: a sink that
+    must finish at the end simply acts on this event. Putting the lifecycle in the stream keeps it
+    observable (a :class:`RecordingLogger` shows it) instead of implicit in a call order.
+
+    ``structure`` is the path to the written ``refined_structure.cif``. A sink reads it back rather
+    than being handed parsed values, so anything it reports about the structure is byte-consistent
+    with the committed file by construction.
+    """
+
+    channel: ClassVar[str] = "outputs"
+    structure: str
+    artifacts: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "artifacts", MappingProxyType(dict(self.artifacts)))
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"n_artifacts": float(len(self.artifacts))}
+
+
+@dataclass(frozen=True)
 class ObjectiveTerm:
     """One declared soft-penalty term: the objective name it reports under and its weight."""
 
@@ -695,6 +848,15 @@ class RefinementCompleted:
     best_step: int
     best_loss: float
     selection: Literal["training", "validation"] = "training"
+    # The reflection counts the best model was scored over, on the *training* engine -- the same set
+    # the per-step means range over. Carried here rather than as a separate event because they are
+    # facts about this completed run, and the summary is the one place they belong.
+    reflection_counts: Mapping[str, int] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "reflection_counts", MappingProxyType(dict(self.reflection_counts))
+        )
 
     @property
     def step(self) -> int | None:
@@ -705,11 +867,13 @@ class RefinementCompleted:
         best_key = (
             "best_validation_loss" if self.selection == "validation" else "best_training_loss"
         )
-        return {
+        values = {
             "n_steps": float(self.n_steps),
             "best_step": float(self.best_step),
             best_key: self.best_loss,
         }
+        values.update({name: float(count) for name, count in self.reflection_counts.items()})
+        return values
 
 
 class NullLogger:

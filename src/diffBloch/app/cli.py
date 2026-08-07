@@ -18,6 +18,7 @@ from pydantic import ValidationError
 
 from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
+from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -307,9 +308,17 @@ def main(argv: list[str] | None = None) -> int:
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
+            # The written summary is one more sink on the run's event stream, chosen here beside
+            # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
+            # not) for themselves instead of having a file appear as a side effect of refining.
+            report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
+            refine_sinks: tuple[Logger, ...] = (
+                _build_logger(console=not args.quiet, csv=args.csv),
+                SummaryLogger(report_path),
+            )
             refined = refine_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=MultiLogger(refine_sinks),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -351,6 +360,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Output files")
         for name, path in refined.artifacts.items():
             print(f"  • {name.replace('_', ' ').title():<20} {path}")
+        print(f"  • {'Refinement Report':<20} {report_path}")
         return 0
 
     if args.command == "run" and args.run_command == "converge":
@@ -396,11 +406,15 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_logger(*, console: bool, csv: str | None) -> Logger:
-    """Combine the requested observation sinks (none => the null logger that discards events)."""
+def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = False) -> Logger:
+    """Combine the requested observation sinks (none => the null logger that discards events).
+
+    ``per_rotation`` opts the console into the settled per-rotation stream; it is off by default
+    because one line per rotation is n_orientations x louder than the run summary.
+    """
     sinks: list[Logger] = []
     if console:
-        sinks.append(ConsoleLogger())
+        sinks.append(ConsoleLogger(per_rotation=per_rotation))
     if csv is not None:
         sinks.append(CSVLogger(Path(csv)))
     if not sinks:

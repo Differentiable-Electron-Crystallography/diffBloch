@@ -26,6 +26,7 @@ from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
 if TYPE_CHECKING:
     from diffBloch.engine.forward import LossFn, ScoresFn
+from diffBloch.observability import ExperimentDeclared
 from diffBloch.specs import (
     Absorption,
     ApparentThicknessNetwork,
@@ -447,6 +448,32 @@ class ExperimentConfig(_StrictConfig):
     # scoped to either stage.
     loss_metrics: LossMetricsConfig = Field(default_factory=LossMetricsConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
+
+    def to_declaration(self, integration: IntegrationGeometry) -> ExperimentDeclared:
+        """Project the result-determining knobs onto the run's declaration event.
+
+        One more ``to_*`` edge alongside :meth:`BlochwaveConfig.to_policy` /
+        :meth:`~BlochwaveConfig.to_absorption`: the config already owns every value here, so mapping
+        them lives with it rather than in whichever caller happens to emit the event. Any backend
+        (W&B/Comet hyperparameters, the written summary) reads the run's settings from this one
+        event instead of being handed the config object.
+        """
+        return ExperimentDeclared(
+            name=self.name,
+            structure=self.inputs.structure,
+            experimental_data=self.inputs.exp_data,
+            optimizer=self.refinement.optimizer.name,
+            seed_thicknesses=tuple(self.sample.thicknesses),
+            integration_semiangle=integration.semiangle,
+            rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
+            dsg=self.blochwave.dsg,
+            rsg=self.blochwave.rsg,
+            solve_g_max=self.blochwave.g_max,
+            sg_max=self.blochwave.sg_max,
+            absorption=self.blochwave.absorption,
+            steps=self.refinement.steps,
+            learning_rate=self.refinement.optimizer.lr,
+        )
 
 
 def load_config(path: str | Path) -> ExperimentConfig:
