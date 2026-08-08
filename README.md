@@ -11,19 +11,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0969da?logo=sphinx&logoColor=white)](https://differentiable-electron-crystallography.github.io/diffBloch/)
 
-Differentiable Bloch-wave structure refinement for rotating-stage 3D electron diffraction.
+Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
-Electrons scatter far more strongly than X-rays, so even a submicron crystal re-scatters a
-diffracted beam before it exits — dynamical, multiple-scattering diffraction rather than the
-kinematical single-scattering approximation X-ray refinement relies on. diffBloch refines crystal
-structures directly against that dynamical simulation, using continuous-rotation 3DED experimental data:
-diffraction frames collected as the crystal is tilted/rocked through reciprocal space and reduced
-upstream by PETS2 into `.cif_pets`.
-
-Because the Bloch-wave calculation is extremely sensitive to the exact orientation and thickness at
-each rotation, diffBloch fits both against the data first and freezes the result into a `Plan`, then
-refines the structure — atomic positions, ADPs, occupancies — against that fixed geometry by
-gradient descent on a scaling-optimized weighted R-factor.
 
 📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
 
@@ -43,72 +32,33 @@ Run CLI commands through `uv run` unless you have separately installed the `diff
 on your shell `PATH`.
 
 ```bash
-# Validate a config before launching a longer job:
-uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
-
-# Simulate and score without changing parameters:
-uv run diffbloch run infer examples/experiments/quartz-checkpoint
-
 # Run the optimizer and update trainable structural parameters:
-uv run diffbloch run refine examples/experiments/quartz
-
-# Start refinement faster from the bundled quartz preprocessing checkpoint:
-uv run diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
-Use `infer` to score a settled `Plan` without changing parameters; use `refine` to optimize
-trainable structural parameters. Checkpointed examples include `plan.npz` + `plan.lock`, so they can
-reuse expensive preprocessing instead of rebuilding the `Plan` from scratch.
+## For Developers
 
-The default refinement runs for 40 epochs and streams `wR2`, `R_obs`, and diffraction loss. Its
-completion summary identifies the best epoch, shows matched observed / total matched HKLs, and
-writes `refined_structure.cif`, `refined_parameters.npz`, and `refinement_summary.json` beside the
-experiment.
+We welcome collaborations and interested parties may contribute to the codebase. 
 
-See `examples/experiments/quartz/README.md` for the worked example and its expected residual.
-
-## Examples
-
-- `examples/experiments` contains runnable example experiments for small and large compounds,
-  including checkpointed runs that start from a committed `Plan`.
-
-## Anchor trend
-
-Every merge to `main` re-runs the e2e physics anchors. The plot tracks the measured mean R_obs of
-the coupled quartz anchor (the checkpointed 99-rotation scoring in `tests/e2e/test_anchor.py`) for
-every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
-outcome — evidence the physics is reproducible commit over commit. Gaps are commits with no valid
+Every merge to `main` re-runs the end to end (e2e) physics anchors. These correspond to rapid tests of the codebase's key functionalities and integration. Spefically, the measured mean R_obs for 
+the example quartz refinement is expected to remain the same upon changes made to the directory. This Fig. tracks the result of this test upon every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
+outcome, evidence the physics is reproducible commit over commit. Gaps are commits with no valid
 measurement (the committed checkpoint was stale for that commit's recipe, so the fast anchor
 could not score it).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend-dark.svg">
-  <img alt="Mean R_obs of the coupled quartz anchor for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
+  <img alt="Mean R_obs of the quartz e2e test for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
 </picture>
 
-## Layout
+## Citation
 
-```
-src/diffBloch/    the library (config/, io/, core/, engine, preprocess/, app/)
-examples/         runnable experiments and paper-style composition examples
-tests/unit/       fast per-kernel tests
-tests/e2e/        characterization anchors
-docs/             docs site (Sphinx + furo, MyST)
-```
+If you use diffBloch in your research, please cite it as:
 
-## Funding
-
-This work is funded by [Schmidt Sciences](https://www.schmidtsciences.org/) and developed with
-the [Scientific Software Engineering Center (SSEC)](https://ai.jhu.edu/ssec/) at Johns Hopkins
-University.
-
-## What happens where
-
-| Physical role | Guide |
-|---|---|
-| Read the starting structure and rocking-curve data | [Inputs](https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html) |
-| Fit orientation and thickness into a `Plan` | [Preprocessing](https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html) |
-| Choose beam/rocking-curve resolution by convergence testing | [Hyperparameter selection](https://differentiable-electron-crystallography.github.io/diffBloch/hyperparameter-selection.html) |
-| Structure factors, the Bloch-wave propagator, and the refinement loop | [Architecture](https://differentiable-electron-crystallography.github.io/diffBloch/architecture.html), [Refinement](https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html) |
-| Pin a fitted `Plan` so a result reproduces exactly | [Reproducibility](https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html) |
-| Track wR2/R_obs/loss as a run progresses | [Observability](https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html) |
+@misc{diffBloch,
+  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain, and Midgley, Paul},
+  title   = {diffBloch},
+  version = {0.2.0},
+  year = {2026},
+  url     = {https://github.com/Differentiable-Electron-Crystallography/diffBloch}
+}
