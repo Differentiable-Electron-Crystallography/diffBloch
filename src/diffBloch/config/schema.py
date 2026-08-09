@@ -417,22 +417,51 @@ class PreprocessConfig(_StrictConfig):
     orientations_csv: str | None = None
 
 
+def _relative_path_only(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("input references must be relative paths within the experiment directory")
+    return value
+
+
 class Inputs(_StrictConfig):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
     structure: str
-    exp_data: str
+    exp_data: str | list[str]
+    # Pool rotations from every file in exp_data into one experiment. False (default) keeps
+    # exp_data a single path -- the original single-dataset behavior, unchanged. True requires
+    # exp_data to be a list of 2+ paths; every pooled file must share one rocking-curve integration
+    # semiangle, since diffBloch builds a single shared rocking-curve geometry for the whole
+    # (pooled) experiment -- see preprocess.experiment.from_experiment.
+    multi_dataset: bool = False
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
-    @field_validator("structure", "exp_data")
+    @field_validator("structure")
     @classmethod
-    def _relative_path_only(cls, value: str) -> str:
-        path = Path(value)
-        if path.is_absolute() or ".." in path.parts:
+    def _structure_relative_path(cls, value: str) -> str:
+        return _relative_path_only(value)
+
+    @field_validator("exp_data")
+    @classmethod
+    def _exp_data_relative_paths(cls, value: str | list[str]) -> str | list[str]:
+        if isinstance(value, list):
+            return [_relative_path_only(v) for v in value]
+        return _relative_path_only(value)
+
+    @model_validator(mode="after")
+    def _multi_dataset_shape(self) -> Inputs:
+        if self.multi_dataset:
+            if not isinstance(self.exp_data, list) or len(self.exp_data) < 2:
+                raise ValueError(
+                    "inputs.multi_dataset=true requires inputs.exp_data to be a list of 2+ paths"
+                )
+        elif isinstance(self.exp_data, list):
             raise ValueError(
-                "input references must be relative paths within the experiment directory"
+                "inputs.exp_data is a list but inputs.multi_dataset is false -- set "
+                "multi_dataset=true to pool multiple datasets, or use a single path"
             )
-        return value
+        return self
 
 
 class ExperimentConfig(_StrictConfig):
@@ -458,10 +487,15 @@ class ExperimentConfig(_StrictConfig):
         (W&B/Comet hyperparameters, the written summary) reads the run's settings from this one
         event instead of being handed the config object.
         """
+        experimental_data = (
+            ", ".join(self.inputs.exp_data)
+            if isinstance(self.inputs.exp_data, list)
+            else self.inputs.exp_data
+        )
         return ExperimentDeclared(
             name=self.name,
             structure=self.inputs.structure,
-            experimental_data=self.inputs.exp_data,
+            experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
             seed_thicknesses=tuple(self.sample.thicknesses),
             integration_semiangle=integration.semiangle,

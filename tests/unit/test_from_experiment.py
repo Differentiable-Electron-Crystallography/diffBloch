@@ -220,6 +220,50 @@ def test_refinement_setup_handles_uiso_structure() -> None:
     assert torch.all(torch.linalg.eigvalsh(state.uij_star) >= 0.0)
 
 
+def test_from_experiment_pools_multiple_records_with_a_globally_unique_rotation_index() -> None:
+    structure, experimental_data, config, single_setup = _quartz_setup()
+    n = experimental_data.n_rotations
+
+    pooled = from_experiment(structure, (experimental_data, experimental_data), config)
+
+    combined = pooled.plans.combined.orientations
+    assert len(combined) == 2 * n
+    # combined reorders train-then-validation, so check the *set* of indices: globally unique and
+    # complete over 0..2n-1 (the first copy's 0..n-1, the second copy's n..2n-1 -- never restarting).
+    assert sorted(op.pattern.rotation_index for op in combined) == list(range(2 * n))
+    # The second copy's rotation 0 (global index n) is physically identical to the first copy's
+    # rotation 0 (same orientation, same energy) -- same file, pooled twice.
+    single_first = single_setup.plans.combined.orientations[0]
+    pooled_second_copy_first = next(
+        op for op in combined if op.pattern.rotation_index == n
+    )
+    assert np.allclose(pooled_second_copy_first.orientation, single_first.orientation)
+    assert pooled_second_copy_first.energy == single_first.energy
+
+
+def test_from_experiment_rejects_pooled_records_with_different_integration_semiangle() -> None:
+    structure, experimental_data, config, _ = _quartz_setup()
+    mismatched = experimental_data.model_copy(
+        update={"precession_angles": experimental_data.precession_angles + 1.0}
+    )
+
+    with pytest.raises(ValueError, match="must share one rocking-curve integration semiangle"):
+        from_experiment(structure, (experimental_data, mismatched), config)
+
+
+def test_from_experiment_single_record_and_one_element_sequence_are_equivalent() -> None:
+    structure, experimental_data, config, single_setup = _quartz_setup()
+
+    sequence_setup = from_experiment(structure, (experimental_data,), config)
+
+    assert len(sequence_setup.plans.combined.orientations) == len(
+        single_setup.plans.combined.orientations
+    )
+    assert [op.pattern.rotation_index for op in sequence_setup.plans.combined.orientations] == [
+        op.pattern.rotation_index for op in single_setup.plans.combined.orientations
+    ]
+
+
 def test_from_experiment_seeds_per_rotation_thickness_on_the_orientations() -> None:
     _, _, config, setup = _quartz_setup()
     seeded = list(config.sample.thicknesses)

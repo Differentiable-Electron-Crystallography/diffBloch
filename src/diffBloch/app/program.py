@@ -56,7 +56,7 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import read_experimental_data, read_structure
+from diffBloch.io import ExperimentalRecord, read_experimental_data, read_structure
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
@@ -140,6 +140,35 @@ def _select_device(device: Device | None, *, logger: Logger = NULL_LOGGER) -> De
     return selected
 
 
+def _read_experimental_data(
+    root: Path, cfg: ExperimentConfig
+) -> ExperimentalRecord | tuple[ExperimentalRecord, ...]:
+    """Read ``cfg.inputs.exp_data`` -- one record, or one per pooled file when ``multi_dataset``.
+
+    The single call site every ``read_experimental_data`` caller in this module goes through, so the
+    single-dataset/pooled dispatch lives in exactly one place. Order matches ``inputs.exp_data``,
+    which is also the order :func:`~diffBloch.preprocess.experiment.from_experiment` pools rotations
+    in -- callers that need a flat array aligned to the pooled ``rotation_index`` space (e.g. the
+    thickness-NN's per-rotation alphas) can rely on that order without recomputing it.
+    """
+    if cfg.inputs.multi_dataset:
+        assert isinstance(cfg.inputs.exp_data, list)
+        return tuple(read_experimental_data(root / path) for path in cfg.inputs.exp_data)
+    assert isinstance(cfg.inputs.exp_data, str)
+    return read_experimental_data(root / cfg.inputs.exp_data)
+
+
+def _as_records(
+    experimental_data: ExperimentalRecord | tuple[ExperimentalRecord, ...],
+) -> tuple[ExperimentalRecord, ...]:
+    """Normalize :func:`_read_experimental_data`'s return to a tuple, single or pooled alike."""
+    return (
+        (experimental_data,)
+        if isinstance(experimental_data, ExperimentalRecord)
+        else experimental_data
+    )
+
+
 # Above this unit-cell volume the coupled orientation search runs its coarse pass with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
 # exact, fully-validated path. The eigensolve is O(N^3) in the beam count
@@ -166,10 +195,12 @@ def converge_experiment(
     Starting ``g_max`` prefers the PETS file's own ``dstarmax`` (its processing-resolution cutoff,
     :attr:`~diffBloch.io.record.ExperimentalRecord.dstar_max`) when present; a PETS version that
     doesn't record it (or a file where the tag is otherwise absent) falls back to the experiment's
-    configured ``blochwave.g_max``, the previous manual-only behaviour. ``sg_max`` and rocking-curve
-    tilt steps still start from the configured simulation settings. The sweep then follows the
-    defaults owned by :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the
-    smallest settled values found.
+    configured ``blochwave.g_max``, the previous manual-only behaviour. With ``inputs.multi_dataset``,
+    the smallest ``dstar_max`` across the pooled files is used -- a conservative starting point within
+    what every pooled dataset actually supports. ``sg_max`` and rocking-curve tilt steps still start
+    from the configured simulation settings. The sweep then follows the defaults owned by
+    :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the smallest settled values
+    found.
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
@@ -178,7 +209,7 @@ def converge_experiment(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    experimental_data = _read_experimental_data(root, cfg)
     setup = from_experiment(structure, experimental_data, cfg)
     refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
     combined = setup.plans.combined
@@ -195,9 +226,10 @@ def converge_experiment(
     )
     rocking = cfg.blochwave.to_rocking_curve(setup.integration)
     simulation = cfg.blochwave.to_policy()
-    starting_g_max = (
-        experimental_data.dstar_max if experimental_data.dstar_max is not None else simulation.g_max
-    )
+    dstar_maxes = [
+        record.dstar_max for record in _as_records(experimental_data) if record.dstar_max is not None
+    ]
+    starting_g_max = min(dstar_maxes) if dstar_maxes else simulation.g_max
     plan = pipeline(
         [
             select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
@@ -490,14 +522,18 @@ def refine_experiment(
     thickness_nn: ApparentThicknessNN | None = None
     raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
-        experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-        raw_alphas = experimental_data.alphas
+        experimental_data = _read_experimental_data(root, cfg)
+        # Concatenated in the same file order from_experiment pools rotation_index in, so
+        # raw_alphas[rotation_index] is always the right dataset's alpha, pooled or not.
+        raw_alphas = np.concatenate(
+            [np.asarray(record.alphas) for record in _as_records(experimental_data)]
+        )
         thickness_nn = ApparentThicknessNN(
             bounds=ThicknessBounds(
                 thickness_spec.min_thickness,
                 thickness_spec.max_thickness,
             ),
-            normalized_alphas=_normalized_pets_alphas(experimental_data.alphas),
+            normalized_alphas=_normalized_pets_alphas(raw_alphas),
             form=thickness_spec.form,
             sample_thickness=thickness_spec.sample_thickness,
             num_samples=thickness_spec.num_samples,
@@ -762,7 +798,7 @@ def _preprocess(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    experimental_data = _read_experimental_data(root, cfg)
     setup = from_experiment(structure, experimental_data, cfg)
     validation_rotation_indices = frozenset(
         op.pattern.rotation_index for op in setup.plans.validation.orientations

@@ -30,10 +30,14 @@ class InputLock(BaseModel):
 
 
 class ExperimentLock(BaseModel):
-    """``experiment.lock``: exact input identity, never generated outputs."""
+    """``experiment.lock``: exact input identity, never generated outputs.
+
+    ``experimental_data`` is one lock for a single dataset or a list in ``inputs.exp_data`` order
+    for a combined experiment.
+    """
 
     structure: InputLock
-    experimental_data: InputLock
+    experimental_data: InputLock | list[InputLock]
 
 
 class ArtifactHash(BaseModel):
@@ -133,7 +137,7 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     lock_path = root / "reproducibility" / "experiment.lock"
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
-    _verify_input(root, cfg.inputs.exp_data, lock.experimental_data)
+    _verify_experimental_data(root, cfg.inputs.exp_data, lock.experimental_data)
     return cfg, lock
 
 
@@ -329,3 +333,24 @@ def _verify_input(root: Path, ref: str, lock: InputLock) -> None:
     actual = input_lock_for(path, ref=ref)
     if actual.sha256 != lock.sha256 or actual.bytes != lock.bytes:
         raise ValueError(f"input drift detected for {ref}")
+
+
+def _verify_experimental_data(
+    root: Path, ref: str | list[str], lock: InputLock | list[InputLock]
+) -> None:
+    """Verify either one experimental file or every file in a combined experiment."""
+    if isinstance(ref, list) or isinstance(lock, list):
+        if not isinstance(ref, list) or not isinstance(lock, list):
+            raise ValueError(
+                "experiment.lock experimental_data shape does not match inputs.exp_data "
+                "(one is a list, the other is not)"
+            )
+        if len(ref) != len(lock):
+            raise ValueError(
+                f"experiment.lock has {len(lock)} experimental_data entries, "
+                f"inputs.exp_data has {len(ref)}"
+            )
+        for one_ref, one_lock in zip(ref, lock, strict=True):
+            _verify_input(root, one_ref, one_lock)
+        return
+    _verify_input(root, ref, lock)

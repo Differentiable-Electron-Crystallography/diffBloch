@@ -5,12 +5,15 @@ from pathlib import Path
 import pytest
 
 from diffBloch.config import (
+    ExperimentLock,
+    InputLock,
     PreprocessLock,
     RecipeStep,
     RefinementLock,
     artifact_hash_for,
     code_version,
     config_digest,
+    input_lock_for,
     load_config,
     load_experiment,
     preprocess_lock_status,
@@ -21,6 +24,7 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
+from diffBloch.config.manifest import _verify_experimental_data
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 
@@ -61,6 +65,48 @@ def test_load_experiment_detects_input_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="input drift"):
         load_experiment(experiment)
+
+
+def test_experiment_lock_accepts_a_list_of_input_locks_for_pooled_datasets() -> None:
+    a = InputLock(ref="a.cif_pets", sha256="a" * 64, bytes=1)
+    b = InputLock(ref="b.cif_pets", sha256="b" * 64, bytes=2)
+    lock = ExperimentLock(
+        structure=InputLock(ref="s.cif", sha256="c" * 64, bytes=3),
+        experimental_data=[a, b],
+    )
+    assert lock.experimental_data == [a, b]
+
+
+def test_verify_experimental_data_checks_every_pooled_file(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    b = tmp_path / "b.cif_pets"
+    a.write_bytes(b"dataset a")
+    b.write_bytes(b"dataset b")
+    locks = [input_lock_for(a, ref="a.cif_pets"), input_lock_for(b, ref="b.cif_pets")]
+
+    _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+    b.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="input drift"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+
+def test_verify_experimental_data_rejects_a_pooled_count_mismatch(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    a.write_bytes(b"dataset a")
+    locks = [input_lock_for(a, ref="a.cif_pets")]
+
+    with pytest.raises(ValueError, match="experimental_data entries"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+
+def test_verify_experimental_data_rejects_a_list_vs_single_shape_mismatch(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    a.write_bytes(b"dataset a")
+    single_lock = input_lock_for(a, ref="a.cif_pets")
+
+    with pytest.raises(ValueError, match="shape does not match"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets"], single_lock)
 
 
 # --- preprocess checkpoint lock: the four-axis freshness check ---

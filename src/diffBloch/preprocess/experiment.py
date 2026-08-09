@@ -14,6 +14,8 @@ The structure side lives here so the structure/experimental split mirrors the tw
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -158,7 +160,7 @@ class RefinementSetup:
 
 def from_experiment(
     structure: StructureRecord,
-    experimental_data: ExperimentalRecord,
+    experimental_data: ExperimentalRecord | Sequence[ExperimentalRecord],
     config: ExperimentConfig,
 ) -> ExperimentSetup:
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
@@ -180,6 +182,18 @@ def from_experiment(
     grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
     pruning is the later ``select_beams`` step.
 
+    ``experimental_data`` is a single :class:`~diffBloch.io.record.ExperimentalRecord` for the
+    ordinary single-dataset experiment, or a sequence of them (``inputs.multi_dataset``) to pool
+    rotations from several PETS files into one experiment -- e.g. a damage series or repeat
+    measurements of the same crystal. Each file keeps its own wavelength-derived energy, UB
+    matrix/cell, and mean-inner-potential correction; rotations are concatenated file-by-file with a
+    running offset, so ``rotation_index`` stays globally unique across the pool (rather than
+    restarting at 0 per file) -- every place that keys off it (``ignore_orientations``, the
+    train/validation split, orientation-CSV import, the thickness-NN's per-rotation lookup) then
+    keeps working unmodified. Pooled files must share one rocking-curve integration semiangle: the
+    recipe builds a single shared rocking-curve/beam-selection geometry for the whole experiment, so
+    files recorded with different precession angles cannot currently be mixed.
+
     This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
     single documented public boundary of the preprocess pipeline (records + config -> setup), and it
     returns a *composite* of two products rather than constructing one domain object. The per-object
@@ -187,37 +201,55 @@ def from_experiment(
     (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
     ``RefinementSetup.from_structure``).
     """
+    records = (
+        (experimental_data,)
+        if isinstance(experimental_data, ExperimentalRecord)
+        else tuple(experimental_data)
+    )
+    if len(records) > 1:
+        semiangles = [record.integration_semiangle for record in records]
+        if not math.isclose(max(semiangles), min(semiangles)):
+            raise ValueError(
+                "pooled datasets (inputs.multi_dataset) must share one rocking-curve integration "
+                f"semiangle; got {sorted(set(semiangles))}"
+            )
+
     solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
-    energy = snap_to_standard_energy(wavelength2energy(experimental_data.wavelength))
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
-    orientations = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
     refinement_setup = RefinementSetup.from_structure(structure)
-    u0 = _mean_inner_potential(
-        grid, refinement_setup, energy=energy, absorption=config.blochwave.to_absorption()
-    )
-    all_plans = tuple(
-        CandidatePlan.seed(
-            beam_hkl,
-            PatternBatch.from_experimental_record(
-                experimental_data,
-                zone_axis_id=int(zone_id),
-                rotation_index=index,
-            ),
-            energy=energy,
-            thickness=config.sample.thicknesses,
-            orientation=orientations[index],
-            u0=u0,
-        )
-        for index, zone_id in enumerate(experimental_data.zone_axis_ids)
-    )
+    absorption = config.blochwave.to_absorption()
 
+    pooled_plans: list[CandidatePlan] = []
+    rotation_offset = 0
+    for record in records:
+        energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
+        orientations = orientation_matrices(
+            record.ub_matrix,
+            record.cell_parameters,
+            record.alphas,
+            record.betas,
+            record.omegas,
+        )
+        u0 = _mean_inner_potential(grid, refinement_setup, energy=energy, absorption=absorption)
+        pooled_plans.extend(
+            CandidatePlan.seed(
+                beam_hkl,
+                PatternBatch.from_experimental_record(
+                    record,
+                    zone_axis_id=int(zone_id),
+                    rotation_index=rotation_offset + local_index,
+                ),
+                energy=energy,
+                thickness=config.sample.thicknesses,
+                orientation=orientations[local_index],
+                u0=u0,
+            )
+            for local_index, zone_id in enumerate(record.zone_axis_ids)
+        )
+        rotation_offset += len(record.zone_axis_ids)
+
+    all_plans = tuple(pooled_plans)
     selection = config.blochwave.to_orientation_selection()
     ignored = set(selection.ignore_orientations)
     out_of_range = sorted(index for index in ignored if index >= len(all_plans))
@@ -230,8 +262,8 @@ def from_experiment(
     if not selected:
         raise ValueError("ignore_orientations excludes every PETS rotation")
 
-    # Split membership is defined on the original PETS order. Ignoring a rotation must not renumber
-    # later frames and silently move them between train and validation.
+    # Split membership is defined on the original (pooled, file-by-file) PETS order. Ignoring a
+    # rotation must not renumber later frames and silently move them between train and validation.
     validation = _validation_mask(len(all_plans), config.refinement.split)
     train_orientations = tuple(plan for index, plan in selected if not validation[index])
     val_orientations = tuple(plan for index, plan in selected if validation[index])
@@ -241,7 +273,7 @@ def from_experiment(
             validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
         refinement=refinement_setup,
-        integration=IntegrationGeometry(semiangle=experimental_data.integration_semiangle),
+        integration=IntegrationGeometry(semiangle=records[0].integration_semiangle),
     )
 
 
