@@ -66,13 +66,6 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
     )
     parser.add_argument(
-        "--tui",
-        action="store_true",
-        help="render the run as a live terminal dashboard instead of the scrolling console log "
-        "(requires the 'diffBloch[tui]' extra); replaces --quiet's console stream rather than "
-        "composing with it, since a live display owns the terminal",
-    )
-    parser.add_argument(
         "--refresh",
         action="store_true",
         help="ignore any existing preprocess checkpoint and recompute (regenerates plan.npz/.lock)",
@@ -194,6 +187,14 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
     )
+    p_converge.add_argument(
+        "--quiet",
+        action="store_true",
+        help="silence the per-trial observation stream (the settled result still prints)",
+    )
+    p_converge.add_argument(
+        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
+    )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -226,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -250,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
             summary_logger = RecordingLogger()
             logger: Logger = (
                 summary_logger
@@ -320,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
             # not) for themselves instead of having a file appear as a side effect of refining.
             report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
             refine_sinks: tuple[Logger, ...] = (
-                _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                _build_logger(console=not args.quiet, csv=args.csv),
                 SummaryLogger(report_path),
             )
             refined = refine_experiment(
@@ -377,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=ConsoleLogger(),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 device=args.device,
                 n_orientations=args.orientations,
             )
@@ -413,22 +414,13 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_logger(
-    *, console: bool, csv: str | None, per_rotation: bool = True, tui: bool = False
-) -> Logger:
+def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) -> Logger:
     """Combine the requested observation sinks (none => the null logger that discards events).
 
-    ``tui`` swaps the scrolling :class:`ConsoleLogger` for the live
-    :class:`~diffBloch.app.loggers.tui.TuiLogger`; the two are alternatives, never both, because a
-    live display owns the terminal while the console bridges events onto stdlib ``logging``.
     ``per_rotation`` opts the console into the settled per-rotation stream.
     """
     sinks: list[Logger] = []
-    if console and tui:
-        from diffBloch.app.loggers.tui import TuiLogger
-
-        sinks.append(TuiLogger())
-    elif console:
+    if console:
         sinks.append(ConsoleLogger(per_rotation=per_rotation))
     if csv is not None:
         sinks.append(CSVLogger(Path(csv)))

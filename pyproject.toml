@@ -24,7 +24,6 @@ dependencies = [
 wandb = ["wandb>=0.16"]
 comet = ["comet_ml>=3.0"]
 plot = ["matplotlib>=3.7"]
-tui = ["rich>=13"]
 
 [project.scripts]
 diffbloch = "diffBloch.app.cli:main"
