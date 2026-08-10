@@ -244,3 +244,11 @@ def test_terminal_event_closes_the_display() -> None:
     logger.report(_experiment())
     logger.report(RefinementOutputsWritten(structure="/tmp/refined_structure.cif"))
     assert logger._live is None
+
+
+def test_close_is_safe_without_a_started_display() -> None:
+    """The CLI releases sinks in a finally, so close() runs even on runs that drew nothing."""
+    logger = TuiLogger()
+    logger.close()
+    logger.close()  # idempotent
+    assert logger._live is None

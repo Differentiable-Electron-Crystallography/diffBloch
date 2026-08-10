@@ -8,7 +8,7 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from diffBloch.app.cli import main
+from diffBloch.app.cli import _release_sinks, main
 from diffBloch.app.loggers import ConsoleLogger
 from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimized
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
@@ -502,3 +502,34 @@ def test_run_refine_missing_experiment_reports_concise_error(
     err = capsys.readouterr().err
     assert err.startswith("error:")
     assert "Traceback" not in err
+
+
+def test_run_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """converge emits the sweep stream, so it takes the same sinks as every other subcommand."""
+    seen: dict[str, object] = {}
+
+    def fake_converge_experiment(
+        experiment_dir: str, *, logger: object, device: object, n_orientations: int
+    ) -> SimpleNamespace:
+        seen["logger"] = logger
+        return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
+
+    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
+    assert main(["run", "converge", "/some/experiment", "--quiet"]) == 0
+    assert isinstance(seen["logger"], NullLogger)  # --quiet reaches it
+
+
+def test_released_sinks_give_back_their_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A live display owns the terminal; a run with no terminal event must still release it."""
+    closed: list[str] = []
+
+    class _Holder:
+        def report(self, event: object) -> None:
+            return None
+
+        def close(self) -> None:
+            closed.append("released")
+
+    _release_sinks(MultiLogger((_Holder(), NullLogger())))  # type: ignore[arg-type]
+    assert closed == ["released"]
+    _release_sinks(NullLogger())  # a sink with no close() is simply skipped

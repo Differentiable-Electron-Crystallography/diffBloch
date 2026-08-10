@@ -194,6 +194,20 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
     )
+    p_converge.add_argument(
+        "--quiet",
+        action="store_true",
+        help="silence the per-trial observation stream (the settled result still prints)",
+    )
+    p_converge.add_argument(
+        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
+    )
+    p_converge.add_argument(
+        "--tui",
+        action="store_true",
+        help="render the sweep as a live terminal dashboard instead of the scrolling console log "
+        "(requires the 'diffBloch[tui]' extra)",
+    )
     p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
@@ -223,10 +237,11 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
+        logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                logger=logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -241,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        finally:
+            _release_sinks(logger)
         print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
         return 0
 
@@ -249,14 +266,14 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
+        progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+        summary_logger = RecordingLogger()
+        logger = (
+            summary_logger
+            if progress_logger is NULL_LOGGER
+            else MultiLogger((progress_logger, summary_logger))
+        )
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
-            summary_logger = RecordingLogger()
-            logger: Logger = (
-                summary_logger
-                if progress_logger is NULL_LOGGER
-                else MultiLogger((progress_logger, summary_logger))
-            )
             plan = preprocess_experiment(
                 args.experiment_directory,
                 logger=logger,
@@ -274,6 +291,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        finally:
+            _release_sinks(logger)
         print()
         built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
         total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
@@ -314,18 +333,20 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        try:
-            # The written summary is one more sink on the run's event stream, chosen here beside
-            # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
-            # not) for themselves instead of having a file appear as a side effect of refining.
-            report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
-            refine_sinks: tuple[Logger, ...] = (
+        # The written summary is one more sink on the run's event stream, chosen here beside the
+        # console/CSV ones rather than by refine_experiment: an API caller composes it (or not) for
+        # themselves instead of having a file appear as a side effect of refining.
+        report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
+        refine_logger = MultiLogger(
+            (
                 _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
                 SummaryLogger(report_path),
             )
+        )
+        try:
             refined = refine_experiment(
                 args.experiment_directory,
-                logger=MultiLogger(refine_sinks),
+                logger=refine_logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -343,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        finally:
+            _release_sinks(refine_logger)
         best = refined.history[refined.best_step]
         wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
         r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
@@ -374,10 +397,11 @@ def main(argv: list[str] | None = None) -> int:
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
+        logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
         try:
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=ConsoleLogger(),
+                logger=logger,
                 device=args.device,
                 n_orientations=args.orientations,
             )
@@ -386,6 +410,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        finally:
+            _release_sinks(logger)
         print("========================================")
         print("HYPERPARAMETER OPTIMIZATION RESULT")
         print(f"gmax: {settled.g_max:g}")
@@ -411,6 +437,21 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 0
+
+
+def _release_sinks(logger: Logger) -> None:
+    """Let any sink holding a resource give it back, whatever the run did.
+
+    The live display owns the terminal until it is stopped. It stops itself on the refinement run's
+    terminal event, but ``preprocess``/``infer``/``converge`` have no such event and an exception can
+    end any run early -- so the boundary that built the sinks releases them in a ``finally``, rather
+    than every stream having to end in exactly the right event.
+    """
+    sinks = logger.loggers if isinstance(logger, MultiLogger) else (logger,)
+    for sink in sinks:
+        release = getattr(sink, "close", None)
+        if callable(release):
+            release()
 
 
 def _build_logger(
