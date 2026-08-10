@@ -105,9 +105,9 @@ X-ray least-squares refinement, and the lower-level Python API exposes it direct
 - **hard constraints** fix the geometric relationship between atoms exactly, e.g. a riding model
   where hydrogens keep contributing to the calculated scattering but move rigidly with their parent
   heavy atom rather than refining independent coordinates;
-- **restraints** (soft penalties) pull a quantity toward a target without fixing it, e.g. keeping a
-  bond length close to a chemically reasonable value; the optimizer can still trade the restraint off
-  against the diffraction fit, unlike a hard constraint;
+- **restraints** (soft penalties) are implemented as soft `PenaltyTerm`s: pull a quantity toward a
+  target without fixing it, e.g. keeping a bond length close to a chemically reasonable value;
+  the optimizer can still trade the restraint off against the diffraction fit, unlike a hard constraint;
 - **thickness models** treat the apparent specimen thickness at each tilt as a trainable quantity
   alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.
 
