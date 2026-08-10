@@ -22,6 +22,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from diffBloch.observability import (
+    ConvergencePassStarted,
+    ConvergenceSweepStarted,
+    ConvergenceTrial,
     Event,
     ExperimentDeclared,
     ObjectiveManifest,
@@ -83,6 +86,9 @@ class TuiLogger:
     _epochs: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
+    _pass: ConvergencePassStarted | None = field(default=None, init=False, repr=False)
+    _sweep: str = field(default="", init=False, repr=False)
+    _trials: list[ConvergenceTrial] = field(default_factory=list, init=False, repr=False)
     _other: list[tuple[str, int | None, str]] = field(default_factory=list, init=False, repr=False)
 
     def report(self, event: Event) -> None:
@@ -119,6 +125,12 @@ class TuiLogger:
                 self._experiment = event
             case ObjectiveManifest():
                 self._manifest = event
+            case ConvergencePassStarted():
+                self._pass = event
+            case ConvergenceSweepStarted():
+                self._sweep = event.control
+            case ConvergenceTrial():
+                self._trials.append(event)
             case PlanSeeded():
                 self._stages.append(("seed (incoming plan)", event.measurements))
             case PlanStepCompleted():
@@ -172,7 +184,7 @@ class TuiLogger:
         terminal each shrink rather than the last one being pushed off the bottom.
         """
         height = self._console.size.height if self._console is not None else 24
-        on_screen = (self._stages, self._epochs, self._rotations, self._other)
+        on_screen = (self._trials, self._stages, self._epochs, self._rotations, self._other)
         tables = sum(bool(x) for x in on_screen) or 1
         return max(_MIN_WINDOW, (height - _CHROME_ROWS) // tables)
 
@@ -182,6 +194,8 @@ class TuiLogger:
 
         rows = self._window() if window == -1 else window
         blocks: list[Any] = [block for block in (self._header(), self._objective()) if block]
+        if self._trials or self._pass:
+            blocks.append(self._convergence_table(rows))
         if self._stages:
             blocks.append(self._stage_table(rows))
         if self._phase.total:
@@ -221,6 +235,42 @@ class TuiLogger:
         # "none" is rendered, never omitted: an objective composing no restraints is a fact.
         body = f"penalties   {penalties}\nconstraints {constraints}\ncomponents  {components}"
         return Panel(body, title="objective", border_style="magenta")
+
+    def _convergence_table(self, window: int | None) -> Any:
+        """The numerical-convergence sweep: each trial's setting change and what it cost in R.
+
+        A trial is starred once its R-factor falls under the pass threshold -- that is the
+        comparison ``converge_scalar`` actually settles on, so showing the threshold without
+        showing which trial cleared it would leave the reader to do the arithmetic.
+        """
+        from rich.table import Table
+
+        started = self._pass
+        label = "convergence"
+        if started is not None:
+            label += (
+                f"  (pass {started.pass_index}, threshold {started.r_factor_threshold:g}, "
+                f"{started.n_orientations} rotation(s))"
+            )
+        if self._sweep:
+            label += f"  sweeping {self._sweep}"
+        table = Table(title=_titled(label, self._trials, window), title_justify="left")
+        table.add_column("control")
+        for column in ("trial", "from", "to", "R", "compared hkl"):
+            table.add_column(column, justify="right")
+        table.add_column("")
+        for trial in _tail(self._trials, window):
+            settled = started is not None and trial.r_factor < started.r_factor_threshold
+            table.add_row(
+                trial.control,
+                str(trial.trial_index),
+                f"{trial.previous:g}",
+                f"{trial.candidate:g}",
+                f"{trial.r_factor:.6f}",
+                str(trial.n_compared_hkl),
+                "settled" if settled else "",
+            )
+        return table
 
     def _stage_table(self, window: int | None) -> Any:
         from rich.table import Table

@@ -9,6 +9,8 @@ from __future__ import annotations
 import pytest
 
 from diffBloch.observability import (
+    ConvergencePassStarted,
+    ConvergenceSweepStarted,
     ConvergenceTrial,
     ExperimentDeclared,
     ObjectiveManifest,
@@ -94,32 +96,50 @@ def test_off_a_terminal_the_display_never_starts(monkeypatch: pytest.MonkeyPatch
 
 
 def test_unmodelled_events_surface_generically_instead_of_vanishing() -> None:
-    """No event is dropped by omission -- an unstyled row beats an unseen observation.
-
-    The convergence sweep is the case that matters: for a `run converge` the terminal is often the
-    only sink attached, so an event the dashboard has no dedicated view for still has to appear.
-    """
+    """No event is dropped by omission -- an unstyled row beats an unseen observation."""
     logger = TuiLogger()
     assert logger._absorb(RotationScored(index=0, r_obs=0.1, n_observed=5, n_beams=9)) is True
-    assert (
-        logger._absorb(
-            ConvergenceTrial(
-                control="g_max",
-                trial_index=0,
-                pass_index=0,
-                previous=2.25,
-                candidate=2.45,
-                r_factor=0.031,
-                n_compared_hkl=612,
-            )
-        )
-        is True
-    )
 
     text = _rendered(logger)
     assert "other events" in text
-    assert "convergence g_max" in text
-    assert "r_factor=0.031" in text and "n_compared_hkl=612" in text
+    assert "rotation" in text and "n_beams=9" in text
+
+
+def test_convergence_sweep_has_its_own_view_not_the_generic_fallback() -> None:
+    """A trial's setting change, its cost in R, and whether it cleared the pass threshold."""
+    logger = TuiLogger()
+    logger._absorb(
+        ConvergencePassStarted(
+            pass_index=0,
+            g_max=2.25,
+            sg_max=0.01,
+            tilt_steps=42,
+            r_factor_threshold=0.01,
+            n_orientations=1,
+        )
+    )
+    logger._absorb(ConvergenceSweepStarted(control="g_max", pass_index=0))
+    for index, (previous, candidate, r_factor) in enumerate(
+        ((2.25, 2.45, 0.0312), (2.45, 2.65, 0.0071))
+    ):
+        logger._absorb(
+            ConvergenceTrial(
+                control="g_max",
+                trial_index=index,
+                pass_index=0,
+                previous=previous,
+                candidate=candidate,
+                r_factor=r_factor,
+                n_compared_hkl=612 + index,
+            )
+        )
+
+    text = _rendered(logger)
+    assert "other events" not in text  # it has a dedicated view now
+    assert "threshold 0.01" in text and "sweeping g_max" in text
+    settled = [line for line in text.splitlines() if "settled" in line]
+    # Only the trial that actually fell under the threshold is marked.
+    assert len(settled) == 1 and "0.007100" in settled[0]
 
 
 def test_tables_say_when_they_are_showing_a_window() -> None:
