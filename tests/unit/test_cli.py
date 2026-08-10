@@ -108,7 +108,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
         captured["checkpoint"] = checkpoint
         captured["refresh"] = refresh
         captured["workers"] = workers
-        rotation = RotationInference(r_obs=0.05, n_observed=9, n_beams=20)
+        rotation = RotationInference(r_obs=0.05, wr2=0.06, n_observed=9, n_beams=20)
         return InferenceResult(per_rotation=(rotation,))
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
