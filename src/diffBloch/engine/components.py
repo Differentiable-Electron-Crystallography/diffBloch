@@ -179,6 +179,19 @@ class ApparentThicknessNN:
     Legacy code drew new random samples on every forward call. Here the standard-normal draws are
     fixed by ``init_seed`` and source rotation index, retaining the same sampled model while keeping
     the objective deterministic.
+
+    ``rotation_range`` (default ``None``) scopes one instance to a ``[start, end)`` slice of the
+    global ``rotation_index`` space -- for ``inputs.multi_dataset``, where each combined file gets
+    its *own* independently-weighted instance (distinct ``key``, distinct ``normalized_alphas``
+    scaled to *that file's own* alpha range rather than the pooled one) so each can learn a
+    genuinely different thickness-vs-tilt curve instead of one shared function forced to fit every
+    combined file's data jointly. ``normalized_alphas`` is then indexed *locally* (``rotation_index -
+    rotation_range[0]``), and :meth:`forward_context` returns ``thickness=None`` -- not an error --
+    for any rotation outside the range, which is exactly the signal
+    :class:`~diffBloch.engine.forward.RefinementModel` uses to let another component answer for it
+    instead. ``None`` (the default) is the original single-dataset behavior: every index indexes
+    ``normalized_alphas`` directly, and a genuinely out-of-bounds index is still a hard error (a real
+    bug, not a scoping choice).
     """
 
     bounds: ThicknessBounds
@@ -188,6 +201,8 @@ class ApparentThicknessNN:
     sample_thickness: bool = False
     num_samples: int = 40
     init_seed: int = 0
+    rotation_range: tuple[int, int] | None = None
+    label: str | None = None  # stamped onto this instance's ThicknessProfile; see profile()
 
     def __post_init__(self) -> None:
         if self.form != "min_thickness":
@@ -198,6 +213,15 @@ class ApparentThicknessNN:
             raise ValueError("normalized_alphas must lie in [-1, 1]")
         if self.num_samples < 1:
             raise ValueError("num_samples must be >= 1")
+        if self.rotation_range is not None:
+            start, end = self.rotation_range
+            if start < 0 or end <= start:
+                raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+            if end - start != len(self.normalized_alphas):
+                raise ValueError(
+                    "rotation_range width must match len(normalized_alphas) "
+                    f"({end - start} != {len(self.normalized_alphas)})"
+                )
 
     def initial_params(
         self,
@@ -256,6 +280,7 @@ class ApparentThicknessNN:
             rotation_indices=tuple(indices),
             alphas=tuple(float(raw_alphas[index]) for index in indices),
             thicknesses=tuple(thicknesses),
+            label=self.label,
         )
 
     def forward_context(
@@ -279,9 +304,16 @@ class ApparentThicknessNN:
             raise ValueError(f"apparent thickness NN params tensors missing {missing!r}")
         w0 = params["layer0.weight"]
         source_index = orientation.pattern.rotation_index
-        if source_index < 0 or source_index >= len(self.normalized_alphas):
+        if self.rotation_range is not None:
+            start, end = self.rotation_range
+            if source_index < start or source_index >= end:
+                return ForwardContext(thickness=None)
+            local_index = source_index - start
+        else:
+            local_index = source_index
+        if local_index < 0 or local_index >= len(self.normalized_alphas):
             raise ValueError("source rotation index is outside normalized_alphas")
-        x = w0.new_tensor(self.normalized_alphas[source_index]).reshape(1, 1)
+        x = w0.new_tensor(self.normalized_alphas[local_index]).reshape(1, 1)
         x = torch.tanh(F.linear(x, w0, params["layer0.bias"]))
         x = torch.tanh(F.linear(x, params["layer1.weight"], params["layer1.bias"]))
         output = F.linear(x, params["layer2.weight"], params["layer2.bias"])

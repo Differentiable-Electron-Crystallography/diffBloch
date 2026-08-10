@@ -25,6 +25,7 @@ coupled plan is optimized unchanged.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 import torch
@@ -51,7 +52,7 @@ __all__ = ["optimize_thickness"]
 
 def optimize_thickness(
     refinement: RefinementSetup,
-    grid: ThicknessGrid,
+    grid: ThicknessGrid | Mapping[str, ThicknessGrid],
     *,
     method: SolverMethod = "matrix_exp",
     device: Device | None = None,
@@ -78,6 +79,12 @@ def optimize_thickness(
     from ``grid.min_thickness`` to ``grid.max_thickness`` (inclusive, Angstroms). ``grid`` is a
     pre-validated :class:`~diffBloch.specs.ThicknessGrid` (invalid bounds are unrepresentable, so
     this function never re-validates); ``method`` configures the engine's solver.
+
+    ``grid`` may instead be a mapping from ``str(rotation_index)`` to a :class:`ThicknessGrid` --
+    for ``inputs.multi_dataset``, where each combined file gets its own search range rather than one
+    shared range that may not bracket every dataset's specimen thickness equally well. Keyed by
+    string (not ``int``) so the recipe's provenance -- serialized to JSON for the checkpoint lock --
+    round-trips to the same value it started as; every rotation must have an entry.
 
     ``device`` (default ``None`` = CPU) places the grid search's forward solve on the given
     accelerator by moving the seed params there; the engine co-locates every invariant onto the
@@ -107,14 +114,22 @@ def optimize_thickness(
         )
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
-        candidates = torch.linspace(
-            grid.min_thickness, grid.max_thickness, grid.n_steps, dtype=torch.float64
-        )
-        candidate_thicknesses = tuple(float(value) for value in candidates.tolist())
+
+        def candidates_for(rotation_index: int) -> Tensor:
+            this_grid = grid[str(rotation_index)] if isinstance(grid, Mapping) else grid
+            return torch.linspace(
+                this_grid.min_thickness,
+                this_grid.max_thickness,
+                this_grid.n_steps,
+                dtype=torch.float64,
+            )
+
         built = require_built_plans(plan)
         logger.report(ThicknessOptimizationStarted(total_rotations=len(built)))
         fitted = []
         for op in built:
+            candidates = candidates_for(op.pattern.rotation_index)
+            candidate_thicknesses = tuple(float(value) for value in candidates.tolist())
             orientation, score, thickness, candidate_scores = _fit_one(engine, fgb, op, candidates)
             logger.report(
                 ThicknessOptimized(
@@ -149,6 +164,15 @@ def _fit_one(
     candidate_scores = engine.score_orientation_per_thickness(
         trial, fgb
     )  # one pass, all candidates
+    if torch.isnan(candidate_scores).any():
+        raise FloatingPointError(
+            f"thickness search score is nan for {int(torch.isnan(candidate_scores).sum())}/"
+            f"{candidate_scores.numel()} candidate thicknesses -- torch.argmin's result is "
+            "undefined with nan present, so this would otherwise silently pick a meaningless "
+            "winner. The reference simulation's intensity is exactly zero across every scored "
+            "reflection for those candidates (0/0 in the residual): check that the structure and "
+            "experimental-data files describe the same crystal setting."
+        )
     best = int(torch.argmin(candidate_scores))
     baked = replace(op, thickness=candidates[best : best + 1])  # (1,) baked thickness
     all_scores = tuple(float(value) for value in candidate_scores.tolist())

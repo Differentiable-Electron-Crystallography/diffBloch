@@ -18,7 +18,6 @@ from diffBloch.observability import PlanSeeded, PlanStepCompleted, RecordingLogg
 from diffBloch.preprocess import (
     build_orientation_plans,
     integrate_rocking_curve,
-    mosaicity,
     select_beams,
 )
 from diffBloch.preprocess.pipeline import (
@@ -40,7 +39,6 @@ from diffBloch.preprocess.plan import summarize_plan
 from diffBloch.specs import (
     BeamSelection,
     IntegrationGeometry,
-    Mosaicity,
     RockingCurve,
     TiltIndependent,
     UnionCoupling,
@@ -244,7 +242,6 @@ def test_grid_is_invariant_across_the_grid_shaping_steps() -> None:
             select_beams(BeamSelection()),
             build_orientation_plans(),
             integrate_rocking_curve(RockingCurve(sampling=3)),
-            mosaicity(Mosaicity(window=2)),
         ]
     )(seed)
     assert shaped.structure_factor_grid is seed.structure_factor_grid

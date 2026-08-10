@@ -1,7 +1,7 @@
 # Preprocessing and `Plan`
 
 Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
-therefore fits this experimental metadata before refining the structure and stores it in a `Plan`.
+therefore determines this experimental metadata before refining the structure and stores it in a `Plan`.
 
 PETS2 reduces continuous-rotation data into overlapping **virtual frames**, allowing complete
 rocking curves to be integrated and partial reflections to be rejected
@@ -10,25 +10,66 @@ virtual frame by sampled tilt sub-orientations and sums their simulated intensit
 
 ## Orientation
 
-PETS2 supplies a best-fit **UB matrix**: {math}`B` maps the reciprocal lattice and {math}`U`
-orients that lattice in the laboratory frame. For virtual frame {math}`i`, diffBloch constructs
+PETS2 supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
+cell and maps integer reflection indices {math}`(h,k,l)` to reciprocal-space vectors. The matrix
+{math}`U` places that reciprocal basis in the laboratory coordinate system. Their product {math}`UB`
+therefore maps a reflection index directly into the measured laboratory geometry.
+
+diffBloch separates the two matrices using
+
+```{math}
+U = (UB)B^{-1}.
+```
+
+For virtual frame {math}`i`, the PETS goniometer angles are then applied in their recorded order:
 
 ```{math}
 M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
 ```
 
-where {math}`\alpha` is the main varying goniometer angle.
+where {math}`\alpha_i`, {math}`\beta_i`, and {math}`\omega_i` are given in degrees and
+{math}`\alpha_i` is the main scan angle. {math}`M_i` is the starting crystal orientation for that
+virtual frame.
 
-Using a fixed trial thickness and the starting structure, orientation optimization searches nearby
-orientations for better agreement with experiment. Two approaches are implemented, selected by
-`preprocess.orientation.method`:
+Using the current thickness and starting unrefined structure, diffBloch searches for a small
+correction to each {math}`M_i`. A trial correction is described by three angles
+{math}`(\Delta\alpha,\Delta\beta,\Delta\omega)` and applied as
 
-| Method | Difference |
-|---|---|
-| `palatinus_modified_simplex` (default) | Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close. |
-| `nelder_mead` | Local simplex search over all three goniometer-correction angles directly (`scipy.optimize.minimize`); efficient but sensitive to the starting orientation and the fixed `step_size` neighbourhood it explores. |
+```{math}
+M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
+```
 
-Bayesian optimization is not implemented.
+The Bloch-wave intensities are recalculated for each trial and compared with the observed
+intensities using `loss_metrics.residual`, which defaults to `wr2`. 
+
+### Orientation-search method
+
+The current implementation provides one orientation-search method:
+
+| Method | Search | Status |
+|---|---|---|
+| `nelder_mead` | A SciPy Nelder--Mead simplex varies all three correction angles simultaneously. | Implemented and used by the default preprocessing path. |
+
+
+| Parameter | Default | Meaning |
+|---|---:|---|
+| `step_size` | `0.05` degrees | Edge length of the initial simplex. The four starting points are zero correction and one positive step along each correction angle. This is not a hard search bound. |
+| `max_iterations` | `60` | Maximum number of simplex iterations for one rotation. |
+| `x_tolerance` | `1e-3` degrees | Convergence tolerance for changes in the correction angles. |
+| `f_tolerance` | `1e-3` | Convergence tolerance for changes in the comparison residual. |
+| `penalize_fewer_reflections` | `true` | Prevents a trial from appearing better only because its orientation produces a smaller matched-reflection set. |
+
+```yaml
+preprocess:
+  orientation:
+    nelder_mead:
+      step_size: 0.05
+      max_iterations: 60
+      x_tolerance: 0.001
+      f_tolerance: 0.001
+      penalize_fewer_reflections: true
+```
+
 
 ## Thickness
 
@@ -40,7 +81,7 @@ approaches, both using the starting structure to improve agreement with experime
 | Grid search | Selects the best mean thickness independently for each rotation. |
 | Neural network | Learns how apparent thickness varies smoothly with rotation angle. |
 
-The default workflow optimizes orientation first and thickness second when both stages are enabled.
+The default workflow determines thickness first and orientation second when both stages are enabled.
 Either stage can be disabled independently:
 
 ```yaml
@@ -95,11 +136,10 @@ A `Plan` deliberately separates sets of hkls by purpose or origin:
 The virtual frame's angular range is represented by tilt sub-orientations around its central
 orientation. In the default app recipe, `build_orientation_plans` constructs those sub-tilts,
 selects each tilt-dependent SOLVE basis from `g_max` and `sg_max`, builds the Bloch geometry, and
-attaches the configured mosaic reduction. The configured reduction currently defaults to
-`Mosaicity(window=5)`: a five-sampled-tilt moving average, not a value estimated from PETS
-mosaic-spread metadata. Passing `mosaicity=None` at the lower-level API keeps the bare `PlainSum`.
-Rocking integration and mosaicity are parts of the built orientation plan, not separately displayed
-default stages.
+attaches the configured mosaic averaging. With `blochwave.mosaicity: true`, each nominal tilt is
+expanded using the apparent mosaicity recorded in the source `.cif_pets`. Three normalized Gaussian
+orientation samples are used, and their weights preserve the ordinary rocking-curve integration
+scale. Set `blochwave.mosaicity: false` to use the unexpanded tilt set and a plain incoherent sum.
 
 ## API shape: from experiment records to an initial `Plan`
 
@@ -126,7 +166,7 @@ print(refinement_setup.params.asu_positions.shape)
 ## `Plan -> Plan` steps
 
 Preprocessing is a sequence of small, focused steps, each taking a `Plan` and returning an updated
-one — one step builds the tilt geometry, another fits orientation, another fits thickness.
+one — one step builds the tilt geometry, another determines orientation, and another determines thickness.
 
 The default app recipe begins with one displayed `build_orientation_plans` stage. It calculates the
 shared structure-factor support, constructs every central orientation and rocking sub-tilt,
@@ -139,7 +179,6 @@ Real steps include:
 - {func}`diffBloch.preprocess.steps.beams.build_orientation_plans` — build the default coupled solve geometry, rocking sub-tilts, reduction, and scoring alignment.
 - {func}`diffBloch.preprocess.steps.beams.select_beams` — lower-level tilt-independent candidate selection for custom API pipelines and convergence work; it is not a separate default app stage.
 - {func}`diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve` — expand orientations into virtual rocking-curve tilts.
-- {func}`diffBloch.preprocess.steps.mosaicity.mosaicity` — apply tilt-axis mosaic broadening.
 - {func}`diffBloch.preprocess.steps.optimize_orientation.optimize_orientation` — search nearby orientations and keep the best-scoring one.
 - {func}`diffBloch.preprocess.steps.optimize_thickness.optimize_thickness` — search mean specimen thickness and keep the best-scoring value.
 - {func}`diffBloch.preprocess.driver.converge_numerics` — test convergence over `g_max`, `sg_max`, and `tilt_steps`.
@@ -167,7 +206,7 @@ base_plan = setup.plans.combined
 prepare = pipeline([
     build_orientation_plans(
         cfg.blochwave.to_rocking_curve(setup.integration),
-        cfg.blochwave.mosaicity,  # default app config is Mosaicity(window=5); use None for PlainSum
+        cfg.blochwave.mosaicity,
         coupling=cfg.blochwave.to_policy(),
         scoring_selection=cfg.blochwave.to_beam_selection(setup.integration),
     ),

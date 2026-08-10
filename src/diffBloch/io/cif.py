@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -21,6 +22,15 @@ from diffBloch.io._cifio import (
     cell_parameters as parse_cell_parameters,
 )
 from diffBloch.io.record import AdpRecord, StructureRecord
+
+_log = logging.getLogger(__name__)
+
+# A genuine 0.0 ADP is singular: `_initial_adp_params` seeds anisotropic ADPs through
+# `cholesky_raw_from_adp`, which requires strict positive-definiteness (not just PSD), and seeds
+# Uiso through an inverse-softplus (`log(expm1(u_iso))`) that sends exact 0.0 to -inf. This floor is
+# small enough to be physically negligible (a fixed-atom-scale displacement) while keeping both
+# reparameterizations well defined.
+_ADP_FLOOR = 1e-6
 
 ANISO_TAGS = (
     "_atom_site_aniso_U_11",
@@ -227,6 +237,13 @@ def _adp_for_site(
         row = aniso_by_label[label]
         uij_values = _uij_matrix({tag: parse_cif_number(row[tag]).nominal for tag in ANISO_TAGS})
         uij_su = _uij_matrix({tag: parse_cif_number(row[tag]).su for tag in ANISO_TAGS})
+        if np.all(np.isfinite(uij_values)) and np.any(np.linalg.eigvalsh(uij_values) < -1e-12):
+            _log.warning(
+                "atom %r: anisotropic displacement parameters are not positive-semidefinite "
+                "(physically invalid) -- zeroing them out",
+                label,
+            )
+            uij_values = _ADP_FLOOR * np.eye(3, dtype=np.float64)
         return _AdpSite(
             kind="Uani",
             u_iso=u_iso_value.nominal,
@@ -235,9 +252,18 @@ def _adp_for_site(
             uij_cif_su=uij_su,
         )
     if np.isfinite(u_iso_value.nominal):
+        nominal = u_iso_value.nominal
+        if nominal < 0.0:
+            _log.warning(
+                "atom %r: isotropic displacement parameter U_iso=%.6g is negative "
+                "(physically invalid) -- setting it to 0.0",
+                label,
+                nominal,
+            )
+            nominal = _ADP_FLOOR
         return _AdpSite(
             kind="Uiso",
-            u_iso=u_iso_value.nominal,
+            u_iso=nominal,
             u_iso_su=u_iso_value.su,
             uij_cif=np.full((3, 3), np.nan, dtype=np.float64),
             uij_cif_su=np.full((3, 3), np.nan, dtype=np.float64),

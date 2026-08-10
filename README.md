@@ -55,10 +55,4 @@ could not score it).
 
 If you use diffBloch in your research, please cite it as:
 
-@misc{diffBloch,
-  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain, and Midgley, Paul},
-  title   = {diffBloch},
-  version = {0.2.0},
-  year = {2026},
-  url     = {https://github.com/Differentiable-Electron-Crystallography/diffBloch}
-}
+Doherty, T., Malik, S., Colmey, B., Maitland, I. & Midgley, P. (2026). diffBloch, version 0.2.0. https://github.com/Differentiable-Electron-Crystallography/diffBloch

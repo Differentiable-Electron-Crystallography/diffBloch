@@ -36,7 +36,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from diffBloch.core.losses import optimal_scale, rbragg
+from diffBloch.core.losses import optimal_scale, w_rbragg
 from diffBloch.core.products import BlochSolution
 from diffBloch.core.solver import SolverMethod
 from diffBloch.preprocess.experiment import RefinementSetup
@@ -62,8 +62,7 @@ __all__ = [
 type SimulationRfactor = Callable[[Plan, Plan], float]
 
 # The R-factor compares two simulations, not simulation-vs-data, so there is no measurement noise to
-# weight by; a near-zero sigma makes ``rbragg`` effectively unweighted while keeping its
-# ``I > 3*sigma`` mask inclusive.
+# weight by; a near-zero sigma makes ``wr2`` effectively unweighted (mu dominates the weight term).
 _UNWEIGHTED_SIGMA = 1e-10
 
 
@@ -77,7 +76,7 @@ def simulation_rfactor(
 
     ``refinement`` (the read-only structure context) is captured and rejoined to each Plan via
     :func:`build_engine`; ``method`` configures the solver. The returned measure simulates both
-    Plans, computes the scale-optimised ``rbragg`` R-factor between them on each orientation's
+    Plans, computes the scale-optimised ``wr2`` R-factor between them on each orientation's
     shared
     reflections, and averages over orientations. The comparison is a control-flow decision, not a
     gradient path, so the simulated intensities are detached. It is 0 exactly when the two Plans
@@ -255,12 +254,18 @@ def _orientation_rfactor(
     *,
     comparison_hkl: Tensor | None = None,
 ) -> float:
-    """Scale-optimised ``rbragg`` between two simulations on their shared reflections.
+    """Scale-optimised ``wr2`` between two simulations on their shared reflections.
 
     Each table is ``(T, N)`` over its own beam set; the beam sets differ between the two
     simulations, so the comparison is restricted to the reflections both contain. A single intensity
     scale (shared across thicknesses, matching ``optimal_scale``) maps ``current`` onto ``previous``
     before the R-factor, since the two simulations have no common normalization.
+
+    ``wr2`` rather than ``rbragg``: ``rbragg`` hard-masks out any reflection at or below
+    ``3 * sigma``, so a ``previous`` build whose compared reflections calculate to exactly (or
+    near) zero -- e.g. an unfit seed orientation whose PETS-aligned beams carry no signal yet --
+    masks out every term and returns ``0/0 = nan``. ``wr2`` weights continuously instead of gating
+    on/off, so it stays finite unless literally every compared intensity is exactly zero.
     """
     if comparison_hkl is None:
         previous_index, current_index = _shared_reflections(previous.beam_hkl, current.beam_hkl)
@@ -273,7 +278,18 @@ def _orientation_rfactor(
     previous_intensity = previous.intensities.detach().cpu()[:, previous_index].reshape(-1)
     current_intensity = current.intensities.detach().cpu()[:, current_index].reshape(-1)
     sigmas = torch.full_like(previous_intensity, _UNWEIGHTED_SIGMA)
-    _, r_value = optimal_scale(current_intensity, previous_intensity, sigmas, metric=rbragg)
+    _, r_value = optimal_scale(current_intensity, previous_intensity, sigmas, metric=w_rbragg)
+    if not torch.isfinite(r_value):
+        raise FloatingPointError(
+            f"convergence R-factor is {float(r_value)!r} over {len(previous_index)} compared "
+            "reflections -- the reference simulation's intensity is exactly zero at every one of "
+            "them. This is not a numerical fluke and will not resolve itself by continuing the "
+            "sweep: it means the orientation/geometry this rotation was built with does not excite "
+            "any of the reflections PETS recorded as observed here. Check that the structure and "
+            "experimental-data files actually describe the same crystal setting -- matching cell "
+            "parameters is not sufficient, axis choice/origin/handedness can still differ -- and "
+            "that the seed orientation is sane before running convergence testing."
+        )
     return float(r_value)
 
 

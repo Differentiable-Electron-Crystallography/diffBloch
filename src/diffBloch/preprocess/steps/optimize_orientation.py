@@ -42,6 +42,7 @@ under its frozen union.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
@@ -74,7 +75,7 @@ from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import goniometer_rotation
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan, require_built_plans
+from diffBloch.preprocess.plan import Plan, require_built_plans, unique_hkl_count
 from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import (
@@ -274,31 +275,22 @@ def optimize_orientation(
                 report(index, refine(op))
         ordered_results = tuple(results_by_index[i] for i in range(len(built)))
         ordered = tuple(result[0] for result in ordered_results)
-        fitted_events = [
-            (
-                result,
-                int(result[0].alignment.pattern_index.shape[0]),
-                int(
-                    (
-                        result[0].pattern.intensities[result[0].alignment.pattern_index]
-                        > 3.0 * result[0].pattern.sigmas[result[0].alignment.pattern_index]
-                    ).sum()
-                ),
-                int(result[0].pattern.hkl.shape[0]),
-            )
-            for result in ordered_results
-        ]
+
+        def strong_matched_hkl(op: OrientationPlanLike) -> Tensor:
+            pattern_index = op.alignment.pattern_index
+            strong = op.pattern.intensities[pattern_index] > 3.0 * op.pattern.sigmas[pattern_index]
+            return op.alignment.hkl[strong]
+
         logger.report(
             OrientationOptimizationSummary(
-                n_orientations=len(fitted_events),
-                mean_score=sum(item[0][1] for item in fitted_events) / len(fitted_events),
+                n_orientations=len(ordered_results),
+                mean_score=sum(result[1] for result in ordered_results) / len(ordered_results),
                 residual=residual,
-                total_matched_hkl=sum(item[1] for item in fitted_events),
-                total_strong_hkl=sum(item[2] for item in fitted_events),
-                total_weak_hkl=sum(item[1] - item[2] for item in fitted_events),
-                total_observed_hkl=sum(item[3] for item in fitted_events),
-                total_trials=sum(item[0][2] for item in fitted_events),
-                max_passes=max(item[0][3] for item in fitted_events),
+                unique_matched_hkl=unique_hkl_count(op.alignment.hkl for op in ordered),
+                unique_strong_hkl=unique_hkl_count(strong_matched_hkl(op) for op in ordered),
+                unique_observed_hkl=unique_hkl_count(op.pattern.hkl for op in ordered),
+                total_trials=sum(result[2] for result in ordered_results),
+                max_passes=max(result[3] for result in ordered_results),
             )
         )
         return replace(plan, orientations=ordered)
@@ -370,6 +362,14 @@ def _refine_one(
         n_trials += 1
         trial_fgb = fgb(trial) if callable(fgb) else fgb
         raw = float(engine.score_orientation(trial, trial_fgb))
+        if math.isnan(raw):
+            raise FloatingPointError(
+                f"orientation search score is nan (trial {n_trials + 1}, params={params.tolist()}) "
+                "-- the reference simulation's intensity is exactly zero across every scored "
+                "reflection, so the residual is 0/0. Not a numerical fluke: it means this "
+                "orientation does not excite anything PETS recorded as observed here. Check that "
+                "the structure and experimental-data files describe the same crystal setting."
+            )
         # scipy minimises this directly, so the (opt-in) fewer-reflections guard lives here: a
         # trial cannot win merely by drifting to geometry that matches a smaller, easier subset.
         return _comparable_score(raw, trial, search)
@@ -402,6 +402,11 @@ def _refine_one(
     # result.fun is the comparable (penalized) score minimised above; report the plain score
     # instead (self.scores, under whichever residual ExperimentConfig.loss_metrics configures).
     score = float(engine.score_orientation(current, current_fgb))
+    if math.isnan(score):
+        raise FloatingPointError(
+            f"orientation search settled on a nan score (params={result.x.tolist()}) -- see the "
+            "per-trial nan check above for what this means."
+        )
     return current, score, n_trials, int(result.nit)
 
 

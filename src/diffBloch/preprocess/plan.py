@@ -10,11 +10,12 @@ reverse -- the engine stays unaware of ``Plan`` and remains a pure consumer of g
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
@@ -37,6 +38,7 @@ __all__ = [
     "require_candidate_plans",
     "require_orientation_plans",
     "summarize_plan",
+    "unique_hkl_count",
 ]
 
 
@@ -60,6 +62,7 @@ class CandidatePlan:
     thickness: NDArray[np.float64]
     beam_hkl: NDArray[np.int64]
     pattern: PatternBatch
+    mosaicity_degrees: float | None = None
 
     @classmethod
     def seed(
@@ -71,6 +74,7 @@ class CandidatePlan:
         thickness: Tensor | NDArray[np.float64] | Sequence[float],
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
+        mosaicity_degrees: float | None = None,
     ) -> CandidatePlan:
         """Assemble a candidate seed for one orientation (plain-numpy source; builds no gather)."""
         rotation = np.eye(3) if orientation is None else np.asarray(orientation, dtype=np.float64)
@@ -81,6 +85,7 @@ class CandidatePlan:
             thickness=np.atleast_1d(np.asarray(thickness, dtype=np.float64)),
             beam_hkl=np.asarray(beam_hkl, dtype=np.int64),
             pattern=pattern,
+            mosaicity_degrees=mosaicity_degrees,
         )
 
 
@@ -221,28 +226,39 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
     }
 
 
+def unique_hkl_count(hkl_batches: Iterable[Tensor]) -> int:
+    """Count of *distinct* ``(h, k, l)`` triples across ``hkl_batches`` (each ``(M, 3)``).
+
+    A reflection recorded in multiple rotations (rotation electron diffraction frames overlap in
+    angle, so the same reciprocal-lattice point is routinely re-observed in several consecutive
+    frames) is counted once here, not once per rotation it appears in -- a plain
+    ``sum(len(batch) ...)`` double-counts exactly those overlaps.
+    """
+    non_empty = [batch for batch in hkl_batches if batch.shape[0] > 0]
+    if not non_empty:
+        return 0
+    return int(torch.unique(torch.cat(non_empty, dim=0), dim=0).shape[0])
+
+
 def summarize_plan(plan: Plan) -> dict[str, float]:
     """Plan-level shape as numeric measurements (the observability summary of a settled/mid Plan).
 
     Emitted after every pipeline step (and once for the seed, as :class:`PlanSeeded`), so consecutive
-    summaries *are* the per-stage survival counts: how many solve beams and scored reflections each
-    filtering step left behind. The names are scoped because the sets are independent -- SOLVE
-    (``n_solve_beams_*``, the beams that couple dynamically) is not SCORED (``n_matched_hkl``, the
-    reflections that enter the R-factor) is not the structure-factor support (``n_grid_hkl``).
+    summaries *are* the per-stage survival counts: how many scored reflections each filtering step
+    left behind. The names are scoped because the sets are independent -- SCORED (``n_matched_hkl``,
+    the reflections that enter the R-factor) is not the structure-factor support (``n_grid_hkl``) is
+    not the PETS-observed set (``n_exp_hkls``).
 
     ``n_matched_hkl`` is **absent**, not zero, before ``build_orientation_plans`` runs: a
     :class:`CandidatePlan` has no alignment, and reporting ``0`` there would make "not built yet"
     indistinguishable from "matched nothing".
     """
-    beams = [coupling_stats(op)["n_union_beams"] for op in plan.orientations]
     summary = {
         "n_orientations": float(len(plan.orientations)),
         "n_grid_hkl": float(plan.structure_factor_grid.structure_factor_hkl.shape[0]),
-        "n_solve_beams_total": float(sum(beams)),
-        "n_solve_beams_max": float(max(beams, default=0)),
-        "n_observed_hkl": float(sum(int(op.pattern.hkl.shape[0]) for op in plan.orientations)),
+        "n_exp_hkls": float(unique_hkl_count(op.pattern.hkl for op in plan.orientations)),
     }
     built = [op for op in plan.orientations if not isinstance(op, CandidatePlan)]
     if len(built) == len(plan.orientations):
-        summary["n_matched_hkl"] = float(sum(int(op.alignment.hkl.shape[0]) for op in built))
+        summary["n_matched_hkl"] = float(unique_hkl_count(op.alignment.hkl for op in built))
     return summary

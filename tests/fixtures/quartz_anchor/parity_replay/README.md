@@ -25,13 +25,8 @@ The **parity target** is not vendored here: it is the already-present, hash-veri
 `reference_results.json` (`R_obs` per `rotation_idx`), which matches these inputs' reference
 R-factors to ~1e-6.
 
-## Rot 61: a mosaicity-reduction effect, not a corner beam
+## Legacy mosaicity reference
 
-Rot 61 was once treated as a "corner-beam outlier" (its lone `(4,0,5)` reflection diverged ~1.6×).
-That was a *tilt-reduction* artifact, not a solve difference: its per-tilt `|psi(4,0,5)|^2` is
-byte-identical to the reference, and the reference's window-5 mosaicity moving-average
-down-weights that sharp peak (it sits near the boundary of its coupled-tilt range, so the
-valid-window edge counts 1..4 instead of 5). The replay reassembles each reflection's full
-rocking curve across segments and applies the same window-5 smoothing, so rot 61 reproduces the
-reference like the others — no cap or corner-beam work was needed (that hypothesis was falsified;
-`(4,0,5)` has mid-range `|g|=1.318`).
+This replay records the former five-sample moving-average calculation. Current plans instead use
+the apparent mosaicity angle from `.cif_pets` and normalized Gaussian orientation sampling, so this
+legacy result is not a current mosaicity oracle.

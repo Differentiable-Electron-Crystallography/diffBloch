@@ -15,6 +15,7 @@ from typing import cast
 
 import yaml
 from pydantic import ValidationError
+from torch import Tensor
 
 from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
@@ -26,14 +27,68 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config, pack_run
+from diffBloch.engine import ModelRefinementResult
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.io import read_experimental_data
 from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
     MultiLogger,
     OrientationOptimized,
     RecordingLogger,
+    RefinedRotationMetrics,
 )
+from diffBloch.preprocess.plan import Plan, unique_hkl_count
+
+
+class _PromptFormatter(logging.Formatter):
+    """Console formatter: plain timestamped lines, except WARNING+ gets a hard-to-miss banner.
+
+    The plain format (``%(asctime)s %(message)s``) has no level name in it at all, so a warning --
+    e.g. the negative-ADP auto-correction or structure/experimental-data cell mismatch checks --
+    renders identically to routine progress output and scrolls past unnoticed in a wall of
+    per-rotation lines. WARNING+ is rendered as a bold/colored banner instead; skipped when stderr
+    isn't a real terminal (piped to a file/CI log), where ANSI codes would just be noise.
+    """
+
+    _TIMESTAMPED = logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    _BOLD_YELLOW = "\033[1;33m"
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = self._TIMESTAMPED.format(record)
+        if record.levelno < logging.WARNING or not sys.stderr.isatty():
+            return base
+        banner = f"{self._BOLD_YELLOW}##### WARNING #####{self._RESET}"
+        return f"{banner}\n{base}\n{banner}"
+
+
+def _configure_logging() -> None:
+    """Install the console handler every ``run`` subcommand shares (see ``_PromptFormatter``)."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(_PromptFormatter())
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+
+def _announce_multi_dataset(experiment_directory: str | Path) -> None:
+    """Print a hard-to-miss banner at the top of the run when ``inputs.multi_dataset`` is set.
+
+    Printed unconditionally (not through ``logging``, so it isn't affected by ``--quiet``) --
+    running against several combined files instead of one is a fact about the whole run that
+    should be obvious before any per-rotation output starts, not something to notice only by
+    reading ``experiment.yaml``.
+    """
+    cfg = load_config(Path(experiment_directory) / "experiment.yaml")
+    if not cfg.inputs.multi_dataset:
+        return
+    assert isinstance(cfg.inputs.exp_data, list)
+    bold_cyan, reset = ("\033[1;36m", "\033[0m") if sys.stderr.isatty() else ("", "")
+    print(f"{bold_cyan}{'#' * 62}", file=sys.stderr)
+    print("MULTI-DATASET MODE", file=sys.stderr)
+    print(f"Using {len(cfg.inputs.exp_data)} datasets:", file=sys.stderr)
+    for path in cfg.inputs.exp_data:
+        print(f"  - {path}", file=sys.stderr)
+    print(f"{'#' * 62}{reset}", file=sys.stderr)
 
 
 def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
@@ -51,6 +106,130 @@ def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
     for label, value in rows:
         print(f"│ {label:<{label_width}} {value:<{value_width}} │")
     print(f"╰{'─' * width}╯")
+
+
+def _print_preprocess_summary(
+    experiment_directory: str | Path,
+    plan: Plan,
+    fitted: list[OrientationOptimized],
+) -> None:
+    """Print the preprocess outcome: one box per dataset when combined, one box overall otherwise.
+
+    A combined (``inputs.multi_dataset``) run gets **no pooled box** -- every number in it (HKLs,
+    mean wR2) would blend datasets that can genuinely differ (different crystal, different damage
+    state), which is exactly the kind of thing worth seeing broken out, not averaged away. Re-derives
+    each file's rotation range the same way ``from_experiment`` assigns it (file order in
+    ``inputs.exp_data``, a running offset, never restarting at 0) and slices ``plan.orientations`` /
+    ``fitted`` by ``rotation_index`` into that range.
+    """
+    root = Path(experiment_directory)
+    cfg = load_config(root / "experiment.yaml")
+    built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
+    n_stages = len(plan.provenance)
+
+    def box(
+        title: str,
+        group: tuple[OrientationPlanLike, ...],
+        group_fitted: list[OrientationOptimized],
+        *,
+        include_stages: bool,
+    ) -> None:
+        mean_label = f"Mean {residual_label(group_fitted[0].residual)}" if group_fitted else "Mean score"
+        mean_value = (
+            f"{sum(event.score for event in group_fitted) / len(group_fitted):.6g}"
+            if group_fitted
+            else "n/a (checkpoint reused)"
+        )
+        rows = [("Rotations", str(len(group)))]
+        if include_stages:
+            rows.append(("Stages", str(n_stages)))
+        rows += [
+            ("Unique exp HKLs", str(unique_hkl_count(op.pattern.hkl for op in group))),
+            ("Unique matched HKLs", str(unique_hkl_count(op.alignment.hkl for op in group))),
+            (mean_label, mean_value),
+        ]
+        _print_summary_box(title, tuple(rows))
+
+    if not cfg.inputs.multi_dataset:
+        box("PREPROCESS COMPLETE", built, fitted, include_stages=True)
+        return
+    assert isinstance(cfg.inputs.exp_data, list)
+    print(f"Stages: {n_stages}")
+    print()
+    offset = 0
+    for path in cfg.inputs.exp_data:
+        n_rotations = len(read_experimental_data(root / path).zone_axis_ids)
+        end = offset + n_rotations
+        group = tuple(op for op in built if offset <= op.pattern.rotation_index < end)
+        group_fitted = [event for event in fitted if offset <= event.rotation_index < end]
+        box(path, group, group_fitted, include_stages=False)
+        print()
+        offset = end
+
+
+def _print_refinement_summary(
+    experiment_directory: str | Path,
+    refined: ModelRefinementResult,
+    plan: Plan,
+    rotations: list[RefinedRotationMetrics],
+) -> None:
+    """Print the refinement outcome: one box per dataset when combined, one box overall otherwise.
+
+    Same reasoning as ``_print_preprocess_summary``: wR2/R_obs/matched counts can genuinely differ
+    per combined dataset (different crystal state, different damage), so a single pooled box would
+    hide exactly the kind of thing worth seeing broken out. ``Best epoch``/``Objective`` describe the
+    one shared optimization (there's no separate training loop per dataset), so those print once,
+    outside any box, rather than being repeated identically in every one or dropped.
+
+    Matched/strong/unmatched are deduplicated ``(h, k, l)`` counts (:func:`unique_hkl_count`) off
+    ``plan`` -- the *settled* geometry, unaffected by refinement -- rather than a sum of each
+    rotation's own count, which double-counts any reflection seen in more than one rotation. wR2/
+    R_obs still come from ``rotations`` (:class:`RefinedRotationMetrics`), since those genuinely do
+    depend on the refined structure and can't be read off the geometry alone.
+    """
+    root = Path(experiment_directory)
+    cfg = load_config(root / "experiment.yaml")
+    built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
+
+    def strong_matched_hkl(op: OrientationPlanLike) -> Tensor:
+        pattern_index = op.alignment.pattern_index
+        strong = op.pattern.intensities[pattern_index] > 3.0 * op.pattern.sigmas[pattern_index]
+        return op.alignment.hkl[strong]
+
+    def box(
+        title: str, group: list[RefinedRotationMetrics], op_group: tuple[OrientationPlanLike, ...]
+    ) -> None:
+        if not group:
+            _print_summary_box(title, (("Rotations", "0 (n/a -- checkpoint reused)"),))
+            return
+        n_observed = unique_hkl_count(op.pattern.hkl for op in op_group)
+        n_matched = unique_hkl_count(op.alignment.hkl for op in op_group)
+        n_strong = unique_hkl_count(strong_matched_hkl(op) for op in op_group)
+        _print_summary_box(
+            title,
+            (
+                ("Rotations", str(len(group))),
+                ("Mean wR2", f"{sum(r.wr2 for r in group) / len(group):.6g}"),
+                ("Mean R_obs", f"{sum(r.r_obs for r in group) / len(group):.6g}"),
+                ("Matched (strong/total)", f"{n_strong} / {n_matched}"),
+                ("Unmatched HKLs", str(n_observed - n_matched)),
+            ),
+        )
+
+    print(f"Best epoch: {refined.best_step + 1}    Objective: {refined.best_loss:.6g}")
+    print()
+    if not cfg.inputs.multi_dataset:
+        box("REFINEMENT COMPLETE", rotations, built)
+        return
+    assert isinstance(cfg.inputs.exp_data, list)
+    offset = 0
+    for path in cfg.inputs.exp_data:
+        n_rotations = len(read_experimental_data(root / path).zone_axis_ids)
+        end = offset + n_rotations
+        op_group = tuple(op for op in built if offset <= op.pattern.rotation_index < end)
+        box(path, [r for r in rotations if r.dataset_label == path], op_group)
+        print()
+        offset = end
 
 
 def _add_run_flags(parser: argparse.ArgumentParser) -> None:
@@ -219,10 +398,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "infer":
+        _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+            _configure_logging()
         try:
             result = run_experiment(
                 args.experiment_directory,
@@ -245,10 +423,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "preprocess":
+        _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+            _configure_logging()
         try:
             progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
             summary_logger = RecordingLogger()
@@ -275,29 +452,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         print()
-        built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
-        total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
-        matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
         fitted = [
             event for event in summary_logger.events if isinstance(event, OrientationOptimized)
         ]
-        mean_loss = (
-            f"{sum(event.score for event in fitted) / len(fitted):.6g}"
-            if fitted
-            else "n/a (checkpoint reused)"
-        )
-        mean_label = f"Mean {residual_label(fitted[0].residual)}" if fitted else "Mean score"
-        _print_summary_box(
-            "PREPROCESS COMPLETE",
-            (
-                ("Rotations", str(len(plan.orientations))),
-                ("Stages", str(len(plan.provenance))),
-                ("Total HKLs", str(total_hkl)),
-                ("Matched HKLs", str(matched_hkl)),
-                ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
-                (mean_label, mean_loss),
-            ),
-        )
+        _print_preprocess_summary(args.experiment_directory, plan, fitted)
         print()
         print("Pipeline")
         for index, record in enumerate(plan.provenance, start=1):
@@ -310,18 +468,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "refine":
+        _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+            _configure_logging()
         try:
             # The written summary is one more sink on the run's event stream, chosen here beside
             # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
             # not) for themselves instead of having a file appear as a side effect of refining.
             report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
+            summary_logger = RecordingLogger()
             refine_sinks: tuple[Logger, ...] = (
-                _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                _build_logger(
+                    console=not args.quiet, csv=args.csv, tui=args.tui, per_rotation=False
+                ),
                 SummaryLogger(report_path),
+                summary_logger,
             )
             refined = refine_experiment(
                 args.experiment_directory,
@@ -343,27 +504,23 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        best = refined.history[refined.best_step]
-        wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
-        r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
-        diff_loss = "n/a" if best.diff_loss is None else f"{best.diff_loss:.6g}"
-        counts = refined.reflection_counts
-        print()
-        _print_summary_box(
-            "REFINEMENT COMPLETE",
-            (
-                ("Best epoch", str(refined.best_step + 1)),
-                ("Objective", f"{refined.best_loss:.6g}"),
-                ("wR2", wr2),
-                ("R_obs", r_obs),
-                ("Diffraction loss", diff_loss),
-                (
-                    "HKLs (Observed/total)",
-                    f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
-                ),
-            ),
+        rotations = [
+            event for event in summary_logger.events if isinstance(event, RefinedRotationMetrics)
+        ]
+        # Cheap: refine_experiment already left a fresh, self-consistent checkpoint on disk, so this
+        # is a checkpoint-reuse load (no recompute), just to get the settled geometry for the
+        # deduplicated HKL counts below -- matched/strong/unmatched are unaffected by refinement.
+        settled_plan = preprocess_experiment(
+            args.experiment_directory,
+            logger=NULL_LOGGER,
+            checkpoint=True,
+            refresh=False,
+            device=args.device,
+            workers=args.workers,
+            max_batch=args.max_batch,
         )
         print()
+        _print_refinement_summary(args.experiment_directory, refined, settled_plan, rotations)
         print("Output files")
         for name, path in refined.artifacts.items():
             print(f"  • {name.replace('_', ' ').title():<20} {path}")
@@ -371,9 +528,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run" and args.run_command == "converge":
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-        )
+        _announce_multi_dataset(args.experiment_directory)
+        _configure_logging()
         try:
             settled = converge_experiment(
                 args.experiment_directory,

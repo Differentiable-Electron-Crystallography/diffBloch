@@ -24,6 +24,7 @@ load/resume go through stdlib ``logging`` (not the domain-observation ``logger``
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -56,9 +57,11 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import read_experimental_data, read_structure
+from diffBloch.io import ExperimentalRecord, read_experimental_data, read_structure
 from diffBloch.observability import (
     NULL_LOGGER,
+    DatasetPreprocessed,
+    DatasetPreprocessingStarted,
     DeviceSelected,
     Logger,
     MultiLogger,
@@ -89,8 +92,9 @@ from diffBloch.preprocess import (
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.plan import summarize_plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import IntegrationGeometry, ScoredHklSelection, TrialCoupling
+from diffBloch.specs import IntegrationGeometry, ScoredHklSelection, ThicknessGrid, TrialCoupling
 
 __all__ = [
     "converge_experiment",
@@ -140,6 +144,35 @@ def _select_device(device: Device | None, *, logger: Logger = NULL_LOGGER) -> De
     return selected
 
 
+def _read_experimental_data(
+    root: Path, cfg: ExperimentConfig
+) -> ExperimentalRecord | tuple[ExperimentalRecord, ...]:
+    """Read ``cfg.inputs.exp_data`` -- one record, or one per combined file when ``multi_dataset``.
+
+    The single call site every ``read_experimental_data`` caller in this module goes through, so the
+    single-dataset/combined dispatch lives in exactly one place. Order matches ``inputs.exp_data``,
+    which is also the order :func:`~diffBloch.preprocess.experiment.from_experiment` combines
+    rotations in -- callers that need a flat array aligned to the combined ``rotation_index`` space
+    (e.g. the thickness-NN's per-rotation alphas) can rely on that order without recomputing it.
+    """
+    if cfg.inputs.multi_dataset:
+        assert isinstance(cfg.inputs.exp_data, list)
+        return tuple(read_experimental_data(root / path) for path in cfg.inputs.exp_data)
+    assert isinstance(cfg.inputs.exp_data, str)
+    return read_experimental_data(root / cfg.inputs.exp_data)
+
+
+def _as_records(
+    experimental_data: ExperimentalRecord | tuple[ExperimentalRecord, ...],
+) -> tuple[ExperimentalRecord, ...]:
+    """Normalize :func:`_read_experimental_data`'s return to a tuple, single or combined alike."""
+    return (
+        (experimental_data,)
+        if isinstance(experimental_data, ExperimentalRecord)
+        else experimental_data
+    )
+
+
 # Above this unit-cell volume the coupled orientation search runs its coarse pass with the
 # gather integrity checks skipped (the large-cell fast path); at or below it the search stays the
 # exact, fully-validated path. The eigensolve is O(N^3) in the beam count
@@ -166,10 +199,12 @@ def converge_experiment(
     Starting ``g_max`` prefers the PETS file's own ``dstarmax`` (its processing-resolution cutoff,
     :attr:`~diffBloch.io.record.ExperimentalRecord.dstar_max`) when present; a PETS version that
     doesn't record it (or a file where the tag is otherwise absent) falls back to the experiment's
-    configured ``blochwave.g_max``, the previous manual-only behaviour. ``sg_max`` and rocking-curve
-    tilt steps still start from the configured simulation settings. The sweep then follows the
-    defaults owned by :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the
-    smallest settled values found.
+    configured ``blochwave.g_max``, the previous manual-only behaviour. With ``inputs.multi_dataset``,
+    the smallest ``dstar_max`` across the combined files is used -- a conservative starting point
+    within what every combined dataset actually supports. ``sg_max`` and rocking-curve tilt steps
+    still start from the configured simulation settings. The sweep then follows the defaults owned by
+    :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the smallest settled values
+    found.
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
@@ -178,7 +213,7 @@ def converge_experiment(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    experimental_data = _read_experimental_data(root, cfg)
     setup = from_experiment(structure, experimental_data, cfg)
     refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
     combined = setup.plans.combined
@@ -195,9 +230,10 @@ def converge_experiment(
     )
     rocking = cfg.blochwave.to_rocking_curve(setup.integration)
     simulation = cfg.blochwave.to_policy()
-    starting_g_max = (
-        experimental_data.dstar_max if experimental_data.dstar_max is not None else simulation.g_max
-    )
+    dstar_maxes = [
+        record.dstar_max for record in _as_records(experimental_data) if record.dstar_max is not None
+    ]
+    starting_g_max = min(dstar_maxes) if dstar_maxes else simulation.g_max
     plan = pipeline(
         [
             select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
@@ -299,7 +335,7 @@ def preprocess_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
+    cfg, _lock = load_experiment(root, regenerate_lock=refresh)
     _refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
@@ -342,7 +378,7 @@ def run_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
+    cfg, _lock = load_experiment(root, regenerate_lock=refresh)
     refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
@@ -423,7 +459,7 @@ def refine_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
+    cfg, _lock = load_experiment(root, regenerate_lock=refresh)
     refinement, integration, prepared, validation_rotation_indices = _preprocess(
         root,
         cfg,
@@ -486,31 +522,59 @@ def refine_experiment(
         )
     logger.report(cfg.to_declaration(integration))
     initial = refinement.params if device is None else refinement.params.to(device)
+    # Computed unconditionally (not just when the thickness NN is on): _report_refinement_outcome
+    # also uses it to label per-rotation results by their own combined dataset.
+    experimental_data = _read_experimental_data(root, cfg)
+    dataset_bounds = _dataset_bounds(cfg, experimental_data)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
-    thickness_nn: ApparentThicknessNN | None = None
+    thickness_nns: tuple[ApparentThicknessNN, ...] = ()
     raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
-        experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-        raw_alphas = experimental_data.alphas
-        thickness_nn = ApparentThicknessNN(
-            bounds=ThicknessBounds(
-                thickness_spec.min_thickness,
-                thickness_spec.max_thickness,
-            ),
-            normalized_alphas=_normalized_pets_alphas(experimental_data.alphas),
-            form=thickness_spec.form,
-            sample_thickness=thickness_spec.sample_thickness,
-            num_samples=thickness_spec.num_samples,
-            init_seed=thickness_spec.init_seed,
+        # Concatenated in the same file order from_experiment combines rotation_index in, so
+        # raw_alphas[rotation_index] is always the right dataset's alpha, combined or not.
+        raw_alphas = np.concatenate(
+            [np.asarray(record.alphas) for record in _as_records(experimental_data)]
         )
+        bounds = ThicknessBounds(thickness_spec.min_thickness, thickness_spec.max_thickness)
+        if dataset_bounds is None:
+            thickness_nns = (
+                ApparentThicknessNN(
+                    bounds=bounds,
+                    normalized_alphas=_normalized_pets_alphas(raw_alphas),
+                    form=thickness_spec.form,
+                    sample_thickness=thickness_spec.sample_thickness,
+                    num_samples=thickness_spec.num_samples,
+                    init_seed=thickness_spec.init_seed,
+                ),
+            )
+        else:
+            # One independently-weighted NN per combined dataset (distinct key, own rotation_range,
+            # and -- the part that actually lets them diverge -- alphas normalized against that
+            # dataset's own range rather than the pooled one) so each learns its own thickness-vs-
+            # tilt curve instead of one shared function fit jointly across every combined file.
+            thickness_nns = tuple(
+                ApparentThicknessNN(
+                    bounds=bounds,
+                    normalized_alphas=_normalized_pets_alphas(raw_alphas[start:end]),
+                    key=f"apparent_thickness[{label}]",
+                    form=thickness_spec.form,
+                    sample_thickness=thickness_spec.sample_thickness,
+                    num_samples=thickness_spec.num_samples,
+                    init_seed=thickness_spec.init_seed,
+                    rotation_range=(start, end),
+                    label=label,
+                )
+                for label, start, end in dataset_bounds
+            )
         model = build_refinement_model(
             initial=initial,
-            components=(thickness_nn,),
+            components=thickness_nns,
             component_params={
-                thickness_nn.key: thickness_nn.initial_params(
+                nn.key: nn.initial_params(
                     dtype=initial.asu_positions.dtype,
                     device=initial.asu_positions.device,
                 )
+                for nn in thickness_nns
             },
         )
     else:
@@ -536,8 +600,9 @@ def refine_experiment(
         engine,
         result,
         validation_rotation_indices=validation_rotation_indices,
-        thickness_nn=thickness_nn,
+        thickness_nns=thickness_nns,
         raw_alphas=raw_alphas,
+        dataset_bounds=dataset_bounds,
     )
     return result
 
@@ -548,8 +613,9 @@ def _report_refinement_outcome(
     result: ModelRefinementResult,
     *,
     validation_rotation_indices: frozenset[int],
-    thickness_nn: ApparentThicknessNN | None,
+    thickness_nns: tuple[ApparentThicknessNN, ...],
     raw_alphas: np.ndarray | None,
+    dataset_bounds: list[tuple[str, int, int]] | None = None,
 ) -> None:
     """Emit the settled-result events the refinement loop itself cannot produce.
 
@@ -560,6 +626,13 @@ def _report_refinement_outcome(
     everything else, acts on it.
     """
     for row in engine.per_rotation_metrics(result.best_model):
+        dataset_label: str | None = None
+        local_rotation_index: int | None = None
+        if dataset_bounds is not None:
+            for label, start, end in dataset_bounds:
+                if start <= row.rotation_index < end:
+                    dataset_label, local_rotation_index = label, row.rotation_index - start
+                    break
         logger.report(
             RefinedRotationMetrics(
                 rotation_index=row.rotation_index,
@@ -567,16 +640,27 @@ def _report_refinement_outcome(
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,
                 is_validation=row.rotation_index in validation_rotation_indices,
+                n_strong=row.n_strong,
+                n_weak=row.n_weak,
+                n_unmatched=row.n_unmatched,
+                dataset_label=dataset_label,
+                local_rotation_index=local_rotation_index,
             )
         )
-    if thickness_nn is not None and raw_alphas is not None:
-        logger.report(
-            thickness_nn.profile(
-                result.best_model.component_params[thickness_nn.key],
-                engine.orientations,
-                raw_alphas,
+    if raw_alphas is not None:
+        for nn in thickness_nns:
+            orientations = (
+                tuple(
+                    op
+                    for op in engine.orientations
+                    if nn.rotation_range[0] <= op.pattern.rotation_index < nn.rotation_range[1]
+                )
+                if nn.rotation_range is not None
+                else engine.orientations
             )
-        )
+            logger.report(
+                nn.profile(result.best_model.component_params[nn.key], orientations, raw_alphas)
+            )
     logger.report(
         RefinementOutputsWritten(
             structure=result.artifacts["refined_structure"], artifacts=result.artifacts
@@ -762,8 +846,9 @@ def _preprocess(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    experimental_data = _read_experimental_data(root, cfg)
     setup = from_experiment(structure, experimental_data, cfg)
+    dataset_bounds = _dataset_bounds(cfg, experimental_data)
     validation_rotation_indices = frozenset(
         op.pattern.rotation_index for op in setup.plans.validation.orientations
     )
@@ -790,6 +875,7 @@ def _preprocess(
         workers=workers,
         max_batch=max_batch,
         orientations_csv=effective_orientations_csv,
+        dataset_bounds=dataset_bounds,
     )
     prepared = _prepare(
         setup.plans.combined,
@@ -799,8 +885,32 @@ def _preprocess(
         checkpoint=checkpoint,
         refresh=refresh,
         logger=logger,
+        dataset_bounds=dataset_bounds,
     )
     return setup.refinement, setup.integration, prepared, validation_rotation_indices
+
+
+def _dataset_bounds(
+    cfg: ExperimentConfig,
+    experimental_data: ExperimentalRecord | tuple[ExperimentalRecord, ...],
+) -> list[tuple[str, int, int]] | None:
+    """Each combined file's ``[start, end)`` rotation_index range, or ``None`` for a single dataset.
+
+    Mirrors exactly how :func:`~diffBloch.preprocess.experiment.from_experiment` assigns
+    ``rotation_index`` (file order in ``inputs.exp_data``, a running offset) -- the only other place
+    that needs to know the boundary between one combined file's rotations and the next.
+    """
+    if not cfg.inputs.multi_dataset:
+        return None
+    assert isinstance(cfg.inputs.exp_data, list)
+    records = _as_records(experimental_data)
+    bounds: list[tuple[str, int, int]] = []
+    offset = 0
+    for path, record in zip(cfg.inputs.exp_data, records, strict=True):
+        n = len(record.zone_axis_ids)
+        bounds.append((path, offset, offset + n))
+        offset += n
+    return bounds
 
 
 def _recipe_steps(
@@ -813,6 +923,7 @@ def _recipe_steps(
     workers: int = 1,
     max_batch: int | None = None,
     orientations_csv: str | Path | None = None,
+    dataset_bounds: list[tuple[str, int, int]] | None = None,
 ) -> list[PlanStep]:
     """The default recipe as an inspectable step list (its provenance keys the lock).
 
@@ -843,9 +954,24 @@ def _recipe_steps(
     ``max_batch`` (also execution-only) is threaded to both fits: it caps the ``matrix_exp``
     propagator block so a wide coupled segment x the thickness grid can't materialize the whole
     propagator at once; ``None`` picks a memory-safe block.
+
+    ``dataset_bounds`` (from :func:`_dataset_bounds`, ``None`` for an ordinary single-dataset
+    experiment) resolves ``preprocess.thickness.min_thickness``/``max_thickness`` per combined
+    dataset when those are configured as per-dataset lists, building the ``str(rotation_index) ->
+    ThicknessGrid`` mapping :func:`~diffBloch.preprocess.optimize_thickness` reads (see its
+    docstring). When the bounds are plain scalars this resolves to the same single shared
+    :class:`~diffBloch.specs.ThicknessGrid` as before, regardless of ``dataset_bounds``.
     """
     search = cfg.preprocess.orientation.to_search()
-    thickness_grid = cfg.preprocess.thickness.to_grid()
+    thickness_grid: ThicknessGrid | Mapping[str, ThicknessGrid]
+    if dataset_bounds is not None and isinstance(cfg.preprocess.thickness.min_thickness, list):
+        thickness_grid = {
+            str(rotation_index): cfg.preprocess.thickness.to_grid(index)
+            for index, (_label, start, end) in enumerate(dataset_bounds)
+            for rotation_index in range(start, end)
+        }
+    else:
+        thickness_grid = cfg.preprocess.thickness.to_grid()
     coupling = _trial_coupling(cfg, integration)
 
     def orientation_fit(*, validate: bool) -> PlanStep:
@@ -927,6 +1053,40 @@ def _trial_coupling(cfg: ExperimentConfig, integration: IntegrationGeometry) -> 
     )
 
 
+def _run_recipe(
+    steps: list[PlanStep],
+    plan: Plan,
+    logger: Logger,
+    *,
+    dataset_bounds: list[tuple[str, int, int]] | None = None,
+) -> Plan:
+    """Run ``steps`` on ``plan``, once per combined dataset in sequence when ``dataset_bounds`` is
+    given (``inputs.multi_dataset``), instead of once interleaved over every rotation at once.
+
+    Every preprocess step (``select_beams``, ``build_orientation_plans``, ``optimize_orientation``,
+    ``optimize_thickness``) is already per-rotation independent -- no rotation's fit depends on any
+    other rotation's data, combined or not -- so slicing by dataset changes nothing numerically, only
+    the order results are computed and reported in: each dataset's *entire* recipe settles (and
+    reports a :class:`~diffBloch.observability.DatasetPreprocessed`) before the next dataset starts,
+    rather than interleaving progress across every combined rotation at once. Reassembled back into
+    one ``Plan`` (same grid, original combined rotation order) afterward -- unchanged for anything
+    downstream (checkpointing, refinement).
+    """
+    if dataset_bounds is None:
+        return pipeline(steps, logger=logger)(plan)
+    results: list[Plan] = []
+    for label, start, end in dataset_bounds:
+        subset = tuple(
+            op for op in plan.orientations if start <= op.pattern.rotation_index < end
+        )
+        logger.report(DatasetPreprocessingStarted(label=label, n_rotations=len(subset)))
+        result = pipeline(steps, logger=logger)(replace(plan, orientations=subset))
+        results.append(result)
+        logger.report(DatasetPreprocessed(label=label, measurements=summarize_plan(result)))
+    combined_orientations = tuple(op for result in results for op in result.orientations)
+    return replace(plan, orientations=combined_orientations, provenance=results[-1].provenance)
+
+
 def _prepare(
     base: Plan,
     steps: list[PlanStep],
@@ -936,11 +1096,17 @@ def _prepare(
     checkpoint: bool,
     refresh: bool,
     logger: Logger = NULL_LOGGER,
+    dataset_bounds: list[tuple[str, int, int]] | None = None,
 ) -> Plan:
     """Run the preprocess ``steps`` on ``base``, reusing/resuming a valid checkpoint if present.
 
     ``logger`` streams a per-step plan summary as the recipe runs (see :func:`pipeline`); it fires
     only when steps actually execute (a fresh or resumed run, not a full-reuse load).
+
+    ``dataset_bounds`` (from :func:`_dataset_bounds`, ``None`` for an ordinary single-dataset
+    experiment) runs the *entire* recipe on each combined file's rotations in turn instead of once
+    interleaved over all of them -- see :func:`_run_recipe`. Checkpointing is unaffected: the
+    written ``plan.npz`` is still the one settled ``Plan`` over every rotation either way.
     """
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
     # lock keys on is a flat, fork-free step list -- the fork's shape is static by construction, so
@@ -975,11 +1141,11 @@ def _prepare(
                 k,
                 [r.name for r in records[k:]],
             )
-            result = pipeline(steps[k:], logger=logger)(snapshot)
+            result = _run_recipe(steps[k:], snapshot, logger, dataset_bounds=dataset_bounds)
             _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
             return result
 
-    result = pipeline(steps, logger=logger)(base)
+    result = _run_recipe(steps, base, logger, dataset_bounds=dataset_bounds)
     if can_checkpoint:
         _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
     return result

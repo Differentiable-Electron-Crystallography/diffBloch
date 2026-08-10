@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
@@ -144,6 +144,21 @@ class _Timer:
             )
 
 
+def _unique_hkl_count(hkl_batches: Iterable[Tensor]) -> int:
+    """Count of *distinct* ``(h, k, l)`` triples across ``hkl_batches`` (each ``(M, 3)``).
+
+    Local twin of :func:`diffBloch.preprocess.plan.unique_hkl_count` -- duplicated rather than
+    imported: ``preprocess`` imports *from* ``engine`` (never the reverse; see
+    ``preprocess/plan.py``'s own module docstring), so importing it here would be circular. Used by
+    :meth:`RefinementEngine.refinement_metrics` so its aggregate counts don't double-count a
+    reflection observed (or matched) in more than one rotation.
+    """
+    non_empty = [batch for batch in hkl_batches if batch.shape[0] > 0]
+    if not non_empty:
+        return 0
+    return int(torch.unique(torch.cat(non_empty, dim=0), dim=0).shape[0])
+
+
 @dataclass(frozen=True)
 class RotationMetrics:
     """One rotation's scaling-optimised wR2/R_obs for a settled model snapshot.
@@ -158,6 +173,9 @@ class RotationMetrics:
     wr2: float
     r_obs: float
     n_matched: int
+    n_strong: int
+    n_weak: int
+    n_unmatched: int
 
 
 @dataclass(frozen=True)
@@ -328,8 +346,12 @@ class RefinementEngine:
     def refinement_metrics(self, model: RefinementModel) -> tuple[float, int, int, int, int]:
         """Return mean R_obs and reflection counts for one refinement-model snapshot.
 
-        Counts are over PETS rows in the selected rotations: matched rows enter the diffraction
-        alignment, unmatched rows do not; strong/weak split matched rows at ``I > 3 sigma``.
+        Counts are deduplicated distinct ``(h, k, l)`` triples across every selected rotation
+        (:func:`_unique_hkl_count`), not a sum of each rotation's own count -- a reflection observed
+        (or matched) in more than one rotation is counted once, not once per rotation. Matched rows
+        enter the diffraction alignment, unmatched rows do not; strong/weak split matched rows at
+        ``I > 3 sigma`` (a reflection matched-and-strong in at least one rotation counts as strong,
+        even if weak or unmatched elsewhere).
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
@@ -337,10 +359,9 @@ class RefinementEngine:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
             r_values: list[float] = []
-            n_matched = 0
-            n_strong = 0
-            n_weak = 0
-            n_unmatched = 0
+            observed_hkl: list[Tensor] = []
+            matched_hkl: list[Tensor] = []
+            strong_hkl: list[Tensor] = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
                     model, rotation_index=rotation_index, orientation=orientation
@@ -368,20 +389,24 @@ class RefinementEngine:
                 if finite.numel():
                     r_values.append(float(finite.min()))
                 strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
-                matched = int(strong.numel())
-                n_matched += matched
-                n_strong += int(strong.sum())
-                n_weak += matched - int(strong.sum())
-                n_unmatched += int(orientation.pattern.hkl.shape[0]) - matched
+                observed_hkl.append(orientation.pattern.hkl)
+                matched_hkl.append(orientation.alignment.hkl)
+                strong_hkl.append(orientation.alignment.hkl[strong])
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
-        return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
+        n_observed = _unique_hkl_count(observed_hkl)
+        n_matched = _unique_hkl_count(matched_hkl)
+        n_strong = _unique_hkl_count(strong_hkl)
+        return mean_r_obs, n_matched, n_strong, n_matched - n_strong, n_observed - n_matched
 
     def per_rotation_metrics(self, model: RefinementModel) -> tuple[RotationMetrics, ...]:
-        """Per-rotation wR2/R_obs for one refinement-model snapshot (report/plot use).
+        """Per-rotation wR2/R_obs/reflection-counts for one refinement-model snapshot (report/plot use).
 
         Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
         rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
-        is reported but never optimised), returning every rotation's pair instead of an aggregate.
+        is reported but never optimised; the same ``I > 3 sigma`` strong/weak split), returning every
+        rotation's own values instead of one aggregate -- summing ``n_matched``/``n_strong``/
+        ``n_weak``/``n_unmatched`` across every row reproduces :meth:`refinement_metrics`'s counts
+        exactly, so a caller can slice by rotation (e.g. per combined dataset) without re-solving.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
@@ -424,12 +449,17 @@ class RefinementEngine:
                     ]
                 )
                 best_t = int(torch.argmin(wr2_scores))
+                strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
+                matched = int(strong.numel())
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
-                        n_matched=int(aligned.observed.shape[-1]),
+                        n_matched=matched,
+                        n_strong=int(strong.sum()),
+                        n_weak=matched - int(strong.sum()),
+                        n_unmatched=int(orientation.pattern.hkl.shape[0]) - matched,
                     )
                 )
         return tuple(rows)
@@ -645,8 +675,8 @@ class RefinementEngine:
         covered tilts with the batched propagator, and its per-tilt intensities are scattered onto
         the shared ``(N_tilts, T, N_union)`` rocking curve (each tilt belongs to exactly one
         segment; a beam absent from a chunk stays 0 at that chunk's tilts). Only once the whole
-        curve is reassembled is the tilt reduction applied -- the mosaicity window spans more tilts
-        than any single chunk holds -- and the result is returned as an ordinary
+        curve is reassembled is the tilt reduction applied -- PETS-derived mosaic weights span the
+        expanded geometry -- and the result is returned as an ordinary
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
         """
         device = fgb.device
@@ -1009,6 +1039,14 @@ def run_refinement_model(
         if reported_objective is None:
             reported_objective = current_objective
         loss = current_objective.total
+        if not torch.isfinite(loss):
+            raise FloatingPointError(
+                f"refinement loss is {float(loss)!r} at step {len(losses)} -- backpropagating "
+                "through a non-finite loss would silently corrupt every trainable parameter with "
+                "nan gradients. This is not a transient numerical fluke: something upstream (the "
+                "simulation, the objective's scale-fit, or a composed penalty) is producing "
+                "exactly zero or non-finite intensities for reflections this loss depends on."
+            )
         with _Timer("backward", profile_device, profile):
             loss.backward()  # type: ignore[no-untyped-call]
         for leaf in [*trainable_params.leaves, *component_params.leaves]:
@@ -1087,9 +1125,9 @@ def run_refinement_model(
     reflection_counts = MappingProxyType(
         {
             "matched": n_matched,
-            "matched_i_gt_3sigma": n_strong,
-            "matched_i_le_3sigma": n_weak,
-            "unmatched_observed": n_unmatched,
+            "matched_strong": n_strong,  # matched, and I > 3*sigma (significant above background)
+            "matched_weak": n_weak,  # matched, but I <= 3*sigma
+            "unmatched": n_unmatched,  # observed by PETS but never in any rotation's beam set
         }
     )
     logger.report(

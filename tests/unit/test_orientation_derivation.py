@@ -16,6 +16,7 @@ from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
     goniometer_rotation,
+    mosaic_rocking_curve_tilts,
     orientation_basis,
     orientation_matrices,
     rocking_curve_tilts,
@@ -120,6 +121,20 @@ def test_rocking_curve_tilts_are_x_axis_rotations_spanning_the_semiangle() -> No
 def test_rocking_curve_tilts_unit_sampling_is_the_identity() -> None:
     # sampling = 1 puts the single tilt at angle 0 -> identity: the integration composes off.
     assert np.allclose(rocking_curve_tilts(1.0, 1), np.eye(3)[None])
+
+
+def test_mosaic_rocking_curve_expands_gaussian_offsets_and_preserves_scale() -> None:
+    tilts, weights = mosaic_rocking_curve_tilts(1.0, 4, 0.05)
+    assert tilts.shape == (12, 3, 3)
+    assert weights.shape == (12,)
+    assert weights.sum() == pytest.approx(4.0)
+    assert np.all(weights > 0.0)
+
+
+def test_zero_mosaicity_is_the_plain_rocking_curve() -> None:
+    tilts, weights = mosaic_rocking_curve_tilts(1.0, 4, 0.0)
+    assert np.array_equal(tilts, rocking_curve_tilts(1.0, 4))
+    assert np.array_equal(weights, np.ones(4))
 
 
 def test_rocking_curve_tilts_reject_unimplemented_geometry() -> None:

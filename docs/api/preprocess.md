@@ -1,7 +1,7 @@
 # Preprocess
 
 The composable `Plan → Plan` preprocess pipeline: build the initial plan from an experiment, sharpen
-it with swappable steps (beam selection, orientation/thickness fits, rocking-curve integration,
+it with swappable steps (beam selection, orientation/thickness determination, rocking-curve integration,
 mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal (`run_inference` or
 `engine.refine`).
 
@@ -47,10 +47,6 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 
 ```{eval-rst}
 .. automodule:: diffBloch.preprocess.steps.rocking_curve
-```
-
-```{eval-rst}
-.. automodule:: diffBloch.preprocess.steps.mosaicity
 ```
 
 ```{eval-rst}

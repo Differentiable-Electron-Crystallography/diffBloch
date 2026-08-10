@@ -228,7 +228,7 @@ class TuiLogger:
         table = Table(
             title=_titled("preprocess", self._stages, window), title_justify="left", expand=False
         )
-        for column in ("stage", "rotations", "solve beams", "max/rot", "observed", "matched"):
+        for column in ("stage", "rotations", "observed", "matched"):
             table.add_column(column, justify="right" if column != "stage" else "left")
         for name, values in _tail(self._stages, window):
             table.add_row(
@@ -239,9 +239,7 @@ class TuiLogger:
                     "-" if values.get(key) is None else f"{int(values[key])}"
                     for key in (
                         "n_orientations",
-                        "n_solve_beams_total",
-                        "n_solve_beams_max",
-                        "n_observed_hkl",
+                        "n_exp_hkls",
                         "n_matched_hkl",
                     )
                 ),
@@ -277,7 +275,6 @@ class TuiLogger:
         table.add_column("epoch", justify="right")
         table.add_column("wR2", justify="right")
         table.add_column("R_obs", justify="right")
-        table.add_column("diffraction", justify="right")
         penalty_names = [name for name in self._epochs[-1].components if name != "diffraction"]
         for name in penalty_names:
             table.add_column(name, justify="right")
@@ -288,7 +285,6 @@ class TuiLogger:
                 f"{epoch.iteration + 1}{marker}",
                 _mean(epoch.wr2, epoch.n_wr2_evaluated, epoch.n_rotations),
                 _mean(epoch.r_obs, epoch.n_r_obs_evaluated, epoch.n_rotations),
-                "-" if epoch.diff_loss is None else f"{epoch.diff_loss:.6f}",
             ]
             row += [
                 f"{epoch.components[name]['contribution']:.4g}" if name in epoch.components else "-"

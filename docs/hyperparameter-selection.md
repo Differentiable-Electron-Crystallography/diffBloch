@@ -65,11 +65,11 @@ plan = build_orientation_plans()(
 test = ConvergenceTest(
     g_max_step=0.1,
     sg_max_step=0.005,
-    tilt_steps_step=2,
+    tilt_steps_step=5,
     num_passes=2,
 )
 tolerance = ConvergenceTolerance(
-    r_factor_threshold=0.005,
+    r_factor_threshold=0.01,
     max_iterations=100,
 )
 

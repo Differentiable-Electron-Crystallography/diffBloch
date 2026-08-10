@@ -33,7 +33,7 @@ __all__ = [
     "AlignedIntensities",
     "AlignmentPlan",
     "BlochSolution",
-    "MosaicSmoothed",
+    "MosaicAverage",
     "PLAIN_SUM",
     "PatternBatch",
     "PlainSum",
@@ -60,23 +60,30 @@ class PlainSum:
 
 
 @dataclass(frozen=True)
-class MosaicSmoothed:
-    """Mosaicity: a width-``window`` moving average over the tilt axis, applied before the sum.
+class MosaicAverage:
+    """Normalized Gaussian mosaic-orientation weights for the expanded tilt geometry.
 
-    Models crystal mosaic spread by broadening the rocking curve. ``window`` consecutive tilts are
-    averaged in a sliding window, then the smoothed curve is summed. Equivalently the integrated
-    intensity is the sum of the ``N - window + 1`` window means: padding the smoothed curve back to
-    length ``N`` with zeros before summing does not change the sum. ``window`` must not exceed the
-    tilt count ``N`` (checked at reduction time).
+    ``weights`` aligns with the plan's tilt axis. Its sum equals the number of nominal rocking-curve
+    samples, so mosaic averaging redistributes orientation weight without changing the integration
+    scale. ``sigma_degrees`` records the PETS apparent mosaicity used to construct the geometry.
     """
 
-    window: int
+    weights: tuple[float, ...]
+    sigma_degrees: float
+
+    def __post_init__(self) -> None:
+        if not self.weights or not all(np.isfinite(value) and value >= 0.0 for value in self.weights):
+            raise ValueError("mosaicity weights must be a non-empty sequence of finite values >= 0")
+        if sum(self.weights) <= 0.0:
+            raise ValueError("mosaicity weights must have a positive sum")
+        if not np.isfinite(self.sigma_degrees) or self.sigma_degrees < 0.0:
+            raise ValueError("mosaicity sigma_degrees must be finite and non-negative")
 
 
 # The tilt-axis reduction of a rocking curve: a plain incoherent sum, or a mosaicity-broadened sum.
 # Carried per-orientation on ``OrientationPlan`` (default ``PlainSum``) and applied by
 # :meth:`BlochSolution.integrate`; a discriminated union rather than an optional ``window`` field.
-TiltReduction = PlainSum | MosaicSmoothed
+TiltReduction = PlainSum | MosaicAverage
 
 # Shared immutable default (``PlainSum`` is stateless), so signatures avoid a call-in-default.
 PLAIN_SUM: TiltReduction = PlainSum()
@@ -86,8 +93,8 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     """Reduce stacked per-tilt intensities ``(N_tilts, ...)`` over the leading tilt axis.
 
     The rocking-curve rotation-frame integration: :class:`PlainSum` sums the tilts;
-    :class:`MosaicSmoothed` applies a width-``window`` moving average first (the mosaicity
-    broadening). Public because the tilt axis is reduced from two places -- a single shared beam set
+    :class:`MosaicAverage` applies normalized PETS-derived orientation weights. Public because the
+    tilt axis is reduced from two places -- a single shared beam set
     (:meth:`BlochSolution.integrate` / :meth:`BlochSolution.integrate_batched`) and the segmented
     coupling path, which reassembles each reflection's curve across per-chunk beam sets onto a
     shared
@@ -96,14 +103,14 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     match reduction:
         case PlainSum():
             return stacked.sum(dim=0)
-        case MosaicSmoothed(window=window):
-            n_tilts = stacked.shape[0]
-            if window > n_tilts:
+        case MosaicAverage(weights=weights):
+            if len(weights) != stacked.shape[0]:
                 raise ValueError(
-                    f"mosaicity window {window} exceeds the {n_tilts} rocking-curve tilts"
+                    f"mosaicity has {len(weights)} weights for {stacked.shape[0]} tilts"
                 )
-            windows = stacked.unfold(0, window, 1)  # (N - window + 1, T, N_beams, window)
-            return windows.mean(dim=-1).sum(dim=0)
+            weight = stacked.new_tensor(weights)
+            shape = (len(weights),) + (1,) * (stacked.ndim - 1)
+            return (stacked * weight.reshape(shape)).sum(dim=0)
 
 
 @dataclass(frozen=True)
@@ -146,8 +153,8 @@ class BlochSolution:
         Rocking-curve integration samples N slightly-tilted sub-orientations sharing one beam set
         and reduces their *intensities* ``|psi|^2`` over the tilt axis (an incoherent reduction, the
         physical rotation-frame integration -- not their amplitudes). ``reduction`` selects the
-        tilt-axis reduction: :class:`PlainSum` (the default) sums the tilts; :class:`MosaicSmoothed`
-        applies a moving-average mosaicity broadening first. All sub-solutions must share the beam
+        tilt-axis reduction: :class:`PlainSum` sums the tilts; :class:`MosaicAverage` applies
+        PETS-derived orientation weights. All sub-solutions must share the beam
         set (``beam_hkl``) and ``thicknesses``: the tilts reuse the one nominal beam set, varying
         only geometry. The integrated observable has no single exit-wave, so ``amplitudes`` is
         stored as the real effective amplitude ``sqrt(total intensity)`` (phase is physically lost

@@ -200,6 +200,7 @@ class ExperimentalRecord(BaseModel):
     # _diffrn_measurement_details block when present; None if that field is absent or the PETS
     # version that wrote this file doesn't record it (a manual/config g_max is then the only option).
     dstar_max: float | None = None
+    mosaicity_degrees: float | None = None
     ub_matrix: FloatArray
     zone_axis_ids: IntArray
     zone_axes: FloatArray
@@ -251,6 +252,10 @@ class ExperimentalRecord(BaseModel):
             raise ValueError("cell_parameters_su must be non-negative where present")
         if self.wavelength <= 0.0:
             raise ValueError("wavelength must be positive")
+        if self.mosaicity_degrees is not None and (
+            not np.isfinite(self.mosaicity_degrees) or self.mosaicity_degrees < 0.0
+        ):
+            raise ValueError("PETS mosaicity must be finite and non-negative")
         if self.ub_matrix.shape != (3, 3):
             raise ValueError("ub_matrix must have shape (3, 3)")
         if self.zone_axes.shape != (n_rotations, 3):

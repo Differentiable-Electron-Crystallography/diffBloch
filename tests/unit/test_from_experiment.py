@@ -73,6 +73,22 @@ def test_from_experiment_train_test_false_holds_out_nothing() -> None:
     assert len(setup.plans.train.orientations) == experimental_data.n_rotations
 
 
+def test_pets_mosaicity_is_required_only_when_enabled() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": None}
+    )
+    config = load_config(QUARTZ / "experiment.yaml")
+    with pytest.raises(ValueError, match="mosaicity=true requires"):
+        from_experiment(structure, experimental_data, config)
+
+    disabled = config.model_copy(
+        update={"blochwave": config.blochwave.model_copy(update={"mosaicity": False})}
+    )
+    setup = from_experiment(structure, experimental_data, disabled)
+    assert all(plan.mosaicity_degrees is None for plan in setup.plans.combined.orientations)
+
+
 def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")

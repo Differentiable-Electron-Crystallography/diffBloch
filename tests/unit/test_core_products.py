@@ -8,7 +8,7 @@ import torch
 
 from diffBloch.core.products import (
     BlochSolution,
-    MosaicSmoothed,
+    MosaicAverage,
     PatternBatch,
     PlainSum,
     align,
@@ -122,22 +122,18 @@ def test_integrate_default_reduction_is_the_plain_sum() -> None:
     assert torch.allclose(default.intensities, plain.intensities)
 
 
-def test_integrate_mosaic_smoothed_is_moving_average_then_sum() -> None:
-    sols = _ramp_tilts([1.0, 2.0, 3.0, 4.0, 5.0])
-    # window=3 moving average then sum == sum of window means: mean(1,2,3)+mean(2,3,4)+mean(3,4,5)
-    # = 2 + 3 + 4 = 9 (zero-padding the smoothed curve does not change the sum).
-    mosaic = BlochSolution.integrate(sols, reduction=MosaicSmoothed(3))
-    assert torch.allclose(mosaic.intensities, torch.full((1, 2), 9.0, dtype=torch.float64))
-    # window=1 is the identity: each window mean is the tilt itself, so it equals the plain sum.
-    identity = BlochSolution.integrate(sols, reduction=MosaicSmoothed(1))
-    assert torch.allclose(identity.intensities, torch.full((1, 2), 15.0, dtype=torch.float64))
+def test_integrate_mosaic_average_uses_normalized_orientation_weights() -> None:
+    sols = _ramp_tilts([1.0, 2.0, 3.0])
+    reduction = MosaicAverage((1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0), 0.05)
+    mosaic = BlochSolution.integrate(sols, reduction=reduction)
+    assert torch.allclose(mosaic.intensities, torch.full((1, 2), 2.0, dtype=torch.float64))
     assert torch.allclose(mosaic.amplitudes.abs().square(), mosaic.intensities)
 
 
-def test_integrate_mosaic_window_may_not_exceed_the_tilt_count() -> None:
+def test_integrate_mosaic_weights_must_match_the_tilt_count() -> None:
     sols = _ramp_tilts([1.0, 2.0, 3.0])
-    with pytest.raises(ValueError, match="window 4 exceeds the 3 rocking-curve tilts"):
-        BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
+    with pytest.raises(ValueError, match="2 weights for 3 tilts"):
+        BlochSolution.integrate(sols, reduction=MosaicAverage((0.5, 0.5), 0.05))
 
 
 def test_integrate_batched_matches_the_per_tilt_integrate() -> None:
@@ -152,7 +148,7 @@ def test_integrate_batched_matches_the_per_tilt_integrate() -> None:
     ]
     sols = [BlochSolution.from_propagation(a, beam_hkl, thick) for a in amps]
     stacked = torch.stack(amps)  # (B, T, N)
-    for reduction in (PlainSum(), MosaicSmoothed(2)):
+    for reduction in (PlainSum(), MosaicAverage((0.25, 0.5, 0.25), 0.05)):
         looped = BlochSolution.integrate(sols, reduction=reduction)
         batched = BlochSolution.integrate_batched(stacked, beam_hkl, thick, reduction=reduction)
         assert torch.equal(batched.intensities, looped.intensities)

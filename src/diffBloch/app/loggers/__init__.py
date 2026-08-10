@@ -31,6 +31,8 @@ from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceSweepStarted,
     ConvergenceTrial,
+    DatasetPreprocessed,
+    DatasetPreprocessingStarted,
     DeviceSelected,
     Event,
     ExperimentDeclared,
@@ -42,10 +44,12 @@ from diffBloch.observability import (
     PlanStepCompleted,
     RefinedRotationMetrics,
     RefinementOrientationStep,
+    RefinementOutputsWritten,
     RefinementStarted,
     RefinementStep,
     ThicknessOptimizationStarted,
     ThicknessOptimized,
+    ThicknessProfile,
 )
 
 __all__ = [
@@ -196,6 +200,8 @@ class ConsoleLogger:
             _log.log(self.level, _format_device_selection(event))
             return
         if isinstance(event, ExperimentDeclared):
+            print(file=sys.stderr)
+            _log.log(self.level, "===== REFINEMENT =====")
             _log.log(
                 self.level,
                 "Experiment │ %s │ %s + %s",
@@ -219,10 +225,18 @@ class ConsoleLogger:
             # SummaryLogger builds its per-rotation table from it and W&B/Comet want the settled
             # scores -- so a console that wants less says so here.
             if self.per_rotation:
+                # A combined (inputs.multi_dataset) run labels by its own dataset + local rotation
+                # number instead of the raw global rotation_index, which jumps between files with no
+                # explanation (e.g. 43 -> 44 crossing from one dataset into the next).
+                label = (
+                    f"{event.dataset_label} rotation {event.local_rotation_index:3d}"
+                    if event.dataset_label is not None
+                    else f"rotation {event.rotation_index:3d}"
+                )
                 _log.log(
                     self.level,
-                    "  rotation %3d │ wR2 %.6f │ R_obs %.6f │ %d matched%s",
-                    event.rotation_index,
+                    "  %s │ wR2 %.6f │ R_obs %.6f │ %d matched%s",
+                    label,
                     event.wr2,
                     event.r_obs,
                     event.n_matched,
@@ -230,17 +244,20 @@ class ConsoleLogger:
                 )
             return
         if isinstance(event, ObjectiveManifest):
-            # "none" is printed rather than the line being dropped: an objective composing no
-            # restraints is a scientific fact worth stating, not an absence to be inferred.
-            _log.log(
-                self.level,
-                "Objective │ penalties  : %s",
-                ", ".join(f"{term.name} (weight {term.weight:g})" for term in event.penalties)
-                or "none",
-            )
-            _log.log(
-                self.level, "Objective │ constraints: %s", ", ".join(event.constraints) or "none"
-            )
+            # Unlike "components" (always printed, even "none" -- which thickness model is
+            # composed, if any, is worth stating outright), penalties/constraints only print when
+            # this run actually has some: most runs compose neither, and a "none" line for each on
+            # every run is noise next to the one that matters.
+            if event.penalties:
+                _log.log(
+                    self.level,
+                    "Objective │ penalties  : %s",
+                    ", ".join(f"{term.name} (weight {term.weight:g})" for term in event.penalties),
+                )
+            if event.constraints:
+                _log.log(
+                    self.level, "Objective │ constraints: %s", ", ".join(event.constraints)
+                )
             _log.log(
                 self.level, "Objective │ components : %s", ", ".join(event.components) or "none"
             )
@@ -288,8 +305,13 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
-            wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
-            r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
+            # No "[evaluated/total]" here (unlike _mean_over's other uses): this line redraws in
+            # place every epoch, so the denominator is either always-full noise or, on the rare run
+            # that drops rotations, still visible in the settled per-rotation report afterward.
+            wr2 = "n/a" if event.wr2 is None or not math.isfinite(event.wr2) else f"{event.wr2:.6f}"
+            r_obs = (
+                "n/a" if event.r_obs is None or not math.isfinite(event.r_obs) else f"{event.r_obs:.6f}"
+            )
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
@@ -326,7 +348,7 @@ class ConsoleLogger:
             label = "gmax" if event.control == "g_max" else event.control
             _log.log(
                 self.level,
-                "  %s -> %g | R=%.6f | fixed_hkls=%d",
+                "  %s -> %g | wR2=%.6f | fixed_hkls=%d",
                 label,
                 event.candidate,
                 event.r_factor,
@@ -340,14 +362,12 @@ class ConsoleLogger:
         elif isinstance(event, RefinementStep):
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
-            diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
             _log.log(
                 self.level,
-                "Refinement epoch %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
+                "Refinement epoch %3d │ wR2 %s │ R_obs %s",
                 event.iteration + 1,
                 wr2,
                 r_obs,
-                diff_loss,
             )
             for term, values in _penalty_components(event):
                 _log.log(
@@ -362,27 +382,37 @@ class ConsoleLogger:
         elif isinstance(event, RefinementOrientationStep):
             wr2 = "n/a" if event.wr2 is None else f"{event.wr2:.6f}"
             r_obs = "n/a" if event.r_obs is None else f"{event.r_obs:.6f}"
-            diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
             _log.log(
                 self.level,
-                "  epoch %3d rotation %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
+                "  epoch %3d rotation %3d │ wR2 %s │ R_obs %s",
                 event.iteration + 1,
                 event.rotation_index,
                 wr2,
                 r_obs,
-                diff_loss,
             )
             return
         elif isinstance(event, PlanSeeded):
+            # Not printed: it's the pre-pipeline baseline (from_experiment's output), not a stage
+            # result. `PlanStepCompleted` numbers are read against it, but it has nothing itself
+            # worth showing on the console.
+            return
+        elif isinstance(event, DatasetPreprocessingStarted):
+            print(file=sys.stderr)
             _log.log(
                 self.level,
-                "Preprocess seed  │ %-27s │ %s",
-                "(incoming plan)",
-                format_measurements(event),
+                "===== dataset: %s (%d rotations) =====",
+                event.label,
+                event.n_rotations,
             )
+            return
+        elif isinstance(event, DatasetPreprocessed):
+            _log.log(self.level, "===== dataset complete: %s =====", event.label)
+            _log.log(self.level, "  %s", format_measurements(event))
+            print(file=sys.stderr)
             return
         elif isinstance(event, PlanStepCompleted):
             stage = event.channel.replace("_", " ").title()
+            print(file=sys.stderr)
             _log.log(
                 self.level,
                 "Preprocess stage %2d │ %-27s │ %s",
@@ -390,6 +420,11 @@ class ConsoleLogger:
                 stage,
                 format_measurements(event),
             )
+            return
+        elif isinstance(event, ThicknessProfile | RefinementOutputsWritten):
+            # Not printed: the trained curve/artifact paths already surface where they matter --
+            # the refinement report + PNG, and the CLI's own "Output files" listing -- so a console
+            # line here is just a redundant restatement, not new information.
             return
         else:
             label = event.channel if event.step is None else f"{event.channel}[{event.step}]"

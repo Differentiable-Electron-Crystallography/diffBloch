@@ -34,10 +34,15 @@ class InputLock(BaseModel):
 
 
 class ExperimentLock(BaseModel):
-    """``experiment.lock``: exact input identity, never generated outputs."""
+    """``experiment.lock``: exact input identity, never generated outputs.
+
+    ``experimental_data`` is a single :class:`InputLock` for the ordinary single-dataset experiment,
+    or a list of them (one per file, in ``inputs.exp_data`` order) when ``inputs.multi_dataset`` is
+    true.
+    """
 
     structure: InputLock
-    experimental_data: InputLock
+    experimental_data: InputLock | list[InputLock]
 
 
 class ArtifactHash(BaseModel):
@@ -145,16 +150,40 @@ def artifact_hash_for(path: str | Path, *, root: str | Path) -> ArtifactHash:
     )
 
 
-def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, ExperimentLock]:
+def load_experiment(
+    directory: str | Path, *, regenerate_lock: bool = False
+) -> tuple[ExperimentConfig, ExperimentLock]:
     """Load ``experiment.yaml`` and verify ``experiment.lock`` (in ``reproducibility/``) against
-    input bytes."""
+    input bytes.
+
+    ``regenerate_lock`` (default ``False``) rewrites ``experiment.lock`` from the *current*
+    ``inputs.structure``/``inputs.exp_data`` bytes instead of verifying against whatever is already
+    there -- for a caller that just edited an input on disk (e.g. patched a structure CIF) and wants
+    the lock to catch up rather than raise ``"input drift detected"``. Wired to the app's
+    ``--refresh`` flag, which already means "recompute from these inputs, ignore what was cached
+    before" for the preprocess checkpoint -- this extends that same meaning to the input lock.
+    """
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
     lock_path = root / "reproducibility" / "experiment.lock"
+    if regenerate_lock:
+        lock = ExperimentLock(
+            structure=input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure),
+            experimental_data=_experimental_data_lock(root, cfg.inputs.exp_data),
+        )
+        lock_path.write_text(lock.model_dump_json(indent=2) + "\n")
+        return cfg, lock
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
-    _verify_input(root, cfg.inputs.exp_data, lock.experimental_data)
+    _verify_experimental_data(root, cfg.inputs.exp_data, lock.experimental_data)
     return cfg, lock
+
+
+def _experimental_data_lock(root: Path, ref: str | list[str]) -> InputLock | list[InputLock]:
+    """Build the ``experimental_data`` lock value for either the single- or combined-dataset shape."""
+    if isinstance(ref, list):
+        return [input_lock_for(root / path, ref=path) for path in ref]
+    return input_lock_for(root / ref, ref=ref)
 
 
 def write_run_manifest(path: str | Path, manifest: RunManifest) -> None:
@@ -377,6 +406,27 @@ def _verify_input(root: Path, ref: str, lock: InputLock) -> None:
     actual = input_lock_for(path, ref=ref)
     if actual.sha256 != lock.sha256 or actual.bytes != lock.bytes:
         raise ValueError(f"input drift detected for {ref}")
+
+
+def _verify_experimental_data(
+    root: Path, ref: str | list[str], lock: InputLock | list[InputLock]
+) -> None:
+    """Dispatch :func:`_verify_input` over either the single-dataset or combined-dataset shape."""
+    if isinstance(ref, list) or isinstance(lock, list):
+        if not isinstance(ref, list) or not isinstance(lock, list):
+            raise ValueError(
+                "experiment.lock experimental_data shape does not match inputs.exp_data "
+                "(one is a list, the other is not)"
+            )
+        if len(ref) != len(lock):
+            raise ValueError(
+                f"experiment.lock has {len(lock)} experimental_data entries, "
+                f"inputs.exp_data has {len(ref)}"
+            )
+        for one_ref, one_lock in zip(ref, lock, strict=True):
+            _verify_input(root, one_ref, one_lock)
+        return
+    _verify_input(root, ref, lock)
 
 
 def _export_path(run_dir: Path, suffix: str) -> Path:

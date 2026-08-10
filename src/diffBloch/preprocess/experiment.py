@@ -14,6 +14,9 @@ The structure side lives here so the structure/experimental split mirrors the tw
 
 from __future__ import annotations
 
+import logging
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -50,6 +53,11 @@ __all__ = [
     "from_experiment",
     "seed_beam_hkl",
 ]
+
+_log = logging.getLogger(__name__)
+
+_CELL_PARAMETER_NAMES = ("a", "b", "c", "alpha", "beta", "gamma")
+_CELL_PARAMETER_RTOL = 0.01
 
 
 @dataclass(frozen=True)
@@ -158,7 +166,7 @@ class RefinementSetup:
 
 def from_experiment(
     structure: StructureRecord,
-    experimental_data: ExperimentalRecord,
+    experimental_data: ExperimentalRecord | Sequence[ExperimentalRecord],
     config: ExperimentConfig,
 ) -> ExperimentSetup:
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
@@ -180,6 +188,18 @@ def from_experiment(
     grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
     pruning is the later ``select_beams`` step.
 
+    ``experimental_data`` is a single :class:`~diffBloch.io.record.ExperimentalRecord` for the
+    ordinary single-dataset experiment, or a sequence of them (``inputs.multi_dataset``) to combine
+    rotations from several PETS files into one experiment -- e.g. a damage series or repeat
+    measurements of the same crystal. Each file keeps its own wavelength-derived energy, UB
+    matrix/cell, and mean-inner-potential correction; rotations are concatenated file-by-file with a
+    running offset, so ``rotation_index`` stays globally unique across the combined set (rather than
+    restarting at 0 per file) -- every place that keys off it (``ignore_orientations``, the
+    train/validation split, orientation-CSV import, the thickness-NN's per-rotation lookup) then
+    keeps working unmodified. Combined files must share one rocking-curve integration semiangle: the
+    recipe builds a single shared rocking-curve/beam-selection geometry for the whole experiment, so
+    files recorded with different precession angles cannot currently be mixed.
+
     This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
     single documented public boundary of the preprocess pipeline (records + config -> setup), and it
     returns a *composite* of two products rather than constructing one domain object. The per-object
@@ -187,37 +207,70 @@ def from_experiment(
     (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
     ``RefinementSetup.from_structure``).
     """
+    records = (
+        (experimental_data,)
+        if isinstance(experimental_data, ExperimentalRecord)
+        else tuple(experimental_data)
+    )
+    if len(records) > 1:
+        semiangles = [record.integration_semiangle for record in records]
+        if not math.isclose(max(semiangles), min(semiangles)):
+            raise ValueError(
+                "combined datasets (inputs.multi_dataset) must share one rocking-curve integration "
+                f"semiangle; got {sorted(set(semiangles))}"
+            )
+    _check_cell_parameters_agree(structure, records)
+
     solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
-    energy = snap_to_standard_energy(wavelength2energy(experimental_data.wavelength))
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
-    orientations = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
     refinement_setup = RefinementSetup.from_structure(structure)
-    u0 = _mean_inner_potential(
-        grid, refinement_setup, energy=energy, absorption=config.blochwave.to_absorption()
-    )
-    all_plans = tuple(
-        CandidatePlan.seed(
-            beam_hkl,
-            PatternBatch.from_experimental_record(
-                experimental_data,
-                zone_axis_id=int(zone_id),
-                rotation_index=index,
-            ),
-            energy=energy,
-            thickness=config.sample.thicknesses,
-            orientation=orientations[index],
-            u0=u0,
-        )
-        for index, zone_id in enumerate(experimental_data.zone_axis_ids)
-    )
+    absorption = config.blochwave.to_absorption()
 
+    combined_plans: list[CandidatePlan] = []
+    rotation_offset = 0
+    for record_index, record in enumerate(records):
+        if config.blochwave.mosaicity and record.mosaicity_degrees is None:
+            source = record.source_path if record.source_path is not None else "<experimental data>"
+            raise ValueError(
+                f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}"
+            )
+        energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
+        orientations = orientation_matrices(
+            record.ub_matrix,
+            record.cell_parameters,
+            record.alphas,
+            record.betas,
+            record.omegas,
+        )
+        u0 = _mean_inner_potential(grid, refinement_setup, energy=energy, absorption=absorption)
+        # A per-dataset seed_thicknesses list (inputs.multi_dataset) gives each combined file its
+        # own starting thickness instead of every rotation sharing one value regardless of which
+        # specimen/region it actually came from.
+        seed_thickness = (
+            config.sample.thicknesses[record_index]
+            if isinstance(config.sample.thicknesses, list)
+            else config.sample.thicknesses
+        )
+        combined_plans.extend(
+            CandidatePlan.seed(
+                beam_hkl,
+                PatternBatch.from_experimental_record(
+                    record,
+                    zone_axis_id=int(zone_id),
+                    rotation_index=rotation_offset + local_index,
+                ),
+                energy=energy,
+                thickness=seed_thickness,
+                orientation=orientations[local_index],
+                u0=u0,
+                mosaicity_degrees=record.mosaicity_degrees,
+            )
+            for local_index, zone_id in enumerate(record.zone_axis_ids)
+        )
+        rotation_offset += len(record.zone_axis_ids)
+
+    all_plans = tuple(combined_plans)
     selection = config.blochwave.to_orientation_selection()
     ignored = set(selection.ignore_orientations)
     out_of_range = sorted(index for index in ignored if index >= len(all_plans))
@@ -230,8 +283,8 @@ def from_experiment(
     if not selected:
         raise ValueError("ignore_orientations excludes every PETS rotation")
 
-    # Split membership is defined on the original PETS order. Ignoring a rotation must not renumber
-    # later frames and silently move them between train and validation.
+    # Split membership is defined on the original (combined, file-by-file) PETS order. Ignoring a
+    # rotation must not renumber later frames and silently move them between train and validation.
     validation = _validation_mask(len(all_plans), config.refinement.split)
     train_orientations = tuple(plan for index, plan in selected if not validation[index])
     val_orientations = tuple(plan for index, plan in selected if validation[index])
@@ -241,8 +294,48 @@ def from_experiment(
             validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
         refinement=refinement_setup,
-        integration=IntegrationGeometry(semiangle=experimental_data.integration_semiangle),
+        integration=IntegrationGeometry(semiangle=records[0].integration_semiangle),
     )
+
+
+def _check_cell_parameters_agree(
+    structure: StructureRecord, records: Sequence[ExperimentalRecord]
+) -> None:
+    """Warn when the structure CIF and a combined PETS ``.cif_pets`` disagree on unit-cell parameters.
+
+    Refinement pins the structure's own cell (``structure.unit_cell``), so a mismatch here never
+    corrupts the simulation numerically -- but a mismatch beyond ordinary refinement drift usually
+    means the two files describe different crystals/settings entirely (wrong file paired up, or a
+    unit mix-up), the same class of setting mismatch behind the NaN-simulation failures the
+    fail-fast checks elsewhere in the pipeline guard against. Flagged only beyond 1% relative
+    difference on any of ``a, b, c, alpha, beta, gamma`` -- day-to-day refinement/measurement drift
+    stays well under that. Checked against every combined file independently (``inputs.multi_dataset``
+    can mix a good file with a mismatched one), named by its ``source_path`` in the warning.
+    """
+    structure_cell = structure.cell_parameters
+    for record in records:
+        experimental_cell = record.cell_parameters
+        relative_diff = np.abs(structure_cell - experimental_cell) / np.abs(experimental_cell)
+        mismatched = relative_diff > _CELL_PARAMETER_RTOL
+        if not np.any(mismatched):
+            continue
+        details = ", ".join(
+            f"{name}: structure={structure_value:.6g} vs experimental={experimental_value:.6g} "
+            f"({100.0 * diff:.2f}% off)"
+            for name, structure_value, experimental_value, diff in zip(
+                _CELL_PARAMETER_NAMES, structure_cell, experimental_cell, relative_diff, strict=True
+            )
+            if diff > _CELL_PARAMETER_RTOL
+        )
+        source = record.source_path if record.source_path is not None else "<experimental data>"
+        _log.warning(
+            "structure CIF and %s unit cells disagree by more than 1%% on %d parameter(s): %s -- "
+            "check that the structure and experimental-data files describe the same crystal "
+            "setting.",
+            source,
+            int(np.count_nonzero(mismatched)),
+            details,
+        )
 
 
 def _mean_inner_potential(

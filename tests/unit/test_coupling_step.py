@@ -23,7 +23,7 @@ from tests.unit.test_inference import (
     _simulated_intensities,
 )
 
-from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
+from diffBloch.core.products import MosaicAverage, PatternBatch, align
 from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess import (
@@ -193,13 +193,13 @@ def test_segmented_build_unions_the_beams_and_preserves_the_reduction() -> None:
         u0=0.0,
         orientation=np.eye(3),
         tilts=_TILTS,
-        tilt_reduction=MosaicSmoothed(3),
+        tilt_reduction=MosaicAverage((0.5, 0.5, 0.5, 0.5), 0.05),
     )
 
     union = sop.beam_hkl.tolist()
     assert union == sorted(union)  # np.unique ordering
     assert [0, 0, 0] in union and [1, 0, 0] in union and [-1, 0, 0] in union
-    assert sop.tilt_reduction == MosaicSmoothed(3)  # carried through from the coupled orientation
+    assert sop.tilt_reduction == MosaicAverage((0.5, 0.5, 0.5, 0.5), 0.05)
     # union_beam_index round-trips each chunk's beams to their union columns.
     for segment, chunk in zip(sop.segments, (chunk_a, chunk_b), strict=True):
         placed = sop.beam_hkl[segment.union_beam_index].numpy()

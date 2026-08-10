@@ -30,7 +30,6 @@ __all__ = [
     "ConvergenceTolerance",
     "FrameSelection",
     "IntegrationGeometry",
-    "Mosaicity",
     "NelderMeadSearch",
     "OrientationSelection",
     "PerTiltCoupling",
@@ -185,7 +184,7 @@ class ConvergenceTolerance:
     patience window and no null-step handling.
     """
 
-    r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
+    r_factor_threshold: float = 0.01  # converged once consecutive-sim R-factor < this
     max_iterations: int = 100  # hard cap on sweep steps before raising non-convergence
 
     def __post_init__(self) -> None:
@@ -206,7 +205,7 @@ class ConvergenceTest:
 
     g_max_step: float = 0.1
     sg_max_step: float = 0.005
-    tilt_steps_step: int = 2
+    tilt_steps_step: int = 5
     num_passes: int = 2
 
     def __post_init__(self) -> None:
@@ -260,34 +259,12 @@ class RockingCurve:
     goniometer x-axis tilts, implemented; or ``precession``, a deferred cone mode).
     """
 
-    sampling: int = 42  # number of tilts across +/- semiangle; 1 = single static solve (identity)
+    sampling: int = 50  # number of tilts across +/- semiangle; 1 = single static solve (identity)
     integration: IntegrationGeometry = field(default_factory=IntegrationGeometry)
 
     def __post_init__(self) -> None:
         if self.sampling < 1:
             raise ValueError("sampling must be >= 1")
-
-
-@dataclass(frozen=True)
-class Mosaicity:
-    """Mosaicity broadening of the rocking curve: a moving-average window over the tilt axis.
-
-    Crystal mosaic spread smears each reflection's rocking curve; diffBloch models it as a
-    ``window``-wide moving average of the per-tilt intensities before the sum-over-tilts
-    integration. ``window`` is the number of consecutive tilts averaged; it must be ``>= 1`` and, at
-    reduction time, ``<= sampling`` (the tilt count). ``window = 1`` is the identity (no
-    broadening), so composing the ``mosaicity`` step with it is a no-op. This is a modifier on top
-    of the rocking-curve integration (:class:`RockingCurve`) -- it only has meaning once the tilt
-    set exists, so the ``mosaicity`` step is ordered after ``integrate_rocking_curve``.
-
-    ``window`` is a tunable config parameter; its default of 5 is the standard moving-average width.
-    """
-
-    window: int = 5  # tilts averaged per sliding window (standard moving-average width)
-
-    def __post_init__(self) -> None:
-        if self.window < 1:
-            raise ValueError("window must be >= 1")
 
 
 @dataclass(frozen=True)
@@ -303,8 +280,8 @@ class UnionCoupling:
     Because a sharp reflection drifts through the Ewald sphere as the crystal rocks, the excited set
     genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
     beams a later tilt needs. The per-chunk union is the compromise this policy strikes. Each
-    reflection's full rocking curve is later reassembled across chunks before the mosaicity
-    reduction (the window spans more tilts than one chunk holds).
+    reflection's full rocking curve is later reassembled across chunks before the PETS-derived
+    mosaic weights are applied.
 
     ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max``. The cutoff is the
     physical solve radius, with no additional margin.

@@ -32,6 +32,8 @@ __all__ = [
     "ConvergenceTrial",
     "ConvergencePassStarted",
     "ConvergenceSweepStarted",
+    "DatasetPreprocessed",
+    "DatasetPreprocessingStarted",
     "DeviceSelected",
     "Event",
     "ExperimentDeclared",
@@ -285,15 +287,22 @@ class OrientationOptimized:
 
 @dataclass(frozen=True)
 class OrientationOptimizationSummary:
-    """Aggregate statistics after every rotation's orientation fit has completed."""
+    """Aggregate statistics after every rotation's orientation fit has completed.
+
+    ``unique_*`` counts are deduplicated distinct ``(h, k, l)`` counts across every rotation's own
+    set (:func:`~diffBloch.preprocess.plan.unique_hkl_count`), not a sum of each rotation's own
+    count -- a reflection re-observed (or matched) in more than one rotation is counted once, not
+    once per rotation. ``unique_strong_hkl`` is "matched *and* I > 3*sigma in at least one rotation"
+    -- the same reflection can be strong in one rotation and weak in another, so this is a
+    lower bound on "genuinely always weak," not a claim every occurrence was strong.
+    """
 
     n_orientations: int
     mean_score: float
     residual: str
-    total_matched_hkl: int
-    total_strong_hkl: int
-    total_weak_hkl: int
-    total_observed_hkl: int
+    unique_matched_hkl: int
+    unique_strong_hkl: int
+    unique_observed_hkl: int
     total_trials: int
     max_passes: int
 
@@ -308,11 +317,11 @@ class OrientationOptimizationSummary:
         return {
             "n_orientations": float(self.n_orientations),
             f"mean_{self.residual}": self.mean_score,
-            "total_matched_hkl": float(self.total_matched_hkl),
-            "total_strong_hkl": float(self.total_strong_hkl),
-            "total_weak_hkl": float(self.total_weak_hkl),
-            "total_observed_hkl": float(self.total_observed_hkl),
-            "total_unmatched_hkl": float(self.total_observed_hkl - self.total_matched_hkl),
+            "unique_matched_hkl": float(self.unique_matched_hkl),
+            "unique_strong_hkl": float(self.unique_strong_hkl),
+            "unique_weak_hkl": float(self.unique_matched_hkl - self.unique_strong_hkl),
+            "unique_observed_hkl": float(self.unique_observed_hkl),
+            "unique_unmatched_hkl": float(self.unique_observed_hkl - self.unique_matched_hkl),
             "total_trials": float(self.total_trials),
             "max_passes": float(self.max_passes),
         }
@@ -421,6 +430,57 @@ class PlanSeeded:
     @property
     def step(self) -> int | None:
         return None  # the baseline sits before the recipe's x-axis, not on it
+
+
+@dataclass(frozen=True)
+class DatasetPreprocessingStarted:
+    """A combined (``inputs.multi_dataset``) dataset's preprocess recipe is about to start.
+
+    Reported right before that file's rotations begin the recipe, so the console stream (every
+    ``PlanSeeded``/``PlanStepCompleted`` in between) is unambiguously grouped under it -- otherwise
+    each dataset's own stage numbering restarts at 1 with nothing distinguishing "stage 1 of
+    dataset 1" from "stage 1 of dataset 2" but the raw rotation count. ``label`` is that file's
+    ``inputs.exp_data`` entry; ``n_rotations`` is how many rotations it contributes.
+    """
+
+    label: str
+    n_rotations: int
+
+    @property
+    def channel(self) -> str:
+        return f"dataset_preprocessing_started[{self.label}]"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"n_rotations": float(self.n_rotations)}
+
+
+@dataclass(frozen=True)
+class DatasetPreprocessed:
+    """One combined (``inputs.multi_dataset``) dataset's preprocess recipe has fully completed.
+
+    Reported once per file in ``inputs.exp_data``, right after that file's own rotations have run
+    the *entire* recipe (``select_beams`` through ``optimize_thickness``) independently of every
+    other combined file, and before the next file starts -- so a multi-dataset run's console stream
+    reads as N complete per-dataset blocks in sequence, not one stream interleaving every combined
+    rotation together. ``label`` is that file's ``inputs.exp_data`` entry; ``measurements`` is
+    :func:`diffBloch.preprocess.plan.summarize_plan` of that dataset's own settled ``Plan``.
+    """
+
+    label: str
+    measurements: Mapping[str, float]
+
+    @property
+    def channel(self) -> str:
+        return f"dataset_preprocessed[{self.label}]"
+
+    @property
+    def step(self) -> int | None:
+        return None
 
 
 @dataclass(frozen=True)
@@ -566,6 +626,15 @@ class RefinedRotationMetrics:
     r_obs: float
     n_matched: int
     is_validation: bool
+    n_strong: int = 0  # matched reflections with I > 3*sigma
+    n_weak: int = 0  # matched reflections with I <= 3*sigma
+    n_unmatched: int = 0  # observed reflections this rotation's beam set doesn't contain
+    # Set for a combined (inputs.multi_dataset) run: this rotation's own file and its rotation
+    # number *within that file* (0-based), so a reporting sink can print "methyl_dose6.cif_pets
+    # rotation 3" instead of a raw global rotation_index that jumps between files with no warning.
+    # Both None for the ordinary single-dataset case.
+    dataset_label: str | None = None
+    local_rotation_index: int | None = None
 
     @property
     def step(self) -> int | None:
@@ -578,6 +647,9 @@ class RefinedRotationMetrics:
             "r_obs": self.r_obs,
             "n_matched": float(self.n_matched),
             "is_validation": float(self.is_validation),
+            "n_strong": float(self.n_strong),
+            "n_weak": float(self.n_weak),
+            "n_unmatched": float(self.n_unmatched),
         }
 
 
@@ -585,10 +657,14 @@ class RefinedRotationMetrics:
 class ThicknessProfile:
     """The trained apparent-thickness curve, sampled at every rotation's tilt angle.
 
-    Emitted once after refinement when a thickness component was composed. The whole curve rides on
-    the dataclass as parallel tuples (one entry per rotation, in plan order) rather than as ~100
-    separate events or ~300 flat measurement keys -- the shape :class:`ThicknessOptimized` already
-    uses for its candidate grid. ``measurements`` carries only the scalar summary.
+    Emitted once after refinement per thickness-NN component composed -- ordinarily once, but once
+    *per combined dataset* (``inputs.multi_dataset``) when each got its own independently-trained
+    instance (see :class:`~diffBloch.engine.components.ApparentThicknessNN`'s ``rotation_range``).
+    ``label`` disambiguates which: the component's own dataset path, or ``None`` for the ordinary
+    single-dataset/single-component case. The whole curve rides on the dataclass as parallel tuples
+    (one entry per rotation, in plan order) rather than as ~100 separate events or ~300 flat
+    measurement keys -- the shape :class:`ThicknessOptimized` already uses for its candidate grid.
+    ``measurements`` carries only the scalar summary.
     """
 
     channel: ClassVar[str] = "thickness_profile"
@@ -598,6 +674,7 @@ class ThicknessProfile:
     rotation_indices: tuple[int, ...]
     alphas: tuple[float, ...]
     thicknesses: tuple[float, ...]
+    label: str | None = None
 
     def __post_init__(self) -> None:
         lengths = {len(self.rotation_indices), len(self.alphas), len(self.thicknesses)}

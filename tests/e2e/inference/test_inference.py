@@ -23,7 +23,6 @@ from diffBloch.preprocess import (
     couple_beams,
     from_experiment,
     integrate_rocking_curve,
-    mosaicity,
     pipeline,
     require_candidate_plans,
     run_inference,
@@ -118,7 +117,6 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
             select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
             build_orientation_plans(),
             integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
-            mosaicity(cfg.blochwave.mosaicity),
             couple_beams(replace(cfg.blochwave.to_policy(), union_adaptive=case.union_adaptive)),
         ]
     )

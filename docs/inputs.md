@@ -31,6 +31,10 @@ occupancies, and the space-group symmetry operations. Reading a `.cif_pets` give
 experimental data: the UB matrix, cell parameters, per-rotation goniometer angles, and the observed
 hkl/intensity/sigma triples. Both are parsed into validated records, so a malformed CIF, an unsupported ADP type, or a unit mismatch fails immediately at read time rather than surfacing later as a silently wrong simulation.
 
+PETS2's apparent mosaicity is read from `_diffrn_measurement_details` in degrees. Set
+`blochwave.mosaicity: true` to use it in the simulated rocking-curve geometry, or `false` to disable
+mosaic averaging.
+
 The public records are:
 
 - `StructureRecord`
@@ -86,6 +90,31 @@ preprocess:
   optimize_orientation: true
   optimize_thickness: false
 ```
+
+## Combining multiple datasets
+
+`inputs.exp_data` is a single path by default. Set `inputs.multi_dataset: true` and give
+`exp_data` a list of two or more paths to combine rotations from several `.cif_pets` files into one
+experiment -- e.g. a damage series, or repeat measurements of the same crystal:
+
+```yaml
+inputs:
+  structure: enantiomer_1.cif
+  multi_dataset: true
+  exp_data:
+    - undamaged/frame_1.cif_pets
+    - undamaged/frame_2.cif_pets
+```
+
+Each file keeps its own wavelength-derived energy, UB matrix/cell, and mean-inner-potential
+correction. Rotations are concatenated file-by-file with a running offset, so `rotation_index`
+stays globally unique across the combined set (the first file's rotations are `0..N-1`, the second
+file's are `N..N+M-1`, and so on) rather than every file restarting at `0` -- `ignore_orientations`,
+the train/validation split, and an imported orientation CSV all key off this combined index.
+Combined files must share one rocking-curve integration semiangle: diffBloch builds a single shared
+rocking-curve/beam-selection geometry for the whole experiment, so files recorded with different
+precession angles cannot currently be mixed. `multi_dataset` defaults to `false`, and a single
+`exp_data` path behaves exactly as before -- nothing about the single-dataset path changes.
 
 
 ## Generated refinement artifacts

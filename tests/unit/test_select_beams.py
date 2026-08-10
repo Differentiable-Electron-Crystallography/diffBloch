@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicSmoothed
+from diffBloch.core.products import MosaicAverage
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -19,7 +19,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
-from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionCoupling
+from diffBloch.specs import UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -125,25 +125,20 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
         config.blochwave.mosaicity,
     )(pruned).orientations[0]
 
-    assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
-    assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
-    assert isinstance(built.tilt_reduction, MosaicSmoothed)
+    expected = 3 * config.blochwave.rocking_curve_sampling
+    assert built.tilts.shape == (expected, 3, 3)
+    assert len(built.beam_plans) == expected
+    assert isinstance(built.tilt_reduction, MosaicAverage)
+    assert sum(built.tilt_reduction.weights) == pytest.approx(
+        config.blochwave.rocking_curve_sampling
+    )
 
 
 def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:
     with pytest.raises(ValueError, match="mosaicity requires"):
-        build_orientation_plans(mosaicity=Mosaicity(window=1))
+        build_orientation_plans(mosaicity=True)
     with pytest.raises(ValueError, match="coupling requires"):
         build_orientation_plans(coupling=UnionCoupling())
-
-
-def test_build_orientation_plans_rejects_mosaic_window_larger_than_sampling() -> None:
-    rocking = RockingCurve(
-        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"),
-        sampling=2,
-    )
-    with pytest.raises(ValueError, match="exceeds"):
-        build_orientation_plans(rocking, Mosaicity(window=3))
 
 
 def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment() -> None:

@@ -80,7 +80,6 @@ from diffBloch.preprocess.steps.coverage import (
 )
 from diffBloch.preprocess.steps.frames import select_finite_loss_frames, select_frames
 from diffBloch.preprocess.steps.import_orientations import import_orientations
-from diffBloch.preprocess.steps.mosaicity import mosaicity
 from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
 from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
 from diffBloch.preprocess.steps.report_coupling import report_coupling
@@ -90,7 +89,6 @@ from diffBloch.specs import (
     ConvergenceTest,
     ConvergenceTolerance,
     FrameSelection,
-    Mosaicity,
     RockingCurve,
     ThicknessGrid,
 )
@@ -105,7 +103,6 @@ __all__ = [
     "Fork",
     "FrameSelection",
     "InferenceResult",
-    "Mosaicity",
     "OPAQUE",
     "Plan",
     "PlanSplit",
@@ -140,7 +137,6 @@ __all__ = [
     "klar_beam_mask",
     "maximize_scalar",
     "couple_beams",
-    "mosaicity",
     "orientation_basis",
     "orientation_matrices",
     "pipeline",

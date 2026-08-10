@@ -32,7 +32,6 @@ from diffBloch.specs import (
     ApparentThicknessNetwork,
     BeamSelection,
     IntegrationGeometry,
-    Mosaicity,
     NelderMeadSearch,
     OrientationSelection,
     PerTiltCoupling,
@@ -88,15 +87,15 @@ class BlochwaveConfig(_StrictConfig):
     separate smaller radius. ``rsg`` / ``dsg`` are
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
     integration semi-angle is read from the PETS experimental data rather than configured.
-    ``mosaicity`` is the :class:`Mosaicity` reduction.
+    ``mosaicity`` enables PETS-derived angular mosaic averaging.
     """
 
     solver: SolverConfig = Field(default_factory=SolverConfig)
     absorption: bool = False
     rsg: float = 0.9
     dsg: float = 0.0015
-    rocking_curve_sampling: int = 42
-    mosaicity: Mosaicity = Field(default_factory=Mosaicity)
+    rocking_curve_sampling: int = 50
+    mosaicity: bool = True
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
@@ -158,17 +157,27 @@ class SampleConfig(_StrictConfig):
 
     Thickness is captured here because it is a sample/nuisance parameter, not a numerical-accuracy
     knob. A later refinement stage can make it refinable without splitting its config home.
+
+    ``thicknesses`` is a single seed tuple by default -- one shared starting thickness for every
+    rotation. Under ``inputs.multi_dataset`` it may instead be a list of tuples, one per combined
+    file in ``inputs.exp_data`` order: different physical specimens (or different regions of one
+    specimen) can have genuinely different thickness, and seeding every rotation from one shared
+    value regardless of which file it came from biases whichever dataset sits farther from it.
     """
 
-    thicknesses: tuple[float, ...] = (820.0,)
+    thicknesses: tuple[float, ...] | list[tuple[float, ...]] = (820.0,)
 
     @field_validator("thicknesses")
     @classmethod
-    def _positive_thicknesses(cls, value: tuple[float, ...]) -> tuple[float, ...]:
-        if not value:
-            raise ValueError("thicknesses must contain at least one value")
-        if any(thickness <= 0.0 for thickness in value):
-            raise ValueError("thicknesses must be positive")
+    def _positive_thicknesses(
+        cls, value: tuple[float, ...] | list[tuple[float, ...]]
+    ) -> tuple[float, ...] | list[tuple[float, ...]]:
+        groups = value if isinstance(value, list) else [value]
+        for group in groups:
+            if not group:
+                raise ValueError("thicknesses must contain at least one value")
+            if any(thickness <= 0.0 for thickness in group):
+                raise ValueError("thicknesses must be positive")
         return value
 
 
@@ -365,15 +374,42 @@ class ThicknessOptimizationConfig(_StrictConfig):
     rotation, default ``<inputs.structure's directory>/thickness_optim``); it never changes the
     fitted ``Plan``, so :func:`~diffBloch.config.manifest.config_digest` excludes it explicitly even
     when the rest of this block is in scope.
+
+    ``min_thickness``/``max_thickness`` are single shared bounds by default. Under
+    ``inputs.multi_dataset`` both may instead be lists of equal length, one entry per combined file
+    in ``inputs.exp_data`` order -- a search range appropriate for one dataset's specimen thickness
+    need not bracket another's. ``n_steps`` stays shared (only the *range*, not the resolution,
+    needs to differ per dataset). Mixing one scalar with one list is rejected: both bound fields
+    move to the per-dataset shape together, or neither does.
     """
 
-    min_thickness: float = _THICKNESS_GRID_DEFAULTS.min_thickness  # Angstroms
-    max_thickness: float = _THICKNESS_GRID_DEFAULTS.max_thickness  # Angstroms
+    min_thickness: float | list[float] = _THICKNESS_GRID_DEFAULTS.min_thickness  # Angstroms
+    max_thickness: float | list[float] = _THICKNESS_GRID_DEFAULTS.max_thickness  # Angstroms
     n_steps: int = _THICKNESS_GRID_DEFAULTS.n_steps  # evenly-spaced candidates
     plot: bool = False
 
-    def to_grid(self) -> ThicknessGrid:
-        """Parse into the validated value-type the pure ``optimize_thickness`` consumes."""
+    def to_grid(self, index: int | None = None) -> ThicknessGrid:
+        """Parse into the validated value-type the pure ``optimize_thickness`` consumes.
+
+        ``index`` selects one dataset's bounds when ``min_thickness``/``max_thickness`` are
+        per-dataset lists; omit it (or leave both bounds scalar) for the shared-bounds case.
+        """
+        if isinstance(self.min_thickness, list) or isinstance(self.max_thickness, list):
+            if not (isinstance(self.min_thickness, list) and isinstance(self.max_thickness, list)):
+                raise ValueError(
+                    "preprocess.thickness.min_thickness and max_thickness must both be scalars "
+                    "or both be per-dataset lists"
+                )
+            if index is None:
+                raise ValueError(
+                    "preprocess.thickness.min_thickness/max_thickness are per-dataset lists -- "
+                    "an index is required"
+                )
+            return ThicknessGrid(
+                min_thickness=self.min_thickness[index],
+                max_thickness=self.max_thickness[index],
+                n_steps=self.n_steps,
+            )
         return ThicknessGrid(
             min_thickness=self.min_thickness,
             max_thickness=self.max_thickness,
@@ -382,7 +418,28 @@ class ThicknessOptimizationConfig(_StrictConfig):
 
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> ThicknessOptimizationConfig:
-        self.to_grid()  # the rules live in ThicknessGrid; fail fast at config load
+        # The rules live in ThicknessGrid; fail fast at config load by constructing every grid this
+        # config can produce (each per-dataset entry when the bounds are lists, one grid otherwise).
+        if isinstance(self.min_thickness, list):
+            if not isinstance(self.max_thickness, list):
+                raise ValueError(
+                    "preprocess.thickness.min_thickness and max_thickness must both be scalars "
+                    "or both be per-dataset lists"
+                )
+            if len(self.min_thickness) != len(self.max_thickness):
+                raise ValueError(
+                    "preprocess.thickness.min_thickness and max_thickness lists must have equal "
+                    f"length ({len(self.min_thickness)} != {len(self.max_thickness)})"
+                )
+            for index in range(len(self.min_thickness)):
+                self.to_grid(index)
+        elif isinstance(self.max_thickness, list):
+            raise ValueError(
+                "preprocess.thickness.min_thickness and max_thickness must both be scalars or "
+                "both be per-dataset lists"
+            )
+        else:
+            self.to_grid()
         return self
 
 
@@ -401,10 +458,10 @@ class PreprocessConfig(_StrictConfig):
 
     optimize_orientation: bool = True
     optimize_thickness: bool = True
-    # Fitting stage order when both are enabled: orientation then thickness (default) fits
-    # orientation against the seed thickness, then thickness against the fitted orientation;
-    # "thickness_first" reverses that, fitting thickness against the seed orientation first.
-    stage_order: Literal["orientation_first", "thickness_first"] = "orientation_first"
+    # Fitting stage order when both are enabled: thickness then orientation (default) fits
+    # thickness against the seed orientation, then orientation against the fitted thickness;
+    # "orientation_first" reverses that, fitting orientation against the seed thickness first.
+    stage_order: Literal["orientation_first", "thickness_first"] = "thickness_first"
     orientation: OrientationOptimizationConfig = Field(
         default_factory=OrientationOptimizationConfig
     )
@@ -417,22 +474,51 @@ class PreprocessConfig(_StrictConfig):
     orientations_csv: str | None = None
 
 
+def _relative_path_only(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("input references must be relative paths within the experiment directory")
+    return value
+
+
 class Inputs(_StrictConfig):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
     structure: str
-    exp_data: str
+    exp_data: str | list[str]
+    # Combine rotations from every file in exp_data into one experiment. False (default) keeps
+    # exp_data a single path -- the original single-dataset behavior, unchanged. True requires
+    # exp_data to be a list of 2+ paths; every combined file must share one rocking-curve
+    # integration semiangle, since diffBloch builds a single shared rocking-curve geometry for the
+    # whole (combined) experiment -- see preprocess.experiment.from_experiment.
+    multi_dataset: bool = False
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
-    @field_validator("structure", "exp_data")
+    @field_validator("structure")
     @classmethod
-    def _relative_path_only(cls, value: str) -> str:
-        path = Path(value)
-        if path.is_absolute() or ".." in path.parts:
+    def _structure_relative_path(cls, value: str) -> str:
+        return _relative_path_only(value)
+
+    @field_validator("exp_data")
+    @classmethod
+    def _exp_data_relative_paths(cls, value: str | list[str]) -> str | list[str]:
+        if isinstance(value, list):
+            return [_relative_path_only(v) for v in value]
+        return _relative_path_only(value)
+
+    @model_validator(mode="after")
+    def _multi_dataset_shape(self) -> Inputs:
+        if self.multi_dataset:
+            if not isinstance(self.exp_data, list) or len(self.exp_data) < 2:
+                raise ValueError(
+                    "inputs.multi_dataset=true requires inputs.exp_data to be a list of 2+ paths"
+                )
+        elif isinstance(self.exp_data, list):
             raise ValueError(
-                "input references must be relative paths within the experiment directory"
+                "inputs.exp_data is a list but inputs.multi_dataset is false -- set "
+                "multi_dataset=true to combine multiple datasets, or use a single path"
             )
-        return value
+        return self
 
 
 class ExperimentConfig(_StrictConfig):
@@ -458,12 +544,26 @@ class ExperimentConfig(_StrictConfig):
         (W&B/Comet hyperparameters, the written summary) reads the run's settings from this one
         event instead of being handed the config object.
         """
+        experimental_data = (
+            ", ".join(self.inputs.exp_data)
+            if isinstance(self.inputs.exp_data, list)
+            else self.inputs.exp_data
+        )
+        # Per-dataset thicknesses (inputs.multi_dataset) flatten into one tuple here: this event's
+        # seed_thicknesses is a single summary field, not attributed per file -- the per-dataset
+        # values themselves live in from_experiment, which seeds each rotation from its own dataset's
+        # entry directly.
+        seed_thicknesses = (
+            tuple(value for group in self.sample.thicknesses for value in group)
+            if isinstance(self.sample.thicknesses, list)
+            else tuple(self.sample.thicknesses)
+        )
         return ExperimentDeclared(
             name=self.name,
             structure=self.inputs.structure,
-            experimental_data=self.inputs.exp_data,
+            experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
-            seed_thicknesses=tuple(self.sample.thicknesses),
+            seed_thicknesses=seed_thicknesses,
             integration_semiangle=integration.semiangle,
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
             dsg=self.blochwave.dsg,
@@ -474,6 +574,65 @@ class ExperimentConfig(_StrictConfig):
             steps=self.refinement.steps,
             learning_rate=self.refinement.optimizer.lr,
         )
+
+    @model_validator(mode="after")
+    def _per_dataset_shapes(self) -> ExperimentConfig:
+        """Any per-dataset list (``sample.thicknesses``, the thickness-search bounds) must have
+        exactly one entry per file in ``inputs.exp_data``, in the same order -- and can only appear
+        at all under ``inputs.multi_dataset`` (``Inputs._multi_dataset_shape`` already guarantees
+        ``exp_data`` is a 2+ path list whenever that's true).
+
+        ``sample.thicknesses`` is *required* to be a per-dataset list under ``multi_dataset`` --
+        unless the seed value never actually reaches a forward solve at all: when
+        ``preprocess.optimize_thickness`` is on and runs first
+        (``stage_order == "thickness_first"``, the default), its own grid search overwrites every
+        rotation's thickness before anything else uses it, evaluating its own configured range
+        regardless of what the seed happened to be -- so a shared seed in that specific combination
+        is not a quietly-wrong default, it is provably inert. Any other combination (thickness
+        disabled, or fit *after* orientation) does use the seed directly in a real solve, where a
+        single shared value across genuinely different specimens is exactly the silent bug this
+        guards against.
+        """
+        n_datasets = len(self.inputs.exp_data) if isinstance(self.inputs.exp_data, list) else None
+        seed_thickness_is_used = not (
+            self.preprocess.optimize_thickness
+            and self.preprocess.stage_order == "thickness_first"
+        )
+
+        if isinstance(self.sample.thicknesses, list):
+            if n_datasets is None:
+                raise ValueError(
+                    "sample.thicknesses is a per-dataset list but inputs.multi_dataset is false"
+                )
+            if len(self.sample.thicknesses) != n_datasets:
+                raise ValueError(
+                    f"sample.thicknesses has {len(self.sample.thicknesses)} entries, "
+                    f"inputs.exp_data has {n_datasets}"
+                )
+        elif n_datasets is not None and seed_thickness_is_used:
+            raise ValueError(
+                "inputs.multi_dataset=true requires sample.thicknesses to be a per-dataset list "
+                f"(one tuple per file in inputs.exp_data, {n_datasets} entries) -- a single shared "
+                "value would silently seed every combined dataset from the same starting "
+                "thickness regardless of which specimen it actually is. (This is only enforced "
+                "when the seed actually reaches a solve: with optimize_thickness on and "
+                "stage_order=thickness_first, its grid search overwrites the seed before anything "
+                "uses it, so a shared value is harmless there.)"
+            )
+
+        min_thickness = self.preprocess.thickness.min_thickness
+        if isinstance(min_thickness, list):
+            if n_datasets is None:
+                raise ValueError(
+                    "preprocess.thickness.min_thickness/max_thickness are per-dataset lists but "
+                    "inputs.multi_dataset is false"
+                )
+            if len(min_thickness) != n_datasets:
+                raise ValueError(
+                    f"preprocess.thickness.min_thickness has {len(min_thickness)} entries, "
+                    f"inputs.exp_data has {n_datasets}"
+                )
+        return self
 
 
 def load_config(path: str | Path) -> ExperimentConfig:

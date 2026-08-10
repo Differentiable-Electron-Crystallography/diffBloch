@@ -218,7 +218,7 @@ def test_converge_sampling_refines_tilts_until_the_integral_settles() -> None:
     converged = step(seed)
 
     tilt_count = len(converged.orientations[0].beam_plans)
-    assert tilt_count == 9  # deterministic: first consecutive-sim R below 0.01 is at 9 tilts
+    assert tilt_count == 11  # deterministic: first consecutive-sim wR2 below 0.01 is at 11 tilts
     # started from a single static solve (sampling == 1); convergence genuinely refined the grid
     assert (
         len(

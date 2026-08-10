@@ -35,16 +35,15 @@ from diffBloch.core.dynamical import (
     excitation_errors,
     grid_source_indices,
 )
-from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
+from diffBloch.core.products import PLAIN_SUM, MosaicAverage, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
-from diffBloch.preprocess.orientation import rocking_curve_tilts
+from diffBloch.preprocess.orientation import mosaic_rocking_curve_tilts, rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import (
     BeamSelection,
-    Mosaicity,
     PerTiltCoupling,
     RockingCurve,
     UnionCoupling,
@@ -82,7 +81,7 @@ def select_beams(selection: BeamSelection) -> PlanStep:
 
 def build_orientation_plans(
     rocking: RockingCurve | None = None,
-    mosaicity: Mosaicity | None = None,
+    mosaicity: bool = False,
     *,
     coupling: UnionCoupling | PerTiltCoupling | None = None,
     scoring_selection: BeamSelection | None = None,
@@ -111,13 +110,13 @@ def build_orientation_plans(
     execution-only and therefore intentionally absent from the step's provenance record.
     Omitting ``coupling`` preserves the simple builder used by focused APIs/tests.
     """
-    if mosaicity is not None and rocking is None:
+    if mosaicity and rocking is None:
         raise ValueError("mosaicity requires rocking-curve geometry")
     if coupling is not None and rocking is None:
         raise ValueError("coupling requires rocking-curve geometry")
     if workers < 1:
         raise ValueError("workers must be >= 1")
-    tilts = (
+    plain_tilts = (
         None
         if rocking is None
         else rocking_curve_tilts(
@@ -126,21 +125,29 @@ def build_orientation_plans(
             geometry=rocking.integration.geometry,
         )
     )
-    if mosaicity is not None:
-        assert rocking is not None  # narrowed by the construction guard above
-        if mosaicity.window > rocking.sampling:
-            raise ValueError(
-                f"mosaicity window {mosaicity.window} exceeds the {rocking.sampling} "
-                "rocking-curve tilts"
-            )
-    reduction = PLAIN_SUM if mosaicity is None else MosaicSmoothed(mosaicity.window)
+
+    def geometry(candidate: CandidatePlan) -> tuple[NDArray[np.float64] | None, TiltReduction]:
+        if not mosaicity:
+            return plain_tilts, PLAIN_SUM
+        assert rocking is not None
+        sigma = candidate.mosaicity_degrees
+        if sigma is None:
+            raise ValueError("mosaicity is enabled but the candidate has no PETS mosaicity value")
+        tilts, weights = mosaic_rocking_curve_tilts(
+            rocking.integration.semiangle,
+            rocking.sampling,
+            sigma,
+            geometry=rocking.integration.geometry,
+        )
+        return tilts, MosaicAverage(tuple(float(value) for value in weights), sigma)
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)
         built: tuple[OrientationPlan | CoupledOrientationPlan, ...]
         if coupling is None:
-            built = tuple(
-                OrientationPlan.build(
+            def build_plain(cp: CandidatePlan) -> OrientationPlan:
+                tilts, reduction = geometry(cp)
+                return OrientationPlan.build(
                     plan.structure_factor_grid,
                     np.asarray(cp.beam_hkl),
                     cp.pattern,
@@ -151,10 +158,8 @@ def build_orientation_plans(
                     tilts=tilts,
                     tilt_reduction=reduction,
                 )
-                for cp in candidates
-            )
+            built = tuple(build_plain(cp) for cp in candidates)
         else:
-            assert tilts is not None
             grid = plan.structure_factor_grid
             assert_grid_covers_coupling(coupling, grid.g_max)
             structure_factor_hkl = np.asarray(grid.structure_factor_hkl, dtype=np.int64)
@@ -163,6 +168,8 @@ def build_orientation_plans(
             gather_cache_lock = Lock()
 
             def build_one(candidate: CandidatePlan) -> CoupledOrientationPlan:
+                tilts, reduction = geometry(candidate)
+                assert tilts is not None
                 return _build_coupled_candidate(
                     grid,
                     candidate,
