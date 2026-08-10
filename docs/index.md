@@ -30,7 +30,8 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 | [Architecture](architecture.md) | Why dynamical diffraction needs a Bloch-wave simulation, and how the pieces fit together. |
 | [Inputs](inputs.md) | The starting structure and rocking-curve data a refinement needs. |
 | [Preprocessing](preprocessing.md) | Fitting crystal orientation and specimen thickness before the structure is touched. |
-| [Hyperparameter selection](hyperparameter-selection.md) | Choosing beam and rocking-curve settings using convergence tests. |
+| [Convergence testing](convergence-testing.md) | Choosing beam and rocking-curve settings using convergence tests. |
+| [Config reference](hyperparameter-selection.md) | Every `experiment.yaml` switch, its default, and what's auto-filled from CIF/PETS instead. |
 | [Refinement](refinement.md) | The optimization loop: constraints, restraints, and thickness models alongside the structure. |
 | [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` pin a fitted `Plan` so a result can be reproduced exactly. |
 | [Observability](observability-guide.md) | Tracking wR2, R_obs, and diffraction loss as a run progresses. |
@@ -108,6 +109,7 @@ If you use diffBloch in your research, please cite it:
 architecture.md
 inputs.md
 preprocessing.md
+convergence-testing.md
 hyperparameter-selection.md
 reproducibility.md
 refinement.md
