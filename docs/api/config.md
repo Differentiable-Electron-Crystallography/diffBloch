@@ -8,8 +8,8 @@ specifies input references and overrides.
 .. automodule:: diffBloch.config.schema
 ```
 
-Experiment locks hash input bytes only; run manifests hash generated artifacts. The working run
-format is a directory, with zip/tar/BagIt/RO-Crate as export formats.
+Experiment locks hash input bytes only; the preprocess and refinement locks hash generated
+artifacts.
 
 ```{eval-rst}
 .. automodule:: diffBloch.config.manifest
