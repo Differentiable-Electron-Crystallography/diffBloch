@@ -6,7 +6,7 @@ repos:
       # Skip verbatim external data: the structure/experimental inputs (cif / cif_pets) are
       # hash-locked by experiment.lock -- normalizing whitespace would silently break the lock (it
       # did, on the LTA exp_data.cif_pets). Exclude the test-fixture tree AND the .cif/.cif_pets
-      # extensions wherever they live (e.g. examples/experiments/*), so a committed example dataset
+      # extensions wherever they live (e.g. examples/*/data/*), so a committed example dataset
       # is protected too. Python is unaffected: ruff-format (below) owns Python whitespace/EOF and
       # runs on fixture *.py too. check-yaml / check-added-large-files deliberately still run
       # everywhere (validate yaml, catch oversized dumps).

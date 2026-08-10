@@ -215,10 +215,13 @@ This document is the naming guide; do not depend on files outside the repository
 
   ```bash
   uv sync --dev
-  uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
-  uv run diffbloch run infer examples/experiments/quartz-checkpoint
-  uv run diffbloch run refine examples/experiments/quartz
+  uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
+  uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
   ```
+
+  The six experiment directories under `examples/Colmey_et_al_2026_Acta_Cryst_A/data/` are the only
+  runnable examples; quartz is the smallest and cheapest. None ships a preprocess checkpoint, so a
+  first run settles the `Plan` from raw inputs before refinement starts.
 
 - Documentation snippets are runnable where practical; if an example is only API shape, say so.
 - Documentation must not overclaim reproducibility: locks verify identity, not floating-point trajectories.
@@ -242,8 +245,8 @@ Targeted examples:
 ```bash
 uv run pytest tests/unit/test_pipeline.py tests/unit/test_driver.py -q
 uv run pytest tests/e2e/test_anchor.py::test_quartz_coupled_anchor -q -m e2e
-uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
-uv run diffbloch run infer examples/experiments/quartz-checkpoint
+uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
+uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 Change-type guidance:

@@ -53,7 +53,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 
-root = Path("examples/experiments/quartz")
+root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
 experimental_data = read_experimental_data(root / cfg.inputs.exp_data)

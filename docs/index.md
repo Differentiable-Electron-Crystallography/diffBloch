@@ -16,12 +16,12 @@ title: diffBloch
 
 Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
-This codebase is entirely open-source, and we welcome contributions as well as questions.  
+This codebase is entirely open-source, and we welcome contributions as well as questions.
 
 
 ## Overview
 
-diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format. 
+diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format.
 
 diffBloch performs the refinement as two complementary values: a crystal structure, consisting of atomic coordinates and thermal displacement parameters, and a settled `Plan`, consisting of crystallographic metadata such as thickness or orientation. Together they feed the refinement engine, which runs a repeatable Bloch-wave simulation, compares calculated and observed intensities, and iteratively minimizes the objective by updating selected trainable parameters. The guides below unpack that path from experiment inputs through preprocessing, refinement, reproducibility, observability, and runnable examples.
 
@@ -57,26 +57,25 @@ on your shell `PATH`.
 Validate a config before launching a longer job:
 
 ```bash
-uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
 ```
 
-Simulate and score the settled quartz checkpoint without changing parameters:
+Simulate and score without changing parameters:
 
 ```bash
-uv run diffbloch run infer examples/experiments/quartz-checkpoint
+uv run diffbloch run infer examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
-Run the small quartz example end to end, including preprocessing and refinement:
+Run the smallest example end to end, preprocessing and refinement:
 
 ```bash
-uv run diffbloch run refine examples/experiments/quartz
+uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
-Start refinement faster from the bundled quartz preprocessing checkpoint:
-
-```bash
-uv run diffbloch run refine examples/experiments/quartz-checkpoint
-```
+No example ships a preprocess checkpoint, so a first run settles the `Plan` from raw inputs before
+refinement starts. That run writes `plan.npz` + `plan.lock` into the experiment's
+`reproducibility/`, so a second run of the same directory reuses it — provided the inputs, config,
+code release, and recipe all still match.
 
 Use `infer` to run the forward simulation and scoring pass over a settled `Plan`; it does not update
 structural parameters. Use `refine` to run the optimization loop, repeatedly simulating, scoring,
