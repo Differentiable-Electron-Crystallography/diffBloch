@@ -47,6 +47,7 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
+from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
@@ -666,6 +667,25 @@ def _write_refinement_outputs(
     reciprocal = reciprocal_basis.detach().cpu().numpy()
     reciprocal_lengths = np.linalg.norm(reciprocal, axis=1)
     reciprocal_metric = reciprocal @ reciprocal.T
+    # refinement.cell_parameters is the authoritative cell reciprocal_basis was actually derived
+    # from (PETS's, not necessarily the structure CIF's own -- see from_experiment); the written
+    # header must match it, or the file would declare a cell inconsistent with the ADP/position
+    # convention its own values were refined under. None only for a RefinementSetup built directly
+    # with no override (no PETS record in scope at all), where the CIF's own cell is left as-is.
+    if refinement.cell_parameters is not None:
+        cell_tags = (
+            ("_cell_length_a", refinement.cell_parameters[0]),
+            ("_cell_length_b", refinement.cell_parameters[1]),
+            ("_cell_length_c", refinement.cell_parameters[2]),
+            ("_cell_angle_alpha", refinement.cell_parameters[3]),
+            ("_cell_angle_beta", refinement.cell_parameters[4]),
+            ("_cell_angle_gamma", refinement.cell_parameters[5]),
+        )
+        for tag, value in cell_tags:
+            block.set_pair(tag, f"{float(value):.6f}")
+        if block.find_pair("_cell_volume") is not None:
+            authoritative_unit_cell = cell_matrix_from_parameters(refinement.cell_parameters)
+            block.set_pair("_cell_volume", f"{cell_volume(authoritative_unit_cell):.5f}")
     atom_loop = block.find_loop("_atom_site_label").get_loop()
     tags = list(atom_loop.tags)
     label_column = tags.index("_atom_site_label")

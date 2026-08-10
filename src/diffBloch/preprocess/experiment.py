@@ -14,6 +14,7 @@ The structure side lives here so the structure/experimental split mirrors the tw
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -25,7 +26,7 @@ from torch import Tensor
 
 from diffBloch.config.schema import DataSplitConfig, ExperimentConfig
 from diffBloch.core.adp import cholesky_raw_from_adp
-from diffBloch.core.crystal import reciprocal_cell
+from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.core.dynamical import (
     energy2sigma,
     energy2wavelength,
@@ -52,6 +53,12 @@ __all__ = [
     "from_experiment",
     "seed_beam_hkl",
 ]
+
+_log = logging.getLogger(__name__)
+
+_CELL_PARAMETER_NAMES = ("a", "b", "c", "alpha", "beta", "gamma")
+_CELL_WARN_RTOL = 0.01  # relative difference past which a cell mismatch warns
+_CELL_FAIL_RTOL = 0.05  # relative difference past which a cell mismatch is a hard error
 
 
 @dataclass(frozen=True)
@@ -116,17 +123,29 @@ class RefinementSetup:
     spec: ConstraintSpec
     params: RefinableParams
     numbers: Tensor
+    # The (a, b, c, alpha, beta, gamma) spec.reciprocal_basis was actually built from -- PETS's
+    # authoritative cell when from_structure was given one (see from_experiment), else None (a
+    # direct construction with no override; spec.reciprocal_basis already carries the metric, this
+    # is only needed by a caller that writes it back out, e.g. the refined_structure.cif header).
+    cell_parameters: NDArray[np.float64] | None = None
 
     @classmethod
-    def from_structure(cls, structure: StructureRecord) -> RefinementSetup:
+    def from_structure(
+        cls,
+        structure: StructureRecord,
+        *,
+        cell_parameters: NDArray[np.float64] | None = None,
+    ) -> RefinementSetup:
         """Assemble the structure-side refinement inputs from a parsed :class:`StructureRecord`.
 
-        Positions and symmetry use the *ideal* CIF cell (the measured-lattice correction enters only
-        through the per-orientation matrices in the geometry plan). ADPs are mapped to the
-        reciprocal ``U*`` frame of this ideal cell by :func:`diffBloch.params.constrain`.
-        Per-rotation thickness lives elsewhere -- on each per-rotation plan (seeded by
-        ``from_experiment``, fitted by ``optimize_thickness``) -- because it varies per rotation, not per
-        structure.
+        Positions and symmetry are read directly off the CIF's fractional coordinates /
+        symmetry operators -- both are metric-independent, so they need no cell at all. ADPs are
+        mapped to the reciprocal ``U*`` frame by :func:`diffBloch.params.constrain`, using
+        ``cell_parameters`` as the metric when given (``inputs.multi_dataset``-checked PETS cell,
+        authoritative -- see ``from_experiment``); otherwise the structure's own CIF cell, for a
+        caller that has no PETS record at all (a direct construction, e.g. a test). Per-rotation
+        thickness lives elsewhere -- on each per-rotation plan (seeded by ``from_experiment``,
+        fitted by ``optimize_thickness``) -- because it varies per rotation, not per structure.
 
         Special-position degrees of freedom are constrained by the site-symmetry projector built
         natively from the structure's symmetry operators (:func:`symmetry_constraints`): an atom
@@ -136,15 +155,17 @@ class RefinementSetup:
         positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
         uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
         constraints = symmetry_constraints(structure)
+        resolved_cell_parameters = (
+            structure.cell_parameters if cell_parameters is None else np.asarray(cell_parameters)
+        )
+        unit_cell = cell_matrix_from_parameters(resolved_cell_parameters)
         spec = ConstraintSpec(
             position_projection=torch.tensor(constraints.position_projection, dtype=torch.float64),
             position_offset=torch.tensor(constraints.position_offset, dtype=torch.float64),
             occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
             adp_kind=structure.adp.kind,
             adp_constraints=constraints.adp_constraints,
-            reciprocal_basis=torch.tensor(
-                reciprocal_cell(structure.unit_cell), dtype=torch.float64
-            ),
+            reciprocal_basis=torch.tensor(reciprocal_cell(unit_cell), dtype=torch.float64),
         )
         return cls(
             asu_plan=build_asu_expansion_plan(
@@ -155,6 +176,7 @@ class RefinementSetup:
                 asu_positions=positions.clone(), uij_raw=uij_raw, u_iso_raw=u_iso_raw
             ),
             numbers=torch.tensor(structure.numbers, dtype=torch.int64),
+            cell_parameters=cell_parameters,
         )
 
 
@@ -213,11 +235,15 @@ def from_experiment(
                 "pooled datasets (inputs.multi_dataset) must share one rocking-curve integration "
                 f"semiangle; got {sorted(set(semiangles))}"
             )
+    authoritative_cell_parameters = _resolve_authoritative_cell(structure, records)
+    authoritative_unit_cell = cell_matrix_from_parameters(authoritative_cell_parameters)
 
     solve_cutoff = config.blochwave.g_max
-    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(authoritative_unit_cell, solve_cutoff)
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
-    refinement_setup = RefinementSetup.from_structure(structure)
+    refinement_setup = RefinementSetup.from_structure(
+        structure, cell_parameters=authoritative_cell_parameters
+    )
     absorption = config.blochwave.to_absorption()
 
     pooled_plans: list[CandidatePlan] = []
@@ -275,6 +301,93 @@ def from_experiment(
         refinement=refinement_setup,
         integration=IntegrationGeometry(semiangle=records[0].integration_semiangle),
     )
+
+
+def _resolve_authoritative_cell(
+    structure: StructureRecord, records: Sequence[ExperimentalRecord]
+) -> NDArray[np.float64]:
+    """Resolve the ``(a, b, c, alpha, beta, gamma)`` PETS is authoritative for.
+
+    PETS's own cell -- not the structure CIF's -- is used for every piece of simulation geometry:
+    the structure-factor grid, the reciprocal basis, the cell volume, the ADP U*-frame conversion,
+    and beam geometry (all derived from the grid ``from_experiment`` builds with this cell). The CIF
+    still supplies atomic content (positions, types, occupancies, ADPs, symmetry operators) --
+    fractional coordinates are unchanged, only now interpreted against PETS's cell rather than the
+    CIF's own. For a combined experiment (``inputs.multi_dataset``) the *first* file in
+    ``inputs.exp_data`` order is the anchor every other combined file's own orientation is applied
+    against (see ``orientation_matrices`` in ``from_experiment``'s per-record loop, unchanged: each
+    dataset's ``U`` still comes from *its own* UB and *its own* PETS cell, only the cell that ``U``
+    then gets composed with -- via ``orientation_basis`` -- is this single shared authoritative one).
+
+    The structure CIF's cell, and every further combined PETS file's cell, is checked against this
+    authoritative cell -- never the reverse, it is never adjusted to fit them. A >1% relative
+    difference on any of ``a, b, c, alpha, beta, gamma`` warns (day-to-day refinement/measurement
+    drift stays well under that); a >5% difference raises -- that far past ordinary drift, the two
+    files most likely describe different crystals or settings, and continuing would silently derive
+    the whole simulation's geometry from a mismatch this large.
+    """
+    authoritative_cell = np.asarray(records[0].cell_parameters, dtype=np.float64)
+    authoritative_label = (
+        str(records[0].source_path) if records[0].source_path is not None else "<experimental data>"
+    )
+    _check_cell_agreement(
+        authoritative_cell, authoritative_label, structure.cell_parameters, "structure CIF"
+    )
+    for record in records[1:]:
+        other_label = (
+            str(record.source_path) if record.source_path is not None else "<experimental data>"
+        )
+        _check_cell_agreement(
+            authoritative_cell,
+            authoritative_label,
+            np.asarray(record.cell_parameters, dtype=np.float64),
+            other_label,
+        )
+    return authoritative_cell
+
+
+def _check_cell_agreement(
+    authoritative_cell: NDArray[np.float64],
+    authoritative_label: str,
+    other_cell: NDArray[np.float64],
+    other_label: str,
+) -> None:
+    """Compare ``other_cell`` against the authoritative cell: warn past 1%, raise past 5%.
+
+    ``authoritative_cell`` always wins regardless of the outcome here -- this only ever informs or
+    blocks, it never changes which cell the simulation actually uses.
+    """
+    relative_diff = np.abs(other_cell - authoritative_cell) / np.abs(authoritative_cell)
+
+    def offending(threshold: float) -> str:
+        return ", ".join(
+            f"{name}: {other_label}={other_value:.6g} vs {authoritative_label}="
+            f"{authoritative_value:.6g} ({100.0 * diff:.2f}% off)"
+            for name, other_value, authoritative_value, diff in zip(
+                _CELL_PARAMETER_NAMES, other_cell, authoritative_cell, relative_diff, strict=True
+            )
+            if diff > threshold
+        )
+
+    fail_mask = relative_diff > _CELL_FAIL_RTOL
+    if np.any(fail_mask):
+        raise ValueError(
+            f"{other_label} and {authoritative_label} unit cells disagree by more than 5% on "
+            f"{int(np.count_nonzero(fail_mask))} parameter(s): {offending(_CELL_FAIL_RTOL)} -- "
+            "refusing to continue; check that these files describe the same crystal setting."
+        )
+    warn_mask = relative_diff > _CELL_WARN_RTOL
+    if np.any(warn_mask):
+        _log.warning(
+            "%s and %s unit cells disagree by more than 1%% on %d parameter(s): %s -- %s is "
+            "authoritative and overrides %s for the simulation geometry.",
+            other_label,
+            authoritative_label,
+            int(np.count_nonzero(warn_mask)),
+            offending(_CELL_WARN_RTOL),
+            authoritative_label,
+            other_label,
+        )
 
 
 def _mean_inner_potential(

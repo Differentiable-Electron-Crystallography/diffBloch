@@ -44,12 +44,12 @@ __all__ = [
 ]
 
 # Half-Angstrom shell added to the derived structure-factor support radius. It reconciles the two
-# metrics in play: the coupling filter cuts ``|g| < g_max`` in the *orientation* metric (which folds
-# the experimental cell correction -- ``u_matrix`` is deliberately non-orthonormal), while the grid
-# is tabulated on the ideal-cell ``reciprocal_cell`` metric. The two differ by the cell-correction
-# magnitude (~1% on quartz), so a coupled beam difference can be up to that fraction past a bare
-# ``2 * g_max`` in the grid metric. This is a numerical safety shell, not a tunable scientific knob.
-# See StructureFactorGrid.from_cell_for_beam_cutoff.
+# metrics in play: the coupling filter cuts ``|g| < g_max`` in the *orientation* metric (``u_matrix``
+# is not guaranteed exactly orthonormal -- it carries PETS's own UB-vs-cell-parameters fit residual,
+# see ``preprocess.orientation``), while the grid is tabulated on the authoritative-cell
+# ``reciprocal_cell`` metric that same ``U`` was derived to be consistent with. The two metrics
+# should very nearly agree (that residual is typically well under 1%), but this shell is cheap
+# insurance against it, not a tunable scientific knob. See StructureFactorGrid.from_cell_for_beam_cutoff.
 _SUPPORT_MARGIN = 0.5
 
 
@@ -121,11 +121,11 @@ class StructureFactorGrid:
         objective, not the solve.
 
         The support radius is ``2 * solve_g_max + _SUPPORT_MARGIN``. The half-Angstrom headroom
-        reconciles the coupling filter's *orientation* metric (which folds the experimental cell
-        correction -- ``u_matrix`` is deliberately non-orthonormal, ~1% on quartz) with this
-        ideal-cell ``reciprocal_cell`` metric, so a coupled beam difference near ``2 * solve_g_max``
-        in the former still lands inside the grid in the latter. The shell only enlarges the
-        (unused-at-the-margin) SF table; it changes neither the coupled beam set nor the scored set.
+        reconciles the coupling filter's *orientation* metric (``u_matrix`` is not guaranteed exactly
+        orthonormal -- see ``preprocess.orientation``) with this ``reciprocal_cell`` metric of the
+        same authoritative cell, so a coupled beam difference near ``2 * solve_g_max`` in the former
+        still lands inside the grid in the latter. The shell only enlarges the (unused-at-the-margin)
+        SF table; it changes neither the coupled beam set nor the scored set.
         """
         if solve_g_max <= 0.0:
             raise ValueError("solve_g_max must be positive")
@@ -189,9 +189,9 @@ class OrientationPlan:
         ``orientation_basis(grid.cell, orientation) = reciprocal_cell(cell @ orientation.T)`` and
         drives ``g`` -> ``Sg`` / ``Mii`` only. When ``None`` the orientation is the identity and the
         shared ``grid.reciprocal_basis`` is used directly (the untilted / single-orientation case),
-        making that path identical to the unoriented build. The rotation convention (and the
-        measured-cell correction folded into ``orientation``) is derived upstream in ``preprocess``;
-        the ``Fgb`` gather is keyed on ``grid.structure_factor_hkl`` and is unaffected.
+        making that path identical to the unoriented build. The rotation convention is derived
+        upstream in ``preprocess`` (see ``preprocess.orientation``); the ``Fgb`` gather is keyed on
+        ``grid.structure_factor_hkl`` and is unaffected.
 
         ``orientation`` accepts either a NumPy array or a ``Tensor`` (e.g. a prior plan's stored
         ``orientation``), so a later ``Plan -> Plan`` rebuild can pass ``old_plan.orientation``
