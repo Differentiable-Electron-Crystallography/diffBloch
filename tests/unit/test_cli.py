@@ -540,3 +540,23 @@ def test_released_sinks_give_back_their_resources(monkeypatch: pytest.MonkeyPatc
     nested = MultiLogger((MultiLogger((_Holder(), NullLogger())), NullLogger()))  # type: ignore[arg-type]
     _release_sinks(nested)
     assert closed == ["released"]
+
+
+@pytest.mark.parametrize("command", ["infer", "preprocess", "refine", "converge"])
+def test_tui_without_the_extra_reports_concisely(
+    command: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing optional extra is a user mistake: a message and exit 1, never a traceback."""
+    import importlib.util
+
+    real = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *a, **k: None if name == "rich" else real(name, *a, **k),
+    )
+
+    assert main(["run", command, "/some/experiment", "--tui"]) == 1
+    captured = capsys.readouterr()
+    assert "uv sync --extra tui" in captured.err
+    assert "Traceback" not in captured.err

@@ -237,8 +237,11 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+        # Built inside the try so a bad sink choice (e.g. --tui without the extra) is reported as a
+        # concise error like any other user mistake; NULL_LOGGER keeps the finally safe if it fails.
+        logger: Logger = NULL_LOGGER
         try:
+            logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
             result = run_experiment(
                 args.experiment_directory,
                 logger=logger,
@@ -266,14 +269,15 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
         summary_logger = RecordingLogger()
-        logger = (
-            summary_logger
-            if progress_logger is NULL_LOGGER
-            else MultiLogger((progress_logger, summary_logger))
-        )
+        logger = summary_logger
         try:
+            progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+            logger = (
+                summary_logger
+                if progress_logger is NULL_LOGGER
+                else MultiLogger((progress_logger, summary_logger))
+            )
             plan = preprocess_experiment(
                 args.experiment_directory,
                 logger=logger,
@@ -337,13 +341,14 @@ def main(argv: list[str] | None = None) -> int:
         # console/CSV ones rather than by refine_experiment: an API caller composes it (or not) for
         # themselves instead of having a file appear as a side effect of refining.
         report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
-        refine_logger = MultiLogger(
-            (
-                _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
-                SummaryLogger(report_path),
-            )
-        )
+        refine_logger: Logger = NULL_LOGGER
         try:
+            refine_logger = MultiLogger(
+                (
+                    _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                    SummaryLogger(report_path),
+                )
+            )
             refined = refine_experiment(
                 args.experiment_directory,
                 logger=refine_logger,
@@ -397,8 +402,9 @@ def main(argv: list[str] | None = None) -> int:
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
-        logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+        logger = NULL_LOGGER
         try:
+            logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
             settled = converge_experiment(
                 args.experiment_directory,
                 logger=logger,

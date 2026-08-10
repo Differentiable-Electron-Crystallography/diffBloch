@@ -16,6 +16,7 @@ are dropped, because an in-place display has no meaning there. Use ``ConsoleLogg
 
 from __future__ import annotations
 
+import importlib.util
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -75,6 +76,22 @@ class TuiLogger:
     """
 
     refresh_per_second: float = 8.0
+
+    def __post_init__(self) -> None:
+        """Refuse at construction if rich is absent, rather than at the first event.
+
+        rich is imported lazily inside the rendering methods, so this class imports fine without it
+        and would otherwise fail on the first event reported -- which for a refinement run is after
+        the preprocess has already been paid for. ``find_spec`` detects absence without importing,
+        keeping the rendering path lazy. ``ValueError`` is what the CLI turns into a concise stderr
+        message rather than a traceback.
+        """
+        if importlib.util.find_spec("rich") is None:
+            raise ValueError(
+                "the live dashboard (--tui) needs 'rich', an optional dependency. Install it with "
+                "`uv sync --extra tui`, or omit --tui for the scrolling console log."
+            )
+
     _live: Any = field(default=None, init=False, repr=False)
     _console: Any = field(default=None, init=False, repr=False)
     _experiment: ExperimentDeclared | None = field(default=None, init=False, repr=False)

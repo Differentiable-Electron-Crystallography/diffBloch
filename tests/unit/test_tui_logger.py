@@ -252,3 +252,16 @@ def test_close_is_safe_without_a_started_display() -> None:
     logger.close()
     logger.close()  # idempotent
     assert logger._live is None
+
+
+def test_missing_rich_fails_at_construction_with_an_install_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--tui is a CLI flag, so the failure must arrive before the run, not on the first event."""
+    import importlib.util
+
+    monkeypatch.setattr(
+        importlib.util, "find_spec", lambda name: None if name == "rich" else object()
+    )
+    with pytest.raises(ValueError, match=r"uv sync --extra tui"):
+        TuiLogger()
