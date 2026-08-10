@@ -1,7 +1,7 @@
 # Preprocessing and `Plan`
 
 Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
-therefore fits this experimental metadata before refining the structure and stores it in a `Plan`.
+therefore determines this experimental metadata before refining the structure and stores it in a `Plan`.
 
 PETS2 reduces continuous-rotation data into overlapping **virtual frames**, allowing complete
 rocking curves to be integrated and partial reflections to be rejected
@@ -10,44 +10,158 @@ virtual frame by sampled tilt sub-orientations and sums their simulated intensit
 
 ## Orientation
 
-PETS2 supplies a best-fit **UB matrix**: {math}`B` maps the reciprocal lattice and {math}`U`
-orients that lattice in the laboratory frame. For virtual frame {math}`i`, diffBloch constructs
+PETS2 supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
+cell and maps integer reflection indices {math}`(h,k,l)` to reciprocal-space vectors. The matrix
+{math}`U` places that reciprocal basis in the laboratory coordinate system. Their product {math}`UB`
+therefore maps a reflection index directly into the measured laboratory geometry.
+
+diffBloch separates the two matrices using
+
+```{math}
+U = (UB)B^{-1}.
+```
+
+For virtual frame {math}`i`, the PETS goniometer angles are then applied in their recorded order:
 
 ```{math}
 M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
 ```
 
-where {math}`\alpha` is the main varying goniometer angle.
+where {math}`\alpha_i`, {math}`\beta_i`, and {math}`\omega_i` are given in degrees and
+{math}`\alpha_i` is the main scan angle. {math}`M_i` is the starting crystal orientation for that
+virtual frame.
 
-Using a fixed trial thickness and the starting structure, orientation optimization searches nearby
-orientations for better agreement with experiment. Two approaches are implemented, selected by
-`preprocess.orientation.method`:
+Using the current thickness and starting unrefined structure, diffBloch searches for a small
+correction to each {math}`M_i`. A trial correction is described by three angles
+{math}`(\Delta\alpha,\Delta\beta,\Delta\omega)` and applied as
 
-| Method | Difference |
-|---|---|
-| `palatinus_modified_simplex` (default) | Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close. |
-| `nelder_mead` | Local simplex search over all three goniometer-correction angles directly (`scipy.optimize.minimize`); efficient but sensitive to the starting orientation and the fixed `step_size` neighbourhood it explores. |
+```{math}
+M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
+```
 
-Bayesian optimization is not implemented.
+The Bloch-wave intensities are recalculated for each trial and compared with the observed
+intensities using `loss_metrics.residual`, which defaults to `wr2`.
 
-## Thickness
+### Orientation-search method
 
-Real crystals have irregular shapes. diffBloch offers two
-approaches, both using the starting structure to improve agreement with experiment:
+diffBloch applies the general Nelder--Mead optimization algorithm
+([Nelder and Mead, 1965](https://doi.org/10.1093/comjnl/7.4.308)) to orientation refinement.
 
-| Method | Difference |
-|---|---|
-| Grid search | Selects the best mean thickness independently for each rotation. |
-| Neural network | Learns how apparent thickness varies smoothly with rotation angle. |
+Nelder--Mead minimizes the orientation residual without requiring its derivatives. For the three
+correction angles, the search holds four trial points: zero correction and one point displaced by
+`step_size` along each angle. These four points form a simplex.
 
-The default workflow optimizes orientation first and thickness second when both stages are enabled.
-Either stage can be disabled independently:
+Each point is evaluated by running the Bloch-wave calculation and comparing its intensities with
+experiment. Nelder--Mead ranks the four residuals and replaces the worst point by reflecting it
+through the opposite face of the simplex. Depending on the new residual, it may expand farther in
+that direction, contract toward the better points, or shrink the whole simplex around the best
+point. The simplex therefore moves and changes size as it approaches a local minimum. The final
+three coordinates are applied to the PETS orientation as
+{math}`(\Delta\alpha,\Delta\beta,\Delta\omega)`.
+
+This is a local, unconstrained search. `step_size` defines only the initial simplex; it neither
+limits the correction angles nor guarantees that the search finds the global minimum. The PETS UB
+matrix must already provide a close starting orientation.
+
+| Method | Search | Status |
+|---|---|---|
+| `nelder_mead` | Varies all three correction angles simultaneously using the four-point simplex described above. | Implemented and used by the default preprocessing path. |
+
+
+| Parameter | Default | Meaning |
+|---|---:|---|
+| `step_size` | `0.05` degrees | Edge length of the initial simplex. The four starting points are zero correction and one positive step along each correction angle. This is not a hard search bound. |
+| `max_iterations` | `60` | Maximum number of simplex iterations for one rotation. |
+| `x_tolerance` | `1e-3` degrees | Convergence tolerance for changes in the correction angles. |
+| `f_tolerance` | `1e-3` | Convergence tolerance for changes in the comparison residual. |
+| `penalize_fewer_reflections` | `true` | Prevents a trial from appearing better only because its orientation produces a smaller matched-reflection set. |
 
 ```yaml
 preprocess:
-  optimize_orientation: true
+  orientation:
+    nelder_mead:
+      step_size: 0.05
+      max_iterations: 60
+      x_tolerance: 0.001
+      f_tolerance: 0.001
+      penalize_fewer_reflections: true
+```
+
+### Routing on cell size
+
+The coupled orientation search diagonalizes (or exponentiates) the structure matrix {math}`A` once
+per trial, an {math}`O(N^3)` operation in the beam count {math}`N`, and {math}`N` grows with
+unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity check in the
+search that costs proportionally more on a large coupled beam set, without changing the search
+itself — the fitted orientation is always re-scored under the full check once the search settles.
+Below the threshold (quartz, at {math}`\sim 113\ \text{Å}^3`, included) the check runs on every
+trial. This routing is built with {func}`diffBloch.preprocess.pipeline.fork`, which picks one of two
+step lists from the structure-factor grid before the recipe is checkpointed, so a committed `Plan` is
+unaffected by which branch produced it. The thickness fit has no such split and always runs the same
+path regardless of cell size.
+
+## Thickness
+
+Real crystals have irregular shapes. The illuminated area therefore contains regions of different
+thickness, and the thickness distribution changes as the crystal orientation changes. Under the
+column approximation, each region may be simulated at its local thickness and the resulting intensities summed incoherently.
+
+Multiple scattering transfers amplitude between coupled reflections as the electron wave propagates through the crystal.
+Pendellösung oscillations therefore cause the intensity of an observed reflection to rise and fall
+with thickness. A small change in thickness can produce a large, reflection-specific change in
+intensity.
+
+diffBloch represents the thickness distribution by an effective mean thickness for each orientation. It can use one shared effective thickness for the complete experiment, determine a separate mean value for each orientation, or learn a smooth orientation-dependent mean thickness distribution:
+
+| Method | Difference |
+|---|---|
+| Shared thickness | Uses the value in `sample.thicknesses` for every orientation. |
+| Grid search | Selects the lowest-residual thickness independently for each orientation. |
+| Neural network | Learns how apparent thickness varies smoothly with orientation angle. |
+
+We normally use one shared value for orientation refinement if the approximate specimen thickness is known:
+
+```yaml
+sample:
+  thicknesses: [850.0]  # Angstroms
+
+preprocess:
   optimize_thickness: false
 ```
+
+If the thickness is not known, it is recommended to run thickness optimization before orientation optimization or structural refinement. The result establishes thickness before other parameters are
+changed. A representative value can then be used as the shared thickness if separate values are not
+required.
+
+The grid search evaluates `n_steps` evenly spaced thicknesses from `min_thickness` to
+`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch-wave
+calculation and scored against experiment. The lowest-residual thickness is stored for that
+orientation. The search uses the starting unrefined structure, so its purpose is to establish the
+experimental geometry before atomic parameters are changed.
+
+```yaml
+preprocess:
+  optimize_thickness: true
+  thickness:
+    min_thickness: 100.0
+    max_thickness: 2000.0
+    n_steps: 100
+    plot: true
+```
+
+With `plot: true`, diffBloch writes one residual-versus-thickness PNG for each orientation to
+`thickness_optim/` beside the structure input. Every tested thickness is shown and a dashed line
+marks the selected minimum. These plots show whether the minimum is well defined, whether different
+orientations favor the same thickness range, and whether the chosen search interval is too narrow.
+
+## Numerical convergence
+
+Determine `g_max`, `sg_max`, and `rocking_curve_sampling` before optimizing thickness or
+orientation and before refining the structure. Numerical convergence depends mainly on the
+simulation basis and integration grid, not on whether the starting orientation or atomic structure
+has already been optimized. Thickness is the important exception because it changes the width of
+the rocking curve. See [Convergence testing](convergence-testing.md) for the convergence procedure
+and the thickness-dependent sampling check.
 
 ## The `Plan`
 
@@ -100,6 +214,12 @@ attaches the configured mosaic reduction. The configured reduction currently def
 mosaic-spread metadata. Passing `mosaicity=None` at the lower-level API keeps the bare `PlainSum`.
 Rocking integration and mosaicity are parts of the built orientation plan, not separately displayed
 default stages.
+
+Mosaicity describes the spread of crystal orientations within the illuminated volume. Different
+mosaic domains are slightly misoriented, so a reflection is excited over a wider angular range than
+it would be in a single perfectly oriented crystal. Mosaicity therefore broadens the calculated
+rocking curve and changes the integrated intensity, especially for reflections whose excitation
+condition varies rapidly with angle.
 
 ## API shape: from experiment records to an initial `Plan`
 
@@ -203,21 +323,3 @@ orientations = require_built_plans(plan)
 print(len(orientations))
 print(plan.structure_factor_grid.structure_factor_hkl.shape)
 ```
-
-## Routing on cell size
-
-The coupled orientation search diagonalizes (or exponentiates) the structure matrix {math}`A` once
-per trial, an {math}`O(N^3)` operation in the beam count {math}`N`, and {math}`N` grows with
-unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity check in the
-search that costs proportionally more on a large coupled beam set, without changing the search
-itself — the fitted orientation is always re-scored under the full check once the search settles.
-Below the threshold (quartz, at {math}`\sim 113\ \text{Å}^3`, included) the check runs on every
-trial. This routing is built with {func}`diffBloch.preprocess.pipeline.fork`, which picks one of two
-step lists from the structure-factor grid before the recipe is checkpointed, so a committed `Plan` is
-unaffected by which branch produced it.
-
-Numerical convergence testing — sweeping `g_max`, `sg_max`, and rocking-curve sampling until the
-simulated intensities stop changing — uses the same `Plan -> Plan` step shape, built with
-{func}`diffBloch.preprocess.driver.converge_numerics`. See
-[Hyperparameter selection](hyperparameter-selection.md) for the physics behind that sweep and a
-runnable example.
