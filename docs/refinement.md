@@ -29,14 +29,14 @@ The schema default keeps positions and ADPs trainable, and leaves occupancies fr
 ## CLI examples
 
 ```bash
-# Full quartz run, including preprocessing.
-uv run diffbloch refine examples/experiments/quartz
+# The smallest example, elastic: preprocessing then refinement.
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 
-# Faster start from a committed preprocessing checkpoint.
-uv run diffbloch refine examples/experiments/quartz-checkpoint
+# The same structure and data with absorption on -- the comparison the paper makes.
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 
-# Larger checkpointed example on CUDA.
-uv run diffbloch refine examples/experiments/abiraterone-checkpoint --device cuda
+# Larger structure refinement from a checkpointed preprocess running on CUDA.
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/borane-absorption --device cuda
 ```
 
 The default refinement budget is 40 epochs. Set a different recorded budget in the experiment
@@ -85,7 +85,7 @@ The completion summary prints the absolute location of every output.
 ```python
 from diffBloch.app import refine_experiment
 
-result = refine_experiment("examples/experiments/quartz-checkpoint")
+result = refine_experiment("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 
 print(result.losses.shape)
 print(result.best_step, result.best_loss)
@@ -105,9 +105,9 @@ X-ray least-squares refinement, and the lower-level Python API exposes it direct
 - **hard constraints** fix the geometric relationship between atoms exactly, e.g. a riding model
   where hydrogens keep contributing to the calculated scattering but move rigidly with their parent
   heavy atom rather than refining independent coordinates;
-- **restraints** (soft penalties) pull a quantity toward a target without fixing it, e.g. keeping a
-  bond length close to a chemically reasonable value; the optimizer can still trade the restraint off
-  against the diffraction fit, unlike a hard constraint;
+- **restraints** (soft penalties) are implemented as soft `PenaltyTerm`s: pull a quantity toward a
+  target without fixing it, e.g. keeping a bond length close to a chemically reasonable value;
+  the optimizer can still trade the restraint off against the diffraction fit, unlike a hard constraint;
 - **thickness models** treat the apparent specimen thickness at each tilt as a trainable quantity
   alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.
 
@@ -133,7 +133,7 @@ from diffBloch.engine import (
 from diffBloch.io import read_structure
 from diffBloch.preprocess import RefinementSetup, build_engine, read_plan
 
-root = Path("examples/experiments/abiraterone-checkpoint")
+root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/borane-absorption")
 device = torch.device("cpu")
 
 cfg = load_config(root / "experiment.yaml")
