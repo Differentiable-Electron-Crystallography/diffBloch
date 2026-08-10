@@ -90,7 +90,7 @@ preprocess:
 
 ## Generated refinement artifacts
 
-`run refine` writes `refined_structure.cif`, `refined_parameters.npz`, and
+`refine` writes `refined_structure.cif`, `refined_parameters.npz`, and
 `refinement_summary.json` into the experiment directory and prints their absolute paths. The CIF
 contains the best epoch's constrained structural values; the NPZ preserves its exact raw optimizer
 parameters.

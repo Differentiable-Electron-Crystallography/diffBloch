@@ -97,8 +97,8 @@ of days, start to finish.
 ## Running these examples
 
 ```bash
-uv run diffbloch run preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 ```
 
 Swap in any of the six directory names above for the other materials/absorption settings.

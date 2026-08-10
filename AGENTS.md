@@ -216,7 +216,7 @@ This document is the naming guide; do not depend on files outside the repository
   ```bash
   uv sync --dev
   uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
-  uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+  uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
   ```
 
   The six experiment directories under `examples/Colmey_et_al_2026_Acta_Cryst_A/data/` are the only
@@ -246,7 +246,7 @@ Targeted examples:
 uv run pytest tests/unit/test_pipeline.py tests/unit/test_driver.py -q
 uv run pytest tests/e2e -q -m e2e
 uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 Change-type guidance:

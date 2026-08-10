@@ -33,7 +33,7 @@ on your shell `PATH`.
 
 ```bash
 # Run the optimizer and update trainable structural parameters:
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 ## For Developers
