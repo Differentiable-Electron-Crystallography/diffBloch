@@ -63,13 +63,13 @@ uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no
 Simulate and score without changing parameters:
 
 ```bash
-uv run diffbloch run infer examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch infer examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 Run the smallest example end to end, preprocessing and refinement:
 
 ```bash
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 No example ships a preprocess checkpoint, so a first run settles the `Plan` from raw inputs before

@@ -30,13 +30,13 @@ The schema default keeps positions and ADPs trainable, and leaves occupancies fr
 
 ```bash
 # Full quartz run, including preprocessing.
-uv run diffbloch run refine examples/experiments/quartz
+uv run diffbloch refine examples/experiments/quartz
 
 # Faster start from a committed preprocessing checkpoint.
-uv run diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch refine examples/experiments/quartz-checkpoint
 
 # Larger checkpointed example on CUDA.
-uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+uv run diffbloch refine examples/experiments/abiraterone-checkpoint --device cuda
 ```
 
 The default refinement budget is 40 epochs. Set a different recorded budget in the experiment

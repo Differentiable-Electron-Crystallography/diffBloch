@@ -68,7 +68,7 @@ def test_run_pack_exports_run_directory(tmp_path: Path, capsys: pytest.CaptureFi
     (run / "run_manifest.json").write_text("{}\n")
     (run / "history.jsonl").write_text("{}\n")
 
-    rc = main(["run", "pack", str(run), "--format", "zip"])
+    rc = main(["pack", str(run), "--format", "zip"])
     assert rc == 0
     output = Path(capsys.readouterr().out.strip())
     assert output.is_file()
@@ -80,7 +80,7 @@ def test_run_pack_missing_manifest_reports_concise_error(
 ) -> None:
     run = tmp_path / "run_001"
     run.mkdir()
-    rc = main(["run", "pack", str(run)])
+    rc = main(["pack", str(run)])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")
@@ -112,7 +112,7 @@ def test_run_infer_delegates_to_run_experiment_and_reports(
         return InferenceResult(per_rotation=(rotation,))
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    rc = main(["run", "infer", "/some/experiment"])
+    rc = main(["infer", "/some/experiment"])
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
@@ -145,7 +145,7 @@ def test_run_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPat
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["run", "infer", "x", "--no-checkpoint", "--refresh", "--workers", "4"]) == 0
+    assert main(["infer", "x", "--no-checkpoint", "--refresh", "--workers", "4"]) == 0
     assert seen == {"checkpoint": False, "refresh": True, "workers": 4}
 
 
@@ -170,7 +170,7 @@ def test_run_infer_builds_console_and_csv_sinks(
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
     csv_path = tmp_path / "experimental_data.csv"
-    rc = main(["run", "infer", "x", "--csv", str(csv_path)])
+    rc = main(["infer", "x", "--csv", str(csv_path)])
 
     assert rc == 0
     logger = seen["logger"]
@@ -198,14 +198,14 @@ def test_run_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["run", "infer", "x", "--quiet"]) == 0
+    assert main(["infer", "x", "--quiet"]) == 0
     assert isinstance(seen["logger"], NullLogger)
 
 
 def test_run_infer_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = main(["run", "infer", "/no/such/experiment"])
+    rc = main(["infer", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")
@@ -230,7 +230,7 @@ def test_run_converge_delegates_and_reports(
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
 
-    assert main(["run", "converge", "/some/experiment"]) == 0
+    assert main(["converge", "/some/experiment"]) == 0
     assert capsys.readouterr().out == (
         "========================================\n"
         "HYPERPARAMETER OPTIMIZATION RESULT\n"
@@ -311,7 +311,7 @@ def test_run_preprocess_delegates_and_reports_without_scoring(
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
-    rc = main(["run", "preprocess", "/some/experiment"])
+    rc = main(["preprocess", "/some/experiment"])
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
@@ -352,7 +352,7 @@ def test_run_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
     rc = main(
-        ["run", "preprocess", "x"]
+        ["preprocess", "x"]
         + [
             "--no-checkpoint",
             "--refresh",
@@ -377,7 +377,7 @@ def test_run_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) ->
 def test_run_preprocess_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = main(["run", "preprocess", "/no/such/experiment"])
+    rc = main(["preprocess", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")
@@ -430,7 +430,7 @@ def test_run_refine_delegates_and_reports(
         return _fake_refinement_result()
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
-    rc = main(["run", "refine", "/some/experiment"])
+    rc = main(["refine", "/some/experiment"])
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
@@ -478,7 +478,7 @@ def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
     rc = main(
-        ["run", "refine", "x"]
+        ["refine", "x"]
         + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
         + ["--verbose-refinement", "--profile", "--no-checkpoint-activations"]
     )
@@ -497,7 +497,7 @@ def test_run_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_run_refine_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = main(["run", "refine", "/no/such/experiment"])
+    rc = main(["refine", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")
@@ -515,5 +515,5 @@ def test_run_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) ->
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["run", "converge", "/some/experiment", "--quiet"]) == 0
+    assert main(["converge", "/some/experiment", "--quiet"]) == 0
     assert isinstance(seen["logger"], NullLogger)  # --quiet reaches it, not a hardcoded console

@@ -24,7 +24,7 @@ published residuals alongside this repository's.
 The smallest cell (~113 Å³) and the cheapest run, so start here.
 
 ```bash
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
 Each epoch reports `wR2` and `R_obs` with the rotation count each mean was taken over, the
@@ -37,7 +37,7 @@ The same structure and data with `blochwave.absorption: true`, which is the comp
 makes. Diffing the two `refinement_report.txt` files is the quickest way to see the effect.
 
 ```bash
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 ```
 
 ### CsPbBr3 on an accelerator
@@ -45,7 +45,7 @@ uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-
 The high-Z case, where absorption matters most and the eigensolve is dear enough to want a GPU.
 
 ```bash
-uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption --device cuda
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption --device cuda
 ```
 
 ### Watching a run

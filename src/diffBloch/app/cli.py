@@ -54,7 +54,7 @@ def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
 
 
 def _add_run_flags(parser: argparse.ArgumentParser) -> None:
-    """Add the flags shared by ``run infer`` and ``run preprocess`` (same preprocess surface)."""
+    """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
     parser.add_argument(
         "--quiet",
@@ -130,47 +130,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="diffbloch",
         description="Differentiable Bloch-wave electron-diffraction structure refinement",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "a typical workflow:\n"
+            "  diffbloch validate experiment/experiment.yaml\n"
+            "  diffbloch converge experiment/\n"
+            "  diffbloch preprocess experiment/\n"
+            "  diffbloch refine experiment/\n"
+            "  diffbloch pack <run_directory>\n"
+            "\n"
+            "Each command has its own flags; see e.g. 'diffbloch refine --help'."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"diffbloch {__version__}")
     parser.add_argument("--debug", action="store_true", help="show full tracebacks on error")
     sub = parser.add_subparsers(dest="command")
 
+    # Registered in typical workflow order so the --help listing reads as the pipeline.
     p_validate = sub.add_parser("validate", help="Validate an experiment.yaml and report")
     p_validate.add_argument("config", help="Path to experiment.yaml")
 
-    p_run = sub.add_parser("run", help="Run artifact commands")
-    run_sub = p_run.add_subparsers(dest="run_command")
-    p_infer = run_sub.add_parser("infer", help="Score every rotation of an experiment")
-    _add_run_flags(p_infer)
-    p_preprocess = run_sub.add_parser(
-        "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
-    )
-    _add_run_flags(p_preprocess)
-    p_refine = run_sub.add_parser(
-        "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
-    )
-    _add_run_flags(p_refine)
-    p_refine.add_argument(
-        "--verbose-refinement",
-        action="store_true",
-        help="also report per-rotation wR2/R_obs/diffraction-loss every step, not just the epoch "
-        "mean (n_orientations x louder; a diagnosis tool, off by default)",
-    )
-    p_refine.add_argument(
-        "--profile",
-        action="store_true",
-        help="log per-phase wall time (structure factors, each rotation's solve, backward, "
-        "optimizer step) via stdlib diagnostics logging; forces a CUDA sync per measured block "
-        "(real overhead) so use only to diagnose one run, not routinely",
-    )
-    p_refine.add_argument(
-        "--no-checkpoint-activations",
-        action="store_true",
-        help="do not gradient-checkpoint each per-orientation/per-segment solve; trades a full "
-        "forward recompute on backward for higher peak memory (gradients are unaffected either "
-        "way) -- try this if backward is much slower than forward and you have memory headroom",
-    )
-    p_converge = run_sub.add_parser(
+    p_converge = sub.add_parser(
         "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
     )
     p_converge.add_argument("experiment_directory", help="Path to the experiment directory")
@@ -195,7 +175,37 @@ def main(argv: list[str] | None = None) -> int:
     p_converge.add_argument(
         "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
     )
-    p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
+    p_preprocess = sub.add_parser(
+        "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
+    )
+    _add_run_flags(p_preprocess)
+    p_infer = sub.add_parser("infer", help="Score every rotation of an experiment")
+    _add_run_flags(p_infer)
+    p_refine = sub.add_parser(
+        "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
+    )
+    _add_run_flags(p_refine)
+    p_refine.add_argument(
+        "--verbose-refinement",
+        action="store_true",
+        help="also report per-rotation wR2/R_obs/diffraction-loss every step, not just the epoch "
+        "mean (n_orientations x louder; a diagnosis tool, off by default)",
+    )
+    p_refine.add_argument(
+        "--profile",
+        action="store_true",
+        help="log per-phase wall time (structure factors, each rotation's solve, backward, "
+        "optimizer step) via stdlib diagnostics logging; forces a CUDA sync per measured block "
+        "(real overhead) so use only to diagnose one run, not routinely",
+    )
+    p_refine.add_argument(
+        "--no-checkpoint-activations",
+        action="store_true",
+        help="do not gradient-checkpoint each per-orientation/per-segment solve; trades a full "
+        "forward recompute on backward for higher peak memory (gradients are unaffected either "
+        "way) -- try this if backward is much slower than forward and you have memory headroom",
+    )
+    p_pack = sub.add_parser("pack", help="Export a run directory for transfer/archive")
     p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
     p_pack.add_argument(
         "--format",
@@ -219,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK: experiment '{cfg.name}' validated.")
         return 0
 
-    if args.command == "run" and args.run_command == "infer":
+    if args.command == "infer":
         if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
@@ -245,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
         return 0
 
-    if args.command == "run" and args.run_command == "preprocess":
+    if args.command == "preprocess":
         if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
@@ -310,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  • {'Plan Lock':<20} {(reproducibility_dir / 'plan.lock').resolve()}")
         return 0
 
-    if args.command == "run" and args.run_command == "refine":
+    if args.command == "refine":
         if not args.quiet:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
@@ -371,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  • {'Refinement Report':<20} {report_path}")
         return 0
 
-    if args.command == "run" and args.run_command == "converge":
+    if args.command == "converge":
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
@@ -399,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if args.command == "run" and args.run_command == "pack":
+    if args.command == "pack":
         try:
             output = pack_run(args.run_directory, package_format=args.format)
         except (FileNotFoundError, ValueError) as exc:

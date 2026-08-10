@@ -181,7 +181,7 @@ From the CLI, preprocessing prints each completed stage as
 and the absolute `plan.npz` / `plan.lock` locations:
 
 ```bash
-uv run diffbloch run preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs --refresh
+uv run diffbloch preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs --refresh
 ```
 
 ## API example: loading a checkpointed `Plan`
