@@ -20,9 +20,9 @@ Checkpointed examples also include:
 | `plan.npz` | Serialized preprocessed `Plan`. |
 | `plan.lock` | Provenance lock tying the checkpoint to inputs, config, recipe, code version, and artifact hash. |
 
-Bundled binary artifacts such as `.cif_pets` experimental data and committed `plan.npz` checkpoints are
-tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
-examples so these files are present as real data rather than LFS pointer files.
+Bundled binary artifacts -- `.cif_pets` experimental data, and any `plan.npz` checkpoint committed
+alongside an experiment -- are tracked with Git LFS. After cloning, run `git lfs pull` before
+validating or running an example so these are real data rather than LFS pointer files.
 
 ## Reading the structure and the experimental data
 
@@ -39,7 +39,7 @@ The public records are:
 
 ## API example
 
-This example is runnable against the bundled quartz checkpoint.
+This example is runnable against any of the bundled experiment directories.
 
 ```python
 from pathlib import Path
@@ -47,7 +47,7 @@ from pathlib import Path
 from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
 
-root = Path("examples/experiments/quartz-checkpoint")
+root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 cfg, experiment_lock = load_experiment(root)
 
 structure = read_structure(root / cfg.inputs.structure)
@@ -61,7 +61,7 @@ print(experimental_data.hkl.shape)
 Validate a config from the CLI before launching a longer job:
 
 ```bash
-uv run diffbloch validate examples/experiments/quartz-checkpoint/experiment.yaml
+uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
 ```
 
 ## Excluding rotations

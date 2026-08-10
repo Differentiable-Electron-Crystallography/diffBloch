@@ -110,7 +110,7 @@ from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import from_experiment
 
-root = Path("examples/experiments/quartz-checkpoint")
+root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
 experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
@@ -156,7 +156,7 @@ from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import build_orientation_plans, from_experiment, pipeline
 
-root = Path("examples/experiments/quartz-checkpoint")
+root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens)
 experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
@@ -181,7 +181,7 @@ From the CLI, preprocessing prints each completed stage as
 and the absolute `plan.npz` / `plan.lock` locations:
 
 ```bash
-uv run diffbloch run preprocess examples/experiments/quartz --refresh
+uv run diffbloch run preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs --refresh
 ```
 
 ## API example: loading a checkpointed `Plan`
@@ -191,10 +191,13 @@ refinement. You can checkpoint a settled `Plan` — for example, a plan whose or
 thicknesses have already been fitted — then run inference or refinement over that reusable scaffold
 without recomputing the preprocessing recipe.
 
+The path below is where a run deposits its checkpoint; it exists once you have run that experiment
+at least once, since no example ships one pre-built.
+
 ```python
 from diffBloch.preprocess import read_plan, require_built_plans
 
-plan = read_plan("examples/experiments/quartz-checkpoint/plan.npz")
+plan = read_plan("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/reproducibility/plan.npz")
 orientations = require_built_plans(plan)
 
 print(len(orientations))
