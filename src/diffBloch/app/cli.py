@@ -447,11 +447,16 @@ def _release_sinks(logger: Logger) -> None:
     end any run early -- so the boundary that built the sinks releases them in a ``finally``, rather
     than every stream having to end in exactly the right event.
     """
-    sinks = logger.loggers if isinstance(logger, MultiLogger) else (logger,)
-    for sink in sinks:
-        release = getattr(sink, "close", None)
-        if callable(release):
-            release()
+    if isinstance(logger, MultiLogger):
+        # Recurse: fan-outs nest. `run refine --tui` composes _build_logger's own MultiLogger
+        # (console + csv) inside a second one alongside the summary sink, so walking a single level
+        # would miss the display on exactly the path most likely to be using it.
+        for sink in logger.loggers:
+            _release_sinks(sink)
+        return
+    release = getattr(logger, "close", None)
+    if callable(release):
+        release()
 
 
 def _build_logger(

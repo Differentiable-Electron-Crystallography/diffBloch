@@ -533,3 +533,10 @@ def test_released_sinks_give_back_their_resources(monkeypatch: pytest.MonkeyPatc
     _release_sinks(MultiLogger((_Holder(), NullLogger())))  # type: ignore[arg-type]
     assert closed == ["released"]
     _release_sinks(NullLogger())  # a sink with no close() is simply skipped
+
+    # Fan-outs nest: `run refine --tui --csv` puts _build_logger's own MultiLogger inside a second
+    # one alongside the summary sink, so a single-level walk would miss the display entirely.
+    closed.clear()
+    nested = MultiLogger((MultiLogger((_Holder(), NullLogger())), NullLogger()))  # type: ignore[arg-type]
+    _release_sinks(nested)
+    assert closed == ["released"]
