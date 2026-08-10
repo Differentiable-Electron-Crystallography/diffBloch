@@ -391,7 +391,10 @@ class RefinementEngine:
                 strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
                 observed_hkl.append(orientation.pattern.hkl)
                 matched_hkl.append(orientation.alignment.hkl)
-                strong_hkl.append(orientation.alignment.hkl[strong])
+                # ``orientation.alignment.hkl`` is always CPU (``AlignmentPlan`` is geometry-only,
+                # per ``align()``'s docstring), but ``strong`` lives on ``aligned.observed``'s
+                # device (the compute device) -- move it back before indexing a CPU tensor with it.
+                strong_hkl.append(orientation.alignment.hkl[strong.cpu()])
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
         n_observed = _unique_hkl_count(observed_hkl)
         n_matched = _unique_hkl_count(matched_hkl)

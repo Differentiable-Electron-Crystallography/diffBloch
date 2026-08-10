@@ -41,6 +41,27 @@ The public records are:
 - `ObservationRecord`
 - `AdpRecord`
 
+## Unit-cell authority: PETS overrides the structure CIF
+
+The structure CIF and the `.cif_pets` file each carry their own unit cell, and they are not always
+identical. diffBloch uses **PETS's cell, not the CIF's**, for every piece of simulation geometry: the
+structure-factor grid, the reciprocal basis, the cell volume, the ADP `U*`-frame conversion, and the
+beam geometry derived from that grid. The structure CIF still supplies all atomic content —
+fractional positions, atom types, occupancies, ADPs, and symmetry operators — unchanged; those
+fractions are simply interpreted against PETS's cell instead of the CIF's own.
+
+The CIF's cell is checked against PETS's on every load:
+
+- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` warns, stating explicitly that
+  the PETS value overrides the CIF value. Ordinary refinement/measurement drift stays well under
+  this.
+- **> 5% relative difference** raises `ValueError` and stops — listing every offending parameter,
+  both values, and the percentage difference — rather than silently deriving the whole simulation's
+  geometry from a mismatch that large.
+
+Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too;
+see [Combining multiple datasets](#combining-multiple-datasets) below.
+
 ## API example
 
 This example is runnable against the bundled quartz checkpoint.
@@ -115,6 +136,13 @@ Combined files must share one rocking-curve integration semiangle: diffBloch bui
 rocking-curve/beam-selection geometry for the whole experiment, so files recorded with different
 precession angles cannot currently be mixed. `multi_dataset` defaults to `false`, and a single
 `exp_data` path behaves exactly as before -- nothing about the single-dataset path changes.
+
+**Unit-cell authority for a combined experiment**: the shared structure-factor grid/reciprocal basis
+needs exactly one cell, so the *first* file in `inputs.exp_data` order is the authoritative anchor.
+The structure CIF's cell, and every further combined file's own cell, are checked against it (warn
+past 1%, raise past 5% -- the same thresholds as [above](#unit-cell-authority-pets-overrides-the-structure-cif)). Each
+file's own orientation matrix is still derived from *that file's own* UB and cell (so it stays close
+to a pure rotation); only the cell it is then composed with is the shared anchor.
 
 
 ## Generated refinement artifacts

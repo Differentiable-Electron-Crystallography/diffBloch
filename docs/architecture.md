@@ -14,17 +14,34 @@ refined structure through the following calculation:
 
 ## Structural and experimental data
 
-The structure `.cif` supplies the unit cell, asymmetric-unit atoms, fractional coordinates,
-elemental identities, occupancies, atomic displacement parameters (ADPs), and space-group symmetry
-operations.
+The structure `.cif` supplies asymmetric-unit atoms, fractional coordinates, elemental identities,
+occupancies, atomic displacement parameters (ADPs), and space-group symmetry operations. It also
+carries its own unit cell, but that cell is used only as a consistency check, never for simulation
+geometry — see [Unit-cell authority](#unit-cell-authority) below.
 
 The `.cif_pets` file supplies the measured experimental data: observed reflection intensities and
-uncertainties for each rotation, the UB orientation matrix, electron wavelength, and the goniometer
-angles.
+uncertainties for each rotation, the UB orientation matrix, electron wavelength, the goniometer
+angles, and its own unit cell.
 
 Both files are parsed into validated numerical records before simulation begins. Malformed values
 and unsupported representations fail at this boundary. See [Inputs](inputs.md) for the file
 requirements and experiment-directory layout.
+
+### Unit-cell authority
+
+**PETS's cell, not the structure CIF's, is authoritative for every piece of simulation
+geometry**: the structure-factor grid, the reciprocal basis, the cell volume, the ADP `U*`-frame
+conversion, and the beam geometry derived from that grid. The CIF's own cell is checked against
+PETS's on load — a >1% relative difference on any of `a, b, c, alpha, beta, gamma` warns (stating
+that PETS overrides the CIF), a >5% difference raises and stops, listing every offending parameter,
+both values, and the percentage difference. Fractional atomic coordinates are read from the CIF
+unchanged; they are simply interpreted against PETS's cell rather than the CIF's own. For a combined
+(`inputs.multi_dataset`) experiment, the first combined `.cif_pets` file is the shared anchor every
+other input — the CIF's and every further combined file's — is checked against, under the same two
+thresholds; see [Inputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif) for the
+full rule and [Preprocessing](preprocessing.md#unit-cell-authority-pets-overrides-the-structure-cif)
+for how each combined file's own orientation matrix still comes from its own UB and cell before
+being composed with that shared anchor.
 
 ## Constructing the crystal potential
 
@@ -114,7 +131,7 @@ refinement.
 The output is a `Plan` containing the orientations, thicknesses, beam geometry, experimental
 observations, and calculated/observed reflection alignment. The `Plan` remains fixed during
 structural refinement. See [Preprocessing](preprocessing.md) and
-[Hyperparameter selection](hyperparameter-selection.md).
+[Convergence testing](convergence-testing.md).
 
 ## Refinement
 

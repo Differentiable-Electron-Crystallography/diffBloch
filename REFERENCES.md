@@ -30,6 +30,12 @@ diffBloch stands on published science and several open-source projects. This fil
   *Structure refinement from precession electron diffraction data.* **Acta Crystallographica A69,
   171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X). 
 
+- **General Nelder--Mead optimization algorithm.**
+  Nelder, J. A. & Mead, R. (1965). *A simplex method for function minimization.* **The Computer
+  Journal 7(4), 308–313.** DOI:
+  [10.1093/comjnl/7.4.308](https://doi.org/10.1093/comjnl/7.4.308). This paper defines the general
+  optimization method; it does not address diffraction or orientation refinement.
+
 
 ## Software we depend on, extract from, or verify against
 
@@ -47,5 +53,3 @@ diffBloch stands on published science and several open-source projects. This fil
   first principles*, Open Research Europe 1:24. <https://open-research-europe.ec.europa.eu/articles/1-24>
 - **diffpy.structure** — special-position and ADP symmetry-constraint expansion, behind the
   `io.symmetry_setup` seam (lands with the constraints/symmetry stage). <https://github.com/diffpy/diffpy.structure>
-
-

@@ -155,13 +155,13 @@ def build_coupling_segments(
     # structure-factor grid, but only the ``|g| < g_max`` core can ever couple. Scanning the whole
     # grid at every boundary tilt was the dominant per-trial cost; one pass replaces it.
     #
-    # NOTE the ``|g|`` here is in the *orientation* metric -- ``orientation`` folds the experimental
-    # cell correction (``u_matrix``: ``U = UB @ B^-1``, deliberately non-orthonormal), so this |g|
-    # differs from the ideal-cell ``reciprocal_cell`` metric the grid is tabulated on by the
-    # cell-correction magnitude (~1% on quartz). The grid's ``2 * g_max + _SUPPORT_MARGIN`` shell
-    # (:meth:`StructureFactorGrid.from_cell_for_beam_cutoff`) covers that difference; it is NOT a
-    # per-tilt variation and NOT an orthonormality bug -- coupling in the experimental-cell metric
-    # is the physically correct cut.
+    # NOTE the ``|g|`` here is in the *orientation* metric -- ``orientation`` is not guaranteed
+    # exactly orthonormal (``u_matrix``: ``U = UB @ B^-1`` carries PETS's own small
+    # UB-vs-cell-parameters fit residual; see ``preprocess.orientation``), so this |g| can differ
+    # slightly from the authoritative-cell ``reciprocal_cell`` metric the grid is tabulated on. The
+    # grid's ``2 * g_max + _SUPPORT_MARGIN`` shell (:meth:`StructureFactorGrid.from_cell_for_beam_cutoff`)
+    # covers that residual; it is NOT a per-tilt variation and NOT an orthonormality bug -- coupling
+    # in the orientation metric is the physically correct cut.
     g_nominal = candidate_beam_hkl @ orientation_basis(cell, orientation)  # constant across tilts
     radial_mask = np.linalg.norm(g_nominal, axis=1) < policy.g_max
     pool = candidate_beam_hkl[radial_mask]

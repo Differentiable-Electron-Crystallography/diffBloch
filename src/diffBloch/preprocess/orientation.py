@@ -3,17 +3,20 @@
 Reconstructs per-rotation crystal orientation matrices from the experiment's goniometer geometry --
 the UB matrix and per-rotation tilt angles recorded in the PETS data -- with no side-car
 orientation file. The orientations are first-class inputs to the ``Plan``; ``optimize_orientation``
-refines them in-Plan -- it must not re-orthonormalise them: they fold a ~1% measured-vs-ideal cell
-correction, so a polar/SVD projection would silently drop it.
+refines them in-Plan -- it must not re-orthonormalise them: ``U`` carries PETS's own small
+UB-vs-cell-parameters fit residual, so a polar/SVD projection would silently drop it.
 
 Convention::
 
     orientation = R_z(omega) . R_x(alpha) . R_y(beta) @ U,    U = UB @ B^-1
 
-where ``B`` is the Busing-Levy reciprocal matrix built from the cell parameters and the goniometer
-rotations are active, in degrees. Geometry then uses :func:`orientation_basis` =
-``reciprocal_cell(cell @ orientation.T)`` (NOT ``reciprocal_basis @ orientation.T``), because the
-orientation matrices are generally non-orthonormal.
+where ``B`` is the Busing-Levy reciprocal matrix built from *this dataset's own* PETS cell
+parameters (the same cell ``UB`` was fit against, so ``U`` is close to a pure rotation -- see
+``diffBloch.preprocess.experiment._resolve_authoritative_cell`` for how a combined experiment's
+*shared* cell is chosen and cross-checked) and the goniometer rotations are active, in degrees.
+Geometry then uses :func:`orientation_basis` = ``reciprocal_cell(cell @ orientation.T)`` (NOT
+``reciprocal_basis @ orientation.T``), because ``orientation`` is not guaranteed exactly orthonormal
+even so.
 
 Reference: W. R. Busing & H. A. Levy, *Acta Cryst.* **22**, 457 (1967) (the UB-matrix formalism).
 """
@@ -90,9 +93,9 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     """Palatinus hexagonal-search tilt ``R_z(azimuth) . R_x(polar) . R_z(-azimuth)``, in degrees.
 
     A tilt of magnitude ``polar`` about the in-plane axis at ``azimuth`` -- the delta rotation
-    ``optimize_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a true
-    rotation (``det = 1``) it preserves the non-orthonormal ``U`` measured-cell correction exactly,
-    so the re-orthonormalisation trap is dodged by construction.
+    ``optimize_orientation`` right-multiplies onto an orientation (``orientation @ tilt``). Being a
+    true rotation (``det = 1``) it preserves whatever small fit residual ``U`` already carries
+    exactly, so the re-orthonormalisation trap is dodged by construction.
 
     Reference: L. Palatinus et al., *Acta Cryst.* **A69**, 171-188 (2013), the hexagonal
     modified-simplex search.
@@ -178,7 +181,12 @@ def mosaic_rocking_curve_tilts(
 
 
 def u_matrix(ub_matrix: FloatArray, cell_parameters: FloatArray) -> FloatArray:
-    """Crystal ``U`` matrix ``U = UB @ B^-1``; generally non-orthonormal (folds cell correction)."""
+    """Crystal ``U`` matrix ``U = UB @ B^-1``, from this dataset's own PETS UB and cell parameters.
+
+    Close to a pure rotation (``B`` is built from the same cell PETS fit ``UB`` against), but not
+    guaranteed to be exactly orthonormal -- PETS's own UB-vs-cell-parameters fit carries a small
+    residual. Not re-orthonormalised (see the module docstring).
+    """
     ub = np.asarray(ub_matrix, dtype=np.float64)
     if ub.shape != (3, 3):
         raise ValueError("ub_matrix must have shape (3, 3)")

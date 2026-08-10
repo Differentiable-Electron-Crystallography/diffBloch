@@ -270,6 +270,13 @@ class ConsoleLogger:
             self._orientation_total = event.total_rotations
             self._orientation_seen = 0
             self._orientation_started_at = time.perf_counter()
+            print(file=sys.stderr)
+            _log.log(
+                self.level,
+                "Preprocess stage    │ %-27s │ %d rotations",
+                "Optimize Orientation",
+                event.total_rotations,
+            )
             return
         if (
             isinstance(event, OrientationOptimized)
@@ -289,6 +296,13 @@ class ConsoleLogger:
             self._thickness_total = event.total_rotations
             self._thickness_seen = 0
             self._thickness_started_at = time.perf_counter()
+            print(file=sys.stderr)
+            _log.log(
+                self.level,
+                "Preprocess stage    │ %-27s │ %d rotations",
+                "Optimize Thickness",
+                event.total_rotations,
+            )
             return
         if (
             isinstance(event, ThicknessOptimized)

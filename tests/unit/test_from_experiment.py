@@ -1,5 +1,6 @@
 """``from_experiment`` boundary construction: Plan pair split + structure-side RefinementSetup."""
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
+from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
@@ -307,3 +309,142 @@ def test_refinement_setup_mixed_uani_uiso_constrains_each_atom_by_kind() -> None
 def _setup_state(structure: StructureRecord) -> tuple:
     setup = RefinementSetup.from_structure(structure)
     return setup.params, setup.spec
+
+
+# --- unit-cell authority: PETS overrides the structure CIF ----------------------------------------
+
+
+def test_cell_mismatch_under_1pct_is_silent(caplog: pytest.LogCaptureFixture) -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    # 0.5% off on 'a' only -- well under the 1% warn threshold.
+    nudged = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.005, 1.0, 1.0, 1.0, 1.0, 1.0])
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        setup = from_experiment(structure, nudged, config)
+
+    assert not caplog.records
+    # PETS's (nudged) cell is authoritative regardless of how closely it agrees with the CIF.
+    np.testing.assert_allclose(
+        setup.plans.combined.structure_factor_grid.cell.numpy(),
+        cell_matrix_from_parameters(nudged.cell_parameters),
+    )
+
+
+def test_cell_mismatch_over_1pct_warns_and_pets_geometry_wins(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    # 2% off on 'a' only -- past the 1% warn threshold, comfortably under the 5% fail threshold.
+    mismatched = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.02, 1.0, 1.0, 1.0, 1.0, 1.0])
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        setup = from_experiment(structure, mismatched, config)
+
+    [record] = caplog.records
+    message = record.getMessage()
+    assert "more than 1%" in message
+    assert "structure CIF" in message
+    assert "overrides" in message
+    assert "a:" in message
+
+    # The structure-factor grid / reciprocal basis use PETS's cell, not the (unmodified) CIF's.
+    grid_cell = setup.plans.combined.structure_factor_grid.cell.numpy()
+    np.testing.assert_allclose(grid_cell, cell_matrix_from_parameters(mismatched.cell_parameters))
+    assert not np.allclose(grid_cell, cell_matrix_from_parameters(structure.cell_parameters))
+    # So does the ADP U*-frame conversion.
+    np.testing.assert_allclose(
+        setup.refinement.spec.reciprocal_basis.numpy(),
+        reciprocal_cell(cell_matrix_from_parameters(mismatched.cell_parameters)),
+    )
+
+
+def test_cell_mismatch_over_5pct_raises_and_names_every_offending_parameter() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    # 6% off on 'a', ~6.5% off on 'alpha' -- both past the 5% fail threshold; 'b'/'c'/'beta'/'gamma'
+    # untouched, so the error must name exactly these two and no others.
+    mismatched = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.06, 1.0, 1.0, 1.07, 1.0, 1.0])
+        }
+    )
+
+    with pytest.raises(ValueError, match="more than 5%") as excinfo:
+        from_experiment(structure, mismatched, config)
+
+    message = str(excinfo.value)
+    assert "a:" in message
+    assert "alpha:" in message
+    assert "b:" not in message
+    assert "beta:" not in message
+    # Both values and the percentage difference.
+    assert f"{experimental_data.cell_parameters[0]:.6g}" in message  # PETS's (authoritative) value
+    assert f"{structure.cell_parameters[0]:.6g}" in message  # the structure CIF's value
+    assert "%" in message
+    assert "refusing to continue" in message
+
+
+def test_multi_dataset_second_file_checked_against_first_not_structure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    first = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    # 2% off from the FIRST record (== the structure's own cell here) -- exercises the PETS-vs-PETS
+    # check between combined files, not the structure-vs-PETS one.
+    second = first.model_copy(
+        update={
+            "cell_parameters": first.cell_parameters * np.array([1.02, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            "source_path": Path("second.cif_pets"),
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        setup = from_experiment(structure, (first, second), config)
+
+    [record] = caplog.records
+    message = record.getMessage()
+    assert "second.cif_pets" in message
+    assert str(first.source_path) in message
+    assert "overrides" in message
+    # The FIRST combined file anchors the shared grid, not the second (nor an average of the two).
+    np.testing.assert_allclose(
+        setup.plans.combined.structure_factor_grid.cell.numpy(),
+        cell_matrix_from_parameters(first.cell_parameters),
+    )
+
+
+def test_multi_dataset_over_5pct_between_combined_files_raises() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    first = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    second = first.model_copy(
+        update={
+            "cell_parameters": first.cell_parameters * np.array([1.08, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            "source_path": Path("second.cif_pets"),
+        }
+    )
+
+    with pytest.raises(ValueError, match="more than 5%") as excinfo:
+        from_experiment(structure, (first, second), config)
+
+    message = str(excinfo.value)
+    assert "second.cif_pets" in message
+    assert str(first.source_path) in message
+    assert "a:" in message

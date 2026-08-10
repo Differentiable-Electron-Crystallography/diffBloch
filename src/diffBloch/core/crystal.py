@@ -63,10 +63,11 @@ def cell_volume(cell: FloatArray) -> float:
 def orientation_basis(cell: FloatArray, orientation: FloatArray) -> FloatArray:
     """Lab-frame reciprocal basis for one orientation: ``reciprocal_cell(cell @ orientation.T)``.
 
-    The single home for the orientation convention. ``orientation`` is generally non-orthonormal
-    (it folds the ~1% measured-vs-ideal cell correction; see ``preprocess.orientation``), so this is
-    NOT ``reciprocal_basis @ orientation.T``. ``cell`` rows are the real-space basis; returns rows
-    ``a*, b*, c*`` in inverse Angstrom. ``orientation = I`` reproduces ``reciprocal_cell(cell)``.
+    The single home for the orientation convention. ``orientation`` is not guaranteed exactly
+    orthonormal -- it carries PETS's own UB-vs-cell-parameters fit residual (see
+    ``preprocess.orientation``) -- so this is NOT ``reciprocal_basis @ orientation.T``. ``cell`` rows
+    are the real-space basis; returns rows ``a*, b*, c*`` in inverse Angstrom. ``orientation = I``
+    reproduces ``reciprocal_cell(cell)``.
     """
     matrix = _cell_array(cell)
     rotation = np.asarray(orientation, dtype=np.float64)
