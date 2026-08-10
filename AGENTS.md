@@ -244,7 +244,7 @@ Targeted examples:
 
 ```bash
 uv run pytest tests/unit/test_pipeline.py tests/unit/test_driver.py -q
-uv run pytest tests/e2e/test_anchor.py::test_quartz_coupled_anchor -q -m e2e
+uv run pytest tests/e2e -q -m e2e
 uv run diffbloch validate examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs/experiment.yaml
 uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```

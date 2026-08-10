@@ -14,11 +14,13 @@ internals. Preprocess is composed in optionally via the ``preprocess``
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
+from torch import Tensor
 
-from diffBloch.core.losses import optimal_scale, rbragg
+from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import BlochSolution, align
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.plan import OrientationPlanLike
@@ -53,6 +55,7 @@ class RotationInference:
     """
 
     r_obs: float
+    wr2: float
     n_observed: int
     n_beams: int
 
@@ -67,6 +70,16 @@ class InferenceResult:
     def n_evaluated(self) -> int:
         """Rotations with a finite ``r_obs`` (i.e. at least one ``I > 3*sigma`` reflection)."""
         return sum(1 for row in self.per_rotation if math.isfinite(row.r_obs))
+
+    @property
+    def mean_wr2(self) -> float:
+        """Mean weighted-R2 over rotations with a finite value; ``nan`` when none has one.
+
+        The companion to :attr:`mean_r_obs`, filtered independently: a rotation can produce a finite
+        score under one metric and not the other, so the two means need not share a denominator.
+        """
+        finite = [row.wr2 for row in self.per_rotation if math.isfinite(row.wr2)]
+        return sum(finite) / len(finite) if finite else float("nan")
 
     @property
     def mean_r_obs(self) -> float:
@@ -148,20 +161,29 @@ def run_inference(
 def _score_rotation(orientation: OrientationPlanLike, solution: BlochSolution) -> RotationInference:
     """Bragg R-factor + diagnostics for one already-simulated orientation."""
     aligned = align(solution, orientation.pattern, orientation.alignment)
+
     # One forward pass covers all thicknesses; take the best-fitting thickness's R (a nuisance
     # here, and the anchor uses a single thickness so this is a no-op there).
-    per_thickness = torch.stack(
-        [
-            optimal_scale(
-                aligned.calculated[t], aligned.observed[t], aligned.sigmas[t], metric=rbragg
-            )[1]
-            for t in range(aligned.calculated.shape[0])
-        ]
-    )
+    def best_over_thickness(metric: Callable[[Tensor, Tensor, Tensor], Tensor]) -> float:
+        """The best-fitting thickness's score under one metric, each independently scaled."""
+        per_thickness = torch.stack(
+            [
+                optimal_scale(
+                    aligned.calculated[t], aligned.observed[t], aligned.sigmas[t], metric=metric
+                )[1]
+                for t in range(aligned.calculated.shape[0])
+            ]
+        )
+        return float(per_thickness.min())
+
     # observed/sigmas are thickness-independent, so the I > 3*sigma count is taken at t = 0.
     n_observed = int((aligned.observed[0] > 3.0 * aligned.sigmas[0]).sum())
     return RotationInference(
-        r_obs=float(per_thickness.min()),
+        r_obs=best_over_thickness(rbragg),
+        # Free alongside r_obs: the same aligned intensities under the other metric, no extra
+        # solve. Reported so the CI anchor can track both -- a drift can show in one and not the
+        # other, and R_obs alone would not say which.
+        wr2=best_over_thickness(w_rbragg),
         n_observed=n_observed,
         n_beams=int(orientation.beam_hkl.shape[0]),
     )
