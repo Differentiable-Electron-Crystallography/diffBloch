@@ -234,9 +234,7 @@ def test_from_experiment_pools_multiple_records_with_a_globally_unique_rotation_
     # The second copy's rotation 0 (global index n) is physically identical to the first copy's
     # rotation 0 (same orientation, same energy) -- same file, pooled twice.
     single_first = single_setup.plans.combined.orientations[0]
-    pooled_second_copy_first = next(
-        op for op in combined if op.pattern.rotation_index == n
-    )
+    pooled_second_copy_first = next(op for op in combined if op.pattern.rotation_index == n)
     assert np.allclose(pooled_second_copy_first.orientation, single_first.orientation)
     assert pooled_second_copy_first.energy == single_first.energy
 

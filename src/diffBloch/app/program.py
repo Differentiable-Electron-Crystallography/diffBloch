@@ -227,7 +227,9 @@ def converge_experiment(
     rocking = cfg.blochwave.to_rocking_curve(setup.integration)
     simulation = cfg.blochwave.to_policy()
     dstar_maxes = [
-        record.dstar_max for record in _as_records(experimental_data) if record.dstar_max is not None
+        record.dstar_max
+        for record in _as_records(experimental_data)
+        if record.dstar_max is not None
     ]
     starting_g_max = min(dstar_maxes) if dstar_maxes else simulation.g_max
     plan = pipeline(
