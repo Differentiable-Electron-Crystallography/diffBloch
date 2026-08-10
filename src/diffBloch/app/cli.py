@@ -53,7 +53,7 @@ def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
     print(f"╰{'─' * width}╯")
 
 
-def _add_run_flags(parser: argparse.ArgumentParser) -> None:
+def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
     parser.add_argument(
@@ -177,13 +177,13 @@ def main(argv: list[str] | None = None) -> int:
     p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
     )
-    _add_run_flags(p_preprocess)
+    _add_stage_flags(p_preprocess)
     p_infer = sub.add_parser("infer", help="Score every rotation of an experiment")
-    _add_run_flags(p_infer)
+    _add_stage_flags(p_infer)
     p_refine = sub.add_parser(
         "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
     )
-    _add_run_flags(p_refine)
+    _add_stage_flags(p_refine)
     p_refine.add_argument(
         "--verbose-refinement",
         action="store_true",
