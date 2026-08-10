@@ -731,9 +731,6 @@ comet = [
 plot = [
     { name = "matplotlib" },
 ]
-tui = [
-    { name = "rich" },
-]
 wandb = [
     { name = "wandb" },
 ]
@@ -767,12 +764,11 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rich", marker = "extra == 'tui'", specifier = ">=13" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "torch", specifier = ">=2.12.1" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.16" },
 ]
-provides-extras = ["comet", "plot", "tui", "wandb"]
+provides-extras = ["comet", "plot", "wandb"]
 
 [package.metadata.requires-dev]
 dev = [

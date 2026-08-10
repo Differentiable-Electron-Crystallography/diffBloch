@@ -502,3 +502,18 @@ def test_run_refine_missing_experiment_reports_concise_error(
     err = capsys.readouterr().err
     assert err.startswith("error:")
     assert "Traceback" not in err
+
+
+def test_run_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """converge emits the sweep stream, so it takes the same sinks as every other subcommand."""
+    seen: dict[str, object] = {}
+
+    def fake_converge_experiment(
+        experiment_dir: str, *, logger: object, device: object, n_orientations: int
+    ) -> SimpleNamespace:
+        seen["logger"] = logger
+        return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
+
+    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
+    assert main(["run", "converge", "/some/experiment", "--quiet"]) == 0
+    assert isinstance(seen["logger"], NullLogger)  # --quiet reaches it, not a hardcoded console

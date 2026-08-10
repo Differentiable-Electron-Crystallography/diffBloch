@@ -50,10 +50,10 @@ uv run diffbloch run refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3
 
 ### Watching a run
 
-Add `--tui` (the `diffBloch[tui]` extra) to replace the scrolling log with a live dashboard: the
-per-stage beam and reflection survival counts, the declared objective, a progress bar per phase, and
-the epoch table. `--csv PATH` writes the same event stream to a long-format log, and composes with
-either console mode.
+The console reports as the run goes: per-stage beam and reflection survival counts through
+preprocessing, then the declared objective and per-epoch metrics through refinement, with a progress
+bar on a terminal. `--csv PATH` writes the same event stream to a long-format log alongside it, and
+`--quiet` silences the stream while still printing the run summary.
 
 ## Cost, and why these runs are not instant
 
