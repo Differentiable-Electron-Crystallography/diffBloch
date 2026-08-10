@@ -26,7 +26,7 @@ from diffBloch.app.program import (
     refine_experiment,
     run_experiment,
 )
-from diffBloch.config import load_config, pack_run
+from diffBloch.config import load_config
 from diffBloch.engine import ModelRefinementResult
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.io import read_experimental_data
@@ -232,8 +232,8 @@ def _print_refinement_summary(
         offset = end
 
 
-def _add_run_flags(parser: argparse.ArgumentParser) -> None:
-    """Add the flags shared by ``run infer`` and ``run preprocess`` (same preprocess surface)."""
+def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
+    """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
     parser.add_argument(
         "--quiet",
@@ -243,13 +243,6 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
-    )
-    parser.add_argument(
-        "--tui",
-        action="store_true",
-        help="render the run as a live terminal dashboard instead of the scrolling console log "
-        "(requires the 'diffBloch[tui]' extra); replaces --quiet's console stream rather than "
-        "composing with it, since a live display owns the terminal",
     )
     parser.add_argument(
         "--refresh",
@@ -316,26 +309,60 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="diffbloch",
         description="Differentiable Bloch-wave electron-diffraction structure refinement",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "a typical workflow:\n"
+            "  diffbloch validate experiment/experiment.yaml\n"
+            "  diffbloch converge experiment/\n"
+            "  diffbloch preprocess experiment/\n"
+            "  diffbloch refine experiment/\n"
+            "\n"
+            "Each command has its own flags; see e.g. 'diffbloch refine --help'."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"diffbloch {__version__}")
     parser.add_argument("--debug", action="store_true", help="show full tracebacks on error")
     sub = parser.add_subparsers(dest="command")
 
+    # Registered in typical workflow order so the --help listing reads as the pipeline.
     p_validate = sub.add_parser("validate", help="Validate an experiment.yaml and report")
     p_validate.add_argument("config", help="Path to experiment.yaml")
 
-    p_run = sub.add_parser("run", help="Run artifact commands")
-    run_sub = p_run.add_subparsers(dest="run_command")
-    p_infer = run_sub.add_parser("infer", help="Score every rotation of an experiment")
-    _add_run_flags(p_infer)
-    p_preprocess = run_sub.add_parser(
+    p_converge = sub.add_parser(
+        "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
+    )
+    p_converge.add_argument("experiment_directory", help="Path to the experiment directory")
+    p_converge.add_argument(
+        "--device",
+        metavar="DEVICE",
+        default="cuda",
+        help="run the convergence simulations on this torch device (default: cuda)",
+    )
+    p_converge.add_argument(
+        "--orientations",
+        metavar="N",
+        type=int,
+        default=1,
+        help="use the first N orientations for convergence testing (default: 1)",
+    )
+    p_converge.add_argument(
+        "--quiet",
+        action="store_true",
+        help="silence the per-trial observation stream (the settled result still prints)",
+    )
+    p_converge.add_argument(
+        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
+    )
+    p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
     )
-    _add_run_flags(p_preprocess)
-    p_refine = run_sub.add_parser(
+    _add_stage_flags(p_preprocess)
+    p_infer = sub.add_parser("infer", help="Score every rotation of an experiment")
+    _add_stage_flags(p_infer)
+    p_refine = sub.add_parser(
         "refine", help="Gradient-refine the structure against the data (reuses the checkpoint)"
     )
-    _add_run_flags(p_refine)
+    _add_stage_flags(p_refine)
     p_refine.add_argument(
         "--verbose-refinement",
         action="store_true",
@@ -356,31 +383,6 @@ def main(argv: list[str] | None = None) -> int:
         "forward recompute on backward for higher peak memory (gradients are unaffected either "
         "way) -- try this if backward is much slower than forward and you have memory headroom",
     )
-    p_converge = run_sub.add_parser(
-        "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
-    )
-    p_converge.add_argument("experiment_directory", help="Path to the experiment directory")
-    p_converge.add_argument(
-        "--device",
-        metavar="DEVICE",
-        default="cuda",
-        help="run the convergence simulations on this torch device (default: cuda)",
-    )
-    p_converge.add_argument(
-        "--orientations",
-        metavar="N",
-        type=int,
-        default=1,
-        help="use the first N orientations for convergence testing (default: 1)",
-    )
-    p_pack = run_sub.add_parser("pack", help="Export a run directory for transfer/archive")
-    p_pack.add_argument("run_directory", help="Path to canonical run artifact directory")
-    p_pack.add_argument(
-        "--format",
-        choices=["zip", "tar", "bagit", "ro-crate"],
-        default="zip",
-        help="Export package format",
-    )
 
     args = parser.parse_args(argv)
 
@@ -397,14 +399,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK: experiment '{cfg.name}' validated.")
         return 0
 
-    if args.command == "run" and args.run_command == "infer":
+    if args.command == "infer":
         _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
             _configure_logging()
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv, tui=args.tui),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -422,12 +424,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
         return 0
 
-    if args.command == "run" and args.run_command == "preprocess":
+    if args.command == "preprocess":
         _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
             _configure_logging()
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv, tui=args.tui)
+            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
             summary_logger = RecordingLogger()
             logger: Logger = (
                 summary_logger
@@ -467,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  • {'Plan Lock':<20} {(reproducibility_dir / 'plan.lock').resolve()}")
         return 0
 
-    if args.command == "run" and args.run_command == "refine":
+    if args.command == "refine":
         _announce_multi_dataset(args.experiment_directory)
         if not args.quiet:
             _configure_logging()
@@ -478,9 +480,7 @@ def main(argv: list[str] | None = None) -> int:
             report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
             summary_logger = RecordingLogger()
             refine_sinks: tuple[Logger, ...] = (
-                _build_logger(
-                    console=not args.quiet, csv=args.csv, tui=args.tui, per_rotation=False
-                ),
+                _build_logger(console=not args.quiet, csv=args.csv, per_rotation=False),
                 SummaryLogger(report_path),
                 summary_logger,
             )
@@ -527,13 +527,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  • {'Refinement Report':<20} {report_path}")
         return 0
 
-    if args.command == "run" and args.run_command == "converge":
+    if args.command == "converge":
         _announce_multi_dataset(args.experiment_directory)
         _configure_logging()
         try:
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=ConsoleLogger(),
+                logger=_build_logger(console=not args.quiet, csv=args.csv),
                 device=args.device,
                 n_orientations=args.orientations,
             )
@@ -554,37 +554,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if args.command == "run" and args.run_command == "pack":
-        try:
-            output = pack_run(args.run_directory, package_format=args.format)
-        except (FileNotFoundError, ValueError) as exc:
-            if args.debug:
-                raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-        print(output)
-        return 0
-
     parser.print_help()
     return 0
 
 
-def _build_logger(
-    *, console: bool, csv: str | None, per_rotation: bool = True, tui: bool = False
-) -> Logger:
+def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) -> Logger:
     """Combine the requested observation sinks (none => the null logger that discards events).
 
-    ``tui`` swaps the scrolling :class:`ConsoleLogger` for the live
-    :class:`~diffBloch.app.loggers.tui.TuiLogger`; the two are alternatives, never both, because a
-    live display owns the terminal while the console bridges events onto stdlib ``logging``.
     ``per_rotation`` opts the console into the settled per-rotation stream.
     """
     sinks: list[Logger] = []
-    if console and tui:
-        from diffBloch.app.loggers.tui import TuiLogger
-
-        sinks.append(TuiLogger())
-    elif console:
+    if console:
         sinks.append(ConsoleLogger(per_rotation=per_rotation))
     if csv is not None:
         sinks.append(CSVLogger(Path(csv)))

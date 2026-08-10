@@ -87,9 +87,9 @@ the run); see the per-rotation breakdown in each `refinement_report.txt`.
 
 ## Reproducing these numbers
 
-diffBloch has changed substantially since the runs that produced the numbers above. 
+diffBloch has changed substantially since the runs that produced the numbers above.
 
-To reproduce the paper's results bit-for-bit, use the original prototype repository linked in the paper itself. 
+To reproduce the paper's results bit-for-bit, use the original prototype repository linked in the paper itself.
 
 That prototype predates GPU support and several of the changes in this codebase, so it is considerably slower, a single one of these refinements could take on the order
 of days, start to finish.
@@ -97,8 +97,8 @@ of days, start to finish.
 ## Running these examples
 
 ```bash
-uv run diffbloch run preprocess examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
-uv run diffbloch run refine examples/experiments/papers/colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch preprocess examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 ```
 
 Swap in any of the six directory names above for the other materials/absorption settings.

@@ -1,59 +1,91 @@
 # Examples
 
-The repository ships runnable experiment directories under `examples/`. The top-level
-`examples/experiments` entries are mostly baked-in demonstration runs: small or checkpointed
-experiments that exercise preprocessing, inference, and refinement paths.
+The repository ships six runnable experiment directories under
+`examples/Colmey_et_al_2026_Acta_Cryst_A/data/`. They reproduce the three materials refined in
+Colmey et al. (2026), each in an elastic and an absorptive configuration — so the pair is also the
+worked demonstration of what `blochwave.absorption` changes:
+
+```text
+data/quartz-absorption/    data/quartz-no-abs/
+data/cspbbr3-absorption/   data/cspbbr3-no-abs/
+data/borane-absorption/    data/borane-no-abs/
+```
+
+Each directory holds its own `experiment.yaml`, the starting `.cif`, the PETS `.cif_pets`
+experimental data, and the committed outputs of a reference run (`refined_structure.cif`,
+`refinement_report.txt`, and the `reproducibility/` locks and parameter snapshots) — so you can read
+the expected result before spending the compute. See that directory's `README.md` for the paper's
+published residuals alongside this repository's.
 
 ## Quick examples
 
-### Quartz, end to end
+### Quartz, elastic
 
-Runs preprocessing and refinement from the ordinary quartz example directory.
-
-```bash
-uv run diffbloch run refine examples/experiments/quartz
-```
-
-The live refinement line reports `wR2`, `R_obs`, and diffraction loss for each epoch. The final
-summary identifies the best epoch, reports matched observed / total matched HKLs, and lists the
-refined CIF, raw parameter snapshot, JSON summary, and plan artifacts.
-
-### Quartz, checkpointed
-
-Starts from a committed `plan.npz` + `plan.lock`, so it skips preprocessing and reaches refinement
-quickly.
+The smallest cell (~113 Å³) and the cheapest run, so start here.
 
 ```bash
-uv run diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
 ```
 
-### Abiraterone, checkpointed on CUDA
+Each epoch reports `wR2` and `R_obs` with the rotation count each mean was taken over, the
+diffraction loss, and any composed penalty. On completion the run writes `refined_structure.cif`,
+the raw parameter snapshot, and `refinement_report.txt` beside the experiment.
 
-A larger compound; use an accelerator when available.
+### Quartz, absorptive
+
+The same structure and data with `blochwave.absorption: true`, which is the comparison the paper
+makes. Diffing the two `refinement_report.txt` files is the quickest way to see the effect.
 
 ```bash
-uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
 ```
+
+### CsPbBr3 on an accelerator
+
+The high-Z case, where absorption matters most and the eigensolve is dear enough to want a GPU.
+
+```bash
+uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/cspbbr3-absorption --device cuda
+```
+
+### Watching a run
+
+The console reports as the run goes: per-stage beam and reflection survival counts through
+preprocessing, then the declared objective and per-epoch metrics through refinement, with a progress
+bar on a terminal. `--csv PATH` writes the same event stream to a long-format log alongside it, and
+`--quiet` silences the stream while still printing the run summary.
+
+## Cost, and why these runs are not instant
+
+**No example ships a preprocess checkpoint.** Every run above settles the `Plan` from raw inputs
+first — the orientation and thickness fits — before refinement starts, which is the dominant cost.
+A run writes `plan.npz` + `plan.lock` into the experiment's `reproducibility/` when it finishes, so
+a *second* run of the same directory reuses it and starts at refinement, provided the inputs,
+config, code release, and recipe all still match.
+
+These runs are also long by default: `refinement.steps` is 40 unless the experiment overrides it.
+Copy a directory and lower `steps` if you want a quick look rather than a reproduction — there is
+deliberately no CLI override, because it would make the recorded artifact disagree with the run.
 
 ## Catalog
 
-The four bundled examples span the two axes that matter most for cost and behavior: unit-cell size
-(which sets the beam count, and with it the O(N³) eigensolve cost and whether the large-cell fork
-routes past it — see [Preprocessing](preprocessing.md#routing-on-cell-size)) and structural
-complexity (whether hydrogens and their riding-model treatment are in play).
+The six directories span the axes that matter for cost and behaviour: unit-cell size (which sets the
+beam count, and with it the O(N³) eigensolve cost and whether the large-cell fork routes past it —
+see [Preprocessing](preprocessing.md#routing-on-cell-size)), atomic number (how much absorption
+changes the answer), and structural complexity (whether hydrogens and their riding-model treatment
+are in play — see [Refinement](refinement.md)).
 
 | Example | What it demonstrates |
 |---|---|
-| `examples/experiments/quartz` | Small unit cell (~113 Å³), no hydrogens; a full run from raw inputs, and the reproducibility anchor other changes are checked against. |
-| `examples/experiments/quartz-checkpoint` | Same structure, starting from a committed fitted `Plan` — the fast path once orientation/thickness are already settled. |
-| `examples/experiments/abiraterone-checkpoint` | A larger organic molecule with hydrogens, so the hydrogen riding-model constraint (see [Refinement](refinement.md#advanced-composition-constraints-restraints-and-learned-thickness)) is exercised; a CUDA/refine demonstration. |
-| `examples/experiments/lta` | A zeolite well above the large-cell threshold — routes through the faster orientation-search branch and benefits most from a GPU. |
+| `data/quartz-no-abs`, `data/quartz-absorption` | Small cell (~113 Å³), no hydrogens. The cheapest end-to-end run, and the structure the CI physics anchor is built from. |
+| `data/cspbbr3-no-abs`, `data/cspbbr3-absorption` | High-Z, where absorption gives the paper's clearest improvement in R_obs. Benefits most from a GPU. |
+| `data/borane-no-abs`, `data/borane-absorption` | An organic molecule with hydrogens, so the riding-model constraint is in play. |
 
 ## Python API example
 
 ```python
 from diffBloch.app import run_experiment
 
-result = run_experiment("examples/experiments/quartz-checkpoint")
+result = run_experiment("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
 print(result.n_evaluated, result.mean_r_obs)
 ```

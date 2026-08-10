@@ -26,6 +26,8 @@ from diffBloch.app.loggers import (
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.observability import (
+    ConvergencePassStarted,
+    ConvergenceTrial,
     CouplingSummary,
     DeviceSelected,
     Event,
@@ -685,3 +687,45 @@ def test_early_abort_ignores_non_fit_events_for_the_decision() -> None:
 def test_early_abort_rejects_nonpositive_patience() -> None:
     with pytest.raises(ValueError, match="patience must be >= 1"):
         EarlyAbortLogger(patience=0)
+
+
+def test_console_logger_marks_the_trial_that_cleared_the_threshold(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The pass header states the threshold; the trial line says which one met it."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            ConvergencePassStarted(
+                pass_index=1,
+                g_max=2.25,
+                sg_max=0.01,
+                tilt_steps=42,
+                r_factor_threshold=0.01,
+                n_orientations=1,
+            )
+        )
+        for index, (previous, candidate, r_factor) in enumerate(
+            ((2.25, 2.45, 0.0312), (2.45, 2.65, 0.0071))
+        ):
+            logger.report(
+                ConvergenceTrial(
+                    control="g_max",
+                    trial_index=index,
+                    pass_index=1,
+                    previous=previous,
+                    candidate=candidate,
+                    r_factor=r_factor,
+                    n_compared_hkl=612,
+                )
+            )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages[-2] == "  gmax 2.25 -> 2.45 | wR2=0.031200 | fixed_hkls=612"
+    assert messages[-1] == "  gmax 2.45 -> 2.65 | wR2=0.007100 | fixed_hkls=612 | settled"
+
+
+def test_console_logger_omits_the_marker_without_a_pass_header() -> None:
+    """No announced threshold means no claim about settling, rather than a guess."""
+    logger = ConsoleLogger(level=logging.INFO)
+    assert logger._r_factor_threshold is None

@@ -186,6 +186,9 @@ class ConsoleLogger:
     # -- unlike the per-epoch verbose stream (n_orientations x n_steps lines) this fires once, and
     # the final score of every rotation is a result worth reading, not a diagnostic.
     per_rotation: bool = True
+    # The active convergence pass's acceptance threshold, remembered from its header so each trial
+    # line can say whether it cleared it. None until a pass announces itself.
+    _r_factor_threshold: float | None = field(default=None, init=False, repr=False)
     _refinement_total: int = field(default=0, init=False, repr=False)
     _refinement_started_at: float = field(default=0.0, init=False, repr=False)
     _orientation_total: int = field(default=0, init=False, repr=False)
@@ -353,6 +356,7 @@ class ConsoleLogger:
                 event.r_factor_threshold,
                 event.n_orientations,
             )
+            self._r_factor_threshold = event.r_factor_threshold
             return
         if isinstance(event, ConvergenceSweepStarted):
             label = "gmax" if event.control == "g_max" else event.control
@@ -360,13 +364,21 @@ class ConsoleLogger:
             return
         if isinstance(event, ConvergenceTrial):
             label = "gmax" if event.control == "g_max" else event.control
+            # Mark the trial that fell under the pass threshold -- the comparison converge_scalar
+            # actually settles on. Printing the threshold once in the pass header and then leaving
+            # the reader to check each R against it by eye is the arithmetic this saves.
+            settled = (
+                self._r_factor_threshold is not None and event.r_factor < self._r_factor_threshold
+            )
             _log.log(
                 self.level,
-                "  %s -> %g | wR2=%.6f | fixed_hkls=%d",
+                "  %s %g -> %g | wR2=%.6f | fixed_hkls=%d%s",
                 label,
+                event.previous,
                 event.candidate,
                 event.r_factor,
                 event.n_compared_hkl,
+                " | settled" if settled else "",
             )
             return
         if isinstance(event, OrientationOptimized):

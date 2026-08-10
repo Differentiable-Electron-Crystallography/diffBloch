@@ -39,7 +39,7 @@ Numerical-accuracy controls frozen into the simulation spec (`BlochwaveConfig`).
 | Field | Default | What it does |
 |---|---|---|
 | `solver.refine` | `"matrix_exp"` | Dynamical solver used during gradient refinement. Must stay `matrix_exp` if `absorption: true` (the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix). |
-| `solver.inference` | `"matrix_exp"` | Dynamical solver used for `run infer` / preprocessing forward solves. |
+| `solver.inference` | `"matrix_exp"` | Dynamical solver used for `infer` / preprocessing forward solves. |
 | `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
 | `rsg` | `0.9` | Klar beam-selection cutoff: relative excitation-error radius. |
 | `dsg` | `0.0015` | Klar beam-selection cutoff: excitation-error offset. |
@@ -98,7 +98,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 ## `refinement`
 
-Execution knobs for the default single-stage `run refine` (`RefinementConfig`).
+Execution knobs for the default single-stage `refine` (`RefinementConfig`).
 
 | Field | Default | What it does |
 |---|---|---|

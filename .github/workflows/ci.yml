@@ -160,15 +160,28 @@ jobs:
 
       - name: Append anchor history row
         run: |
-          value=""
+          # Keys are written by tests/e2e/inference/test_inference.py::_write_anchor_metrics as
+          # {material}_mean_{metric}. They were `quartz_coupled_mean_r_obs` here against a producer
+          # that no longer exists, and jq's `// empty` turned the mismatch into a blank rather than
+          # an error -- so the trend silently recorded 48 empty rows before anyone noticed.
+          r_obs=""
+          wr2=""
           if [ -f anchor-metrics.json ]; then
-            value=$(jq -r '.quartz_coupled_mean_r_obs // empty' anchor-metrics.json)
+            r_obs=$(jq -r '.quartz_mean_r_obs // empty' anchor-metrics.json)
+            wr2=$(jq -r '.quartz_mean_wr2 // empty' anchor-metrics.json)
           fi
-          [ -f anchor-history.csv ] || echo "date,sha,mean_r_obs" > anchor-history.csv
+          if [ -z "$r_obs" ]; then
+            echo "::warning::no quartz_mean_r_obs in anchor-metrics.json; recording a gap"
+          fi
+          # Older histories have three columns; widen in place so existing rows keep parsing.
+          [ -f anchor-history.csv ] || echo "date,sha,mean_r_obs,mean_wr2" > anchor-history.csv
+          if head -1 anchor-history.csv | grep -qv mean_wr2; then
+            sed -i '1s/$/,mean_wr2/' anchor-history.csv
+          fi
           if grep -q "$GITHUB_SHA" anchor-history.csv; then
             echo "row for $GITHUB_SHA already present (re-run); leaving history unchanged"
           else
-            echo "$(date -u +%FT%TZ),${GITHUB_SHA},${value}" >> anchor-history.csv
+            echo "$(date -u +%FT%TZ),${GITHUB_SHA},${r_obs},${wr2}" >> anchor-history.csv
           fi
 
       - name: Render anchor trend

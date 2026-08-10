@@ -134,6 +134,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         {
             "rotation_index": index,
             "r_obs": row.r_obs,
+            "wr2": row.wr2,
             "n_observed": row.n_observed,
             "n_beams": row.n_beams,
         }
@@ -145,8 +146,31 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         "n_rotations": len(rotations),
         "wall_time_seconds": elapsed,
         "mean_r_obs": result.mean_r_obs,
+        "mean_wr2": result.mean_wr2,
         "rotations": rotations,
     }
+
+
+def _write_anchor_metrics(material: str, actual: dict[str, Any]) -> None:
+    """Append this material's run-level means to ``$DIFFBLOCH_ANCHOR_METRICS``, if set.
+
+    The file CI reads to append a row to the published anchor history. Written *before* the
+    comparison, deliberately: a drifted anchor is exactly the run whose measurement the trend needs
+    to show, so recording it must not depend on the assertion passing.
+
+    Keys are ``{material}_mean_r_obs`` / ``{material}_mean_wr2``. Unset variable means no file, so
+    an ordinary local run writes nothing.
+    """
+    destination = os.environ.get("DIFFBLOCH_ANCHOR_METRICS")
+    if not destination:
+        return
+    path = Path(destination)
+    metrics: dict[str, Any] = {}
+    if path.exists():  # several materials append to one file
+        metrics = json.loads(path.read_text())
+    metrics[f"{material}_mean_r_obs"] = actual["mean_r_obs"]
+    metrics[f"{material}_mean_wr2"] = actual["mean_wr2"]
+    path.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
 
 
 def _write_reference(material: str, actual: dict[str, Any]) -> None:
@@ -181,6 +205,8 @@ def test_inference(material: str) -> None:
 
     assert actual["n_rotations"] > 0
     assert all(math.isfinite(row["r_obs"]) for row in actual["rotations"])
+
+    _write_anchor_metrics(material, actual)
 
     if mode is Mode.GENERATE:
         _write_reference(material, actual)
