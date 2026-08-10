@@ -251,9 +251,7 @@ def from_experiment(
     for record_index, record in enumerate(records):
         if config.blochwave.mosaicity and record.mosaicity_degrees is None:
             source = record.source_path if record.source_path is not None else "<experimental data>"
-            raise ValueError(
-                f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}"
-            )
+            raise ValueError(f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}")
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         orientations = orientation_matrices(
             record.ub_matrix,

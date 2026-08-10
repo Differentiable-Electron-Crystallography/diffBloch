@@ -167,7 +167,9 @@ def mosaic_rocking_curve_tilts(
     nominal = np.zeros(1) if sampling == 1 else np.linspace(-semiangle, semiangle, sampling)
     offsets = np.sqrt(3.0) * sigma_degrees * np.asarray([-1.0, 0.0, 1.0])
     angles = (nominal[:, None] + offsets[None, :]).reshape(-1)
-    weights = np.broadcast_to(np.asarray([1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0]), (sampling, 3)).reshape(-1)
+    weights = np.broadcast_to(np.asarray([1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0]), (sampling, 3)).reshape(
+        -1
+    )
     order = np.argsort(angles, kind="stable")
     radians = np.deg2rad(angles[order])
     cos, sin = np.cos(radians), np.sin(radians)

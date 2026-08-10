@@ -232,7 +232,9 @@ def converge_experiment(
     rocking = cfg.blochwave.to_rocking_curve(setup.integration)
     simulation = cfg.blochwave.to_policy()
     dstar_maxes = [
-        record.dstar_max for record in _as_records(experimental_data) if record.dstar_max is not None
+        record.dstar_max
+        for record in _as_records(experimental_data)
+        if record.dstar_max is not None
     ]
     starting_g_max = min(dstar_maxes) if dstar_maxes else simulation.g_max
     plan = pipeline(
@@ -1096,9 +1098,7 @@ def _run_recipe(
         return pipeline(steps, logger=logger)(plan)
     results: list[Plan] = []
     for label, start, end in dataset_bounds:
-        subset = tuple(
-            op for op in plan.orientations if start <= op.pattern.rotation_index < end
-        )
+        subset = tuple(op for op in plan.orientations if start <= op.pattern.rotation_index < end)
         logger.report(DatasetPreprocessingStarted(label=label, n_rotations=len(subset)))
         result = pipeline(steps, logger=logger)(replace(plan, orientations=subset))
         results.append(result)
