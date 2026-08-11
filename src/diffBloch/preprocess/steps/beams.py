@@ -35,11 +35,11 @@ from diffBloch.core.dynamical import (
     excitation_errors,
     grid_source_indices,
 )
-from diffBloch.core.products import PLAIN_SUM, MosaicAverage, MosaicSmoothed, TiltReduction
+from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
-from diffBloch.preprocess.orientation import mosaic_rocking_curve_tilts, rocking_curve_tilts
+from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import (
@@ -144,15 +144,18 @@ def build_orientation_plans(
             raise ValueError(
                 "PETS-derived mosaicity requires mosaicity metadata on every candidate"
             )
-        expanded, weights = mosaic_rocking_curve_tilts(
-            rocking.integration.semiangle,
-            rocking.sampling,
-            candidate.mosaicity_degrees,
-            geometry=rocking.integration.geometry,
-        )
-        return expanded, MosaicAverage(
-            tuple(float(weight) for weight in weights), candidate.mosaicity_degrees
-        )
+        if rocking.sampling == 1:
+            raise ValueError("PETS-derived mosaicity requires at least two rocking-curve samples")
+        degrees_per_sample = 2.0 * rocking.integration.semiangle / (rocking.sampling - 1)
+        window = round(candidate.mosaicity_degrees / degrees_per_sample)
+        if window <= 1:
+            return plain_tilts, PLAIN_SUM
+        if window > rocking.sampling:
+            raise ValueError(
+                f"PETS-derived mosaicity window {window} exceeds the {rocking.sampling} "
+                "rocking-curve samples"
+            )
+        return plain_tilts, MosaicSmoothed(window)
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)

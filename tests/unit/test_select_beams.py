@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicAverage, MosaicSmoothed
+from diffBloch.core.products import MosaicSmoothed, PlainSum
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -130,17 +130,29 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
     assert isinstance(built.tilt_reduction, MosaicSmoothed)
 
 
-def test_pets_mosaicity_expands_each_nominal_tilt_to_three_weighted_orientations() -> None:
+def test_pets_mosaicity_sets_window_from_actual_tilt_spacing() -> None:
     plan, config, integration = _quartz_train_plan()
-    candidate = replace(plan.orientations[0], mosaicity_degrees=0.05)
+    candidate = replace(plan.orientations[0], mosaicity_degrees=0.6)
     plan = replace(plan, orientations=(candidate,))
-    rocking = replace(config.blochwave.to_rocking_curve(integration), sampling=2)
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
+    )
     built = build_orientation_plans(rocking, True)(plan).orientations[0]
 
-    assert len(built.beam_plans) == 3 * rocking.sampling
-    assert isinstance(built.tilt_reduction, MosaicAverage)
-    assert sum(built.tilt_reduction.weights) == pytest.approx(rocking.sampling)
-    assert built.tilt_reduction.sigma_degrees == pytest.approx(0.05)
+    assert len(built.beam_plans) == rocking.sampling
+    assert isinstance(built.tilt_reduction, MosaicSmoothed)
+    assert built.tilt_reduction.window == 3  # round(0.6 / (2 / (11 - 1)))
+
+
+def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
+    plan, _, _ = _quartz_train_plan()
+    candidate = replace(plan.orientations[0], mosaicity_degrees=0.05)
+    plan = replace(plan, orientations=(candidate,))
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
+    )
+    built = build_orientation_plans(rocking, True)(plan).orientations[0]
+    assert isinstance(built.tilt_reduction, PlainSum)
 
 
 def test_legacy_mosaic_window_remains_supported() -> None:

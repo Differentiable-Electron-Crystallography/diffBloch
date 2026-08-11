@@ -210,12 +210,16 @@ The virtual frame's angular range is represented by tilt sub-orientations around
 orientation. In the default app recipe, `build_orientation_plans` constructs those sub-tilts,
 selects each tilt-dependent SOLVE basis from `g_max` and `sg_max`, builds the Bloch geometry, and
 attaches the configured mosaic reduction. Mosaicity is disabled by default. With `mosaicity: true`,
-the apparent mosaicity in `.cif_pets` is treated as a Gaussian angular standard deviation. Each
-nominal tilt is replaced by orientations at offsets
-{math}`(-\sqrt{3}\sigma, 0, +\sqrt{3}\sigma)`, weighted
-{math}`(1/6, 2/3, 1/6)`. For example, 42 nominal tilts produce 126 Bloch-wave solves; the weights
-sum to 42, preserving the ordinary integration scale. The legacy `{window: N}` form applies the
-existing moving-window reduction.
+the apparent mosaicity {math}`m` in `.cif_pets` is converted to a sampled-tilt window using
+
+```{math}
+\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N-1}, \qquad
+w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
+```
+
+The calculated rocking curve is averaged over that window before integration. A width of zero or
+one leaves the curve unchanged. This uses the existing {math}`N` Bloch-wave solves rather than
+adding orientations. The legacy `{window: N}` form sets the moving-average width directly.
 Rocking integration and mosaicity are parts of the built orientation plan, not separately displayed
 default stages.
 

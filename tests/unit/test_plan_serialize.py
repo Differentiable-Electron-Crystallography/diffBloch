@@ -20,7 +20,7 @@ from tests.unit.test_inference import (
     _simulated_intensities,
 )
 
-from diffBloch.core.products import MosaicAverage, MosaicSmoothed, PatternBatch
+from diffBloch.core.products import MosaicSmoothed, PatternBatch
 from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.orientation import rocking_curve_tilts
@@ -106,24 +106,6 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     assert reloaded_op.alignment.hkl.tolist() == op.alignment.hkl.tolist()  # scored set preserved
     assert isinstance(reloaded_op.tilt_reduction, MosaicSmoothed)
     assert reloaded_op.tilt_reduction.window == 3
-
-
-def test_pets_mosaic_average_round_trips(tmp_path) -> None:
-    grid, *_ = _silicon()
-    reduction = MosaicAverage((1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0, 0.0), 0.05)
-    op = OrientationPlan.build(
-        grid,
-        _BEAM_HKL,
-        _pattern(),
-        energy=_ENERGY,
-        thickness=(300.0,),
-        tilts=_TILTS,
-        tilt_reduction=reduction,
-    )
-    loaded = _assert_round_trips(Plan(grid, (op,)), tmp_path)
-
-    reloaded = loaded.orientations[0].tilt_reduction
-    assert reloaded == reduction
 
 
 def test_mixed_plan_round_trips(tmp_path) -> None:

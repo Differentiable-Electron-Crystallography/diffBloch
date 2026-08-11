@@ -79,10 +79,10 @@ the intensities incoherently:
 I_{\mathrm{frame}}(t) = \sum_k |\psi^{(k)}(t)|^2.
 ```
 
-With `mosaicity: true`, each sampled orientation is replaced by three orientations distributed
-about it using the apparent mosaicity recorded in `.cif_pets`; their Gaussian weights are included
-in the sum. This triples the number of Bloch-wave solves. `mosaicity: false` uses the unexpanded
-orientations. The legacy `{window: N}` form remains available for moving-window smoothing.
+With `mosaicity: true`, diffBloch reads the apparent mosaicity from `.cif_pets` and converts it to a
+moving-average width using the angular spacing between sampled orientations. The calculated
+rocking curve is smoothed over that width before it is summed. This does not add Bloch-wave solves.
+`mosaicity: false` applies no smoothing. The legacy `{window: N}` form sets the width directly.
 
 ## Comparing simulation with experiment
 

@@ -116,7 +116,7 @@ def _dstar_max(block: gemmi.cif.Block) -> float | None:
 
 
 def _mosaicity(block: gemmi.cif.Block) -> float | None:
-    """PETS2 apparent mosaicity (Gaussian sigma, degrees) from measurement details."""
+    """PETS2 apparent mosaicity in degrees from measurement details."""
     text = block.find_value("_diffrn_measurement_details")
     if text is None:
         return None

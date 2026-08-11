@@ -33,7 +33,6 @@ __all__ = [
     "AlignedIntensities",
     "AlignmentPlan",
     "BlochSolution",
-    "MosaicAverage",
     "MosaicSmoothed",
     "PLAIN_SUM",
     "PatternBatch",
@@ -74,28 +73,10 @@ class MosaicSmoothed:
     window: int
 
 
-@dataclass(frozen=True)
-class MosaicAverage:
-    """Weighted reduction over PETS-derived mosaic orientation samples."""
-
-    weights: tuple[float, ...]
-    sigma_degrees: float
-
-    def __post_init__(self) -> None:
-        if not self.weights:
-            raise ValueError("mosaic weights must not be empty")
-        if not np.all(np.isfinite(self.weights)) or any(weight < 0.0 for weight in self.weights):
-            raise ValueError("mosaic weights must be finite and non-negative")
-        if sum(self.weights) <= 0.0:
-            raise ValueError("mosaic weights must have a positive sum")
-        if not np.isfinite(self.sigma_degrees) or self.sigma_degrees < 0.0:
-            raise ValueError("mosaicity sigma must be finite and non-negative")
-
-
 # The tilt-axis reduction of a rocking curve: a plain incoherent sum, or a mosaicity-broadened sum.
 # Carried per-orientation on ``OrientationPlan`` (default ``PlainSum``) and applied by
 # :meth:`BlochSolution.integrate`; a discriminated union rather than an optional ``window`` field.
-TiltReduction = PlainSum | MosaicSmoothed | MosaicAverage
+TiltReduction = PlainSum | MosaicSmoothed
 
 # Shared immutable default (``PlainSum`` is stateless), so signatures avoid a call-in-default.
 PLAIN_SUM: TiltReduction = PlainSum()
@@ -123,14 +104,6 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
                 )
             windows = stacked.unfold(0, window, 1)  # (N - window + 1, T, N_beams, window)
             return windows.mean(dim=-1).sum(dim=0)
-        case MosaicAverage(weights=weights):
-            if len(weights) != stacked.shape[0]:
-                raise ValueError(
-                    f"mosaic weight count {len(weights)} does not match the "
-                    f"{stacked.shape[0]} orientation samples"
-                )
-            weight = stacked.new_tensor(weights).reshape((-1,) + (1,) * (stacked.ndim - 1))
-            return (stacked * weight).sum(dim=0)
 
 
 @dataclass(frozen=True)
