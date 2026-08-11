@@ -33,35 +33,26 @@ on your shell `PATH`.
 
 ```bash
 # Run the optimizer and update trainable structural parameters:
-uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
+uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-no-abs
 ```
 
 ## For Developers
 
-We welcome collaborations and interested parties may contribute to the codebase.
+We welcome collaborations and interested parties may contribute to the codebase. 
 
-Every merge to `main` re-runs the end-to-end (e2e) physics anchors: rapid tests of the codebase's key
-functionality and integration. The quartz anchor's mean `R_obs` and mean `wR2` are expected to hold
-steady across changes, so the figure below plots both against merge number — one point per merge to
-`main`, not per unit of time. The shaded band is the pinned tolerance; a flat line inside it is the
-desired outcome, evidence the physics is reproducible commit over commit.
-
-Both metrics are recorded because a drift can appear in one and not the other, and `R_obs` alone
-would not say which. A gap is a merge whose anchor produced no measurement at all.
+Every merge to `main` re-runs the end to end (e2e) physics anchors. These correspond to rapid tests of the codebase's key functionalities and integration. Spefically, the measured mean R_obs for 
+the example quartz refinement is expected to remain the same upon changes made to the directory. This Fig. tracks the result of this test upon every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
+outcome, evidence the physics is reproducible commit over commit. Gaps are commits with no valid
+measurement (the committed checkpoint was stale for that commit's recipe, so the fast anchor
+could not score it).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend-dark.svg">
-  <img alt="Mean R_obs and wR2 of the quartz e2e anchor for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
+  <img alt="Mean R_obs of the quartz e2e test for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
 </picture>
 
 ## Citation
 
 If you use diffBloch in your research, please cite it as:
 
-@misc{diffBloch,
-  author  = {Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain, and Midgley, Paul},
-  title   = {diffBloch},
-  version = {0.2.0},
-  year = {2026},
-  url     = {https://github.com/Differentiable-Electron-Crystallography/diffBloch}
-}
+Doherty, T., Malik, S., Colmey, B., Maitland, I. & Midgley, P. (2026). diffBloch, version 0.2.0. https://github.com/Differentiable-Electron-Crystallography/diffBloch
