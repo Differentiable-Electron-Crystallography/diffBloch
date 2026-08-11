@@ -27,8 +27,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 
 | Guide | What it covers |
 |---|---|
-| [Workflow](workflow.md) | Why dynamical diffraction needs a Bloch-wave simulation, and how the pieces fit together. |
-| [Architecture](architecture.md) | How the codebase itself is organised: packages, modules, and the layering between them. |
+| [Workflow](workflow.md) | The calculation from experiment setup through convergence, preprocessing, inference, refinement, and outputs. |
 | [Bloch-wave simulation](bloch-wave-simulation.md) | The physics: structure factor, relativistic interaction parameter, structure matrix, and its two solvers. |
 | [Inputs](inputs.md) | The starting structure and rocking-curve data a refinement needs. |
 | [Preprocessing](preprocessing.md) | Fitting crystal orientation and specimen thickness before the structure is touched. |
@@ -59,10 +58,10 @@ on your shell `PATH`. Every command below takes an experiment directory (see
 [Inputs](inputs.md)) -- try one under `examples/`, e.g. `examples/Colmey_et_al_2026/data/quartz-no-abs`.
 
 ```bash
-uv run diffbloch validate <experiment_dir>/experiment.yaml   # check the config before a longer job
-uv run diffbloch run preprocess <experiment_dir>              # settle orientation/thickness, write plan checkpoints
-uv run diffbloch run infer <experiment_dir>                   # forward-simulate and score a settled Plan
-uv run diffbloch run refine <experiment_dir>                  # preprocess (or reuse) + gradient-refine
+uv run diffbloch convergence-test <experiment_dir>   # test numerical convergence
+uv run diffbloch preprocess <experiment_dir>         # settle orientation/thickness, write plan checkpoints
+uv run diffbloch infer <experiment_dir>              # forward-simulate and score a settled Plan
+uv run diffbloch refine <experiment_dir>             # preprocess (or reuse) + gradient-refine
 ```
 
 Add `--refresh` to any command to force a real recompute instead of reusing a checkpoint, and
@@ -92,7 +91,6 @@ If you use diffBloch in your research, please cite it:
 :caption: Guides
 
 workflow.md
-architecture.md
 bloch-wave-simulation.md
 inputs.md
 preprocessing.md
