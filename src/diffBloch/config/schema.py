@@ -417,22 +417,81 @@ class PreprocessConfig(_StrictConfig):
     orientations_csv: str | None = None
 
 
+def dataset_checkpoint_stem(ref: str) -> str:
+    """The per-dataset checkpoint name stem for an ``exp_data`` ref: ``plan.<stem>.npz``.
+
+    Path separators become ``__`` and a ``.cif_pets`` suffix is dropped, e.g.
+    ``undamaged/frame_1.cif_pets -> undamaged__frame_1``. Checkpoint identity follows the *file*,
+    not its position in ``exp_data``, so reordering or inserting datasets never restales another
+    dataset's checkpoint. Two refs may sanitize to the same stem (``a/b`` vs ``a__b``);
+    :class:`Inputs` rejects such configs up front rather than letting two datasets share one
+    checkpoint on disk.
+    """
+    stem = ref.removesuffix(".cif_pets")
+    return "__".join(Path(stem).parts)
+
+
+def _relative_path_only(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("input references must be relative paths within the experiment directory")
+    return value
+
+
 class Inputs(_StrictConfig):
     """Input references — relative to the experiment directory only (no project-root paths)."""
 
     structure: str
-    exp_data: str
+    exp_data: str | list[str]
+    # Pool rotations from every file in exp_data into one experiment. False (default) keeps
+    # exp_data a single path. True requires exp_data to be a list of 2+ distinct paths. Each file
+    # is preprocessed and checkpointed on its own, with its own integration geometry (precession
+    # angles may differ), and the settled per-file plans are pooled in memory before refinement;
+    # the files' wavelength-derived beam energies must snap to the same voltage, since the engine
+    # solves the whole pooled experiment at one energy (see preprocess.pool).
+    multi_dataset: bool = False
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
 
-    @field_validator("structure", "exp_data")
+    @field_validator("structure")
     @classmethod
-    def _relative_path_only(cls, value: str) -> str:
-        path = Path(value)
-        if path.is_absolute() or ".." in path.parts:
+    def _structure_relative_path(cls, value: str) -> str:
+        return _relative_path_only(value)
+
+    @field_validator("exp_data")
+    @classmethod
+    def _exp_data_relative_paths(cls, value: str | list[str]) -> str | list[str]:
+        if isinstance(value, list):
+            return [_relative_path_only(v) for v in value]
+        return _relative_path_only(value)
+
+    @model_validator(mode="after")
+    def _multi_dataset_shape(self) -> Inputs:
+        if self.multi_dataset:
+            if not isinstance(self.exp_data, list) or len(self.exp_data) < 2:
+                raise ValueError(
+                    "inputs.multi_dataset=true requires inputs.exp_data to be a list of 2+ paths"
+                )
+            if len(set(self.exp_data)) != len(self.exp_data):
+                raise ValueError(
+                    "inputs.exp_data lists the same dataset more than once; pooling a file twice "
+                    "would double-weight its reflections in the refinement"
+                )
+            stems: dict[str, str] = {}
+            for ref in self.exp_data:
+                stem = dataset_checkpoint_stem(ref)
+                if stem in stems:
+                    raise ValueError(
+                        f"inputs.exp_data entries {stems[stem]!r} and {ref!r} map to the same "
+                        f"checkpoint name plan.{stem}.npz; rename one so per-dataset checkpoints "
+                        "stay distinct"
+                    )
+                stems[stem] = ref
+        elif isinstance(self.exp_data, list):
             raise ValueError(
-                "input references must be relative paths within the experiment directory"
+                "inputs.exp_data is a list but inputs.multi_dataset is false -- set "
+                "multi_dataset=true to pool multiple datasets, or use a single path"
             )
-        return value
+        return self
 
 
 class ExperimentConfig(_StrictConfig):
@@ -458,10 +517,15 @@ class ExperimentConfig(_StrictConfig):
         (W&B/Comet hyperparameters, the written summary) reads the run's settings from this one
         event instead of being handed the config object.
         """
+        experimental_data = (
+            ", ".join(self.inputs.exp_data)
+            if isinstance(self.inputs.exp_data, list)
+            else self.inputs.exp_data
+        )
         return ExperimentDeclared(
             name=self.name,
             structure=self.inputs.structure,
-            experimental_data=self.inputs.exp_data,
+            experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
             seed_thicknesses=tuple(self.sample.thicknesses),
             integration_semiangle=integration.semiangle,
