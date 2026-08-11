@@ -109,13 +109,16 @@ def _refinement_result_for(
 def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
 
-    written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    written = _write_refinement_outputs(
+        tmp_path, cfg, refinement, result, plan_lock_sha256s=("ab" * 32,)
+    )
 
     assert set(written.artifacts) == {
         "refined_structure",
         "refined_parameters",
         "plan_q",
         "plan_lock_q",
+        "refinement_lock",
     }
     refined = read_structure(tmp_path / "refined_structure.cif")
     assert np.allclose(refined.frac_positions, [[0.11, 0.2, 0.3], [0.4, 0.51, 0.6]])
@@ -128,26 +131,32 @@ def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -
     assert not (tmp_path / "refinement_summary.json").exists()  # superseded by the .txt report
 
 
-def test_write_refinement_outputs_skips_the_lock_without_a_plan_lock(tmp_path: Path) -> None:
+def test_write_refinement_outputs_skips_the_lock_when_the_run_did_not_checkpoint(
+    tmp_path: Path,
+) -> None:
+    """A leftover plan lock on disk is NOT this run's provenance -- no sha, no refinement.lock."""
     cfg, refinement, result = _refinement_result_for(tmp_path)
+    (tmp_path / "reproducibility").mkdir()
+    (tmp_path / "reproducibility" / "plan.q.lock").write_text("stale-lock-from-an-earlier-run")
 
-    written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    written = _write_refinement_outputs(tmp_path, cfg, refinement, result, plan_lock_sha256s=None)
 
     assert "refinement_lock" not in written.artifacts
+    assert "plan_q" not in written.artifacts and "plan_lock_q" not in written.artifacts
     assert not (tmp_path / "reproducibility" / "refinement.lock").exists()
 
 
-def test_write_refinement_outputs_writes_a_refinement_lock_beside_an_existing_plan_lock(
+def test_write_refinement_outputs_chains_the_lock_to_this_runs_plan_lock_hashes(
     tmp_path: Path,
 ) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
-    (tmp_path / "reproducibility").mkdir()
-    (tmp_path / "reproducibility" / "plan.q.lock").write_text("fake-plan-lock-bytes")
-
-    written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
+    written = _write_refinement_outputs(
+        tmp_path, cfg, refinement, result, plan_lock_sha256s=("cd" * 32,)
+    )
 
     assert "refinement_lock" in written.artifacts
     lock = read_refinement_lock(tmp_path / "reproducibility" / "refinement.lock")
+    assert lock.plan_lock_sha256s == ["cd" * 32]
     assert lock.refined_structure.path == "refined_structure.cif"
     assert lock.refined_parameters.path == "reproducibility/refined_parameters.npz"
 
@@ -201,10 +210,9 @@ def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
     monkeypatch.chdir(tmp_path)
     relative_root = Path(".")
     cfg, refinement, result = _refinement_result_for(relative_root)
-    (relative_root / "reproducibility").mkdir()
-    (relative_root / "reproducibility" / "plan.q.lock").write_text("fake-plan-lock-bytes")
-
-    written = _write_refinement_outputs(relative_root, cfg, refinement, result)
+    written = _write_refinement_outputs(
+        relative_root, cfg, refinement, result, plan_lock_sha256s=("cd" * 32,)
+    )
 
     assert "refinement_lock" in written.artifacts
     lock_path = relative_root / "reproducibility" / "refinement.lock"

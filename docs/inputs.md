@@ -59,8 +59,9 @@ The CIF's cell is checked against PETS's on every load:
   both values, and the percentage difference — rather than silently deriving the whole simulation's
   geometry from a mismatch that large.
 
-Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too;
-see [Combining multiple datasets](#combining-multiple-datasets) below.
+Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too
+(each further file's cell checked against the first file's); see
+[Combining multiple datasets](#combining-multiple-datasets) below.
 
 ## API example
 
@@ -125,6 +126,9 @@ inputs:
   exp_data:
     - undamaged/frame_1.cif_pets
     - undamaged/frame_2.cif_pets
+refinement:
+  thickness_nn:
+    enabled: false   # defaults on; unsupported for pooled experiments (see limitations below)
 ```
 
 **Each dataset is preprocessed and checkpointed on its own.** Every file runs the recipe with its
@@ -148,13 +152,19 @@ across the combined set (the first file's rotations are `0..N-1`, the second fil
 `N..N+M-1`, and so on) -- `ignore_orientations` and the train/validation split both key off this
 combined index, and ignoring a rotation leaves a gap rather than renumbering later frames.
 
+Pooled files must also describe the same crystal: each further file's recorded cell is checked
+against the first file's (warn past 1% relative difference on any cell parameter -- ordinary
+damage-series drift stays under this -- raise past 5%, listing every offending parameter).
+
 Two current limitations, each rejected with a clear error rather than silently mishandled:
 `refinement.thickness_nn` (the network keys only on each rotation's tilt angle, so it cannot
-represent per-dataset thickness differences) and `--orientations-csv` import (its rotation-index
-column predates pooling). Listing the same file twice -- or two paths that would collide on one
-checkpoint name -- is rejected at config validation, since a duplicated dataset would double-weight
-its reflections in the refinement. `multi_dataset` defaults to `false`, and a single `exp_data`
-path is simply the one-dataset case of the same flow.
+represent per-dataset thickness differences -- it defaults **on**, so a pooled config must set
+`refinement.thickness_nn.enabled: false` explicitly or fail at config load, before any compute)
+and `--orientations-csv` import (its rotation-index column predates pooling). Listing the same
+file twice -- or two paths that would collide on one checkpoint name -- is rejected at config
+validation, since a duplicated dataset would double-weight its reflections in the refinement.
+`multi_dataset` defaults to `false`, and a single `exp_data` path is simply the one-dataset case
+of the same flow.
 
 
 ## Outputs

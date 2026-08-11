@@ -509,6 +509,20 @@ class ExperimentConfig(_StrictConfig):
     loss_metrics: LossMetricsConfig = Field(default_factory=LossMetricsConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
+    @model_validator(mode="after")
+    def _multi_dataset_supported_refinement(self) -> ExperimentConfig:
+        # Fail at config load, not after the (potentially hours-long) preprocess: the thickness
+        # network keys only on each rotation's normalized alpha, so pooled datasets with
+        # overlapping tilt ranges would be forced onto one shared thickness-vs-alpha curve.
+        # thickness_nn defaults ON, so a pooled experiment must opt out explicitly.
+        if self.inputs.multi_dataset and self.refinement.thickness_nn.enabled:
+            raise ValueError(
+                "refinement.thickness_nn is not supported with inputs.multi_dataset (the network "
+                "cannot represent per-dataset thickness; that is future work) -- set "
+                "refinement.thickness_nn.enabled: false to pool datasets"
+            )
+        return self
+
     def to_declaration(self, integrations: Sequence[IntegrationGeometry]) -> ExperimentDeclared:
         """Project the result-determining knobs onto the run's declaration event.
 

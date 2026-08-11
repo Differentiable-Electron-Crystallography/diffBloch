@@ -86,7 +86,10 @@ verifies the realized file bytes after LFS checkout, not the small pointer file.
 ## `refinement.lock`
 
 `refinement.lock` is the refinement-stage counterpart to the plan locks, written alongside
-`refined_structure.cif` whenever `run refine` completes and every dataset's plan lock exists.
+`refined_structure.cif` whenever a checkpointing `run refine` completes. It chains only to the
+plan locks **this run verified or wrote** -- a `--no-checkpoint` run writes no `refinement.lock`
+at all, even if lock files from an earlier run are still on disk, because those are not the
+provenance of the plans this run actually refined.
 Refinement runs on top of already-settled per-dataset `Plan`s, so everything that determines
 *those* -- inputs, sample, blochwave, preprocess config, recipe -- is already pinned by the plan
 locks this run refined from. `refinement.lock` adds exactly what refinement itself contributes on

@@ -56,7 +56,7 @@ def _run(
     """Drive ``_prepare`` for one dataset the way ``_preprocess``'s per-dataset loop does."""
     steps = [_spy(calls, n, p) for n, p in names_params]
     cfg, _lock = load_experiment(exp)
-    return _prepare(
+    plan, _lock_sha = _prepare(
         base,
         steps,
         root=exp,
@@ -68,6 +68,7 @@ def _run(
         checkpoint=checkpoint,
         refresh=refresh,
     )
+    return plan
 
 
 def test_first_run_computes_and_writes_the_checkpoint(tmp_path: Path) -> None:
@@ -147,7 +148,7 @@ def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path)
             _spy(calls, "a"),
             fork(pred, when_true=[_spy(calls, "coarse")], when_false=[_spy(calls, "exact")]),
         ]
-        return _prepare(
+        plan, _lock_sha = _prepare(
             base,
             steps,
             root=exp,
@@ -159,6 +160,7 @@ def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path)
             checkpoint=True,
             refresh=False,
         )
+        return plan
 
     # Seed with the when_true branch; the recorded recipe is the resolved [a, coarse].
     out = prepare(lambda g: True)

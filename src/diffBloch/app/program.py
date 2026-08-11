@@ -351,18 +351,20 @@ def preprocess_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    _refinement, _integrations, prepared, _validation_rotation_indices = _preprocess(
-        root,
-        cfg,
-        logger=logger,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-        orientations_csv=orientations_csv,
-        plot_thickness=plot_thickness,
-        plot_thickness_dir=plot_thickness_dir,
+    _refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
+        _preprocess(
+            root,
+            cfg,
+            logger=logger,
+            checkpoint=checkpoint,
+            refresh=refresh,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
+            orientations_csv=orientations_csv,
+            plot_thickness=plot_thickness,
+            plot_thickness_dir=plot_thickness_dir,
+        )
     )
     return prepared
 
@@ -394,18 +396,20 @@ def run_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, _integrations, prepared, _validation_rotation_indices = _preprocess(
-        root,
-        cfg,
-        logger=logger,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-        orientations_csv=orientations_csv,
-        plot_thickness=plot_thickness,
-        plot_thickness_dir=plot_thickness_dir,
+    refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
+        _preprocess(
+            root,
+            cfg,
+            logger=logger,
+            checkpoint=checkpoint,
+            refresh=refresh,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
+            orientations_csv=orientations_csv,
+            plot_thickness=plot_thickness,
+            plot_thickness_dir=plot_thickness_dir,
+        )
     )
     return run_inference(
         prepared,
@@ -475,18 +479,20 @@ def refine_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, integrations, prepared, validation_rotation_indices = _preprocess(
-        root,
-        cfg,
-        logger=logger,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-        orientations_csv=orientations_csv,
-        plot_thickness=plot_thickness,
-        plot_thickness_dir=plot_thickness_dir,
+    refinement, integrations, prepared, validation_rotation_indices, plan_lock_sha256s = (
+        _preprocess(
+            root,
+            cfg,
+            logger=logger,
+            checkpoint=checkpoint,
+            refresh=refresh,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
+            orientations_csv=orientations_csv,
+            plot_thickness=plot_thickness,
+            plot_thickness_dir=plot_thickness_dir,
+        )
     )
     # `engine` covers every rotation (train + validation) -- reporting always scores the whole
     # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
@@ -542,20 +548,14 @@ def refine_experiment(
     logger.report(cfg.to_declaration(integrations))
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
-    if thickness_spec.enabled and cfg.inputs.multi_dataset:
-        raise ValueError(
-            "refinement.thickness_nn is not supported with inputs.multi_dataset: the thickness "
-            "network keys only on each rotation's normalized alpha, so pooled datasets with "
-            "overlapping tilt ranges would be forced onto one shared thickness-vs-alpha curve; "
-            "per-dataset thickness is future work"
-        )
     thickness_nn: ApparentThicknessNN | None = None
     raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
         # Concatenated in inputs.exp_data order -- the order pool() numbers rotation_index in --
-        # so raw_alphas[rotation_index] resolves even with ignore gaps. The guard above keeps this
-        # single-dataset today; the concatenation is already pooled-order-correct for the day the
-        # network learns a per-dataset input.
+        # so raw_alphas[rotation_index] resolves even with ignore gaps. ExperimentConfig rejects
+        # thickness_nn + multi_dataset at load time, so this is single-dataset today; the
+        # concatenation is already pooled-order-correct for the day the network learns a
+        # per-dataset input.
         records = _read_experimental_data(root, cfg)
         raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
         thickness_nn = ApparentThicknessNN(
@@ -595,7 +595,9 @@ def refine_experiment(
         profile=profile,
         selection_engine=selection_engine,
     )
-    result = _write_refinement_outputs(root, cfg, refinement, result)
+    result = _write_refinement_outputs(
+        root, cfg, refinement, result, plan_lock_sha256s=plan_lock_sha256s
+    )
     # The settled-result events, then the terminal one: SummaryLogger writes the file on the latter.
     _report_refinement_outcome(
         logger,
@@ -668,6 +670,8 @@ def _write_refinement_outputs(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     result: ModelRefinementResult,
+    *,
+    plan_lock_sha256s: tuple[str, ...] | None,
 ) -> ModelRefinementResult:
     """Persist the best structure and raw parameter/component snapshots.
 
@@ -676,6 +680,11 @@ def _write_refinement_outputs(
     bookkeeping nobody reads directly. See :class:`~diffBloch.app.loggers.summary.SummaryLogger`
     for the actual human-readable summary (``refinement_report.txt``), which supersedes the
     machine-readable ``refinement_summary.json`` this function used to also write.
+
+    ``plan_lock_sha256s`` are the hashes of the plan locks *this run* verified or wrote
+    (``exp_data`` order), from :func:`_preprocess`. ``refinement.lock`` chains to exactly those;
+    ``None`` (the run didn't checkpoint) skips the lock and the plan artifact entries entirely --
+    a leftover lock file on disk from some earlier run is not this run's provenance.
     """
     reproducibility_dir = _reproducibility_dir(root)
     structure_path = (root / "refined_structure.cif").resolve()
@@ -770,22 +779,23 @@ def _write_refinement_outputs(
         "refined_structure": str(structure_path),
         "refined_parameters": str(params_path),
     }
-    refs = _exp_data_refs(cfg)
-    plan_lock_paths: list[Path] = []
-    for ref in refs:
-        stem = dataset_checkpoint_stem(ref)
-        artifacts[f"plan_{stem}"] = str((reproducibility_dir / _plan_npz_name(ref)).resolve())
-        artifacts[f"plan_lock_{stem}"] = str((reproducibility_dir / _plan_lock_name(ref)).resolve())
-        plan_lock_paths.append(reproducibility_dir / _plan_lock_name(ref))
     if component_arrays:
         artifacts["refined_components"] = str(components_path)
-    # A refinement.lock only makes sense when every dataset's plan lock exists to chain back to.
-    if all(path.exists() for path in plan_lock_paths):
+    # refinement.lock chains only to the plan locks THIS run verified or wrote. A lock file merely
+    # present on disk (a --no-checkpoint run over leftovers, an opaque recipe) is not this run's
+    # provenance and must not be chained to.
+    if plan_lock_sha256s is not None:
+        for ref in _exp_data_refs(cfg):
+            stem = dataset_checkpoint_stem(ref)
+            artifacts[f"plan_{stem}"] = str((reproducibility_dir / _plan_npz_name(ref)).resolve())
+            artifacts[f"plan_lock_{stem}"] = str(
+                (reproducibility_dir / _plan_lock_name(ref)).resolve()
+            )
         lock_path = (reproducibility_dir / _REFINEMENT_LOCK).resolve()
         write_refinement_lock(
             lock_path,
             RefinementLock(
-                plan_lock_sha256s=[sha256_file(path) for path in plan_lock_paths],
+                plan_lock_sha256s=list(plan_lock_sha256s),
                 refinement_config_digest=refinement_config_digest(cfg),
                 code_version=code_version(),
                 refined_structure=artifact_hash_for(structure_path, root=root.resolve()),
@@ -809,7 +819,13 @@ def _preprocess(
     orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[RefinementSetup, tuple[IntegrationGeometry, ...], Plan, frozenset[int]]:
+) -> tuple[
+    RefinementSetup,
+    tuple[IntegrationGeometry, ...],
+    Plan,
+    frozenset[int],
+    tuple[str, ...] | None,
+]:
     """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
     Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --
@@ -819,10 +835,13 @@ def _preprocess(
     terminal ``run_inference`` needs), the per-dataset ``IntegrationGeometry``\\ s in
     ``inputs.exp_data`` order (PETS-derived integration semiangles, for reporting), the pooled
     settled ``Plan`` (still over *every* non-ignored rotation -- the train/validation split never
-    restricts preprocessing, only :func:`refine_experiment`'s gradient stage), and the
+    restricts preprocessing, only :func:`refine_experiment`'s gradient stage), the
     ``rotation_index`` set ``cfg.refinement.split`` holds out as validation (empty when
     ``train_test`` is off; the mask runs over the pooled pre-ignore index space, so membership is
-    stable under ignore edits). Hydrogen sites are loaded per ``inputs.load_hydrogens``.
+    stable under ignore edits), and the sha256s of the plan locks this run verified or wrote (in
+    ``exp_data`` order) -- ``None`` when the run didn't checkpoint, so ``refinement.lock`` never
+    chains to a leftover lock this run never validated. Hydrogen sites are loaded per
+    ``inputs.load_hydrogens``.
 
     ``orientations_csv`` (the API/CLI argument) overrides ``cfg.preprocess.orientations_csv`` when
     given; the config value (resolved relative to ``root``, like ``inputs.structure``) is the
@@ -864,6 +883,7 @@ def _preprocess(
 
     structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
     prepared_plans: list[Plan] = []
+    lock_sha256s: list[str | None] = []
     for ref, dataset in zip(refs, datasets, strict=True):
         steps = _recipe_steps(
             cfg,
@@ -875,21 +895,21 @@ def _preprocess(
             max_batch=max_batch,
             orientations_csv=effective_orientations_csv,
         )
-        prepared_plans.append(
-            _prepare(
-                dataset.plan,
-                steps,
-                root=root,
-                cfg=cfg,
-                dataset_ref=ref,
-                ignored_rotations=dataset.ignored_rotations,
-                structure_lock=structure_lock,
-                dataset_lock=input_lock_for(root / ref, ref=ref),
-                checkpoint=checkpoint,
-                refresh=refresh,
-                logger=logger,
-            )
+        prepared, lock_sha256 = _prepare(
+            dataset.plan,
+            steps,
+            root=root,
+            cfg=cfg,
+            dataset_ref=ref,
+            ignored_rotations=dataset.ignored_rotations,
+            structure_lock=structure_lock,
+            dataset_lock=input_lock_for(root / ref, ref=ref),
+            checkpoint=checkpoint,
+            refresh=refresh,
+            logger=logger,
         )
+        prepared_plans.append(prepared)
+        lock_sha256s.append(lock_sha256)
     if checkpoint:
         _prune_stale_dataset_checkpoints(_reproducibility_dir(root), refs)
 
@@ -904,7 +924,12 @@ def _preprocess(
         op.pattern.rotation_index for op in pooled.orientations if mask[op.pattern.rotation_index]
     )
     integrations = tuple(dataset.integration for dataset in datasets)
-    return refinement_setup, integrations, pooled, validation_rotation_indices
+    plan_lock_sha256s = (
+        None
+        if any(sha is None for sha in lock_sha256s)
+        else tuple(sha for sha in lock_sha256s if sha is not None)
+    )
+    return refinement_setup, integrations, pooled, validation_rotation_indices, plan_lock_sha256s
 
 
 def _prune_stale_dataset_checkpoints(reproducibility_dir: Path, refs: tuple[str, ...]) -> None:
@@ -1060,7 +1085,7 @@ def _prepare(
     checkpoint: bool,
     refresh: bool,
     logger: Logger = NULL_LOGGER,
-) -> Plan:
+) -> tuple[Plan, str | None]:
     """Run the preprocess ``steps`` on one dataset's ``base``, reusing/resuming its checkpoint.
 
     The checkpoint pair is this dataset's own ``plan.<stem>.npz`` + ``plan.<stem>.lock``
@@ -1069,6 +1094,11 @@ def _prepare(
     ``ignored_rotations``) -- see :class:`~diffBloch.config.PreprocessLock`. ``logger`` streams a
     per-step plan summary as the recipe runs (see :func:`pipeline`); it fires only when steps
     actually execute (a fresh or resumed run, not a full-reuse load).
+
+    Returns the settled plan plus the sha256 of the lock this run *verified or wrote* -- the
+    provenance ``refinement.lock`` may chain to. ``None`` when the run didn't checkpoint
+    (``checkpoint=False`` or an opaque recipe): a lock file merely *present* on disk from some
+    earlier run is not this run's provenance, and must not be chained to.
     """
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
     # lock keys on is a flat, fork-free step list -- the fork's shape is static by construction, so
@@ -1101,7 +1131,7 @@ def _prepare(
         )
         if status == "reuse":
             _log.info("loaded preprocess checkpoint (full reuse) from %s", npz)
-            return read_plan(npz)
+            return read_plan(npz), sha256_file(lock_path)
         if status == "resume":
             assert lock is not None
             snapshot = read_plan(npz)
@@ -1124,7 +1154,7 @@ def _prepare(
                 npz=npz,
                 lock_path=lock_path,
             )
-            return result
+            return result, sha256_file(lock_path)
 
     result = pipeline(steps, logger=logger)(base)
     if can_checkpoint:
@@ -1140,7 +1170,8 @@ def _prepare(
             npz=npz,
             lock_path=lock_path,
         )
-    return result
+        return result, sha256_file(lock_path)
+    return result, None
 
 
 def _read_lock_or_none(lock_path: Path) -> PreprocessLock | None:

@@ -145,6 +145,20 @@ def test_setup_datasets_computes_u0_once_per_distinct_energy(
     assert len(calls) == 1  # three identical-wavelength datasets -> one u0 computation
 
 
+def test_setup_datasets_warns_on_cell_drift_and_rejects_a_different_cell() -> None:
+    """Pooled files must describe one crystal: >1% cell drift warns, >5% raises."""
+    structure, record, config = _quartz_inputs()
+    cell = np.asarray(record.cell_parameters, dtype=np.float64)
+
+    drifted = record.model_copy(update={"cell_parameters": cell * 1.02})  # 2% -> warn
+    with pytest.warns(UserWarning, match="drifts from dataset 0"):
+        setup_datasets(structure, (record, drifted), config)
+
+    different = record.model_copy(update={"cell_parameters": cell * 1.10})  # 10% -> raise
+    with pytest.raises(ValueError, match="disagrees with dataset 0"):
+        setup_datasets(structure, (record, different), config)
+
+
 # --- converge_experiment: per-dataset sweeps ---
 
 
@@ -161,6 +175,8 @@ def _multi_experiment(tmp_path: Path) -> Path:
         "exp_data": ["a.cif_pets", "b.cif_pets"],
         "multi_dataset": True,
     }
+    # thickness_nn defaults ON and is rejected for pooled experiments at config load.
+    base.setdefault("refinement", {})["thickness_nn"] = {"enabled": False}
     (exp / "experiment.yaml").write_text(yaml.safe_dump(base))
     lock = {
         "structure": input_lock_for(exp / "enantiomer_1.cif", ref="enantiomer_1.cif").model_dump(),

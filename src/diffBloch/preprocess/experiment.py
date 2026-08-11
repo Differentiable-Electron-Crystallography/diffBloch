@@ -14,6 +14,7 @@ The structure side lives here so the structure/experimental split mirrors the tw
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -224,6 +225,7 @@ def setup_datasets(
     records = tuple(records)
     if not records:
         raise ValueError("no experimental data: setup_datasets needs at least one PETS record")
+    _check_pooled_cells(records)
     solve_cutoff = config.blochwave.g_max
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
@@ -327,6 +329,48 @@ def from_experiment(
         refinement=refinement_setup,
         integration=dataset.integration,
     )
+
+
+_CELL_PARAMETER_NAMES = ("a", "b", "c", "alpha", "beta", "gamma")
+_CELL_WARN_RELATIVE = 0.01
+_CELL_RAISE_RELATIVE = 0.05
+
+
+def _check_pooled_cells(records: tuple[ExperimentalRecord, ...]) -> None:
+    """Guard that pooled PETS files describe the same crystal: cells compared to the first file's.
+
+    Pooled datasets refine one shared structure on one shared structure-factor grid, so their own
+    recorded cells must agree. Small drift is expected in the intended use cases (a damage series'
+    cell relaxes; a remount re-refines slightly): past ``1%`` relative difference on any of
+    ``a, b, c, alpha, beta, gamma`` this warns; past ``5%`` it raises, listing every offending
+    parameter with both values -- the files almost certainly describe different crystals or
+    settings, and pooling them would silently mis-model every rotation of the outlier.
+    """
+    reference = np.asarray(records[0].cell_parameters, dtype=np.float64)
+    for index, record in enumerate(records[1:], start=1):
+        cell = np.asarray(record.cell_parameters, dtype=np.float64)
+        relative = np.abs(cell - reference) / np.abs(reference)
+        offending = [
+            f"{name}: {cell[i]:g} vs {reference[i]:g} ({relative[i]:.1%})"
+            for i, name in enumerate(_CELL_PARAMETER_NAMES)
+            if relative[i] > _CELL_RAISE_RELATIVE
+        ]
+        if offending:
+            raise ValueError(
+                f"pooled dataset {index}'s cell disagrees with dataset 0's by more than "
+                f"{_CELL_RAISE_RELATIVE:.0%}: " + "; ".join(offending)
+            )
+        drifted = [
+            f"{name}: {cell[i]:g} vs {reference[i]:g} ({relative[i]:.1%})"
+            for i, name in enumerate(_CELL_PARAMETER_NAMES)
+            if relative[i] > _CELL_WARN_RELATIVE
+        ]
+        if drifted:
+            warnings.warn(
+                f"pooled dataset {index}'s cell drifts from dataset 0's by more than "
+                f"{_CELL_WARN_RELATIVE:.0%}: " + "; ".join(drifted),
+                stacklevel=2,
+            )
 
 
 def _mean_inner_potential(
