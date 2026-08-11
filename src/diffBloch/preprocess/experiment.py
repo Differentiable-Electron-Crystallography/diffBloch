@@ -249,6 +249,13 @@ def from_experiment(
     pooled_plans: list[CandidatePlan] = []
     rotation_offset = 0
     for record in records:
+        pets_mosaicity = config.blochwave.mosaicity is True
+        if pets_mosaicity and record.mosaicity_degrees is None:
+            source = record.source_path if record.source_path is not None else "<experimental data>"
+            raise ValueError(
+                f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}; "
+                "add the PETS apparent mosaicity or set blochwave.mosaicity: false"
+            )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         orientations = orientation_matrices(
             record.ub_matrix,
@@ -270,6 +277,7 @@ def from_experiment(
                 thickness=config.sample.thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
+                mosaicity_degrees=(record.mosaicity_degrees if pets_mosaicity else None),
             )
             for local_index, zone_id in enumerate(record.zone_axis_ids)
         )

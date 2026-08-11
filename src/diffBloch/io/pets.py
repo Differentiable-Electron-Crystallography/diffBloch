@@ -14,6 +14,9 @@ from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_f
 from diffBloch.io.record import ExperimentalRecord
 
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
+_MOSAICITY = re.compile(
+    r"mosaicity:\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?)", re.IGNORECASE
+)
 
 
 def read_experimental_data(path: str | Path) -> ExperimentalRecord:
@@ -42,6 +45,7 @@ def parse_experimental_block(
         cell_parameters_su=cellpar_su,
         wavelength=required_float(block, "_diffrn_radiation_wavelength"),
         dstar_max=_dstar_max(block),
+        mosaicity_degrees=_mosaicity(block),
         ub_matrix=_ub_matrix(block),
         zone_axis_ids=np.asarray(
             [int(row["_diffrn_zone_axis_id"]) for row in zone_rows], dtype=np.int64
@@ -108,6 +112,15 @@ def _dstar_max(block: gemmi.cif.Block) -> float | None:
     if text is None:
         return None
     match = _DSTAR_MAX.search(str(text))
+    return float(match.group(1)) if match else None
+
+
+def _mosaicity(block: gemmi.cif.Block) -> float | None:
+    """PETS2 apparent mosaicity (Gaussian sigma, degrees) from measurement details."""
+    text = block.find_value("_diffrn_measurement_details")
+    if text is None:
+        return None
+    match = _MOSAICITY.search(str(text))
     return float(match.group(1)) if match else None
 
 

@@ -35,7 +35,13 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from diffBloch.core.products import MosaicSmoothed, PatternBatch, PlainSum, TiltReduction
+from diffBloch.core.products import (
+    MosaicAverage,
+    MosaicSmoothed,
+    PatternBatch,
+    PlainSum,
+    TiltReduction,
+)
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
@@ -165,12 +171,23 @@ def _numpy(tensor: Tensor) -> np.ndarray:
 
 
 def _dump_reduction(reduction: TiltReduction) -> dict[str, Any]:
+    if isinstance(reduction, MosaicAverage):
+        return {
+            "kind": "mosaic_average",
+            "weights": list(reduction.weights),
+            "sigma_degrees": reduction.sigma_degrees,
+        }
     if isinstance(reduction, MosaicSmoothed):
         return {"kind": "mosaic", "window": reduction.window}
     return {"kind": "plain"}
 
 
 def _load_reduction(payload: dict[str, Any]) -> TiltReduction:
+    if payload["kind"] == "mosaic_average":
+        return MosaicAverage(
+            weights=tuple(float(value) for value in payload["weights"]),
+            sigma_degrees=float(payload["sigma_degrees"]),
+        )
     if payload["kind"] == "mosaic":
         window = payload["window"]
         assert isinstance(window, int)

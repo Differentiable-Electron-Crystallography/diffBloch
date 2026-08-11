@@ -36,6 +36,7 @@ __all__ = [
     "hexagonal_tilt",
     "orientation_basis",
     "orientation_matrices",
+    "mosaic_rocking_curve_tilts",
     "rocking_curve_tilts",
     "u_matrix",
 ]
@@ -141,6 +142,44 @@ def rocking_curve_tilts(
     tilts[:, 2, 1] = sin
     tilts[:, 2, 2] = cos
     return tilts
+
+
+def mosaic_rocking_curve_tilts(
+    semiangle: float,
+    sampling: int,
+    sigma_degrees: float,
+    *,
+    geometry: str = "continuous_rotation",
+) -> tuple[FloatArray, FloatArray]:
+    """Rocking tilts expanded by a normalized three-point Gaussian mosaic distribution.
+
+    PETS records apparent mosaicity as the Gaussian sigma in degrees. Each nominal tilt is evaluated
+    at offsets ``(-sqrt(3), 0, +sqrt(3)) * sigma`` with Gauss-Hermite weights
+    ``(1/6, 2/3, 1/6)``. The returned weights sum to ``sampling`` so mosaicity preserves the
+    ordinary rocking-curve integration scale.
+    """
+    if sigma_degrees < 0.0:
+        raise ValueError("mosaicity sigma must be non-negative")
+    if sigma_degrees == 0.0:
+        return rocking_curve_tilts(semiangle, sampling, geometry=geometry), np.ones(sampling)
+    if geometry != "continuous_rotation":
+        raise NotImplementedError(f"rocking-curve geometry {geometry!r} is not implemented")
+    nominal = np.zeros(1) if sampling == 1 else np.linspace(-semiangle, semiangle, sampling)
+    offsets = np.sqrt(3.0) * sigma_degrees * np.asarray([-1.0, 0.0, 1.0])
+    angles = (nominal[:, None] + offsets[None, :]).reshape(-1)
+    weights = np.broadcast_to(np.asarray([1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0]), (sampling, 3)).reshape(
+        -1
+    )
+    order = np.argsort(angles, kind="stable")
+    radians = np.deg2rad(angles[order])
+    cos, sin = np.cos(radians), np.sin(radians)
+    tilts = np.zeros((len(radians), 3, 3), dtype=np.float64)
+    tilts[:, 0, 0] = 1.0
+    tilts[:, 1, 1] = cos
+    tilts[:, 1, 2] = -sin
+    tilts[:, 2, 1] = sin
+    tilts[:, 2, 2] = cos
+    return tilts, weights[order].copy()
 
 
 def u_matrix(ub_matrix: FloatArray, cell_parameters: FloatArray) -> FloatArray:

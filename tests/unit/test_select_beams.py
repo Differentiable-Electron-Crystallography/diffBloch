@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicSmoothed
+from diffBloch.core.products import MosaicAverage, MosaicSmoothed, PlainSum
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -127,7 +127,30 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
 
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
     assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
+    assert isinstance(built.tilt_reduction, PlainSum)
+
+
+def test_pets_mosaicity_expands_each_nominal_tilt_to_three_weighted_orientations() -> None:
+    plan, config, integration = _quartz_train_plan()
+    candidate = replace(plan.orientations[0], mosaicity_degrees=0.05)
+    plan = replace(plan, orientations=(candidate,))
+    rocking = replace(config.blochwave.to_rocking_curve(integration), sampling=2)
+    built = build_orientation_plans(rocking, True)(plan).orientations[0]
+
+    assert len(built.beam_plans) == 3 * rocking.sampling
+    assert isinstance(built.tilt_reduction, MosaicAverage)
+    assert sum(built.tilt_reduction.weights) == pytest.approx(rocking.sampling)
+    assert built.tilt_reduction.sigma_degrees == pytest.approx(0.05)
+
+
+def test_legacy_mosaic_window_remains_supported() -> None:
+    plan, config, integration = _quartz_train_plan()
+    built = build_orientation_plans(
+        config.blochwave.to_rocking_curve(integration), Mosaicity(window=3)
+    )(plan).orientations[0]
+
     assert isinstance(built.tilt_reduction, MosaicSmoothed)
+    assert built.tilt_reduction.window == 3
 
 
 def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:

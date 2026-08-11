@@ -8,6 +8,7 @@ import torch
 
 from diffBloch.core.products import (
     BlochSolution,
+    MosaicAverage,
     MosaicSmoothed,
     PatternBatch,
     PlainSum,
@@ -140,6 +141,17 @@ def test_integrate_mosaic_window_may_not_exceed_the_tilt_count() -> None:
         BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
 
 
+def test_integrate_pets_mosaic_samples_uses_gaussian_weights() -> None:
+    reduction = MosaicAverage((1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0), 0.05)
+    integrated = BlochSolution.integrate(_ramp_tilts([1.0, 2.0, 3.0]), reduction=reduction)
+    assert torch.allclose(integrated.intensities, torch.full((1, 2), 2.0, dtype=torch.float64))
+
+
+def test_pets_mosaic_weight_count_must_match_orientation_samples() -> None:
+    with pytest.raises(ValueError, match="weight count"):
+        BlochSolution.integrate(_ramp_tilts([1.0, 2.0]), reduction=MosaicAverage((1.0,), 0.05))
+
+
 def test_integrate_batched_matches_the_per_tilt_integrate() -> None:
     # integrate_batched takes the stacked (B, T, N) amplitudes a batched solve returns; it must
     # equal integrate over the corresponding per-tilt sub-solutions (identical stack + reduction).
@@ -152,7 +164,7 @@ def test_integrate_batched_matches_the_per_tilt_integrate() -> None:
     ]
     sols = [BlochSolution.from_propagation(a, beam_hkl, thick) for a in amps]
     stacked = torch.stack(amps)  # (B, T, N)
-    for reduction in (PlainSum(), MosaicSmoothed(2)):
+    for reduction in (PlainSum(), MosaicSmoothed(2), MosaicAverage((0.2, 0.3, 0.5), 0.05)):
         looped = BlochSolution.integrate(sols, reduction=reduction)
         batched = BlochSolution.integrate_batched(stacked, beam_hkl, thick, reduction=reduction)
         assert torch.equal(batched.intensities, looped.intensities)

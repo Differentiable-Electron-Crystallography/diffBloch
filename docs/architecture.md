@@ -79,12 +79,10 @@ the intensities incoherently:
 I_{\mathrm{frame}}(t) = \sum_k |\psi^{(k)}(t)|^2.
 ```
 
-When mosaicity is enabled (the default configuration is `Mosaicity(window=5)`), a moving average of
-that width is applied over consecutive sampled tilts before the sum, modelling crystal mosaic
-spread as a blur of the sampled rocking curve rather than integrating the sharp unbroadened curve.
-The window is a sampled-tilt count recorded in the plan provenance; it is not derived from PETS
-mosaic-spread metadata. The output is one calculated diffraction pattern for each experimental
-rotation.
+With `mosaicity: true`, each sampled orientation is replaced by three orientations distributed
+about it using the apparent mosaicity recorded in `.cif_pets`; their Gaussian weights are included
+in the sum. This triples the number of Bloch-wave solves. `mosaicity: false` uses the unexpanded
+orientations. The legacy `{window: N}` form remains available for moving-window smoothing.
 
 ## Comparing simulation with experiment
 

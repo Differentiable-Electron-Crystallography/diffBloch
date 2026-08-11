@@ -42,7 +42,7 @@ Numerical-accuracy controls frozen into the simulation spec (`BlochwaveConfig`).
 | `rsg` | `0.9` | Klar beam-selection cutoff: relative excitation-error radius. |
 | `dsg` | `0.0015` | Klar beam-selection cutoff: excitation-error offset. |
 | `rocking_curve_sampling` | `42` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `mosaicity` | `window: 5` | Moving-average mosaic reduction over the sampled tilts (`Mosaicity`). Not estimated from PETS mosaic-spread metadata; pass `mosaicity=None` at the lower-level API for a bare sum. |
+| `mosaicity` | `false` | `true` uses the apparent mosaicity from `.cif_pets` and evaluates three weighted orientations per tilt; `false` uses the nominal tilts. The legacy `{window: N}` moving-average form is also accepted. |
 | `fixed_n_segments` | `12` | Number of tilt-coupling segments when `coupling_mode: "union"` and `union_adaptive: false`. |
 | `coupling_mode` | `"union"` | `"union"`: couple the union of excited beams across each tilt-chunk's boundary tilts. `"per_tilt"`: couple only each tilt's own excited beams (more accurate, more expensive). |
 | `g_max` | `2.25` | Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch-wave matrix. See [Convergence testing](convergence-testing.md). |

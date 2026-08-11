@@ -75,6 +75,50 @@ def test_from_experiment_train_test_false_holds_out_nothing() -> None:
     assert len(setup.plans.train.orientations) == experimental_data.n_rotations
 
 
+def test_mosaicity_is_disabled_by_default() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": None}
+    )
+    config = load_config(QUARTZ / "experiment.yaml")
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    assert config.blochwave.mosaicity is False
+    assert all(plan.mosaicity_degrees is None for plan in setup.plans.combined.orientations)
+
+
+def test_enabled_mosaicity_requires_pets_metadata_and_names_the_remedy() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": None}
+    )
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
+    )
+
+    with pytest.raises(ValueError, match="set blochwave.mosaicity: false"):
+        from_experiment(structure, experimental_data, config)
+
+
+def test_enabled_mosaicity_is_carried_from_pets_to_every_candidate() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
+    )
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    assert experimental_data.mosaicity_degrees is not None
+    assert all(
+        plan.mosaicity_degrees == experimental_data.mosaicity_degrees
+        for plan in setup.plans.combined.orientations
+    )
+
+
 def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
