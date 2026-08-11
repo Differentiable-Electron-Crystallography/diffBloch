@@ -5,14 +5,17 @@ of tilts across each rocking curve. Too few beams or tilts can change the calcul
 intensities; too many increase the cost without improving the result. The required values depend on
 the material, orientation, and thickness.
 
-## Convergence
+## Simulation convergence
 
-A simulation is converged when increasing its size produces little to no change in the
-simulated intensities. This is different from agreement with experiment: convergence compares two
-simulations, while refinement compares simulation with measurement. A converged calculation can
-still disagree with experiment because the structure or experimental metadata is wrong.
+This is *simulation* convergence, not optimizer convergence: it means the finite beam basis and
+tilt grid are large enough that increasing them produces little to no further change in the
+simulated intensities. It is different from agreement with experiment: convergence compares two
+simulations against each other, while refinement compares one simulation against measurement. A
+converged simulation can still disagree with experiment because the structure or experimental
+metadata is wrong -- and, symmetrically, refinement can drive down its residual against experiment
+without the underlying simulation ever having been checked for convergence at all.
 
-The main numerical controls are:
+The main controls governing simulation convergence are:
 
 | Control | What it changes |
 |---|---|
@@ -36,8 +39,8 @@ derived automatically from `g_max`.
 
 Convergence testing should be performed before thickness optimization, orientation optimization,
 or structural refinement. Its purpose is to determine whether the finite beam basis and tilt grid
-are large enough, not whether the model agrees with experiment. These numerical requirements are
-usually insensitive to small orientation corrections and to the structural changes produced by
+are large enough, not whether the model agrees with experiment. Simulation convergence is usually
+insensitive to small orientation corrections and to the structural changes produced by
 refinement. There is little value in optimizing the model first and then discovering that the
 simulation used to optimize it was not converged.
 
@@ -79,7 +82,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 
-root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
+root = Path("<experiment_dir>")
 cfg, _lock = load_experiment(root)
 structure = read_structure(root / cfg.inputs.structure)
 experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
@@ -91,11 +94,11 @@ plan = build_orientation_plans()(
 test = ConvergenceTest(
     g_max_step=0.1,
     sg_max_step=0.005,
-    tilt_steps_step=2,
+    tilt_steps_step=5,
     num_passes=2,
 )
 tolerance = ConvergenceTolerance(
-    r_factor_threshold=0.005,
+    r_factor_threshold=0.01,
     max_iterations=100,
 )
 
@@ -107,7 +110,3 @@ converged_plan = converge_numerics(
     tolerance,
 )(plan)
 ```
-
-Smaller sweep steps resolve the convergence boundary more precisely but require more simulations.
-The threshold states the numerical accuracy required; it should be chosen before inspecting the
-result and reported with the selected hyperparameters.

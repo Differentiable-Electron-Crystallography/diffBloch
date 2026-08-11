@@ -4,7 +4,7 @@ Refinement holds a settled `Plan` (fitted orientation, tilts, thickness — see
 [Preprocessing](preprocessing.md)) fixed and minimizes the scaling-optimized weighted {math}`wR_2`
 of [Klar *et al.* (2023)](https://doi.org/10.1038/s41557-023-01186-1) over the differentiable
 structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
-dynamical calculation described in [Architecture](architecture.md#refinement). `R_obs`, the Bragg
+dynamical calculation described in [Workflow](workflow.md#refinement). `R_obs`, the Bragg
 {math}`R`-factor restricted to {math}`I_{\mathrm{obs}} > 3\sigma` reflections, is reported alongside
 {math}`wR_2` at every step as the conventional crystallographic residual, but is not itself the
 optimized quantity.
@@ -26,18 +26,14 @@ The default config exposes whole-group selections for:
 
 The schema default keeps positions and ADPs trainable, and leaves occupancies frozen.
 
-## CLI examples
+## CLI example
 
 ```bash
-# The smallest example, elastic: preprocessing then refinement.
-uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs
-
-# The same structure and data with absorption on -- the comparison the paper makes.
-uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-absorption
-
-# Larger structure refinement from a checkpointed preprocess running on CUDA.
-uv run diffbloch refine examples/Colmey_et_al_2026_Acta_Cryst_A/data/borane-absorption --device cuda
+uv run diffbloch run refine <experiment_dir> --device cuda
 ```
+
+Preprocesses (or reuses a settled `plan.npz`, see [Reproducibility](reproducibility.md)) and then
+gradient-refines. Add `--refresh` to force a real preprocess recompute.
 
 The default refinement budget is 40 epochs. Set a different recorded budget in the experiment
 config:
@@ -80,19 +76,6 @@ snapshots and locks go under `reproducibility/`.
 
 The completion summary prints the absolute location of every output.
 
-## API example: default app refinement
-
-```python
-from diffBloch.app import refine_experiment
-
-result = refine_experiment("examples/Colmey_et_al_2026_Acta_Cryst_A/data/quartz-no-abs")
-
-print(result.losses.shape)
-print(result.best_step, result.best_loss)
-print(result.history[result.best_step].wr2)
-print(result.history[result.best_step].r_obs)
-```
-
 ## Advanced composition: constraints, restraints, and learned thickness
 
 The default CLI refinement is intentionally conservative: it refines selected structural parameter
@@ -105,97 +88,16 @@ X-ray least-squares refinement, and the lower-level Python API exposes it direct
 - **hard constraints** fix the geometric relationship between atoms exactly, e.g. a riding model
   where hydrogens keep contributing to the calculated scattering but move rigidly with their parent
   heavy atom rather than refining independent coordinates;
-- **restraints** (soft penalties) are implemented as soft `PenaltyTerm`s: pull a quantity toward a
-  target without fixing it, e.g. keeping a bond length close to a chemically reasonable value;
-  the optimizer can still trade the restraint off against the diffraction fit, unlike a hard constraint;
+- **restraints** (soft penalties) pull a quantity toward a target without fixing it, e.g. keeping a
+  bond length close to a chemically reasonable value; the optimizer can still trade the restraint off
+  against the diffraction fit, unlike a hard constraint;
 - **thickness models** treat the apparent specimen thickness at each tilt as a trainable quantity
   alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.
 
 Compose a structure, optional hard constraints, optional restraints, and an optional thickness model,
-then refine every selected parameter through one objective.
-
-```python
-from pathlib import Path
-
-import torch
-
-from diffBloch.config import load_config
-from diffBloch.engine import (
-    ApparentThicknessNN,
-    ThicknessBounds,
-    build_refinement_model,
-    build_refinement_problem,
-    mean_plan_thickness,
-    perceive_bond_length_penalty,
-    run_refinement_model,
-    with_hydrogen_riding,
-)
-from diffBloch.io import read_structure
-from diffBloch.preprocess import RefinementSetup, build_engine, read_plan
-
-root = Path("examples/Colmey_et_al_2026_Acta_Cryst_A/data/borane-absorption")
-device = torch.device("cpu")
-
-cfg = load_config(root / "experiment.yaml")
-structure = read_structure(root / cfg.inputs.structure, load_hydrogens=True)
-refinement = RefinementSetup.from_structure(structure)
-plan = read_plan(root / "plan.npz")
-engine = build_engine(plan, refinement)
-
-# Start from the config's structural trainable groups, then freeze H optimizer leaves and add a
-# hard hydrogen-riding transform when hydrogens are present.
-trainable, constraints = with_hydrogen_riding(
-    structure,
-    cfg.refinement.trainable.to_spec(),
-)
-
-# Soft objective term: tether perceived ASU-contiguous bonds to their starting distances. The
-# optimizer may trade this against diffraction; unlike a hard constraint, it is not exact.
-penalties = (
-    perceive_bond_length_penalty(
-        structure,
-        include_hydrogen=False,
-        sigma_angstrom=0.02,
-        weight=0.1,
-        criterion="flat_bottom_l1",
-    ),
-)
-
-# Train the legacy apparent-thickness component alongside the structural parameters. The input is
-# the PETS alpha coordinate normalized over the full experiment to [-1, 1].
-thickness_nn = ApparentThicknessNN(
-    bounds=ThicknessBounds(100.0, 2000.0),
-    normalized_alphas=(-1.0, 0.0, 1.0),
-    sample_thickness=False,
-)
-initial = refinement.params.to(device)
-component_params = {
-    thickness_nn.key: thickness_nn.initial_params(
-        dtype=initial.asu_positions.dtype,
-        device=device,
-    )
-}
-
-model = build_refinement_model(
-    initial=initial,
-    constraints=constraints,
-    components=(thickness_nn,),
-    component_params=component_params,
-)
-problem = build_refinement_problem(penalties=penalties)
-
-result = run_refinement_model(
-    engine,
-    model,
-    problem,
-    trainable=trainable,
-    steps=2,
-    optimizer="adam",
-    lr=1e-3,
-)
-print(result.best_loss)
-```
-
-For thickness, `ApparentThicknessNN` is one component choice. Simpler alternatives include
-`PerOrientationThickness` for one free positive thickness per rotation, or `QuadraticThicknessProfile`
-for a low-dimensional bounded profile over orientation angle.
+then refine every selected parameter through one objective. The composition entry points --
+`build_refinement_model`, `build_refinement_problem`, `with_hydrogen_riding`,
+`perceive_bond_length_penalty`, `run_refinement_model` -- and the thickness component choices
+(`ApparentThicknessNN` for a learned network, `PerOrientationThickness` for one free positive
+thickness per rotation, `QuadraticThicknessProfile` for a low-dimensional bounded profile over
+orientation angle) are documented in [`diffBloch.engine`](api/engine.md).

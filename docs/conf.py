@@ -121,5 +121,6 @@ intersphinx_mapping = {
 html_theme = "furo"
 html_title = "diffBloch"
 html_baseurl = "https://differentiable-electron-crystallography.github.io/diffBloch/"
-html_static_path: list[str] = []
+html_static_path = ["_static"]
+html_logo = "_static/logo.png"
 ogp_site_url = html_baseurl

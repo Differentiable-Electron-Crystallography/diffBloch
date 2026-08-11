@@ -64,3 +64,28 @@ the checkpoint and fall back to running preprocessing fresh.
 
 In committed examples, `plan.npz` and `.cif_pets` files are Git LFS artifacts; `plan.lock` verifies
 the realized file bytes after LFS checkout, not the small pointer file.
+
+## `refinement.lock`
+
+`refinement.lock` is the refinement-stage counterpart to `plan.lock`, written alongside
+`refined_structure.cif` whenever `run refine` completes. Refinement runs on top of an
+already-settled `Plan`, so everything that determines *that* -- inputs, sample, blochwave,
+preprocess config, recipe -- is already pinned by the `plan.lock` this run refined from.
+`refinement.lock` adds exactly what refinement itself contributes on top of that:
+
+- **`plan_lock_sha256`** -- the hash of the exact `plan.lock` this run refined from. A recorded
+  fact about that run, not a live re-check: it doesn't require `plan.lock` to still be present or
+  still match to be verified.
+- **`refinement_config_digest`** -- the hash of the refinement-determining config (`steps`,
+  `optimizer`, `trainable`, `thickness_nn`; everything `config_digest` excludes because it can't
+  change the settled `Plan` -- see the config-scope split above).
+- **`code_version`** -- the build that produced this refinement.
+- **`refined_structure`/`refined_parameters`** -- content hashes of `refined_structure.cif` and
+  `refined_parameters.npz`, so the outputs themselves are pinned, not just the config that produced
+  them.
+
+Unlike `plan.lock`, `refinement.lock` is not a reuse gate -- there's no "reuse this refined
+structure if the config matches" path the way a preprocess checkpoint is reused. It exists purely
+as a verifiable provenance record: given a `refined_structure.cif`, `refinement.lock` states
+exactly which `Plan`, which refinement config, and which code version produced it, and lets you
+confirm the file bytes haven't changed since.
