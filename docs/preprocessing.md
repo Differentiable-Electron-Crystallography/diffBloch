@@ -43,7 +43,7 @@ M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
 ```
 
 The Bloch-wave intensities are recalculated for each trial and compared with the observed
-intensities using `loss_metrics.residual`, which defaults to `wr2`. 
+intensities using `loss_metrics.residual`, which defaults to `wr2`.
 
 ### Unit-cell authority: PETS overrides the structure CIF
 
@@ -55,12 +55,10 @@ piece of atomic content: positions, atom types, occupancies, ADPs, and symmetry 
 Fractional coordinates are read from the CIF unchanged; they are simply interpreted against PETS's
 cell rather than the CIF's own.
 
-diffBloch checks the CIF's cell against PETS's on load, and — for a combined (`inputs.multi_dataset`)
-experiment — checks every further combined `.cif_pets` file's cell against the *first* file's (the
-shared, authoritative anchor every combined file's own orientation is applied against):
+diffBloch checks the CIF's cell against PETS's on load:
 
 - **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` prints a warning stating that
-  the PETS value overrides the CIF (or the anchor file's) value. Day-to-day refinement/measurement
+  the PETS value overrides the CIF value. Day-to-day refinement/measurement
   drift stays well under this.
 - **> 5% relative difference** raises `ValueError` and stops, listing every offending parameter, both
   values, and the percentage difference. A gap this large usually means the two files describe

@@ -97,7 +97,7 @@ and mirrors `core.reciprocal` (NumPy) vs `core.scattering` (torch).
 | `scoring.py` | Assembles a `RefinementEngine` and scores orientations against data. |
 | `inference.py` | The eval-only terminal: forward-model every rotation and score it, no refinement. |
 | `driver.py` | Simulation-convergence testing over `g_max`/`sg_max`/tilt steps. |
-| `serialize.py` | Serializes a settled `Plan` to `plan.npz` and reads it back. |
+| `serialize.py` | Serializes a settled `Plan` to a plan-checkpoint `.npz` and reads it back. |
 
 **`preprocess/steps/`** — the composable steps the pipeline and driver assemble:
 
@@ -128,7 +128,7 @@ and mirrors `core.reciprocal` (NumPy) vs `core.scattering` (torch).
 | Module | What it does |
 |---|---|
 | `schema.py` | The pydantic `ExperimentConfig` tree parsed from `experiment.yaml` — see [Config reference](hyperparameter-selection.md). |
-| `manifest.py` | `experiment.lock` / `plan.lock` / `refinement.lock` and the `config_digest` functions that key them — see [Reproducibility](reproducibility.md). |
+| `manifest.py` | `experiment.lock` / per-dataset `plan.<stem>.lock` / `refinement.lock` and the digest functions that key them — see [Reproducibility](reproducibility.md). |
 
 ## `app/` — CLI, runners, and logger backends
 

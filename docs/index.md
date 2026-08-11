@@ -16,12 +16,12 @@ title: diffBloch
 
 Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
-This codebase is entirely open-source, and we welcome contributions as well as questions.  
+This codebase is entirely open-source, and we welcome contributions as well as questions.
 
 
 ## Overview
 
-diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format. 
+diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format.
 
 diffBloch performs the refinement as two complementary values: a crystal structure, consisting of atomic coordinates and thermal displacement parameters, and a settled `Plan`, consisting of crystallographic metadata such as thickness or orientation. Together they feed the refinement engine, which runs a repeatable Bloch-wave simulation, compares calculated and observed intensities, and iteratively minimizes the objective by updating selected trainable parameters. The guides below unpack that path from experiment inputs through preprocessing, refinement, reproducibility, observability, and runnable examples.
 
@@ -35,7 +35,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 | [Convergence testing](convergence-testing.md) | Choosing beam and rocking-curve settings using convergence tests. |
 | [Config reference](hyperparameter-selection.md) | Every `experiment.yaml` switch, its default, and what's auto-filled from CIF/PETS instead. |
 | [Refinement](refinement.md) | The optimization loop: constraints, restraints, and thickness models alongside the structure. |
-| [Reproducibility](reproducibility.md) | How `experiment.lock`, `plan.npz`, and `plan.lock` pin a fitted `Plan` so a result can be reproduced exactly. |
+| [Reproducibility](reproducibility.md) | How `experiment.lock` and the per-dataset `plan.<stem>.npz`/`.lock` checkpoints pin a fitted `Plan` so a result can be reproduced exactly. |
 | [Observability](observability-guide.md) | Tracking wR2, R_obs, and diffraction loss as a run progresses. |
 | [Examples](examples.md) | Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch. |
 
@@ -45,7 +45,7 @@ pieces are available through the public Python API.
 ## Quickstart
 
 Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and `plan.npz`
+[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint `.npz`
 checkpoints, then sync the project environment from the repository root:
 
 ```bash
@@ -60,7 +60,7 @@ on your shell `PATH`. Every command below takes an experiment directory (see
 
 ```bash
 uv run diffbloch validate <experiment_dir>/experiment.yaml   # check the config before a longer job
-uv run diffbloch run preprocess <experiment_dir>              # settle orientation/thickness, write plan.npz
+uv run diffbloch run preprocess <experiment_dir>              # settle orientation/thickness, write plan checkpoints
 uv run diffbloch run infer <experiment_dir>                   # forward-simulate and score a settled Plan
 uv run diffbloch run refine <experiment_dir>                  # preprocess (or reuse) + gradient-refine
 ```

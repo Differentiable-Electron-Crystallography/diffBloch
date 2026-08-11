@@ -32,7 +32,7 @@ The schema default keeps positions and ADPs trainable, and leaves occupancies fr
 uv run diffbloch run refine <experiment_dir> --device cuda
 ```
 
-Preprocesses (or reuses a settled `plan.npz`, see [Reproducibility](reproducibility.md)) and then
+Preprocesses (or reuses settled per-dataset plan checkpoints, see [Reproducibility](reproducibility.md)) and then
 gradient-refines. Add `--refresh` to force a real preprocess recompute.
 
 The default refinement budget is 40 epochs. Set a different recorded budget in the experiment
@@ -68,8 +68,8 @@ training objective.
 | `refinement_report.txt` | Best epoch metrics, which objective selected it, and the compact HKL count. |
 | `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
 | `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. |
-| `plan.npz` / `plan.lock` | Settled preprocessing plan and its provenance lock. |
-| `refinement.lock` | Binds the refined outputs to the plan lock, config digest, and code version. |
+| `plan.<stem>.npz` / `plan.<stem>.lock` | Settled preprocessing plan and its provenance lock, one pair per `inputs.exp_data` file. |
+| `refinement.lock` | Binds the refined outputs to every dataset's plan lock (`plan_lock_sha256s`), config digest, and code version; written only when every plan lock exists. |
 
 `refined_structure.cif` and `refinement_report.txt` land in the experiment directory; the `.npz`
 snapshots and locks go under `reproducibility/`.

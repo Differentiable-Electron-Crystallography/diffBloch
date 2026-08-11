@@ -17,10 +17,10 @@ Checkpointed examples also include:
 
 | File | Role |
 |---|---|
-| `reproducibility/plan.npz` | Serialized preprocessed `Plan`. |
-| `reproducibility/plan.lock` | Provenance lock tying the checkpoint to inputs, config, recipe, code version, and artifact hash. |
+| `reproducibility/plan.<stem>.npz` | Serialized preprocessed `Plan`, one per `inputs.exp_data` file (`<stem>` is the file's path with separators as `__` and no `.cif_pets` suffix). |
+| `reproducibility/plan.<stem>.lock` | Provenance lock tying that dataset's checkpoint to its input bytes, dataset-scoped config, recipe, code version, and artifact hash. |
 
-Bundled binary artifacts such as `.cif_pets` experimental data and committed `plan.npz` checkpoints are
+Bundled binary artifacts such as `.cif_pets` experimental data and committed plan checkpoints are
 tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
 examples so these files are present as real data rather than LFS pointer files.
 
@@ -59,8 +59,9 @@ The CIF's cell is checked against PETS's on every load:
   both values, and the percentage difference — rather than silently deriving the whole simulation's
   geometry from a mismatch that large.
 
-Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too;
-see [Combining multiple datasets](#combining-multiple-datasets) below.
+Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too
+(each further file's cell checked against the first file's); see
+[Combining multiple datasets](#combining-multiple-datasets) below.
 
 ## API example
 
@@ -115,8 +116,8 @@ preprocess:
 ## Combining multiple datasets
 
 `inputs.exp_data` is a single path by default. Set `inputs.multi_dataset: true` and give
-`exp_data` a list of two or more paths to combine rotations from several `.cif_pets` files into one
-experiment -- e.g. a damage series, or repeat measurements of the same crystal:
+`exp_data` a list of two or more distinct paths to combine rotations from several `.cif_pets` files
+into one experiment -- e.g. a damage series, or repeat measurements of the same crystal:
 
 ```yaml
 inputs:
@@ -125,24 +126,45 @@ inputs:
   exp_data:
     - undamaged/frame_1.cif_pets
     - undamaged/frame_2.cif_pets
+refinement:
+  thickness_nn:
+    enabled: false   # defaults on; unsupported for pooled experiments (see limitations below)
 ```
 
-Each file keeps its own wavelength-derived energy, UB matrix/cell, and mean-inner-potential
-correction. Rotations are concatenated file-by-file with a running offset, so `rotation_index`
-stays globally unique across the combined set (the first file's rotations are `0..N-1`, the second
-file's are `N..N+M-1`, and so on) rather than every file restarting at `0` -- `ignore_orientations`
-and the train/validation split both key off this combined index.
-Combined files must share one rocking-curve integration semiangle: diffBloch builds a single shared
-rocking-curve/beam-selection geometry for the whole experiment, so files recorded with different
-precession angles cannot currently be mixed. `multi_dataset` defaults to `false`, and a single
-`exp_data` path behaves exactly as before -- nothing about the single-dataset path changes.
+**Each dataset is preprocessed and checkpointed on its own.** Every file runs the recipe with its
+own rocking-curve integration geometry -- datasets recorded with *different precession angles can
+be mixed* -- and settles into its own checkpoint pair,
+`reproducibility/plan.<stem>.npz` + `plan.<stem>.lock`, named after the file
+(`undamaged/frame_1.cif_pets` becomes `plan.undamaged__frame_1.npz`). Checkpoint identity follows
+the file, not its list position: adding, removing, or reordering `exp_data` entries never
+recomputes another dataset's preprocessing -- appending frame 5 of a damage series reuses frames
+1-4's checkpoints untouched. See [Reproducibility](reproducibility.md) for what each per-dataset
+lock verifies.
 
-**Unit-cell authority for a combined experiment**: the shared structure-factor grid/reciprocal basis
-needs exactly one cell, so the *first* file in `inputs.exp_data` order is the authoritative anchor.
-The structure CIF's cell, and every further combined file's own cell, are checked against it (warn
-past 1%, raise past 5% -- the same thresholds as [above](#unit-cell-authority-pets-overrides-the-structure-cif)). Each
-file's own orientation matrix is still derived from *that file's own* UB and cell (so it stays close
-to a pure rotation); only the cell it is then composed with is the shared anchor.
+Each file also keeps its own UB matrix/cell for orientation derivation and its own
+mean-inner-potential correction. The files' wavelength-derived beam energies must snap to the same
+accelerating voltage: the Bloch engine solves the whole pooled experiment at one energy, so mixing
+e.g. a 120 kV and a 200 kV dataset is rejected with an error rather than silently mis-scored.
+
+Just before refinement the settled per-dataset plans are pooled in memory (never re-checkpointed):
+rotations concatenate file-by-file with a running offset, so `rotation_index` stays globally unique
+across the combined set (the first file's rotations are `0..N-1`, the second file's are
+`N..N+M-1`, and so on) -- `ignore_orientations` and the train/validation split both key off this
+combined index, and ignoring a rotation leaves a gap rather than renumbering later frames.
+
+Pooled files must also describe the same crystal: each further file's recorded cell is checked
+against the first file's (warn past 1% relative difference on any cell parameter -- ordinary
+damage-series drift stays under this -- raise past 5%, listing every offending parameter).
+
+Two current limitations, each rejected with a clear error rather than silently mishandled:
+`refinement.thickness_nn` (the network keys only on each rotation's tilt angle, so it cannot
+represent per-dataset thickness differences -- it defaults **on**, so a pooled config must set
+`refinement.thickness_nn.enabled: false` explicitly or fail at config load, before any compute)
+and `--orientations-csv` import (its rotation-index column predates pooling). Listing the same
+file twice -- or two paths that would collide on one checkpoint name -- is rejected at config
+validation, since a duplicated dataset would double-weight its reflections in the refinement.
+`multi_dataset` defaults to `false`, and a single `exp_data` path is simply the one-dataset case
+of the same flow.
 
 
 ## Outputs
@@ -159,8 +181,8 @@ refinement_report.txt      # written by `run refine`
 thickness_optim/           # written by preprocess.thickness.plot / --plot-thickness
 reproducibility/
   experiment.lock
-  plan.npz                 # written by `run preprocess` / `run refine`
-  plan.lock                # written by `run preprocess` / `run refine`
+  plan.<stem>.npz          # written by `run preprocess` / `run refine`, one per exp_data file
+  plan.<stem>.lock         # written by `run preprocess` / `run refine`, one per exp_data file
   refined_parameters.npz   # written by `run refine`
   refined_components.npz   # written by `run refine`, only when components are composed
   refinement.lock          # written by `run refine`

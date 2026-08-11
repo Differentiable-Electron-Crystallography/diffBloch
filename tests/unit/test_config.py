@@ -11,6 +11,7 @@ from diffBloch.config.schema import (
     LossMetricsConfig,
     OptimizerConfig,
     TrainableConfig,
+    dataset_checkpoint_stem,
 )
 from diffBloch.engine import AtomSelection, TrainableSpec
 from diffBloch.engine.losses import (
@@ -183,6 +184,117 @@ def test_input_refs_must_stay_inside_experiment_directory() -> None:
                 "inputs": {"structure": "../q.cif", "exp_data": "q.cif_pets"},
             }
         )
+
+
+def test_multi_dataset_defaults_off_with_a_single_exp_data_path() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    )
+    assert cfg.inputs.multi_dataset is False
+    assert cfg.inputs.exp_data == "q.cif_pets"
+
+
+def test_multi_dataset_true_accepts_a_list_of_two_or_more_paths() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "q",
+            "inputs": {
+                "structure": "q.cif",
+                "exp_data": ["a.cif_pets", "b.cif_pets"],
+                "multi_dataset": True,
+            },
+            # required opt-out: thickness_nn defaults ON and is unsupported for pooled experiments
+            "refinement": {"thickness_nn": {"enabled": False}},
+        }
+    )
+    assert cfg.inputs.exp_data == ["a.cif_pets", "b.cif_pets"]
+
+
+def test_multi_dataset_true_rejects_a_single_path() -> None:
+    with pytest.raises(ValidationError, match="multi_dataset=true requires"):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets", "multi_dataset": True},
+            }
+        )
+
+
+def test_multi_dataset_false_rejects_a_list_of_paths() -> None:
+    with pytest.raises(ValidationError, match="multi_dataset is false"):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {"structure": "q.cif", "exp_data": ["a.cif_pets", "b.cif_pets"]},
+            }
+        )
+
+
+def test_multi_dataset_exp_data_paths_are_each_validated_relative() -> None:
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {
+                    "structure": "q.cif",
+                    "exp_data": ["a.cif_pets", "/tmp/b.cif_pets"],
+                    "multi_dataset": True,
+                },
+            }
+        )
+
+
+def test_multi_dataset_rejects_duplicate_exp_data_paths() -> None:
+    with pytest.raises(ValidationError, match="more than once"):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {
+                    "structure": "q.cif",
+                    "exp_data": ["a.cif_pets", "a.cif_pets"],
+                    "multi_dataset": True,
+                },
+            }
+        )
+
+
+def test_multi_dataset_rejects_exp_data_paths_with_colliding_checkpoint_stems() -> None:
+    # `a/frame.cif_pets` and `a__frame.cif_pets` both sanitize to the stem `a__frame`.
+    with pytest.raises(ValidationError, match="same .*checkpoint name"):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {
+                    "structure": "q.cif",
+                    "exp_data": ["a/frame.cif_pets", "a__frame.cif_pets"],
+                    "multi_dataset": True,
+                },
+            }
+        )
+
+
+def test_multi_dataset_rejects_the_default_on_thickness_nn_at_config_load() -> None:
+    """thickness_nn defaults ON; a pooled config must opt out explicitly, and fails fast if not."""
+    base = {
+        "name": "bad",
+        "inputs": {
+            "structure": "q.cif",
+            "exp_data": ["a.cif_pets", "b.cif_pets"],
+            "multi_dataset": True,
+        },
+    }
+    with pytest.raises(ValidationError, match="thickness_nn is not supported"):
+        ExperimentConfig.model_validate(base)
+
+    ok = {**base, "name": "q", "refinement": {"thickness_nn": {"enabled": False}}}
+    cfg = ExperimentConfig.model_validate(ok)
+    assert cfg.refinement.thickness_nn.enabled is False
+
+
+def test_dataset_checkpoint_stem_flattens_paths_and_drops_the_pets_suffix() -> None:
+    assert dataset_checkpoint_stem("undamaged/frame_1.cif_pets") == "undamaged__frame_1"
+    assert dataset_checkpoint_stem("exp_data.cif_pets") == "exp_data"
+    assert dataset_checkpoint_stem("other.xyz") == "other.xyz"
 
 
 def test_trainable_config_to_spec_maps_groups_to_selections() -> None:

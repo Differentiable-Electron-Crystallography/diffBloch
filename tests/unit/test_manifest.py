@@ -5,12 +5,15 @@ from pathlib import Path
 import pytest
 
 from diffBloch.config import (
+    ExperimentLock,
+    InputLock,
     PreprocessLock,
     RecipeStep,
     RefinementLock,
     artifact_hash_for,
     code_version,
-    config_digest,
+    dataset_config_digest,
+    input_lock_for,
     load_config,
     load_experiment,
     preprocess_lock_status,
@@ -21,19 +24,33 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
+from diffBloch.config.manifest import _verify_experimental_data
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
+EXP_REF = "exp_data.cif_pets"  # locked_min's single inputs.exp_data ref
+
+
+def _input_locks(cfg) -> tuple[InputLock, InputLock]:
+    """The locked_min fixture's structure + (single) dataset InputLocks."""
+    assert isinstance(cfg.inputs.exp_data, str)
+    return (
+        input_lock_for(LOCKED / cfg.inputs.structure, ref=cfg.inputs.structure),
+        input_lock_for(LOCKED / cfg.inputs.exp_data, ref=cfg.inputs.exp_data),
+    )
 
 
 def _lock_and_recipe(tmp_path: Path):
-    """A written plan.npz + its fresh PreprocessLock + the recipe/config it was built against."""
+    """A written plan npz + its fresh per-dataset PreprocessLock + the recipe/config behind it."""
     cfg = load_config(LOCKED / "experiment.yaml")
+    structure_lock, dataset_lock = _input_locks(cfg)
     recipe = [RecipeStep(name="select_beams", params={"__type__": "BeamSelection", "rsg": 0.9})]
-    npz = tmp_path / "plan.npz"
+    npz = tmp_path / "plan.exp_data.npz"
     npz.write_bytes(b"fake-checkpoint-bytes")
     lock = PreprocessLock(
-        experiment_lock_sha256=sha256_file(LOCKED / "reproducibility" / "experiment.lock"),
-        config_digest=config_digest(cfg),
+        structure=structure_lock,
+        experimental_data=dataset_lock,
+        ignored_rotations=(),
+        config_digest=dataset_config_digest(cfg, exp_data=cfg.inputs.exp_data),
         code_version=code_version(),
         recipe=recipe,
         plan=artifact_hash_for(npz, root=tmp_path),
@@ -63,6 +80,48 @@ def test_load_experiment_detects_input_drift(tmp_path: Path) -> None:
         load_experiment(experiment)
 
 
+def test_experiment_lock_accepts_a_list_of_input_locks_for_pooled_datasets() -> None:
+    a = InputLock(ref="a.cif_pets", sha256="a" * 64, bytes=1)
+    b = InputLock(ref="b.cif_pets", sha256="b" * 64, bytes=2)
+    lock = ExperimentLock(
+        structure=InputLock(ref="s.cif", sha256="c" * 64, bytes=3),
+        experimental_data=[a, b],
+    )
+    assert lock.experimental_data == [a, b]
+
+
+def test_verify_experimental_data_checks_every_pooled_file(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    b = tmp_path / "b.cif_pets"
+    a.write_bytes(b"dataset a")
+    b.write_bytes(b"dataset b")
+    locks = [input_lock_for(a, ref="a.cif_pets"), input_lock_for(b, ref="b.cif_pets")]
+
+    _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+    b.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="input drift"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+
+def test_verify_experimental_data_rejects_a_pooled_count_mismatch(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    a.write_bytes(b"dataset a")
+    locks = [input_lock_for(a, ref="a.cif_pets")]
+
+    with pytest.raises(ValueError, match="experimental_data entries"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets", "b.cif_pets"], locks)
+
+
+def test_verify_experimental_data_rejects_a_list_vs_single_shape_mismatch(tmp_path: Path) -> None:
+    a = tmp_path / "a.cif_pets"
+    a.write_bytes(b"dataset a")
+    single_lock = input_lock_for(a, ref="a.cif_pets")
+
+    with pytest.raises(ValueError, match="shape does not match"):
+        _verify_experimental_data(tmp_path, ["a.cif_pets"], single_lock)
+
+
 # --- preprocess checkpoint lock: the four-axis freshness check ---
 
 
@@ -70,20 +129,25 @@ def _other_method(method: str) -> str:
     return "bloch_eigen" if method == "matrix_exp" else "matrix_exp"
 
 
-def test_config_digest_is_stable_and_value_sensitive() -> None:
+def test_dataset_config_digest_is_stable_and_value_sensitive() -> None:
     cfg = load_config(LOCKED / "experiment.yaml")
-    assert config_digest(cfg) == config_digest(load_config(LOCKED / "experiment.yaml"))
+    reloaded = load_config(LOCKED / "experiment.yaml")
+    assert dataset_config_digest(cfg, exp_data=EXP_REF) == dataset_config_digest(
+        reloaded, exp_data=EXP_REF
+    )
     # sensitive to a Plan-determining value (a numerics knob), not to the experiment label
     bumped = cfg.model_copy(
         update={"blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})}
     )
-    assert config_digest(bumped) != config_digest(cfg)
+    assert dataset_config_digest(bumped, exp_data=EXP_REF) != dataset_config_digest(
+        cfg, exp_data=EXP_REF
+    )
 
 
-def test_config_digest_scopes_to_preprocess_determining_config() -> None:
-    """The digest keys only on what determines the settled Plan, so unrelated config edits reuse."""
+def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
+    """The digest keys only on what determines the settled per-dataset Plan."""
     cfg = load_config(LOCKED / "experiment.yaml")
-    base = config_digest(cfg)
+    base = dataset_config_digest(cfg, exp_data=EXP_REF)
 
     def with_solver(**update: object) -> object:
         return cfg.model_copy(
@@ -97,35 +161,88 @@ def test_config_digest_scopes_to_preprocess_determining_config() -> None:
     def with_refinement(**update: object) -> object:
         return cfg.model_copy(update={"refinement": cfg.refinement.model_copy(update=update)})
 
-    # excluded -- cannot alter the preprocess Plan, so must not restale the checkpoint
-    assert config_digest(cfg.model_copy(update={"name": "different"})) == base
+    # excluded -- cannot alter the per-dataset preprocess Plan, so must not restale the checkpoint
     assert (
-        config_digest(with_solver(inference=_other_method(cfg.blochwave.solver.inference))) == base
+        dataset_config_digest(cfg.model_copy(update={"name": "different"}), exp_data=EXP_REF)
+        == base
     )
     assert (
-        config_digest(
-            with_refinement(optimizer=cfg.refinement.optimizer.model_copy(update={"name": "adam"}))
+        dataset_config_digest(
+            with_solver(inference=_other_method(cfg.blochwave.solver.inference)),
+            exp_data=EXP_REF,
+        )
+        == base
+    )
+    assert (
+        dataset_config_digest(
+            with_refinement(optimizer=cfg.refinement.optimizer.model_copy(update={"name": "adam"})),
+            exp_data=EXP_REF,
+        )
+        == base
+    )
+    # excluded -- split partitions rotations at refinement time and no longer shapes the
+    # checkpointed plan; it rides in refinement_config_digest instead.
+    assert (
+        dataset_config_digest(
+            with_refinement(split=cfg.refinement.split.model_copy(update={"val_frac": 0.3})),
+            exp_data=EXP_REF,
         )
         == base
     )
     # included -- determine the settled Plan, so a change must restale
-    assert config_digest(with_solver(refine=_other_method(cfg.blochwave.solver.refine))) != base
     assert (
-        config_digest(
-            with_refinement(split=cfg.refinement.split.model_copy(update={"val_frac": 0.3}))
+        dataset_config_digest(
+            with_solver(refine=_other_method(cfg.blochwave.solver.refine)), exp_data=EXP_REF
         )
         != base
     )
-    # included -- objective drives optimize_orientation/optimize_thickness's search too, not just
-    # the gradient refinement stage, so it must restale the preprocess checkpoint like split does.
+    # included -- objective drives optimize_orientation/optimize_thickness's search
     assert (
-        config_digest(
+        dataset_config_digest(
             cfg.model_copy(
                 update={"loss_metrics": cfg.loss_metrics.model_copy(update={"residual": "robs"})}
-            )
+            ),
+            exp_data=EXP_REF,
         )
         != base
     )
+
+
+def test_dataset_config_digest_is_independent_of_other_datasets() -> None:
+    """The core per-dataset property: nothing about the *pool* enters one dataset's digest.
+
+    Changing exp_data list membership/order, the multi_dataset flag, the split, or the pooled
+    ignore_orientations leaves a given file's digest unchanged -- so adding, removing, or
+    reordering other datasets (or re-slicing the pool) never restales this one's checkpoint.
+    """
+    cfg = load_config(LOCKED / "experiment.yaml")
+    base = dataset_config_digest(cfg, exp_data=EXP_REF)
+
+    pooled = cfg.model_copy(
+        update={
+            "inputs": cfg.inputs.model_copy(
+                update={"exp_data": [EXP_REF, "other.cif_pets"], "multi_dataset": True}
+            )
+        }
+    )
+    assert dataset_config_digest(pooled, exp_data=EXP_REF) == base
+
+    reordered = cfg.model_copy(
+        update={
+            "inputs": cfg.inputs.model_copy(
+                update={"exp_data": ["other.cif_pets", EXP_REF], "multi_dataset": True}
+            )
+        }
+    )
+    assert dataset_config_digest(reordered, exp_data=EXP_REF) == base
+
+    ignored = cfg.model_copy(
+        update={"blochwave": cfg.blochwave.model_copy(update={"ignore_orientations": (3, 7)})}
+    )
+    assert dataset_config_digest(ignored, exp_data=EXP_REF) == base
+
+    # ...while the digest still distinguishes WHICH dataset it describes
+    assert dataset_config_digest(pooled, exp_data="other.cif_pets") != base
 
 
 def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -> None:
@@ -141,7 +258,7 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
             )
         }
     )
-    base = config_digest(off)
+    base = dataset_config_digest(off, exp_data=EXP_REF)
 
     bumped_orientation = off.model_copy(
         update={
@@ -161,7 +278,9 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
             )
         }
     )
-    assert config_digest(bumped_orientation) == base  # step never runs -> can't have mattered
+    assert (
+        dataset_config_digest(bumped_orientation, exp_data=EXP_REF) == base
+    )  # step never runs -> can't have mattered
 
     bumped_thickness = off.model_copy(
         update={
@@ -174,7 +293,9 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
             )
         }
     )
-    assert config_digest(bumped_thickness) == base  # step never runs -> can't have mattered
+    assert (
+        dataset_config_digest(bumped_thickness, exp_data=EXP_REF) == base
+    )  # step never runs -> can't have mattered
 
     # flip the flags back on: now the same edits DO restale the digest
     on = off.model_copy(
@@ -184,7 +305,7 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
             )
         }
     )
-    on_base = config_digest(on)
+    on_base = dataset_config_digest(on, exp_data=EXP_REF)
     on_bumped = on.model_copy(
         update={
             "preprocess": on.preprocess.model_copy(
@@ -196,14 +317,14 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
             )
         }
     )
-    assert config_digest(on_bumped) != on_base
+    assert dataset_config_digest(on_bumped, exp_data=EXP_REF) != on_base
 
 
 def test_config_digest_excludes_thickness_plot() -> None:
     """thickness.plot only selects PNG output; it never touches the fitted Plan."""
     cfg = load_config(LOCKED / "experiment.yaml")
     assert cfg.preprocess.optimize_thickness is True
-    base = config_digest(cfg)
+    base = dataset_config_digest(cfg, exp_data=EXP_REF)
 
     plotted = cfg.model_copy(
         update={
@@ -212,15 +333,16 @@ def test_config_digest_excludes_thickness_plot() -> None:
             )
         }
     )
-    assert config_digest(plotted) == base
+    assert dataset_config_digest(plotted, exp_data=EXP_REF) == base
 
 
-def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
-    """refinement_config_digest tracks exactly what config_digest excludes, and nothing else."""
+def test_refinement_config_digest_is_the_complement_of_the_dataset_digest() -> None:
+    """refinement_config_digest tracks exactly what dataset_config_digest excludes under
+    refinement, and nothing else."""
     cfg = load_config(LOCKED / "experiment.yaml")
     base = refinement_config_digest(cfg)
 
-    # included -- these determine the gradient-refined result on top of a settled Plan
+    # included -- these determine the gradient-refined result on top of settled Plans
     bumped_steps = cfg.model_copy(
         update={"refinement": cfg.refinement.model_copy(update={"steps": cfg.refinement.steps + 1})}
     )
@@ -234,7 +356,7 @@ def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
     )
     assert refinement_config_digest(bumped_optimizer) != base
 
-    # excluded -- split shapes the Plan itself and is already covered by config_digest
+    # included -- split partitions rotations at refinement time (it left the preprocess digest)
     bumped_split = cfg.model_copy(
         update={
             "refinement": cfg.refinement.model_copy(
@@ -242,10 +364,10 @@ def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
             )
         }
     )
-    assert refinement_config_digest(bumped_split) == base
+    assert refinement_config_digest(bumped_split) != base
 
-    # excluded -- objective is top-level (drives preprocess search too) and already covered by
-    # config_digest, exactly like split
+    # excluded -- objective is top-level (drives the preprocess search) and covered by
+    # dataset_config_digest
     bumped_objective = cfg.model_copy(
         update={"loss_metrics": cfg.loss_metrics.model_copy(update={"residual": "robs"})}
     )
@@ -260,7 +382,7 @@ def test_refinement_config_digest_is_the_complement_of_config_digest() -> None:
 
 def test_refinement_lock_round_trips(tmp_path: Path) -> None:
     lock = RefinementLock(
-        plan_lock_sha256="ab" * 32,
+        plan_lock_sha256s=["ab" * 32, "ef" * 32],
         refinement_config_digest="cd" * 32,
         code_version=code_version(),
         refined_structure=artifact_hash_for(
@@ -294,9 +416,12 @@ def test_preprocess_lock_round_trips(tmp_path: Path) -> None:
 
 
 def _args(cfg, recipe, npz, tmp_path):
+    structure_lock, dataset_lock = _input_locks(cfg)
     return dict(
-        experiment_lock_sha256=sha256_file(LOCKED / "reproducibility" / "experiment.lock"),
-        config_digest=config_digest(cfg),
+        structure=structure_lock,
+        experimental_data=dataset_lock,
+        ignored_rotations=(),
+        config_digest=dataset_config_digest(cfg, exp_data=EXP_REF),
         code_version=code_version(),
         recipe=recipe,
         plan_path=npz,
@@ -334,12 +459,13 @@ def test_shorter_recipe_is_stale(tmp_path: Path) -> None:
 def test_config_change_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     args = _args(cfg, recipe, npz, tmp_path)
-    args["config_digest"] = config_digest(
+    args["config_digest"] = dataset_config_digest(
         cfg.model_copy(
             update={
                 "blochwave": cfg.blochwave.model_copy(update={"g_max": cfg.blochwave.g_max + 1.0})
             }
-        )
+        ),
+        exp_data=EXP_REF,
     )
     assert preprocess_lock_status(lock, **args) == "stale"
 
@@ -368,11 +494,34 @@ def test_same_release_different_sha_reuses(tmp_path: Path) -> None:
     assert preprocess_lock_status(stamped, **args) == "reuse"
 
 
-def test_input_drift_is_stale(tmp_path: Path) -> None:
+def test_dataset_byte_drift_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     args = _args(cfg, recipe, npz, tmp_path)
-    args["experiment_lock_sha256"] = "0" * 64
+    args["experimental_data"] = InputLock(ref=EXP_REF, sha256="0" * 64, bytes=1)
     assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_structure_drift_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["structure"] = InputLock(ref=cfg.inputs.structure, sha256="0" * 64, bytes=1)
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_changed_file_local_ignore_set_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["ignored_rotations"] = (2,)
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_renamed_dataset_with_identical_bytes_still_reuses(tmp_path: Path) -> None:
+    """Input identity is sha+bytes, never ref: a byte-identical rename is the same measurement."""
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    renamed = args["experimental_data"].model_copy(update={"ref": "renamed.cif_pets"})
+    args["experimental_data"] = renamed
+    assert preprocess_lock_status(lock, **args) == "reuse"
 
 
 def test_tampered_checkpoint_is_stale(tmp_path: Path) -> None:

@@ -1,0 +1,116 @@
+{
+  "structure": {
+    "ref": "enantiomer_1.cif",
+    "sha256": "4a1ed50ae8eff95b652e49a872979f4dca19bf77b2b34fa14be2ebc06b0bb306",
+    "bytes": 942
+  },
+  "experimental_data": {
+    "ref": "exp_data.cif_pets",
+    "sha256": "96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4",
+    "bytes": 303151
+  },
+  "ignored_rotations": [],
+  "config_digest": "01c04b0bd39f922628405b9ab7e99818f0a289f719a00cb54df8d7f7f4f57485",
+  "code_version": "0.2.0+g2f46918.dirty",
+  "recipe": [
+    {
+      "name": "build_orientation_plans",
+      "params": {
+        "rocking": {
+          "__type__": "RockingCurve",
+          "sampling": 42,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.0,
+            "geometry": "continuous_rotation"
+          }
+        },
+        "mosaicity": {
+          "__type__": "Mosaicity",
+          "window": 5
+        },
+        "coupling": {
+          "__type__": "UnionCoupling",
+          "fixed_n_segments": 12,
+          "g_max": 2.25,
+          "sg_max": 0.01,
+          "union_adaptive": true,
+          "union_max_new_beams_pct": 0.01
+        },
+        "scoring_selection": {
+          "__type__": "BeamSelection",
+          "rsg": 0.9,
+          "dsg": 0.0015,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.0,
+            "geometry": "continuous_rotation"
+          }
+        }
+      }
+    },
+    {
+      "name": "optimize_orientation",
+      "params": {
+        "search": {
+          "__type__": "NelderMeadSearch",
+          "step_size": 0.05,
+          "max_iterations": 60,
+          "x_tolerance": 0.001,
+          "f_tolerance": 0.001,
+          "penalize_fewer_reflections": true
+        },
+        "coupling": {
+          "__type__": "TrialCoupling",
+          "policy": {
+            "__type__": "UnionCoupling",
+            "fixed_n_segments": 12,
+            "g_max": 2.25,
+            "sg_max": 0.01,
+            "union_adaptive": true,
+            "union_max_new_beams_pct": 0.01
+          },
+          "scored": {
+            "__type__": "ScoredHklSelection",
+            "klar": {
+              "__type__": "BeamSelection",
+              "rsg": 0.9,
+              "dsg": 0.0015,
+              "integration": {
+                "__type__": "IntegrationGeometry",
+                "semiangle": 1.0,
+                "geometry": "continuous_rotation"
+              }
+            },
+            "g_max": 2.25
+          }
+        },
+        "absorption": {
+          "__type__": "Absorption",
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "optimize_thickness",
+      "params": {
+        "grid": {
+          "__type__": "ThicknessGrid",
+          "min_thickness": 5.0,
+          "max_thickness": 2000.0,
+          "n_steps": 100
+        },
+        "absorption": {
+          "__type__": "Absorption",
+          "enabled": false
+        }
+      }
+    }
+  ],
+  "plan": {
+    "path": "reproducibility/plan.exp_data.npz",
+    "sha256": "72acf49c56cbceddee57a43e10ed20596551e539cb4397c28ba897cf14474baf",
+    "bytes": 584407,
+    "media_type": "application/octet-stream"
+  }
+}

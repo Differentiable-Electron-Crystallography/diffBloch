@@ -201,7 +201,10 @@ class SummaryLogger:
         )
         best_epoch = f"{completed.best_step + 1:g}" if completed else "n/a"
         rows = [
-            ["Integration semiangle (deg)", f"{experiment.integration_semiangle:g}"],
+            [
+                "Integration semiangle (deg)",
+                ", ".join(f"{semiangle:g}" for semiangle in experiment.integration_semiangles),
+            ],
             ["Rocking-curve sampling", f"{experiment.rocking_curve_sampling:g}"],
             ["D_sg", f"{experiment.dsg:g}"],
             ["R_sg", f"{experiment.rsg:g}"],

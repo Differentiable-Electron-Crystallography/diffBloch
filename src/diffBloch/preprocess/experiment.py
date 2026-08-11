@@ -14,6 +14,8 @@ The structure side lives here so the structure/experimental split mirrors the tw
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -44,11 +46,14 @@ from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry
 
 __all__ = [
+    "DatasetSetup",
     "ExperimentSetup",
     "PlanSplit",
     "RefinementSetup",
     "from_experiment",
     "seed_beam_hkl",
+    "setup_datasets",
+    "validation_mask",
 ]
 
 
@@ -156,6 +161,142 @@ class RefinementSetup:
         )
 
 
+@dataclass(frozen=True)
+class DatasetSetup:
+    """One dataset's seeded geometry: the candidate ``plan`` plus its own measurement context.
+
+    The per-dataset product of :func:`setup_datasets`. ``plan`` holds one
+    :class:`~diffBloch.preprocess.plan.CandidatePlan` per *non-ignored* rotation, with
+    ``rotation_index`` **file-local** (the rotation's original position within this dataset's own
+    PETS file, so ignoring a rotation leaves a gap rather than renumbering later frames);
+    :func:`~diffBloch.preprocess.pool.pool` maps these onto the pooled global index space.
+    ``integration`` is this file's own rocking-curve semiangle -- pooled datasets may differ (each
+    file's recipe runs with its own geometry). ``energy`` is the snapped beam energy
+    (:func:`~diffBloch.core.dynamical.snap_to_standard_energy` over the PETS wavelength);
+    ``pool`` guards that pooled datasets agree, since the engine solves one experiment at one
+    energy. ``n_rotations`` is the *full* pre-ignore rotation count (the pooled offset arithmetic
+    and the train/val mask both run over original counts), and ``ignored_rotations`` the sorted
+    file-local ignore slice (part of this dataset's checkpoint-lock identity).
+    """
+
+    plan: Plan
+    integration: IntegrationGeometry
+    energy: float
+    n_rotations: int
+    ignored_rotations: tuple[int, ...]
+
+
+def setup_datasets(
+    structure: StructureRecord,
+    records: Sequence[ExperimentalRecord],
+    config: ExperimentConfig,
+) -> tuple[RefinementSetup, tuple[DatasetSetup, ...]]:
+    """Seed one candidate :class:`~diffBloch.preprocess.plan.Plan` per dataset + the structure side.
+
+    The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
+    ``Plan`` yet), generalized over one or more PETS files (``inputs.multi_dataset``). The
+    structure-side products are dataset-independent and built once, shared by every dataset's plan:
+    the structure-factor grid is *derived* from the solve cutoff
+    (:func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff` sizes it to ``2x``
+    the cutoff so it spans every coupled ``g - h`` difference -- the same grid *object* rides on
+    every per-dataset plan, so their ``Fgb`` support cannot diverge), as are the difference-safe
+    seed beams and the :class:`RefinementSetup`.
+
+    Per dataset: the beam energy is derived from that file's PETS wavelength and snapped onto the
+    nearest standard TEM voltage when close (PETS records wavelength to only 4-5 significant
+    figures, so the exact inverse lands a few hundred eV off 100/200/300 kV rather than on it), and
+    the mean-inner-potential ``u0`` follows the energy -- computed once per *distinct* snapped
+    energy, since it depends on nothing else that varies between datasets. One
+    :class:`CandidatePlan` per rotation carries its crystal orientation matrix (native PETS
+    derivation, no side-car file) and the observed pattern for that zone axis.
+
+    ``blochwave.ignore_orientations`` indexes the *pooled* rotation space (files concatenated in
+    ``records`` order, original pre-ignore counts); it is validated against the pooled total and
+    translated to each dataset's file-local slice here. A dataset whose every rotation is ignored
+    raises -- its recipe would have nothing to fit.
+
+    This is intentionally a module-level function rather than a classmethod: it is the single
+    documented public boundary of the preprocess pipeline (records + config -> setups), and it
+    returns a *composite* of products rather than constructing one domain object. The per-object
+    constructors it delegates to follow the classmethod idiom
+    (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
+    ``RefinementSetup.from_structure``).
+    """
+    records = tuple(records)
+    if not records:
+        raise ValueError("no experimental data: setup_datasets needs at least one PETS record")
+    _check_pooled_cells(records)
+    solve_cutoff = config.blochwave.g_max
+    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
+    beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
+    refinement_setup = RefinementSetup.from_structure(structure)
+    absorption = config.blochwave.to_absorption()
+
+    counts = [len(record.zone_axis_ids) for record in records]
+    total = sum(counts)
+    ignored = set(config.blochwave.to_orientation_selection().ignore_orientations)
+    out_of_range = sorted(index for index in ignored if index >= total)
+    if out_of_range:
+        raise ValueError(
+            "ignore_orientations contains indices outside the PETS rotation range "
+            f"0..{total - 1}: {out_of_range}"
+        )
+
+    u0_by_energy: dict[float, float] = {}
+    datasets: list[DatasetSetup] = []
+    offset = 0
+    for dataset_index, record in enumerate(records):
+        count = counts[dataset_index]
+        local_ignored = tuple(
+            sorted(index - offset for index in ignored if offset <= index < offset + count)
+        )
+        if len(local_ignored) == count:
+            raise ValueError(
+                f"ignore_orientations excludes every PETS rotation of dataset {dataset_index}"
+            )
+        energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
+        if energy not in u0_by_energy:
+            u0_by_energy[energy] = _mean_inner_potential(
+                grid, refinement_setup, energy=energy, absorption=absorption
+            )
+        u0 = u0_by_energy[energy]
+        orientations = orientation_matrices(
+            record.ub_matrix,
+            record.cell_parameters,
+            record.alphas,
+            record.betas,
+            record.omegas,
+        )
+        local_ignore_set = set(local_ignored)
+        plans = tuple(
+            CandidatePlan.seed(
+                beam_hkl,
+                PatternBatch.from_experimental_record(
+                    record,
+                    zone_axis_id=int(zone_id),
+                    rotation_index=local_index,
+                ),
+                energy=energy,
+                thickness=config.sample.thicknesses,
+                orientation=orientations[local_index],
+                u0=u0,
+            )
+            for local_index, zone_id in enumerate(record.zone_axis_ids)
+            if local_index not in local_ignore_set
+        )
+        datasets.append(
+            DatasetSetup(
+                plan=Plan(structure_factor_grid=grid, orientations=plans),
+                integration=IntegrationGeometry(semiangle=record.integration_semiangle),
+                energy=energy,
+                n_rotations=count,
+                ignored_rotations=local_ignored,
+            )
+        )
+        offset += count
+    return refinement_setup, tuple(datasets)
+
+
 def from_experiment(
     structure: StructureRecord,
     experimental_data: ExperimentalRecord,
@@ -163,86 +304,73 @@ def from_experiment(
 ) -> ExperimentSetup:
     """Construct the geometry ``Plan`` pair + structure ``RefinementSetup`` from parsed inputs.
 
-    The *initial total construction* of the preprocess pipeline (not ``Plan -> Plan`` -- there is no
-    ``Plan`` yet). The shared structure-factor grid is *derived* from the solve cutoff rather than
-    hand-declared: :func:`~diffBloch.engine.plan.StructureFactorGrid.from_cell_for_beam_cutoff`
-    sizes it
-    to ``2x`` the cutoff so it spans every coupled ``g - h`` difference. The beam energy is derived
-    from the PETS wavelength and snapped onto the nearest standard TEM voltage when close
-    (:func:`~diffBloch.core.dynamical.snap_to_standard_energy`) -- PETS records wavelength to only
-    4-5 significant figures, so the exact inverse lands a few hundred eV off 100/200/300 kV rather
-    than on it. One :class:`CandidatePlan` per rotation carries its crystal orientation matrix
-    (native PETS derivation, no side-car file) and the observed pattern for that zone axis.
-    Rotations split into ``train`` / ``validation`` plans sharing the grid.
-
-    Each orientation is seeded with the orientation-independent, difference-safe beam set
-    ``{hkl in grid : |g| <= blochwave.g_max}`` (so beam differences stay within the derived
-    grid and the 000 transmitted beam is present). The per-orientation ``sg_max`` / rsg-dsg
-    pruning is the later ``select_beams`` step.
-
-    This is intentionally a module-level function rather than ``ExperimentSetup.from_*``: it is the
-    single documented public boundary of the preprocess pipeline (records + config -> setup), and it
-    returns a *composite* of two products rather than constructing one domain object. The per-object
-    constructors it delegates to follow the classmethod idiom
-    (``StructureFactorGrid.from_cell_for_beam_cutoff``, ``CandidatePlan.seed``,
-    ``RefinementSetup.from_structure``).
+    The single-dataset public boundary, kept for API users and the inference/e2e paths: it is
+    :func:`setup_datasets` over one record, with the train/validation split applied on top.
+    Rotations split into ``train`` / ``validation`` plans sharing the grid; split membership is
+    defined on the original PETS order (ignoring a rotation must not renumber later frames and
+    silently move them between train and validation). The app's preprocess spine does not come
+    through here -- it runs :func:`setup_datasets` per dataset and applies the split after
+    :func:`~diffBloch.preprocess.pool.pool`.
     """
-    solve_cutoff = config.blochwave.g_max
-    grid = StructureFactorGrid.from_cell_for_beam_cutoff(structure.unit_cell, solve_cutoff)
-    energy = snap_to_standard_energy(wavelength2energy(experimental_data.wavelength))
-    beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
-    orientations = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
+    refinement_setup, (dataset,) = setup_datasets(structure, (experimental_data,), config)
+    grid = dataset.plan.structure_factor_grid
+    validation = validation_mask(dataset.n_rotations, config.refinement.split)
+    train_orientations = tuple(
+        plan for plan in dataset.plan.orientations if not validation[plan.pattern.rotation_index]
     )
-    refinement_setup = RefinementSetup.from_structure(structure)
-    u0 = _mean_inner_potential(
-        grid, refinement_setup, energy=energy, absorption=config.blochwave.to_absorption()
+    val_orientations = tuple(
+        plan for plan in dataset.plan.orientations if validation[plan.pattern.rotation_index]
     )
-    all_plans = tuple(
-        CandidatePlan.seed(
-            beam_hkl,
-            PatternBatch.from_experimental_record(
-                experimental_data,
-                zone_axis_id=int(zone_id),
-                rotation_index=index,
-            ),
-            energy=energy,
-            thickness=config.sample.thicknesses,
-            orientation=orientations[index],
-            u0=u0,
-        )
-        for index, zone_id in enumerate(experimental_data.zone_axis_ids)
-    )
-
-    selection = config.blochwave.to_orientation_selection()
-    ignored = set(selection.ignore_orientations)
-    out_of_range = sorted(index for index in ignored if index >= len(all_plans))
-    if out_of_range:
-        raise ValueError(
-            "ignore_orientations contains indices outside the PETS rotation range "
-            f"0..{len(all_plans) - 1}: {out_of_range}"
-        )
-    selected = tuple((index, plan) for index, plan in enumerate(all_plans) if index not in ignored)
-    if not selected:
-        raise ValueError("ignore_orientations excludes every PETS rotation")
-
-    # Split membership is defined on the original PETS order. Ignoring a rotation must not renumber
-    # later frames and silently move them between train and validation.
-    validation = _validation_mask(len(all_plans), config.refinement.split)
-    train_orientations = tuple(plan for index, plan in selected if not validation[index])
-    val_orientations = tuple(plan for index, plan in selected if validation[index])
     return ExperimentSetup(
         plans=PlanSplit(
             train=Plan(structure_factor_grid=grid, orientations=train_orientations),
             validation=Plan(structure_factor_grid=grid, orientations=val_orientations),
         ),
         refinement=refinement_setup,
-        integration=IntegrationGeometry(semiangle=experimental_data.integration_semiangle),
+        integration=dataset.integration,
     )
+
+
+_CELL_PARAMETER_NAMES = ("a", "b", "c", "alpha", "beta", "gamma")
+_CELL_WARN_RELATIVE = 0.01
+_CELL_RAISE_RELATIVE = 0.05
+
+
+def _check_pooled_cells(records: tuple[ExperimentalRecord, ...]) -> None:
+    """Guard that pooled PETS files describe the same crystal: cells compared to the first file's.
+
+    Pooled datasets refine one shared structure on one shared structure-factor grid, so their own
+    recorded cells must agree. Small drift is expected in the intended use cases (a damage series'
+    cell relaxes; a remount re-refines slightly): past ``1%`` relative difference on any of
+    ``a, b, c, alpha, beta, gamma`` this warns; past ``5%`` it raises, listing every offending
+    parameter with both values -- the files almost certainly describe different crystals or
+    settings, and pooling them would silently mis-model every rotation of the outlier.
+    """
+    reference = np.asarray(records[0].cell_parameters, dtype=np.float64)
+    for index, record in enumerate(records[1:], start=1):
+        cell = np.asarray(record.cell_parameters, dtype=np.float64)
+        relative = np.abs(cell - reference) / np.abs(reference)
+        offending = [
+            f"{name}: {cell[i]:g} vs {reference[i]:g} ({relative[i]:.1%})"
+            for i, name in enumerate(_CELL_PARAMETER_NAMES)
+            if relative[i] > _CELL_RAISE_RELATIVE
+        ]
+        if offending:
+            raise ValueError(
+                f"pooled dataset {index}'s cell disagrees with dataset 0's by more than "
+                f"{_CELL_RAISE_RELATIVE:.0%}: " + "; ".join(offending)
+            )
+        drifted = [
+            f"{name}: {cell[i]:g} vs {reference[i]:g} ({relative[i]:.1%})"
+            for i, name in enumerate(_CELL_PARAMETER_NAMES)
+            if relative[i] > _CELL_WARN_RELATIVE
+        ]
+        if drifted:
+            warnings.warn(
+                f"pooled dataset {index}'s cell drifts from dataset 0's by more than "
+                f"{_CELL_WARN_RELATIVE:.0%}: " + "; ".join(drifted),
+                stacklevel=2,
+            )
 
 
 def _mean_inner_potential(
@@ -302,7 +430,7 @@ def seed_beam_hkl(grid: StructureFactorGrid, *, g_max: float) -> NDArray[np.int6
     return beams
 
 
-def _validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool_]:
+def validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool_]:
     """Boolean per-rotation validation mask from the split policy.
 
     ``train_test=False`` holds out nothing (every rotation trains). Otherwise every

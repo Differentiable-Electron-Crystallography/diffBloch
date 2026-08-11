@@ -14,10 +14,13 @@ and ``from_experiment`` construction from typed records.
 
 from diffBloch.preprocess.driver import converge_numerics
 from diffBloch.preprocess.experiment import (
+    DatasetSetup,
     ExperimentSetup,
     PlanSplit,
     RefinementSetup,
     from_experiment,
+    setup_datasets,
+    validation_mask,
 )
 from diffBloch.preprocess.inference import (
     InferenceResult,
@@ -58,6 +61,7 @@ from diffBloch.preprocess.plan import (
     require_candidate_plans,
     require_orientation_plans,
 )
+from diffBloch.preprocess.pool import pool
 from diffBloch.preprocess.scoring import build_engine, score_orientations
 from diffBloch.preprocess.serialize import read_plan, write_plan
 from diffBloch.preprocess.steps.beams import (
@@ -101,6 +105,7 @@ __all__ = [
     "ConvergenceCheck",
     "ConvergenceTest",
     "ConvergenceTolerance",
+    "DatasetSetup",
     "ExperimentSetup",
     "Fork",
     "FrameSelection",
@@ -145,6 +150,7 @@ __all__ = [
     "orientation_matrices",
     "pipeline",
     "plan_coverage",
+    "pool",
     "report_coupling",
     "read_plan",
     "require_built_plans",
@@ -156,11 +162,13 @@ __all__ = [
     "select_beams",
     "select_finite_loss_frames",
     "select_frames",
+    "setup_datasets",
     "simulation_converged",
     "simulation_rfactor",
     "stateful_pipeline",
     "stateful_plan_step",
     "step_records",
     "u_matrix",
+    "validation_mask",
     "write_plan",
 ]

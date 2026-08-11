@@ -183,7 +183,7 @@ Worked example: a bond-length penalty changes the result, is scientific composit
 ## Reproducibility and checkpoints
 
 - `experiment.lock` pins the input CIF/PETS bytes.
-- `plan.npz` stores a settled preprocess checkpoint; `plan.lock` ties it to input-lock identity, preprocess-determining config digest, the ordered recipe, the code version/release gate, and the artifact hash.
+- `plan.<stem>.npz` stores one dataset's settled preprocess checkpoint (stem = its exp_data ref, path separators as `__`, no `.cif_pets` suffix); `plan.<stem>.lock` ties it to that dataset's input bytes, the dataset-scoped config digest, its file-local ignored rotations, the ordered recipe, the code version/release gate, and the artifact hash.
 - Locks verify the identity of the preprocessed starting point. Do not claim hardware-independent optimizer determinism: floating-point trajectories are not guaranteed across hardware.
 - If a serialized `.npz` key or format changes, bump the plan format version; never silently reinterpret old checkpoints. Reading old formats is out of scope unless a feature explicitly adds a migration reader.
 - A recipe containing `OPAQUE` cannot be reused safely. Force recompute rather than false reuse. Reuse/resume/stale logic stays append-only and conservative: exact recipe -> reuse, proper prefix -> resume, otherwise stale.

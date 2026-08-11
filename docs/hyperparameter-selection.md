@@ -1,10 +1,10 @@
 # Hyperparameter selection
 
-Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined by structural refinement. 
+Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined by structural refinement.
 
 These choices are recorded in `experiment.yaml`. diffBloch keeps this file short by supplying
 defaults for common settings and automatically deriving quantities already defined by the input
-data. Importantly, values specified in the `experiment.yaml` will override defaults. 
+data. Importantly, values specified in the `experiment.yaml` will override defaults.
 
 This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling` specifically, see [Convergence testing](convergence-testing.md).
 
@@ -19,7 +19,7 @@ they cannot silently drift from the data they describe:
 | Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). PETS records wavelength to limited precision, so this recovers the operator-selected voltage exactly. |
 | Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (warns past 1%, raises past 5%). See [Inputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif). |
 | UB orientation matrix | `.cif_pets`, per rotation | Each rotation's own PETS UB seeds its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
-| Integration semiangle | `.cif_pets` precession angle | The tilt half-width; must be shared across every file when `inputs.multi_dataset` combines several `.cif_pets`. |
+| Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
 | Apparent mosaicity (Gaussian σ) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
 | Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by PETS's cell override — fractional coordinates are simply reinterpreted against PETS's metric. |
 | Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
@@ -30,7 +30,7 @@ Fixed sample properties (`diffBloch.config.schema.SampleConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `thicknesses` | `(820.0,)` | Seed specimen thickness in Å, one shared value for every rotation. Under `inputs.multi_dataset: true`, must instead be a list of tuples, one per file in `inputs.exp_data` order (different specimens/regions can have genuinely different thickness) — required whenever the seed actually reaches a solve; harmless as a single value if `preprocess.optimize_thickness` runs first and overwrites it anyway. |
+| `thicknesses` | `(820.0,)` | Seed specimen thickness in Å, one shared value for every rotation (and every dataset under `inputs.multi_dataset`); `preprocess.optimize_thickness` then fits each rotation individually, so datasets with genuinely different thickness converge per rotation from the shared seed. |
 
 ## `blochwave`
 
@@ -101,9 +101,9 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 
 | Field | Default | What it does |
 |---|---|---|
-| `min_thickness` | grid default | Lower bound, Å. Under `inputs.multi_dataset`, may be a per-dataset list (same length/order as `inputs.exp_data`) instead of one shared scalar — both bounds must move to the per-dataset shape together. |
-| `max_thickness` | grid default | Upper bound, Å. Same per-dataset rule as `min_thickness`. |
-| `n_steps` | grid default | Number of evenly-spaced grid candidates. Always shared across datasets (only the range, not the resolution, differs per dataset). |
+| `min_thickness` | grid default | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
+| `max_thickness` | grid default | Upper bound, Å. |
+| `n_steps` | grid default | Number of evenly-spaced grid candidates. |
 | `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
 
 ## `loss_metrics`
@@ -185,7 +185,9 @@ thickness. Two situations call for it:
   symmetry operations to fill in the gaps. Multiple datasets from different crystal
   orientations/mounts fill in coverage that one series alone would leave thin.
 
-See [Inputs](inputs.md#combining-multiple-datasets) for the mechanics (per-dataset thickness
-bounds, the shared-cell anchor rule, rotation-index offsets) and
-[Preprocessing](preprocessing.md#unit-cell-authority-pets-overrides-the-structure-cif) for how each
-dataset's own orientation is derived before being applied to the shared cell.
+Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
+integration geometry -- precession angles may differ between files), and the settled per-dataset
+plans are pooled in memory just before refinement. See
+[Inputs](inputs.md#combining-multiple-datasets) for the mechanics (per-dataset checkpoints, the
+one-energy rule, rotation-index offsets) and [Reproducibility](reproducibility.md) for what each
+per-dataset lock verifies.
