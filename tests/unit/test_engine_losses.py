@@ -98,4 +98,3 @@ def test_robs_scores_gradient_alive_on_shape_mismatch(_shapes) -> None:
     calc = (obs * factor).clone().requires_grad_(True)
     rbragg_loss(_aligned(calc, obs, sigmas)).backward()
     assert calc.grad is not None and calc.grad.abs().sum() > 0
-

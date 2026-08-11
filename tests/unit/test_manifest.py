@@ -152,7 +152,9 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     base = dataset_config_digest(cfg, exp_data=EXP_REF)
 
     def with_solver(method: str) -> object:
-        return cfg.model_copy(update={"blochwave": cfg.blochwave.model_copy(update={"solver": method})})
+        return cfg.model_copy(
+            update={"blochwave": cfg.blochwave.model_copy(update={"solver": method})}
+        )
 
     def with_refinement(**update: object) -> object:
         return cfg.model_copy(update={"refinement": cfg.refinement.model_copy(update=update)})
@@ -180,9 +182,7 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     )
     # included -- determine the settled Plan, so a change must restale
     assert (
-        dataset_config_digest(
-            with_solver(_other_method(cfg.blochwave.solver)), exp_data=EXP_REF
-        )
+        dataset_config_digest(with_solver(_other_method(cfg.blochwave.solver)), exp_data=EXP_REF)
         != base
     )
     # included -- objective drives optimize_orientation/optimize_thickness's search
