@@ -275,6 +275,13 @@ def setup_datasets(
             raise ValueError(
                 f"ignore_orientations excludes every PETS rotation of dataset {dataset_index}"
             )
+        pets_mosaicity = config.blochwave.mosaicity is True
+        if pets_mosaicity and record.mosaicity_degrees is None:
+            source = record.source_path if record.source_path is not None else "<experimental data>"
+            raise ValueError(
+                f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}; "
+                "add the PETS apparent mosaicity or set blochwave.mosaicity: false"
+            )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
             u0_by_energy[energy] = _mean_inner_potential(
@@ -301,6 +308,12 @@ def setup_datasets(
                 thickness=config.sample.thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
+                # Always carry the record's own mosaicity through, regardless of
+                # blochwave.mosaicity: a CandidatePlan should be as complete as its source PETS
+                # data, not truncated by one default app config choice. build_orientation_plans
+                # decides whether to *use* it (and still raises if PETS mosaicity is requested but
+                # missing -- see steps/beams.py); this is just carrying the metadata.
+                mosaicity_degrees=record.mosaicity_degrees,
             )
             for local_index, zone_id in enumerate(record.zone_axis_ids)
             if local_index not in local_ignore_set

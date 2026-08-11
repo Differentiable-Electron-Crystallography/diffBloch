@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicSmoothed
+from diffBloch.core.products import MosaicSmoothed, PlainSum
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -19,11 +20,13 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
+from diffBloch.preprocess.steps.beams import _pets_mosaicity_reduction
 from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
 
+@lru_cache(maxsize=1)
 def _quartz_train_plan():
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
@@ -128,6 +131,31 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
     assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
     assert isinstance(built.tilt_reduction, MosaicSmoothed)
+
+
+def test_pets_mosaicity_sets_window_from_actual_tilt_spacing() -> None:
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
+    )
+    reduction = _pets_mosaicity_reduction(rocking, 0.6)
+    assert reduction == MosaicSmoothed(3)  # round(0.6 / (2 / (11 - 1)))
+
+
+def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
+    rocking = RockingCurve(
+        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
+    )
+    assert isinstance(_pets_mosaicity_reduction(rocking, 0.05), PlainSum)
+
+
+def test_legacy_mosaic_window_remains_supported() -> None:
+    plan, config, integration = _quartz_train_plan()
+    plan = replace(plan, orientations=plan.orientations[:1])
+    rocking = replace(config.blochwave.to_rocking_curve(integration), sampling=3)
+    built = build_orientation_plans(rocking, Mosaicity(window=3))(plan).orientations[0]
+
+    assert isinstance(built.tilt_reduction, MosaicSmoothed)
+    assert built.tilt_reduction.window == 3
 
 
 def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:
