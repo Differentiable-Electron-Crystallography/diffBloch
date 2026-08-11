@@ -141,7 +141,9 @@ def build_orientation_plans(
             return plain_tilts, MosaicSmoothed(mosaicity.window)
         assert rocking is not None
         if candidate.mosaicity_degrees is None:
-            raise ValueError("PETS-derived mosaicity requires mosaicity metadata on every candidate")
+            raise ValueError(
+                "PETS-derived mosaicity requires mosaicity metadata on every candidate"
+            )
         return plain_tilts, _pets_mosaicity_reduction(rocking, candidate.mosaicity_degrees)
 
     def run(plan: Plan) -> Plan:
