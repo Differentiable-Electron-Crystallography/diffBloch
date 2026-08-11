@@ -186,17 +186,13 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
     - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search
       minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
 
-    Everything else is excluded because it cannot change the Plan: ``name`` (a label),
-    ``solver.inference`` (terminal scoring only), and all of ``refinement`` -- including ``split``,
-    which partitions rotations at refinement time and no longer shapes the checkpointed plan (it
-    rides in :func:`refinement_config_digest`). This is the config axis of the per-dataset
-    preprocess lock only, not a whole-config identity.
+    Everything else is excluded because it cannot change the Plan: ``name`` (a label), and all of
+    ``refinement`` -- including ``split``, which partitions rotations at refinement time and no
+    longer shapes the checkpointed plan (it rides in :func:`refinement_config_digest`). This is the
+    config axis of the per-dataset preprocess lock only, not a whole-config identity.
     """
     dump = config.model_dump(mode="json")
-    blochwave = {
-        **{k: v for k, v in dump["blochwave"].items() if k != "ignore_orientations"},
-        "solver": {"refine": dump["blochwave"]["solver"]["refine"]},
-    }
+    blochwave = {k: v for k, v in dump["blochwave"].items() if k != "ignore_orientations"}
     preprocess = dict(dump["preprocess"])
     if not preprocess["optimize_orientation"]:
         preprocess.pop("orientation", None)

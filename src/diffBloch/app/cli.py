@@ -101,15 +101,6 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
     )
     parser.add_argument(
-        "--orientations-csv",
-        metavar="PATH",
-        default=None,
-        help="overwrite every rotation's orientation from a 'Rotation Index'/'Orientation Matrix' "
-        "CSV before the recipe's fitting steps run (part of the recipe, so it restales any "
-        "existing checkpoint); preprocess.optimize_orientation still controls whether the search "
-        "then refines from that seed or is skipped so the imported orientations are used as-is",
-    )
-    parser.add_argument(
         "--plot-thickness",
         action="store_true",
         help="save one wR2-vs-thickness PNG per rotation from the thickness grid search (requires "
@@ -235,7 +226,6 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
-                orientations_csv=args.orientations_csv,
                 plot_thickness=args.plot_thickness,
                 plot_thickness_dir=args.plot_thickness_dir,
             )
@@ -268,7 +258,6 @@ def main(argv: list[str] | None = None) -> int:
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
-                orientations_csv=args.orientations_csv,
                 plot_thickness=args.plot_thickness,
                 plot_thickness_dir=args.plot_thickness_dir,
             )
@@ -345,7 +334,6 @@ def main(argv: list[str] | None = None) -> int:
                 verbose=args.verbose_refinement,
                 profile=args.profile,
                 checkpoint_activations=not args.no_checkpoint_activations,
-                orientations_csv=args.orientations_csv,
                 plot_thickness=args.plot_thickness,
                 plot_thickness_dir=args.plot_thickness_dir,
             )

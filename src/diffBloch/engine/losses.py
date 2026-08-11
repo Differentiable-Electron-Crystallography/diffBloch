@@ -10,7 +10,7 @@ per-thickness vector to argmin over) and ``loss`` for the differentiable gradien
 objective -- so picking one ``ExperimentConfig.objective`` genuinely drives the whole pipeline, not
 just the gradient stage. Saves every caller from rewriting
 ``lambda a: mse(a.calculated, a.observed).sum()`` and gives each objective a named, importable home
--- e.g. ``RefinementEngine(loss=weighted_mse_loss, scores=least_squares_scores, ...)``.
+-- e.g. ``RefinementEngine(loss=rbragg_loss, scores=robs_scores, ...)``.
 """
 
 from __future__ import annotations
@@ -18,19 +18,17 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import AlignedIntensities
 
 __all__ = [
     "l1_loss",
-    "least_squares_scores",
     "mse_loss",
     "rbragg_loss",
     "robs_scores",
     "wr2_loss",
     "wr2_scores",
     "w_rbragg_loss",
-    "weighted_mse_loss",
 ]
 
 
@@ -42,16 +40,6 @@ def mse_loss(aligned: AlignedIntensities) -> Tensor:
 def l1_loss(aligned: AlignedIntensities) -> Tensor:
     """Per-orientation L1 loss term, summed over thicknesses to a scalar."""
     return l1(aligned.calculated, aligned.observed).sum()
-
-
-def least_squares_scores(aligned: AlignedIntensities) -> Tensor:
-    """Per-thickness inverse-variance weighted MSE (shape ``(T,)``). Raw: no calc<->obs scaling."""
-    return weighted_mse(aligned.calculated, aligned.observed, aligned.sigmas)
-
-
-def weighted_mse_loss(aligned: AlignedIntensities) -> Tensor:
-    """Per-orientation inverse-variance weighted MSE term, summed over thicknesses to a scalar."""
-    return least_squares_scores(aligned).sum()
 
 
 def w_rbragg_loss(aligned: AlignedIntensities) -> Tensor:
