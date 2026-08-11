@@ -16,6 +16,7 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Specs" href="specs.html"><link rel="prev" title="Core" href="core.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/api/params.html">
+        <link rel="prefetch" href="../_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Params - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -281,7 +288,7 @@ the physical quantities the diffraction calculation consumes.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="diffBloch.params.ConstraintSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">ConstraintSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">position_projection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#diffBloch.params.AdpKind" title="diffBloch.params.AdpKind"><span class="pre">AdpKind</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp_constraints</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="core.html#diffBloch.core.constraints.AdpConstraints" title="diffBloch.core.constraints.AdpConstraints"><span class="pre">AdpConstraints</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reciprocal_basis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#ConstraintSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/params.py#L83-L111"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.ConstraintSpec" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">ConstraintSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">position_projection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp_kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#diffBloch.params.AdpKind" title="diffBloch.params.AdpKind"><span class="pre">AdpKind</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adp_constraints</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="core.html#diffBloch.core.constraints.AdpConstraints" title="diffBloch.core.constraints.AdpConstraints"><span class="pre">AdpConstraints</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reciprocal_basis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#ConstraintSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8535919d7edae105e3aa1ce327b5cf576a22bc62/src/diffBloch/params.py#L83-L111"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.ConstraintSpec" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>The fixed information <a class="reference internal" href="#diffBloch.params.constrain" title="diffBloch.params.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a> needs to turn raw numbers into physical quantities.</p>
 <p><code class="docutils literal notranslate"><span class="pre">reciprocal_basis</span></code> (<code class="docutils literal notranslate"><span class="pre">B</span></code> = <code class="docutils literal notranslate"><span class="pre">reciprocal_cell</span></code>, rows <code class="docutils literal notranslate"><span class="pre">a*,</span> <span class="pre">b*,</span> <span class="pre">c*</span></code>) is required whenever
@@ -338,7 +345,7 @@ the off-diagonal projector. Built by <code class="xref py py-func docutils liter
 
 <dl class="py class">
 <dt class="sig sig-object py" id="diffBloch.params.PhysicalState">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">PhysicalState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_star</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#PhysicalState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/params.py#L114-L126"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.PhysicalState" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">PhysicalState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_star</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#PhysicalState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8535919d7edae105e3aa1ce327b5cf576a22bc62/src/diffBloch/params.py#L114-L126"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.PhysicalState" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>The physical quantities the diffraction calculation consumes, after bounds are applied.</p>
 <p><code class="docutils literal notranslate"><span class="pre">uij_star</span></code> is the ADP tensor for the asymmetric-unit atoms, already expressed in the
@@ -364,7 +371,7 @@ conversion.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="diffBloch.params.RefinableParams">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">RefinableParams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asu_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancy_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#RefinableParams"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/params.py#L47-L80"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.RefinableParams" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">RefinableParams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asu_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">uij_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">u_iso_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">occupancy_raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.13)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/diffBloch/params.html#RefinableParams"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8535919d7edae105e3aa1ce327b5cf576a22bc62/src/diffBloch/params.py#L47-L80"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.RefinableParams" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>The adjustable numbers the optimizer varies, before physical bounds are applied.</p>
 <p>Each field is an unbounded tensor; the physical bounds (positivity, [0, 1], positive-definite
@@ -392,7 +399,7 @@ is not being refined.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="diffBloch.params.RefinableParams.to">
-<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.Device" title="diffBloch.params.Device"><span class="pre">Device</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.params.RefinableParams" title="diffBloch.params.RefinableParams"><span class="pre">RefinableParams</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/params.html#RefinableParams.to"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/params.py#L61-L80"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.RefinableParams.to" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.Device" title="diffBloch.params.Device"><span class="pre">Device</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.params.RefinableParams" title="diffBloch.params.RefinableParams"><span class="pre">RefinableParams</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/params.html#RefinableParams.to"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8535919d7edae105e3aa1ce327b5cf576a22bc62/src/diffBloch/params.py#L61-L80"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.RefinableParams.to" title="Link to this definition">¶</a></dt>
 <dd><p>Move every present parameter tensor to <code class="docutils literal notranslate"><span class="pre">device</span></code> (the device knob’s single primitive).</p>
 <p><code class="docutils literal notranslate"><span class="pre">params.asu_positions.device</span></code> is the authoritative device for the whole forward model –
 <a class="reference internal" href="#diffBloch.params.constrain" title="diffBloch.params.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a> and the engine co-locate every invariant (spec projector, ASU plan,
@@ -405,7 +412,7 @@ when nothing moves, so <code class="docutils literal notranslate"><span class="p
 
 <dl class="py function">
 <dt class="sig sig-object py" id="diffBloch.params.constrain">
-<span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">constrain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.RefinableParams" title="diffBloch.params.RefinableParams"><span class="pre">RefinableParams</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.ConstraintSpec" title="diffBloch.params.ConstraintSpec"><span class="pre">ConstraintSpec</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.params.PhysicalState" title="diffBloch.params.PhysicalState"><span class="pre">PhysicalState</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/params.html#constrain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8d904beb9261499d26f89633deabdf12ad460fa3/src/diffBloch/params.py#L129-L157"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.constrain" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">diffBloch.params.</span></span><span class="sig-name descname"><span class="pre">constrain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.RefinableParams" title="diffBloch.params.RefinableParams"><span class="pre">RefinableParams</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#diffBloch.params.ConstraintSpec" title="diffBloch.params.ConstraintSpec"><span class="pre">ConstraintSpec</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#diffBloch.params.PhysicalState" title="diffBloch.params.PhysicalState"><span class="pre">PhysicalState</span></a></span></span><a class="reference internal" href="../_modules/diffBloch/params.html#constrain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/8535919d7edae105e3aa1ce327b5cf576a22bc62/src/diffBloch/params.py#L129-L157"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#diffBloch.params.constrain" title="Link to this definition">¶</a></dt>
 <dd><p>Apply the <em>crystallographic</em> constraints, mapping raw parameters to the physical state.</p>
 <p>This is the hard-constraint layer on the raw parameters: per-atom site-symmetry position
 projection, ADP site-symmetry equalities, and positivity/bounded transforms (occupancy, ADP).
@@ -420,7 +427,7 @@ riding, a future ConstraintTransform layer) – before the diffraction term and 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="specs.html">
               <div class="page-info">
@@ -437,9 +444,9 @@ riding, a future ConstraintTransform layer) – before the diffraction term and 
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Core</div>
-                
+
               </div>
             </a>
         </div>
@@ -449,20 +456,20 @@ riding, a future ConstraintTransform layer) – before the diffraction term and 
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -506,8 +513,8 @@ riding, a future ConstraintTransform layer) – before the diffraction term and 
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="../_static/documentation_options.js?v=938c9ccc"></script>

@@ -7,15 +7,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/examples.html" />
 <meta property="og:site_name" content="diffBloch" />
-<meta property="og:description" content="The repository ships runnable experiment directories under examples/. The top-level examples/experiments entries are mostly baked-in demonstration runs: small or checkpointed experiments that exerc..." />
+<meta property="og:description" content="The repository ships runnable experiment directories under examples/. Each holds an experiment.yaml plus its structure.cif and.cif_pets data – see Inputs for the directory layout. Colmey et al. (20..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_examples_e48f8c02.png" />
-<meta property="og:image:alt" content="The repository ships runnable experiment directories under examples/. The top-level examples/experiments entries are mostly baked-in demonstration runs: small or checkpointed experiments that exerc..." />
-<meta name="description" content="The repository ships runnable experiment directories under examples/. The top-level examples/experiments entries are mostly baked-in demonstration runs: small or checkpointed experiments that exerc..." />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_examples_6e78392f.png" />
+<meta property="og:image:alt" content="The repository ships runnable experiment directories under examples/. Each holds an experiment.yaml plus its structure.cif and.cif_pets data – see Inputs for the directory layout. Colmey et al. (20..." />
+<meta name="description" content="The repository ships runnable experiment directories under examples/. Each holds an experiment.yaml plus its structure.cif and.cif_pets data – see Inputs for the directory layout. Colmey et al. (20..." />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Config And Manifests" href="api/config.html"><link rel="prev" title="Observability and loggers" href="observability-guide.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/examples.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Examples - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -266,72 +273,35 @@
         <article role="main" id="furo-main-content">
           <section id="examples">
 <h1>Examples<a class="headerlink" href="#examples" title="Link to this heading">¶</a></h1>
-<p>The repository ships runnable experiment directories under <code class="docutils literal notranslate"><span class="pre">examples/</span></code>. The top-level
-<code class="docutils literal notranslate"><span class="pre">examples/experiments</span></code> entries are mostly baked-in demonstration runs: small or checkpointed
-experiments that exercise preprocessing, inference, and refinement paths.</p>
-<section id="quick-examples">
-<h2>Quick examples<a class="headerlink" href="#quick-examples" title="Link to this heading">¶</a></h2>
-<section id="quartz-end-to-end">
-<h3>Quartz, end to end<a class="headerlink" href="#quartz-end-to-end" title="Link to this heading">¶</a></h3>
-<p>Runs preprocessing and refinement from the ordinary quartz example directory.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz
+<p>The repository ships runnable experiment directories under <code class="docutils literal notranslate"><span class="pre">examples/</span></code>. Each holds an
+<code class="docutils literal notranslate"><span class="pre">experiment.yaml</span></code> plus its structure <code class="docutils literal notranslate"><span class="pre">.cif</span></code> and <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> data – see
+<a class="reference internal" href="inputs.html"><span class="std std-doc">Inputs</span></a> for the directory layout.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>preprocess<span class="w"> </span>&lt;experiment_dir&gt;
+uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>&lt;experiment_dir&gt;
 </pre></div>
 </div>
-<p>The live refinement line reports <code class="docutils literal notranslate"><span class="pre">wR2</span></code>, <code class="docutils literal notranslate"><span class="pre">R_obs</span></code>, and diffraction loss for each epoch. The final
-summary identifies the best epoch, reports matched observed / total matched HKLs, and lists the
-refined CIF, raw parameter snapshot, JSON summary, and plan artifacts.</p>
-</section>
-<section id="quartz-checkpointed">
-<h3>Quartz, checkpointed<a class="headerlink" href="#quartz-checkpointed" title="Link to this heading">¶</a></h3>
-<p>Starts from a committed <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> + <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code>, so it skips preprocessing and reaches refinement
-quickly.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz-checkpoint
+<section id="colmey-et-al-2026">
+<h2>Colmey et al. (2026)<a class="headerlink" href="#colmey-et-al-2026" title="Link to this heading">¶</a></h2>
+<p><a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026"><code class="docutils literal notranslate"><span class="pre">examples/Colmey_et_al_2026</span></code></a>
+holds six runnable experiment configs reproducing the three-material (CsPbBr₃, alpha-quartz,
+borane), elastic-vs-absorptive refinement comparison from Colmey <em>et al.</em> (2026), <em>The role of
+absorption in three-dimensional electron diffraction dynamical structure refinement</em>, submitted to
+Acta Crystallographica A (<a class="reference external" href="https://arxiv.org/abs/2602.08935">arXiv:2602.08935</a>):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>preprocess<span class="w"> </span>examples/Colmey_et_al_2026/data/quartz-absorption
+uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/Colmey_et_al_2026/data/quartz-absorption
 </pre></div>
 </div>
-</section>
-<section id="abiraterone-checkpointed-on-cuda">
-<h3>Abiraterone, checkpointed on CUDA<a class="headerlink" href="#abiraterone-checkpointed-on-cuda" title="Link to this heading">¶</a></h3>
-<p>A larger compound; use an accelerator when available.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/abiraterone-checkpoint<span class="w"> </span>--device<span class="w"> </span>cuda
-</pre></div>
-</div>
-</section>
-</section>
-<section id="catalog">
-<h2>Catalog<a class="headerlink" href="#catalog" title="Link to this heading">¶</a></h2>
-<p>The four bundled examples span the two axes that matter most for cost and behavior: unit-cell size
-(which sets the beam count, and with it the O(N³) eigensolve cost and whether the large-cell fork
-routes past it — see <a class="reference internal" href="preprocessing.html#routing-on-cell-size"><span class="std std-ref">Preprocessing</span></a>) and structural
-complexity (whether hydrogens and their riding-model treatment are in play).</p>
-<div class="table-wrapper colwidths-auto docutils container">
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Example</p></th>
-<th class="head"><p>What it demonstrates</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/experiments/quartz</span></code></p></td>
-<td><p>Small unit cell (~113 Å³), no hydrogens; a full run from raw inputs, and the reproducibility anchor other changes are checked against.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/experiments/quartz-checkpoint</span></code></p></td>
-<td><p>Same structure, starting from a committed fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> — the fast path once orientation/thickness are already settled.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/experiments/abiraterone-checkpoint</span></code></p></td>
-<td><p>A larger organic molecule with hydrogens, so the hydrogen riding-model constraint (see <a class="reference internal" href="refinement.html#advanced-composition-constraints-restraints-and-learned-thickness"><span class="std std-ref">Refinement</span></a>) is exercised; a CUDA/refine demonstration.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/experiments/lta</span></code></p></td>
-<td><p>A zeolite well above the large-cell threshold — routes through the faster orientation-search branch and benefits most from a GPU.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
+<p>Swap in any of <code class="docutils literal notranslate"><span class="pre">quartz-no-abs</span></code>, <code class="docutils literal notranslate"><span class="pre">cspbbr3-no-abs</span></code>, <code class="docutils literal notranslate"><span class="pre">cspbbr3-absorption</span></code>, <code class="docutils literal notranslate"><span class="pre">borane-no-abs</span></code>,
+<code class="docutils literal notranslate"><span class="pre">borane-absorption</span></code> for the other materials/absorption settings. See that directory’s own
+<code class="docutils literal notranslate"><span class="pre">README.md</span></code> for the published-vs-reproduced R-factor table and data provenance; diffBloch has
+changed since the runs behind the paper’s own numbers, so this reproduces the same experiments
+rather than bit-for-bit values.</p>
 </section>
 <section id="python-api-example">
 <h2>Python API example<a class="headerlink" href="#python-api-example" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.app</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_experiment</span>
 
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_experiment</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint&quot;</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">run_experiment</span><span class="p">(</span><span class="s2">&quot;&lt;experiment_dir&gt;&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">n_evaluated</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">mean_r_obs</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -341,7 +311,7 @@ complexity (whether hydrogens and their riding-model treatment are in play).</p>
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="api/config.html">
               <div class="page-info">
@@ -358,9 +328,9 @@ complexity (whether hydrogens and their riding-model treatment are in play).</p>
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Observability and loggers</div>
-                
+
               </div>
             </a>
         </div>
@@ -370,20 +340,20 @@ complexity (whether hydrogens and their riding-model treatment are in play).</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -394,13 +364,7 @@ complexity (whether hydrogens and their riding-model treatment are in play).</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Examples</a><ul>
-<li><a class="reference internal" href="#quick-examples">Quick examples</a><ul>
-<li><a class="reference internal" href="#quartz-end-to-end">Quartz, end to end</a></li>
-<li><a class="reference internal" href="#quartz-checkpointed">Quartz, checkpointed</a></li>
-<li><a class="reference internal" href="#abiraterone-checkpointed-on-cuda">Abiraterone, checkpointed on CUDA</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#catalog">Catalog</a></li>
+<li><a class="reference internal" href="#colmey-et-al-2026">Colmey et al. (2026)</a></li>
 <li><a class="reference internal" href="#python-api-example">Python API example</a></li>
 </ul>
 </li>
@@ -409,8 +373,8 @@ complexity (whether hydrogens and their riding-model treatment are in play).</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

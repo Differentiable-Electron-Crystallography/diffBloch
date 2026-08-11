@@ -20,6 +20,7 @@ from diffBloch.preprocess.plan import Plan
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 EXP_REF = "exp_data.cif_pets"  # locked_min's single inputs.exp_data ref -> stem "exp_data"
+AUTH_CELL = (5.0, 5.0, 5.0, 90.0, 90.0, 90.0)
 
 
 def _experiment(tmp_path: Path) -> Path:
@@ -52,6 +53,7 @@ def _run(
     refresh=False,
     dataset_ref=EXP_REF,
     ignored_rotations=(),
+    authoritative_cell=AUTH_CELL,
 ) -> Plan:
     """Drive ``_prepare`` for one dataset the way ``_preprocess``'s per-dataset loop does."""
     steps = [_spy(calls, n, p) for n, p in names_params]
@@ -63,6 +65,7 @@ def _run(
         cfg=cfg,
         dataset_ref=dataset_ref,
         ignored_rotations=ignored_rotations,
+        authoritative_cell=authoritative_cell,
         structure_lock=input_lock_for(exp / cfg.inputs.structure, ref=cfg.inputs.structure),
         dataset_lock=input_lock_for(exp / dataset_ref, ref=dataset_ref),
         checkpoint=checkpoint,
@@ -155,6 +158,7 @@ def test_fork_resolves_against_the_grid_and_stays_checkpointable(tmp_path: Path)
             cfg=cfg,
             dataset_ref=EXP_REF,
             ignored_rotations=(),
+            authoritative_cell=AUTH_CELL,
             structure_lock=input_lock_for(exp / cfg.inputs.structure, ref=cfg.inputs.structure),
             dataset_lock=input_lock_for(exp / EXP_REF, ref=EXP_REF),
             checkpoint=True,
@@ -215,6 +219,24 @@ def test_changed_file_local_ignore_restales_only_that_dataset(tmp_path: Path) ->
     assert first == {}
     second: dict[str, int] = {}
     _run(exp, base, second, recipe, dataset_ref="b.cif_pets", ignored_rotations=(1,))
+    assert second == {"a": 1, "b": 1}
+
+
+def test_changed_authoritative_cell_restales_every_dataset(tmp_path: Path) -> None:
+    """Dataset 0's PETS cell shapes every pooled grid, so every per-dataset lock keys on it."""
+    exp = _experiment(tmp_path)
+    shutil.copy(exp / EXP_REF, exp / "b.cif_pets")
+    _, base = built_seed_system()
+    recipe = [("a", None), ("b", None)]
+    _run(exp, base, {}, recipe, dataset_ref=EXP_REF, authoritative_cell=AUTH_CELL)
+    _run(exp, base, {}, recipe, dataset_ref="b.cif_pets", authoritative_cell=AUTH_CELL)
+
+    changed_cell = (5.1, 5.0, 5.0, 90.0, 90.0, 90.0)
+    first: dict[str, int] = {}
+    _run(exp, base, first, recipe, dataset_ref=EXP_REF, authoritative_cell=changed_cell)
+    assert first == {"a": 1, "b": 1}
+    second: dict[str, int] = {}
+    _run(exp, base, second, recipe, dataset_ref="b.cif_pets", authoritative_cell=changed_cell)
     assert second == {"a": 1, "b": 1}
 
 

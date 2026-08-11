@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from diffBloch import __version__
 from diffBloch.config.schema import ExperimentConfig, load_config
 
+type CellParameters = tuple[float, float, float, float, float, float]
+
 
 class InputLock(BaseModel):
     """Hash and size for one input reference."""
@@ -64,13 +66,14 @@ class PreprocessLock(BaseModel):
     """``plan.<stem>.lock``: binds one dataset's ``Plan`` checkpoint to everything that determined it.
 
     A checkpoint is safe to reuse only when the current run matches on every axis -- the structure
-    and *this dataset's* input bytes, the dataset-scoped config projection
-    (:func:`dataset_config_digest`), this dataset's file-local ignored rotations, the software
-    version, and the composed recipe -- AND the ``.npz`` verifies against ``plan``. The identity is
-    deliberately **per dataset**: nothing here hashes the whole ``experiment.lock`` or the full
-    ``inputs.exp_data`` list, so adding, removing, or reordering *other* datasets in a pooled
-    experiment never restales this one's checkpoint. The recipe axis distinguishes checkpoints built
-    from the same inputs and config by different step sequences; ``code_version`` is the
+    and *this dataset's* input bytes, the authoritative PETS cell shared by the experiment, the
+    dataset-scoped config projection (:func:`dataset_config_digest`), this dataset's file-local
+    ignored rotations, the software version, and the composed recipe -- AND the ``.npz`` verifies
+    against ``plan``. The identity is deliberately **per dataset**: nothing here hashes the whole
+    ``experiment.lock`` or the full ``inputs.exp_data`` list, so adding, removing, or reordering
+    *other* datasets in a pooled experiment never restales this one's checkpoint unless the first
+    dataset's authoritative cell changes. The recipe axis distinguishes checkpoints built from the
+    same inputs and config by different step sequences; ``code_version`` is the
     software-implementation axis the recipe (step shape + params) cannot capture. The full
     ``code_version`` string (``__version__+g<sha>[.dirty]``) is recorded here as a build stamp, but
     the reuse gate compares only its release ``__version__`` (see :func:`preprocess_lock_status`),
@@ -80,6 +83,9 @@ class PreprocessLock(BaseModel):
 
     structure: InputLock
     experimental_data: InputLock  # this dataset's file only, ref = its inputs.exp_data entry
+    # The experiment-wide PETS cell every dataset's shared grid/refinement metric was built from,
+    # recorded on every per-dataset lock because dataset 0's cell shapes all pooled checkpoints.
+    authoritative_cell: CellParameters
     # File-local (position within this dataset's own PETS file), sorted. Lives here rather than in
     # the config digest: the config's ignore_orientations indexes the pooled rotation space, so a
     # given file's checkpoint identity is only the slice that lands on it.
@@ -304,6 +310,7 @@ def preprocess_lock_status(
     *,
     structure: InputLock,
     experimental_data: InputLock,
+    authoritative_cell: CellParameters,
     ignored_rotations: tuple[int, ...],
     config_digest: str,
     code_version: str,
@@ -314,12 +321,13 @@ def preprocess_lock_status(
     """How the checkpoint ``lock`` relates to the current run's ``recipe`` -- the resume verdict.
 
     ``"stale"`` unless the non-recipe axes all match (the structure and this dataset's input bytes,
-    the file-local ignored rotations, the dataset config digest, and the *release* portion of the
-    software version -- :func:`_release`, so a differing git SHA within the same release still
-    matches) AND the ``.npz`` verifies against the lock's :class:`ArtifactHash` (a tampered/missing
-    checkpoint is stale). Input identity compares ``sha256``/``bytes`` only, never ``ref``: renaming
-    a dataset file without changing its bytes moves its checkpoint (new stem) but a lock whose
-    recorded ref differs while the bytes match is still the same measurement. Given those hold:
+    the authoritative PETS cell, the file-local ignored rotations, the dataset config digest, and
+    the *release* portion of the software version -- :func:`_release`, so a differing git SHA within
+    the same release still matches) AND the ``.npz`` verifies against the lock's
+    :class:`ArtifactHash` (a tampered/missing checkpoint is stale). Input identity compares
+    ``sha256``/``bytes`` only, never ``ref``: renaming a dataset file without changing its bytes
+    moves its checkpoint (new stem) but a lock whose recorded ref differs while the bytes match is
+    still the same measurement. Given those hold:
 
     - ``"reuse"`` when the recipe is identical -- the snapshot is exactly this run's output.
     - ``"resume"`` when the lock's recipe is a *proper prefix* of ``recipe`` -- the run appends
@@ -333,6 +341,7 @@ def preprocess_lock_status(
         (lock.structure.sha256, lock.structure.bytes) != (structure.sha256, structure.bytes)
         or (lock.experimental_data.sha256, lock.experimental_data.bytes)
         != (experimental_data.sha256, experimental_data.bytes)
+        or lock.authoritative_cell != authoritative_cell
         or lock.ignored_rotations != ignored_rotations
         or lock.config_digest != config_digest
         or _release(lock.code_version) != _release(code_version)

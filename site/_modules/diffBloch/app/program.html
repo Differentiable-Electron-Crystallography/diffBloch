@@ -4,6 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/_modules/diffBloch/app/program.html">
+        <link rel="prefetch" href="../../../_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>diffBloch.app.program - diffBloch</title>
@@ -12,37 +13,37 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -181,11 +182,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -194,9 +198,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../refinement.html">Refinement</a></li>
@@ -220,7 +227,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -259,34 +266,45 @@
 <span class="sd">``run_inference`` directly. The CLI stays thin by delegating here and holds no science.</span>
 
 <span class="sd">**Checkpoint / resume.** The preprocess (the coupled fit especially) is the run&#39;s expensive phase,</span>
-<span class="sd">so its settled ``Plan`` is checkpointed to the experiment dir (``plan.npz`` + ``plan.lock``) and</span>
-<span class="sd">reused when still valid. The lock binds the checkpoint to four axes -- input bytes, resolved config,</span>
-<span class="sd">software version, and the *recipe* (the Plan&#39;s own provenance) -- so it is reused only when all</span>
-<span class="sd">match. The match is a longest-prefix over the recipe: an identical recipe is a full **reuse**; a</span>
-<span class="sd">recipe that *appends* steps **resumes** from the snapshot and runs only the suffix (the append-only</span>
-<span class="sd">increment). Any run that computes -- fresh, stale-recompute, ``refresh``, or resume -- regenerates</span>
-<span class="sd">``plan.npz`` + ``plan.lock``, so the lock always describes the on-disk checkpoint. Diagnostics about</span>
-<span class="sd">load/resume go through stdlib ``logging`` (not the domain-observation ``logger``).</span>
+<span class="sd">so each dataset&#39;s settled ``Plan`` is checkpointed to ``&lt;experiment_dir&gt;/reproducibility/``</span>
+<span class="sd">(``plan.&lt;stem&gt;.npz`` + ``plan.&lt;stem&gt;.lock`` per ``inputs.exp_data`` entry, see</span>
+<span class="sd">:func:`_reproducibility_dir` and :func:`~diffBloch.config.schema.dataset_checkpoint_stem`) and</span>
+<span class="sd">reused when still valid. The lock binds the checkpoint to *per-dataset* axes -- the structure and</span>
+<span class="sd">that dataset&#39;s input bytes, the experiment&#39;s authoritative PETS cell, the dataset-scoped config</span>
+<span class="sd">projection, its file-local ignored rotations, the software version, and the *recipe* (the Plan&#39;s</span>
+<span class="sd">own provenance) -- so it is reused only when all match, and never restaled by changes to *other*</span>
+<span class="sd">datasets in a pooled experiment unless the first dataset&#39;s authoritative cell changes. The match is</span>
+<span class="sd">a longest-prefix over the recipe: an identical recipe is a full **reuse**; a recipe that *appends*</span>
+<span class="sd">steps **resumes** from the snapshot and runs only the suffix (the append-only increment). Any run</span>
+<span class="sd">that computes -- fresh, stale-recompute, ``refresh``, or resume -- regenerates the ``.npz`` +</span>
+<span class="sd">``.lock`` pair, so the lock always describes the on-disk checkpoint. With ``inputs.multi_dataset``</span>
+<span class="sd">the settled per-dataset plans are pooled in memory (:func:`~diffBloch.preprocess.pool`) just before</span>
+<span class="sd">refinement; the pooled plan itself is never checkpointed. Diagnostics about load/resume go through</span>
+<span class="sd">stdlib ``logging`` (not the domain-observation ``logger``).</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">gemmi</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CellParameters</span><span class="p">,</span>
     <span class="n">ExperimentConfig</span><span class="p">,</span>
+    <span class="n">InputLock</span><span class="p">,</span>
     <span class="n">PreprocessLock</span><span class="p">,</span>
     <span class="n">RecipeStep</span><span class="p">,</span>
     <span class="n">RefinementLock</span><span class="p">,</span>
     <span class="n">artifact_hash_for</span><span class="p">,</span>
     <span class="n">code_version</span><span class="p">,</span>
-    <span class="n">config_digest</span><span class="p">,</span>
+    <span class="n">dataset_config_digest</span><span class="p">,</span>
+    <span class="n">input_lock_for</span><span class="p">,</span>
     <span class="n">load_experiment</span><span class="p">,</span>
     <span class="n">preprocess_lock_status</span><span class="p">,</span>
     <span class="n">read_preprocess_lock</span><span class="p">,</span>
@@ -295,16 +313,26 @@
     <span class="n">write_preprocess_lock</span><span class="p">,</span>
     <span class="n">write_refinement_lock</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataset_checkpoint_stem</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.core.crystal</span><span class="w"> </span><span class="kn">import</span> <span class="n">cell_matrix_from_parameters</span><span class="p">,</span> <span class="n">cell_volume</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">ApparentThicknessNN</span><span class="p">,</span>
     <span class="n">ModelRefinementResult</span><span class="p">,</span>
+    <span class="n">RefinementEngine</span><span class="p">,</span>
     <span class="n">ThicknessBounds</span><span class="p">,</span>
     <span class="n">build_refinement_model</span><span class="p">,</span>
     <span class="n">build_refinement_problem</span><span class="p">,</span>
     <span class="n">run_refinement_model</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.observability</span><span class="w"> </span><span class="kn">import</span> <span class="n">NULL_LOGGER</span><span class="p">,</span> <span class="n">Logger</span><span class="p">,</span> <span class="n">MultiLogger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExperimentalRecord</span><span class="p">,</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.observability</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">NULL_LOGGER</span><span class="p">,</span>
+    <span class="n">DeviceSelected</span><span class="p">,</span>
+    <span class="n">Logger</span><span class="p">,</span>
+    <span class="n">MultiLogger</span><span class="p">,</span>
+    <span class="n">RefinedRotationMetrics</span><span class="p">,</span>
+    <span class="n">RefinementOutputsWritten</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">Device</span><span class="p">,</span> <span class="n">constrain</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">OPAQUE</span><span class="p">,</span>
@@ -314,16 +342,18 @@
     <span class="n">PlanStep</span><span class="p">,</span>
     <span class="n">build_orientation_plans</span><span class="p">,</span>
     <span class="n">fork</span><span class="p">,</span>
-    <span class="n">from_experiment</span><span class="p">,</span>
     <span class="n">import_orientations</span><span class="p">,</span>
     <span class="n">optimize_orientation</span><span class="p">,</span>
     <span class="n">optimize_thickness</span><span class="p">,</span>
     <span class="n">pipeline</span><span class="p">,</span>
+    <span class="n">pool</span><span class="p">,</span>
     <span class="n">read_plan</span><span class="p">,</span>
     <span class="n">resolve_recipe</span><span class="p">,</span>
     <span class="n">run_inference</span><span class="p">,</span>
     <span class="n">select_beams</span><span class="p">,</span>
+    <span class="n">setup_datasets</span><span class="p">,</span>
     <span class="n">step_records</span><span class="p">,</span>
+    <span class="n">validation_mask</span><span class="p">,</span>
     <span class="n">write_plan</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess.driver</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvergenceState</span><span class="p">,</span> <span class="n">run_convergence</span>
@@ -341,9 +371,71 @@
 
 <span class="n">_log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
-<span class="n">_PLAN_NPZ</span> <span class="o">=</span> <span class="s2">&quot;plan.npz&quot;</span>
-<span class="n">_PLAN_LOCK</span> <span class="o">=</span> <span class="s2">&quot;plan.lock&quot;</span>
 <span class="n">_REFINEMENT_LOCK</span> <span class="o">=</span> <span class="s2">&quot;refinement.lock&quot;</span>
+<span class="n">_REPRODUCIBILITY_DIRNAME</span> <span class="o">=</span> <span class="s2">&quot;reproducibility&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_plan_npz_name</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This dataset&#39;s checkpoint filename, ``plan.&lt;stem&gt;.npz`` -- keyed on the file, not its</span>
+<span class="sd">    position in ``inputs.exp_data``, so reordering or inserting datasets moves nothing.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;plan.</span><span class="si">{</span><span class="n">dataset_checkpoint_stem</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span><span class="si">}</span><span class="s2">.npz&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_plan_lock_name</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;This dataset&#39;s checkpoint-lock filename, ``plan.&lt;stem&gt;.lock`` (see :func:`_plan_npz_name`).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;plan.</span><span class="si">{</span><span class="n">dataset_checkpoint_stem</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span><span class="si">}</span><span class="s2">.lock&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_exp_data_refs</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The experiment&#39;s dataset refs in pooled order -- ``inputs.exp_data`` as always-a-tuple.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">,)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_experimental_data</span><span class="p">(</span><span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">cfg</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ExperimentalRecord</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read every ``inputs.exp_data`` file, single or pooled alike -- always a tuple.</span>
+
+<span class="sd">    Order matches ``inputs.exp_data``, which is also the order</span>
+<span class="sd">    :func:`~diffBloch.preprocess.setup_datasets` seeds datasets in and</span>
+<span class="sd">    :func:`~diffBloch.preprocess.pool` pools rotation indices in -- callers that need a flat array</span>
+<span class="sd">    aligned to the pooled ``rotation_index`` space can rely on that order without recomputing it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">ref</span><span class="p">)</span> <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">_exp_data_refs</span><span class="p">(</span><span class="n">cfg</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_reproducibility_dir</span><span class="p">(</span><span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The ``root/reproducibility`` subdirectory for generated bookkeeping, created on first use.</span>
+
+<span class="sd">    Keeps ``root`` itself down to the handful of files someone actually reads (``experiment.yaml``,</span>
+<span class="sd">    the input structure/experimental-data files, ``refined_structure.cif``,</span>
+<span class="sd">    ``refinement_report.txt``, the thickness-NN shape plot) -- everything else, including</span>
+<span class="sd">    ``experiment.lock`` (input-identity verification, not a generated output, but bookkeeping all</span>
+<span class="sd">    the same), lives here instead: preprocess/refinement checkpoints and their locks, and the raw</span>
+<span class="sd">    parameter/component ``.npz`` snapshots.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="n">_REPRODUCIBILITY_DIRNAME</span>
+    <span class="n">directory</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">directory</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_device</span><span class="p">(</span><span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Device</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve the execution device, falling back from CUDA to CPU when this host lacks CUDA.&quot;&quot;&quot;</span>
+    <span class="n">requested</span> <span class="o">=</span> <span class="s2">&quot;cpu&quot;</span> <span class="k">if</span> <span class="n">device</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">cuda_available</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span>
+    <span class="n">selected</span><span class="p">:</span> <span class="n">Device</span> <span class="o">=</span> <span class="s2">&quot;cpu&quot;</span> <span class="k">if</span> <span class="n">device</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">device</span>
+    <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="n">requested</span><span class="p">)</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;cuda&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">cuda_available</span><span class="p">:</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="s2">&quot;cpu&quot;</span>
+    <span class="n">selected_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span>
+        <span class="n">DeviceSelected</span><span class="p">(</span>
+            <span class="n">requested</span><span class="o">=</span><span class="n">requested</span><span class="p">,</span>
+            <span class="n">selected</span><span class="o">=</span><span class="n">selected_name</span><span class="p">,</span>
+            <span class="n">cuda_available</span><span class="o">=</span><span class="n">cuda_available</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">selected</span>
+
 
 <span class="c1"># Above this unit-cell volume the coupled orientation search runs its coarse pass with the</span>
 <span class="c1"># gather integrity checks skipped (the large-cell fast path); at or below it the search stays the</span>
@@ -370,56 +462,77 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ConvergenceState</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the standard numerical-convergence test for an experiment.</span>
 
-<span class="sd">    Starting from the experiment&#39;s configured simulation settings, sweep ``g_max``, ``sg_max``,</span>
-<span class="sd">    and rocking-curve tilt steps using the defaults owned by :class:`ConvergenceTest` and</span>
-<span class="sd">    :class:`ConvergenceTolerance`. Return the smallest settled values found by the sweep.</span>
+<span class="sd">    Starting ``g_max`` prefers each PETS file&#39;s own ``dstarmax`` (its processing-resolution cutoff,</span>
+<span class="sd">    :attr:`~diffBloch.io.record.ExperimentalRecord.dstar_max`) when present; a PETS version that</span>
+<span class="sd">    doesn&#39;t record it (or a file where the tag is otherwise absent) falls back to the experiment&#39;s</span>
+<span class="sd">    configured ``blochwave.g_max``, the previous manual-only behaviour. ``sg_max`` and rocking-curve</span>
+<span class="sd">    tilt steps still start from the configured simulation settings. The sweep then follows the</span>
+<span class="sd">    defaults owned by :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the</span>
+<span class="sd">    smallest settled values found.</span>
+
+<span class="sd">    With ``inputs.multi_dataset`` the sweep runs **per dataset** -- each file with its own</span>
+<span class="sd">    integration geometry, its own ``dstar_max``-or-fallback starting point, and its first</span>
+<span class="sd">    ``n_orientations`` rotations -- and the returned state is the elementwise maximum over the</span>
+<span class="sd">    per-dataset settled states: the tightest single setting adequate for every pooled file. The</span>
+<span class="sd">    per-dataset settled values remain visible through the convergence logger events.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">experiment_dir</span><span class="p">)</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">_select_device</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span>
     <span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
 
     <span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span>
         <span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">load_hydrogens</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">load_hydrogens</span>
     <span class="p">)</span>
-    <span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
-    <span class="n">setup</span> <span class="o">=</span> <span class="n">from_experiment</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">experimental_data</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
-    <span class="n">refinement</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">refinement</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">setup</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">))</span>
-    <span class="n">combined</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">plans</span><span class="o">.</span><span class="n">combined</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="n">_read_experimental_data</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">refinement_setup</span><span class="p">,</span> <span class="n">datasets</span> <span class="o">=</span> <span class="n">setup_datasets</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">records</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">refinement</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">refinement_setup</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">refinement_setup</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">))</span>
     <span class="k">if</span> <span class="n">n_orientations</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;n_orientations must be &gt;= 1&quot;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">n_orientations</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">combined</span><span class="o">.</span><span class="n">orientations</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;n_orientations=</span><span class="si">{</span><span class="n">n_orientations</span><span class="si">}</span><span class="s2"> exceeds the experiment&#39;s &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">combined</span><span class="o">.</span><span class="n">orientations</span><span class="p">)</span><span class="si">}</span><span class="s2"> orientations&quot;</span>
-        <span class="p">)</span>
-    <span class="n">selected</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span>
-        <span class="n">combined</span><span class="p">,</span>
-        <span class="n">orientations</span><span class="o">=</span><span class="n">combined</span><span class="o">.</span><span class="n">orientations</span><span class="p">[:</span><span class="n">n_orientations</span><span class="p">],</span>
-    <span class="p">)</span>
-    <span class="n">rocking</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_rocking_curve</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">)</span>
-    <span class="n">simulation</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_policy</span><span class="p">()</span>
-    <span class="n">plan</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span>
-        <span class="p">[</span>
-            <span class="n">select_beams</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_beam_selection</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">)),</span>
-            <span class="n">build_orientation_plans</span><span class="p">(),</span>
-        <span class="p">]</span>
-    <span class="p">)(</span><span class="n">selected</span><span class="p">)</span>
 
-    <span class="n">_plan</span><span class="p">,</span> <span class="n">settled</span> <span class="o">=</span> <span class="n">run_convergence</span><span class="p">(</span>
-        <span class="n">plan</span><span class="p">,</span>
-        <span class="n">ConvergenceState</span><span class="p">(</span>
-            <span class="n">g_max</span><span class="o">=</span><span class="n">simulation</span><span class="o">.</span><span class="n">g_max</span><span class="p">,</span>
-            <span class="n">sg_max</span><span class="o">=</span><span class="n">simulation</span><span class="o">.</span><span class="n">sg_max</span><span class="p">,</span>
-            <span class="n">tilt_steps</span><span class="o">=</span><span class="n">rocking</span><span class="o">.</span><span class="n">sampling</span><span class="p">,</span>
-        <span class="p">),</span>
-        <span class="n">ConvergenceTest</span><span class="p">(),</span>
-        <span class="n">rocking</span><span class="p">,</span>
-        <span class="n">simulation</span><span class="p">,</span>
-        <span class="n">refinement</span><span class="p">,</span>
-        <span class="n">ConvergenceTolerance</span><span class="p">(),</span>
-        <span class="n">method</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">refine</span><span class="p">,</span>
-        <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="k">return</span> <span class="n">settled</span></div>
+    <span class="n">simulation</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_policy</span><span class="p">()</span>
+    <span class="n">settled_states</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ConvergenceState</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">dataset_index</span><span class="p">,</span> <span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">datasets</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">n_orientations</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">plan</span><span class="o">.</span><span class="n">orientations</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;n_orientations=</span><span class="si">{</span><span class="n">n_orientations</span><span class="si">}</span><span class="s2"> exceeds dataset </span><span class="si">{</span><span class="n">dataset_index</span><span class="si">}</span><span class="s2">&#39;s &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">plan</span><span class="o">.</span><span class="n">orientations</span><span class="p">)</span><span class="si">}</span><span class="s2"> orientations&quot;</span>
+            <span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span>
+            <span class="n">dataset</span><span class="o">.</span><span class="n">plan</span><span class="p">,</span>
+            <span class="n">orientations</span><span class="o">=</span><span class="n">dataset</span><span class="o">.</span><span class="n">plan</span><span class="o">.</span><span class="n">orientations</span><span class="p">[:</span><span class="n">n_orientations</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">rocking</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_rocking_curve</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">integration</span><span class="p">)</span>
+        <span class="c1"># Per dataset: a file without a dstar_max tag anchors at the configured g_max rather than</span>
+        <span class="c1"># inheriting another file&#39;s processing resolution.</span>
+        <span class="n">starting_g_max</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">dstar_max</span> <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">dstar_max</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">simulation</span><span class="o">.</span><span class="n">g_max</span>
+        <span class="n">plan</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">select_beams</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_beam_selection</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">integration</span><span class="p">)),</span>
+                <span class="n">build_orientation_plans</span><span class="p">(),</span>
+            <span class="p">]</span>
+        <span class="p">)(</span><span class="n">selected</span><span class="p">)</span>
+
+        <span class="n">_plan</span><span class="p">,</span> <span class="n">settled</span> <span class="o">=</span> <span class="n">run_convergence</span><span class="p">(</span>
+            <span class="n">plan</span><span class="p">,</span>
+            <span class="n">ConvergenceState</span><span class="p">(</span>
+                <span class="n">g_max</span><span class="o">=</span><span class="n">starting_g_max</span><span class="p">,</span>
+                <span class="n">sg_max</span><span class="o">=</span><span class="n">simulation</span><span class="o">.</span><span class="n">sg_max</span><span class="p">,</span>
+                <span class="n">tilt_steps</span><span class="o">=</span><span class="n">rocking</span><span class="o">.</span><span class="n">sampling</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="n">ConvergenceTest</span><span class="p">(),</span>
+            <span class="n">rocking</span><span class="p">,</span>
+            <span class="n">simulation</span><span class="p">,</span>
+            <span class="n">refinement</span><span class="p">,</span>
+            <span class="n">ConvergenceTolerance</span><span class="p">(),</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">refine</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">settled_states</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">settled</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ConvergenceState</span><span class="p">(</span>
+        <span class="n">g_max</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">g_max</span> <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">settled_states</span><span class="p">),</span>
+        <span class="n">sg_max</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">sg_max</span> <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">settled_states</span><span class="p">),</span>
+        <span class="n">tilt_steps</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">tilt_steps</span> <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">settled_states</span><span class="p">),</span>
+    <span class="p">)</span></div>
 
 
 
@@ -431,7 +544,7 @@
     <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">,</span>
     <span class="n">checkpoint</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
     <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">max_batch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">orientations_csv</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -460,10 +573,11 @@
 <span class="sd">    writes a fresh one after computing; ``refresh`` forces a full recompute (ignoring any snapshot)</span>
 <span class="sd">    while still regenerating the checkpoint. ``checkpoint=False`` neither reads nor writes.</span>
 
-<span class="sd">    ``device`` (default ``None`` = CPU) runs the forward solve on the given accelerator (e.g.</span>
-<span class="sd">    ``&quot;cuda&quot;``) for the coupled preprocess fits. The preprocess *geometry* (beam selection, coupling</span>
-<span class="sd">    unions) stays CPU-side numpy; only the eigensolve -- the O(N^3) cost -- moves to the device (the</span>
-<span class="sd">    fits move the seed params, so ``fgb`` and every per-trial score co-locate there). Device is</span>
+<span class="sd">    ``device`` (default ``&quot;cuda&quot;``) runs the forward solve on the selected accelerator for the</span>
+<span class="sd">    coupled preprocess fits. If CUDA is requested on a host without CUDA, the app falls back to CPU</span>
+<span class="sd">    and emits a device-selection event. The preprocess *geometry* (beam selection, coupling unions)</span>
+<span class="sd">    stays CPU-side numpy; only the eigensolve -- the O(N^3) cost -- moves to the device (the fits</span>
+<span class="sd">    move the seed params, so ``fgb`` and every per-trial score co-locate there). Device is</span>
 <span class="sd">    execution-only: it does not enter the checkpoint lock, so a committed CPU checkpoint is still</span>
 <span class="sd">    reused when a run moves to GPU.</span>
 
@@ -499,19 +613,22 @@
 <span class="sd">    Execution-only like ``device``/``workers``, out of the checkpoint lock.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">experiment_dir</span><span class="p">)</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">_select_device</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span>
     <span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-    <span class="n">_refinement</span><span class="p">,</span> <span class="n">prepared</span> <span class="o">=</span> <span class="n">_preprocess</span><span class="p">(</span>
-        <span class="n">root</span><span class="p">,</span>
-        <span class="n">cfg</span><span class="p">,</span>
-        <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
-        <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
-        <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
-        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
-        <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
-        <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
-        <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
-        <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
-        <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+    <span class="n">_refinement</span><span class="p">,</span> <span class="n">_integrations</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">_validation_rotation_indices</span><span class="p">,</span> <span class="n">_plan_lock_sha256s</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_preprocess</span><span class="p">(</span>
+            <span class="n">root</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+            <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
+            <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
+            <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
+            <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="p">)</span>
     <span class="k">return</span> <span class="n">prepared</span></div>
 
@@ -525,7 +642,7 @@
     <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">,</span>
     <span class="n">checkpoint</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
     <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">max_batch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">orientations_csv</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -544,19 +661,22 @@
 <span class="sd">    ``device`` also runs the terminal eigensolve on the accelerator.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">experiment_dir</span><span class="p">)</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">_select_device</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span>
     <span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-    <span class="n">refinement</span><span class="p">,</span> <span class="n">prepared</span> <span class="o">=</span> <span class="n">_preprocess</span><span class="p">(</span>
-        <span class="n">root</span><span class="p">,</span>
-        <span class="n">cfg</span><span class="p">,</span>
-        <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
-        <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
-        <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
-        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
-        <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
-        <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
-        <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
-        <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
-        <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+    <span class="n">refinement</span><span class="p">,</span> <span class="n">_integrations</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">_validation_rotation_indices</span><span class="p">,</span> <span class="n">_plan_lock_sha256s</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_preprocess</span><span class="p">(</span>
+            <span class="n">root</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+            <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
+            <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
+            <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
+            <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="p">)</span>
     <span class="k">return</span> <span class="n">run_inference</span><span class="p">(</span>
         <span class="n">prepared</span><span class="p">,</span>
@@ -578,7 +698,7 @@
     <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">,</span>
     <span class="n">checkpoint</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">:</span> <span class="n">Device</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
     <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">max_batch</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
@@ -594,7 +714,7 @@
 <span class="sd">    recipe and ``checkpoint``/``refresh``/``device``/``workers``/``orientations_csv``/</span>
 <span class="sd">    ``plot_thickness``/``plot_thickness_dir`` semantics), then run the</span>
 <span class="sd">    **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs</span>
-<span class="sd">    path: the data term (:meth:`~diffBloch.config.schema.ObjectiveConfig.to_loss`), the trainable</span>
+<span class="sd">    path: the residual (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_loss`), the trainable</span>
 <span class="sd">    selection (:meth:`~diffBloch.config.schema.TrainableConfig.to_spec`), and</span>
 <span class="sd">    the optimizer/step budget all come from ``experiment.yaml``. It composes no hard constraints or</span>
 <span class="sd">    penalties -- scientific</span>
@@ -627,40 +747,93 @@
 <span class="sd">    :class:`~diffBloch.engine.RefinementEngine`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">experiment_dir</span><span class="p">)</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">_select_device</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span>
     <span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-    <span class="n">refinement</span><span class="p">,</span> <span class="n">prepared</span> <span class="o">=</span> <span class="n">_preprocess</span><span class="p">(</span>
-        <span class="n">root</span><span class="p">,</span>
-        <span class="n">cfg</span><span class="p">,</span>
-        <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
-        <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
-        <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
-        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
-        <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
-        <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
-        <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
-        <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
-        <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+    <span class="n">refinement</span><span class="p">,</span> <span class="n">integrations</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">validation_rotation_indices</span><span class="p">,</span> <span class="n">plan_lock_sha256s</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_preprocess</span><span class="p">(</span>
+            <span class="n">root</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+            <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
+            <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">orientations_csv</span><span class="o">=</span><span class="n">orientations_csv</span><span class="p">,</span>
+            <span class="n">plot_thickness</span><span class="o">=</span><span class="n">plot_thickness</span><span class="p">,</span>
+            <span class="n">plot_thickness_dir</span><span class="o">=</span><span class="n">plot_thickness_dir</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="p">)</span>
+    <span class="c1"># `engine` covers every rotation (train + validation) -- reporting always scores the whole</span>
+    <span class="c1"># experiment, e.g. the thickness-NN shape table below evaluates the trained curve at</span>
+    <span class="c1"># validation angles it never saw, which is the point. Only the *training* engine, built</span>
+    <span class="c1"># separately, excludes validation_rotation_indices from the gradient objective.</span>
     <span class="n">engine</span> <span class="o">=</span> <span class="n">build_engine</span><span class="p">(</span>
         <span class="n">prepared</span><span class="p">,</span>
         <span class="n">refinement</span><span class="p">,</span>
-        <span class="n">loss</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">to_loss</span><span class="p">(),</span>
+        <span class="n">loss</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">to_loss</span><span class="p">(),</span>
         <span class="n">method</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">refine</span><span class="p">,</span>
         <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
         <span class="n">absorption</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_absorption</span><span class="p">(),</span>
         <span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span>
         <span class="n">checkpoint_activations</span><span class="o">=</span><span class="n">checkpoint_activations</span><span class="p">,</span>
     <span class="p">)</span>
+    <span class="c1"># Pre-existing inconsistency, recorded not fixed: PerOrientationThickness keys its per-rotation</span>
+    <span class="c1"># lookup on the *positional* enumerate index the engine passes to forward_context, while</span>
+    <span class="c1"># ApparentThicknessNN keys on pattern.rotation_index -- the two disagree whenever an engine is</span>
+    <span class="c1"># built over a subset like the train/validation partitions below.</span>
+    <span class="n">train_engine</span> <span class="o">=</span> <span class="n">engine</span>
+    <span class="n">selection_engine</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">validation_rotation_indices</span><span class="p">:</span>
+        <span class="n">train_only</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="n">op</span>
+            <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">prepared</span><span class="o">.</span><span class="n">orientations</span>
+            <span class="k">if</span> <span class="n">op</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">rotation_index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">validation_rotation_indices</span>
+        <span class="p">)</span>
+        <span class="n">validation_only</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="n">op</span>
+            <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">prepared</span><span class="o">.</span><span class="n">orientations</span>
+            <span class="k">if</span> <span class="n">op</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">rotation_index</span> <span class="ow">in</span> <span class="n">validation_rotation_indices</span>
+        <span class="p">)</span>
+        <span class="n">train_engine</span> <span class="o">=</span> <span class="n">build_engine</span><span class="p">(</span>
+            <span class="n">replace</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">orientations</span><span class="o">=</span><span class="n">train_only</span><span class="p">),</span>
+            <span class="n">refinement</span><span class="p">,</span>
+            <span class="n">loss</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">to_loss</span><span class="p">(),</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">refine</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">absorption</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_absorption</span><span class="p">(),</span>
+            <span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span>
+            <span class="n">checkpoint_activations</span><span class="o">=</span><span class="n">checkpoint_activations</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">selection_engine</span> <span class="o">=</span> <span class="n">build_engine</span><span class="p">(</span>
+            <span class="n">replace</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">orientations</span><span class="o">=</span><span class="n">validation_only</span><span class="p">),</span>
+            <span class="n">refinement</span><span class="p">,</span>
+            <span class="n">loss</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">to_loss</span><span class="p">(),</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">refine</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">absorption</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_absorption</span><span class="p">(),</span>
+            <span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span>
+            <span class="n">checkpoint_activations</span><span class="o">=</span><span class="n">checkpoint_activations</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">to_declaration</span><span class="p">(</span><span class="n">integrations</span><span class="p">))</span>
     <span class="n">initial</span> <span class="o">=</span> <span class="n">refinement</span><span class="o">.</span><span class="n">params</span> <span class="k">if</span> <span class="n">device</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">refinement</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
     <span class="n">thickness_spec</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">thickness_nn</span><span class="o">.</span><span class="n">to_spec</span><span class="p">()</span>
+    <span class="n">thickness_nn</span><span class="p">:</span> <span class="n">ApparentThicknessNN</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">raw_alphas</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">thickness_spec</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
-        <span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
+        <span class="c1"># Concatenated in inputs.exp_data order -- the order pool() numbers rotation_index in --</span>
+        <span class="c1"># so raw_alphas[rotation_index] resolves even with ignore gaps. ExperimentConfig rejects</span>
+        <span class="c1"># thickness_nn + multi_dataset at load time, so this is single-dataset today; the</span>
+        <span class="c1"># concatenation is already pooled-order-correct for the day the network learns a</span>
+        <span class="c1"># per-dataset input.</span>
+        <span class="n">records</span> <span class="o">=</span> <span class="n">_read_experimental_data</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+        <span class="n">raw_alphas</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">alphas</span><span class="p">)</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">])</span>
         <span class="n">thickness_nn</span> <span class="o">=</span> <span class="n">ApparentThicknessNN</span><span class="p">(</span>
             <span class="n">bounds</span><span class="o">=</span><span class="n">ThicknessBounds</span><span class="p">(</span>
                 <span class="n">thickness_spec</span><span class="o">.</span><span class="n">min_thickness</span><span class="p">,</span>
                 <span class="n">thickness_spec</span><span class="o">.</span><span class="n">max_thickness</span><span class="p">,</span>
             <span class="p">),</span>
-            <span class="n">normalized_alphas</span><span class="o">=</span><span class="n">_normalized_pets_alphas</span><span class="p">(</span><span class="n">experimental_data</span><span class="o">.</span><span class="n">alphas</span><span class="p">),</span>
+            <span class="n">normalized_alphas</span><span class="o">=</span><span class="n">_normalized_pets_alphas</span><span class="p">(</span><span class="n">raw_alphas</span><span class="p">),</span>
             <span class="n">form</span><span class="o">=</span><span class="n">thickness_spec</span><span class="o">.</span><span class="n">form</span><span class="p">,</span>
             <span class="n">sample_thickness</span><span class="o">=</span><span class="n">thickness_spec</span><span class="o">.</span><span class="n">sample_thickness</span><span class="p">,</span>
             <span class="n">num_samples</span><span class="o">=</span><span class="n">thickness_spec</span><span class="o">.</span><span class="n">num_samples</span><span class="p">,</span>
@@ -680,7 +853,7 @@
         <span class="n">model</span> <span class="o">=</span> <span class="n">build_refinement_model</span><span class="p">(</span><span class="n">initial</span><span class="o">=</span><span class="n">initial</span><span class="p">)</span>
     <span class="n">problem</span> <span class="o">=</span> <span class="n">build_refinement_problem</span><span class="p">()</span>
     <span class="n">result</span> <span class="o">=</span> <span class="n">run_refinement_model</span><span class="p">(</span>
-        <span class="n">engine</span><span class="p">,</span>
+        <span class="n">train_engine</span><span class="p">,</span>
         <span class="n">model</span><span class="p">,</span>
         <span class="n">problem</span><span class="p">,</span>
         <span class="n">trainable</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">trainable</span><span class="o">.</span><span class="n">to_spec</span><span class="p">(),</span>
@@ -690,10 +863,64 @@
         <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
         <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
         <span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span>
+        <span class="n">selection_engine</span><span class="o">=</span><span class="n">selection_engine</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="n">_write_refinement_outputs</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">refinement</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">_write_refinement_outputs</span><span class="p">(</span>
+        <span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">refinement</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="n">plan_lock_sha256s</span><span class="o">=</span><span class="n">plan_lock_sha256s</span>
+    <span class="p">)</span>
+    <span class="c1"># The settled-result events, then the terminal one: SummaryLogger writes the file on the latter.</span>
+    <span class="n">_report_refinement_outcome</span><span class="p">(</span>
+        <span class="n">logger</span><span class="p">,</span>
+        <span class="n">engine</span><span class="p">,</span>
+        <span class="n">result</span><span class="p">,</span>
+        <span class="n">validation_rotation_indices</span><span class="o">=</span><span class="n">validation_rotation_indices</span><span class="p">,</span>
+        <span class="n">thickness_nn</span><span class="o">=</span><span class="n">thickness_nn</span><span class="p">,</span>
+        <span class="n">raw_alphas</span><span class="o">=</span><span class="n">raw_alphas</span><span class="p">,</span>
+    <span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_report_refinement_outcome</span><span class="p">(</span>
+    <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span><span class="p">,</span>
+    <span class="n">engine</span><span class="p">:</span> <span class="n">RefinementEngine</span><span class="p">,</span>
+    <span class="n">result</span><span class="p">:</span> <span class="n">ModelRefinementResult</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">validation_rotation_indices</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">thickness_nn</span><span class="p">:</span> <span class="n">ApparentThicknessNN</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">raw_alphas</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit the settled-result events the refinement loop itself cannot produce.</span>
+
+<span class="sd">    ``run_refinement_model`` only ever sees the *training* engine, so the final per-rotation scores</span>
+<span class="sd">    (which cover held-out rotations too) and the trained thickness curve have to be emitted here,</span>
+<span class="sd">    where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`</span>
+<span class="sd">    goes last and is the run&#39;s terminal event -- a sink that must write exactly once, after</span>
+<span class="sd">    everything else, acts on it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">engine</span><span class="o">.</span><span class="n">per_rotation_metrics</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">best_model</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span>
+            <span class="n">RefinedRotationMetrics</span><span class="p">(</span>
+                <span class="n">rotation_index</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">rotation_index</span><span class="p">,</span>
+                <span class="n">wr2</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">wr2</span><span class="p">,</span>
+                <span class="n">r_obs</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">r_obs</span><span class="p">,</span>
+                <span class="n">n_matched</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">n_matched</span><span class="p">,</span>
+                <span class="n">is_validation</span><span class="o">=</span><span class="n">row</span><span class="o">.</span><span class="n">rotation_index</span> <span class="ow">in</span> <span class="n">validation_rotation_indices</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">thickness_nn</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">raw_alphas</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span>
+            <span class="n">thickness_nn</span><span class="o">.</span><span class="n">profile</span><span class="p">(</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">best_model</span><span class="o">.</span><span class="n">component_params</span><span class="p">[</span><span class="n">thickness_nn</span><span class="o">.</span><span class="n">key</span><span class="p">],</span>
+                <span class="n">engine</span><span class="o">.</span><span class="n">orientations</span><span class="p">,</span>
+                <span class="n">raw_alphas</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">report</span><span class="p">(</span>
+        <span class="n">RefinementOutputsWritten</span><span class="p">(</span>
+            <span class="n">structure</span><span class="o">=</span><span class="n">result</span><span class="o">.</span><span class="n">artifacts</span><span class="p">[</span><span class="s2">&quot;refined_structure&quot;</span><span class="p">],</span> <span class="n">artifacts</span><span class="o">=</span><span class="n">result</span><span class="o">.</span><span class="n">artifacts</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_normalized_pets_alphas</span><span class="p">(</span><span class="n">alphas</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
@@ -714,12 +941,26 @@
     <span class="n">cfg</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">,</span>
     <span class="n">refinement</span><span class="p">:</span> <span class="n">RefinementSetup</span><span class="p">,</span>
     <span class="n">result</span><span class="p">:</span> <span class="n">ModelRefinementResult</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">plan_lock_sha256s</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ModelRefinementResult</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Persist the best structure, raw parameter snapshot, and machine-readable summary.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Persist the best structure and raw parameter/component snapshots.</span>
+
+<span class="sd">    ``refined_structure.cif`` lands at ``root`` (the human-facing output); the raw ``.npz``</span>
+<span class="sd">    snapshots and the checkpoint/refinement locks go under :func:`_reproducibility_dir` --</span>
+<span class="sd">    bookkeeping nobody reads directly. See :class:`~diffBloch.app.loggers.summary.SummaryLogger`</span>
+<span class="sd">    for the actual human-readable summary (``refinement_report.txt``), which supersedes the</span>
+<span class="sd">    machine-readable ``refinement_summary.json`` this function used to also write.</span>
+
+<span class="sd">    ``plan_lock_sha256s`` are the hashes of the plan locks *this run* verified or wrote</span>
+<span class="sd">    (``exp_data`` order), from :func:`_preprocess`. ``refinement.lock`` chains to exactly those;</span>
+<span class="sd">    ``None`` (the run didn&#39;t checkpoint) skips the lock and the plan artifact entries entirely --</span>
+<span class="sd">    a leftover lock file on disk from some earlier run is not this run&#39;s provenance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">reproducibility_dir</span> <span class="o">=</span> <span class="n">_reproducibility_dir</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
     <span class="n">structure_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;refined_structure.cif&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
-    <span class="n">params_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;refined_parameters.npz&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
-    <span class="n">components_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;refined_components.npz&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
-    <span class="n">summary_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;refinement_summary.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="n">params_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="s2">&quot;refined_parameters.npz&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="n">components_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="s2">&quot;refined_components.npz&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
     <span class="n">state</span> <span class="o">=</span> <span class="n">constrain</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">best_params</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span>
     <span class="n">source_path</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span>
     <span class="n">document</span> <span class="o">=</span> <span class="n">gemmi</span><span class="o">.</span><span class="n">cif</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">source_path</span><span class="p">))</span>
@@ -733,6 +974,23 @@
     <span class="n">reciprocal</span> <span class="o">=</span> <span class="n">reciprocal_basis</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
     <span class="n">reciprocal_lengths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">reciprocal</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
     <span class="n">reciprocal_metric</span> <span class="o">=</span> <span class="n">reciprocal</span> <span class="o">@</span> <span class="n">reciprocal</span><span class="o">.</span><span class="n">T</span>
+    <span class="c1"># refinement.cell_parameters is the authoritative cell reciprocal_basis was actually derived</span>
+    <span class="c1"># from (PETS&#39;s, not necessarily the structure CIF&#39;s own). The written header must match it, or</span>
+    <span class="c1"># the file would declare a cell inconsistent with the ADP/position convention refined under.</span>
+    <span class="k">if</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cell_tags</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_length_a&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_length_b&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_length_c&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_angle_alpha&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_angle_beta&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s2">&quot;_cell_angle_gamma&quot;</span><span class="p">,</span> <span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">tag</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">cell_tags</span><span class="p">:</span>
+            <span class="n">block</span><span class="o">.</span><span class="n">set_pair</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">block</span><span class="o">.</span><span class="n">find_pair</span><span class="p">(</span><span class="s2">&quot;_cell_volume&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">authoritative_unit_cell</span> <span class="o">=</span> <span class="n">cell_matrix_from_parameters</span><span class="p">(</span><span class="n">refinement</span><span class="o">.</span><span class="n">cell_parameters</span><span class="p">)</span>
+            <span class="n">block</span><span class="o">.</span><span class="n">set_pair</span><span class="p">(</span><span class="s2">&quot;_cell_volume&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">cell_volume</span><span class="p">(</span><span class="n">authoritative_unit_cell</span><span class="p">)</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="n">atom_loop</span> <span class="o">=</span> <span class="n">block</span><span class="o">.</span><span class="n">find_loop</span><span class="p">(</span><span class="s2">&quot;_atom_site_label&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">get_loop</span><span class="p">()</span>
     <span class="n">tags</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom_loop</span><span class="o">.</span><span class="n">tags</span><span class="p">)</span>
     <span class="n">label_column</span> <span class="o">=</span> <span class="n">tags</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s2">&quot;_atom_site_label&quot;</span><span class="p">)</span>
@@ -805,43 +1063,34 @@
     <span class="k">if</span> <span class="n">component_arrays</span><span class="p">:</span>
         <span class="n">np</span><span class="o">.</span><span class="n">savez_compressed</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">components_path</span><span class="p">),</span> <span class="o">**</span><span class="n">component_arrays</span><span class="p">)</span>  <span class="c1"># type: ignore[arg-type]</span>
 
-    <span class="n">best</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">history</span><span class="p">[</span><span class="n">result</span><span class="o">.</span><span class="n">best_step</span><span class="p">]</span>
     <span class="n">artifacts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">&quot;refined_structure&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">structure_path</span><span class="p">),</span>
         <span class="s2">&quot;refined_parameters&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">params_path</span><span class="p">),</span>
-        <span class="s2">&quot;summary&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">summary_path</span><span class="p">),</span>
-        <span class="s2">&quot;plan&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">((</span><span class="n">root</span> <span class="o">/</span> <span class="n">_PLAN_NPZ</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
-        <span class="s2">&quot;plan_lock&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">((</span><span class="n">root</span> <span class="o">/</span> <span class="n">_PLAN_LOCK</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
     <span class="p">}</span>
     <span class="k">if</span> <span class="n">component_arrays</span><span class="p">:</span>
         <span class="n">artifacts</span><span class="p">[</span><span class="s2">&quot;refined_components&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">components_path</span><span class="p">)</span>
-    <span class="n">plan_lock_path</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="n">_PLAN_LOCK</span>
-    <span class="k">if</span> <span class="n">plan_lock_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-        <span class="n">lock_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">_REFINEMENT_LOCK</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="c1"># refinement.lock chains only to the plan locks THIS run verified or wrote. A lock file merely</span>
+    <span class="c1"># present on disk (a --no-checkpoint run over leftovers, an opaque recipe) is not this run&#39;s</span>
+    <span class="c1"># provenance and must not be chained to.</span>
+    <span class="k">if</span> <span class="n">plan_lock_sha256s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">_exp_data_refs</span><span class="p">(</span><span class="n">cfg</span><span class="p">):</span>
+            <span class="n">stem</span> <span class="o">=</span> <span class="n">dataset_checkpoint_stem</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span>
+            <span class="n">artifacts</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;plan_</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">((</span><span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="n">_plan_npz_name</span><span class="p">(</span><span class="n">ref</span><span class="p">))</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+            <span class="n">artifacts</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;plan_lock_</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="n">_plan_lock_name</span><span class="p">(</span><span class="n">ref</span><span class="p">))</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+            <span class="p">)</span>
+        <span class="n">lock_path</span> <span class="o">=</span> <span class="p">(</span><span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="n">_REFINEMENT_LOCK</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
         <span class="n">write_refinement_lock</span><span class="p">(</span>
             <span class="n">lock_path</span><span class="p">,</span>
             <span class="n">RefinementLock</span><span class="p">(</span>
-                <span class="n">plan_lock_sha256</span><span class="o">=</span><span class="n">sha256_file</span><span class="p">(</span><span class="n">plan_lock_path</span><span class="p">),</span>
+                <span class="n">plan_lock_sha256s</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">plan_lock_sha256s</span><span class="p">),</span>
                 <span class="n">refinement_config_digest</span><span class="o">=</span><span class="n">refinement_config_digest</span><span class="p">(</span><span class="n">cfg</span><span class="p">),</span>
                 <span class="n">code_version</span><span class="o">=</span><span class="n">code_version</span><span class="p">(),</span>
-                <span class="n">refined_structure</span><span class="o">=</span><span class="n">artifact_hash_for</span><span class="p">(</span><span class="n">structure_path</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">),</span>
-                <span class="n">refined_parameters</span><span class="o">=</span><span class="n">artifact_hash_for</span><span class="p">(</span><span class="n">params_path</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">),</span>
+                <span class="n">refined_structure</span><span class="o">=</span><span class="n">artifact_hash_for</span><span class="p">(</span><span class="n">structure_path</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+                <span class="n">refined_parameters</span><span class="o">=</span><span class="n">artifact_hash_for</span><span class="p">(</span><span class="n">params_path</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
             <span class="p">),</span>
         <span class="p">)</span>
         <span class="n">artifacts</span><span class="p">[</span><span class="s2">&quot;refinement_lock&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
-    <span class="n">summary</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s2">&quot;best_epoch&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">best_step</span><span class="p">,</span>
-        <span class="s2">&quot;objective&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">best_loss</span><span class="p">,</span>
-        <span class="s2">&quot;wr2&quot;</span><span class="p">:</span> <span class="n">best</span><span class="o">.</span><span class="n">wr2</span><span class="p">,</span>
-        <span class="s2">&quot;r_obs&quot;</span><span class="p">:</span> <span class="n">best</span><span class="o">.</span><span class="n">r_obs</span><span class="p">,</span>
-        <span class="s2">&quot;diff_loss&quot;</span><span class="p">:</span> <span class="n">best</span><span class="o">.</span><span class="n">diff_loss</span><span class="p">,</span>
-        <span class="s2">&quot;total_hkl&quot;</span><span class="p">:</span> <span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">reflection_counts</span><span class="p">[</span><span class="s1">&#39;matched_i_gt_3sigma&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> / &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">reflection_counts</span><span class="p">[</span><span class="s1">&#39;matched&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="p">),</span>
-        <span class="s2">&quot;artifacts&quot;</span><span class="p">:</span> <span class="n">artifacts</span><span class="p">,</span>
-    <span class="p">}</span>
-    <span class="n">summary_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">summary</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">replace</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">artifacts</span><span class="o">=</span><span class="n">artifacts</span><span class="p">)</span>
 
 
@@ -858,34 +1107,67 @@
     <span class="n">orientations_csv</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">plot_thickness</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="n">plot_thickness_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RefinementSetup</span><span class="p">,</span> <span class="n">Plan</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span>
+    <span class="n">RefinementSetup</span><span class="p">,</span>
+    <span class="nb">tuple</span><span class="p">[</span><span class="n">IntegrationGeometry</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">Plan</span><span class="p">,</span>
+    <span class="nb">frozenset</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.</span>
 
-<span class="sd">    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs)</span>
-<span class="sd">    alongside the settled ``Plan``, so :func:`preprocess_experiment` can drop the setup and</span>
-<span class="sd">    :func:`run_experiment` can score with it -- neither loads the inputs twice. Hydrogen sites are</span>
-<span class="sd">    loaded per ``inputs.load_hydrogens``.</span>
+<span class="sd">    Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --</span>
+<span class="sd">    sequentially, one dataset at a time -- that dataset&#39;s recipe under its own checkpoint</span>
+<span class="sd">    (:func:`_prepare`), and finally :func:`~diffBloch.preprocess.pool`\\ s the settled plans onto</span>
+<span class="sd">    the pooled ``rotation_index`` space. Returns the structure ``RefinementSetup`` (which the</span>
+<span class="sd">    terminal ``run_inference`` needs), the per-dataset ``IntegrationGeometry``\\ s in</span>
+<span class="sd">    ``inputs.exp_data`` order (PETS-derived integration semiangles, for reporting), the pooled</span>
+<span class="sd">    settled ``Plan`` (still over *every* non-ignored rotation -- the train/validation split never</span>
+<span class="sd">    restricts preprocessing, only :func:`refine_experiment`&#39;s gradient stage), the</span>
+<span class="sd">    ``rotation_index`` set ``cfg.refinement.split`` holds out as validation (empty when</span>
+<span class="sd">    ``train_test`` is off; the mask runs over the pooled pre-ignore index space, so membership is</span>
+<span class="sd">    stable under ignore edits), and the sha256s of the plan locks this run verified or wrote (in</span>
+<span class="sd">    ``exp_data`` order) -- ``None`` when the run didn&#39;t checkpoint, so ``refinement.lock`` never</span>
+<span class="sd">    chains to a leftover lock this run never validated. Hydrogen sites are loaded per</span>
+<span class="sd">    ``inputs.load_hydrogens``.</span>
 
 <span class="sd">    ``orientations_csv`` (the API/CLI argument) overrides ``cfg.preprocess.orientations_csv`` when</span>
 <span class="sd">    given; the config value (resolved relative to ``root``, like ``inputs.structure``) is the</span>
 <span class="sd">    default so the import is reproducible from ``experiment.yaml`` alone, not just a CLI one-off.</span>
+<span class="sd">    Rejected for pooled experiments: the CSV&#39;s ``Rotation Index`` column predates pooling and would</span>
+<span class="sd">    be ambiguous between file-local and pooled indices.</span>
 
 <span class="sd">    ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn</span>
 <span class="sd">    plotting on. ``plot_thickness_dir`` overrides the default output directory,</span>
 <span class="sd">    ``&lt;inputs.structure&#39;s directory&gt;/thickness_optim``, when given. Both are execution-only (they</span>
 <span class="sd">    only decide whether/where a PNG gets written, never the fitted ``Plan``) -- see</span>
-<span class="sd">    :func:`~diffBloch.config.manifest.config_digest`.</span>
+<span class="sd">    :func:`~diffBloch.config.manifest.dataset_config_digest`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span>
         <span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">load_hydrogens</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">load_hydrogens</span>
     <span class="p">)</span>
-    <span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
-    <span class="n">setup</span> <span class="o">=</span> <span class="n">from_experiment</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">experimental_data</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="n">_read_experimental_data</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">refs</span> <span class="o">=</span> <span class="n">_exp_data_refs</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="n">refinement_setup</span><span class="p">,</span> <span class="n">datasets</span> <span class="o">=</span> <span class="n">setup_datasets</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">records</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
+    <span class="n">cell</span> <span class="o">=</span> <span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">cell_parameters</span>
+    <span class="n">authoritative_cell</span><span class="p">:</span> <span class="n">CellParameters</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">cell</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span>
+    <span class="p">)</span>
     <span class="n">effective_orientations_csv</span> <span class="o">=</span> <span class="p">(</span>
         <span class="n">orientations_csv</span>
         <span class="k">if</span> <span class="n">orientations_csv</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
         <span class="k">else</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">preprocess</span><span class="o">.</span><span class="n">orientations_csv</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">preprocess</span><span class="o">.</span><span class="n">orientations_csv</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
     <span class="p">)</span>
+    <span class="k">if</span> <span class="n">effective_orientations_csv</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">datasets</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;orientations_csv is not supported with inputs.multi_dataset: the CSV&#39;s &quot;</span>
+            <span class="s2">&quot;&#39;Rotation Index&#39; column is ambiguous between file-local and pooled indices&quot;</span>
+        <span class="p">)</span>
     <span class="k">if</span> <span class="n">plot_thickness</span> <span class="ow">or</span> <span class="n">cfg</span><span class="o">.</span><span class="n">preprocess</span><span class="o">.</span><span class="n">thickness</span><span class="o">.</span><span class="n">plot</span><span class="p">:</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.app.loggers.plotting</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThicknessPlotLogger</span>
 
@@ -895,26 +1177,73 @@
             <span class="k">else</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;thickness_optim&quot;</span>
         <span class="p">)</span>
         <span class="n">logger</span> <span class="o">=</span> <span class="n">MultiLogger</span><span class="p">((</span><span class="n">logger</span><span class="p">,</span> <span class="n">ThicknessPlotLogger</span><span class="p">(</span><span class="n">effective_plot_dir</span><span class="p">)))</span>
-    <span class="n">steps</span> <span class="o">=</span> <span class="n">_recipe_steps</span><span class="p">(</span>
-        <span class="n">cfg</span><span class="p">,</span>
-        <span class="n">setup</span><span class="o">.</span><span class="n">refinement</span><span class="p">,</span>
-        <span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">,</span>
-        <span class="n">logger</span><span class="p">,</span>
-        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
-        <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
-        <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
-        <span class="n">orientations_csv</span><span class="o">=</span><span class="n">effective_orientations_csv</span><span class="p">,</span>
+
+    <span class="n">structure_lock</span> <span class="o">=</span> <span class="n">input_lock_for</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">ref</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
+    <span class="n">prepared_plans</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Plan</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">lock_sha256s</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">ref</span><span class="p">,</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">refs</span><span class="p">,</span> <span class="n">datasets</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">steps</span> <span class="o">=</span> <span class="n">_recipe_steps</span><span class="p">(</span>
+            <span class="n">cfg</span><span class="p">,</span>
+            <span class="n">refinement_setup</span><span class="p">,</span>
+            <span class="n">dataset</span><span class="o">.</span><span class="n">integration</span><span class="p">,</span>
+            <span class="n">logger</span><span class="p">,</span>
+            <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+            <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
+            <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
+            <span class="n">orientations_csv</span><span class="o">=</span><span class="n">effective_orientations_csv</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">prepared</span><span class="p">,</span> <span class="n">lock_sha256</span> <span class="o">=</span> <span class="n">_prepare</span><span class="p">(</span>
+            <span class="n">dataset</span><span class="o">.</span><span class="n">plan</span><span class="p">,</span>
+            <span class="n">steps</span><span class="p">,</span>
+            <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
+            <span class="n">dataset_ref</span><span class="o">=</span><span class="n">ref</span><span class="p">,</span>
+            <span class="n">ignored_rotations</span><span class="o">=</span><span class="n">dataset</span><span class="o">.</span><span class="n">ignored_rotations</span><span class="p">,</span>
+            <span class="n">authoritative_cell</span><span class="o">=</span><span class="n">authoritative_cell</span><span class="p">,</span>
+            <span class="n">structure_lock</span><span class="o">=</span><span class="n">structure_lock</span><span class="p">,</span>
+            <span class="n">dataset_lock</span><span class="o">=</span><span class="n">input_lock_for</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">ref</span><span class="p">,</span> <span class="n">ref</span><span class="o">=</span><span class="n">ref</span><span class="p">),</span>
+            <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
+            <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
+            <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">prepared_plans</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
+        <span class="n">lock_sha256s</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lock_sha256</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">checkpoint</span><span class="p">:</span>
+        <span class="n">_prune_stale_dataset_checkpoints</span><span class="p">(</span><span class="n">_reproducibility_dir</span><span class="p">(</span><span class="n">root</span><span class="p">),</span> <span class="n">refs</span><span class="p">)</span>
+
+    <span class="n">offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">:</span>
+        <span class="n">offsets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span>
+        <span class="n">offset</span> <span class="o">+=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">n_rotations</span>
+    <span class="n">pooled</span> <span class="o">=</span> <span class="n">pool</span><span class="p">(</span><span class="n">prepared_plans</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="n">offsets</span><span class="p">)</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">validation_mask</span><span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">split</span><span class="p">)</span>
+    <span class="n">validation_rotation_indices</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+        <span class="n">op</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">rotation_index</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">pooled</span><span class="o">.</span><span class="n">orientations</span> <span class="k">if</span> <span class="n">mask</span><span class="p">[</span><span class="n">op</span><span class="o">.</span><span class="n">pattern</span><span class="o">.</span><span class="n">rotation_index</span><span class="p">]</span>
     <span class="p">)</span>
-    <span class="n">prepared</span> <span class="o">=</span> <span class="n">_prepare</span><span class="p">(</span>
-        <span class="n">setup</span><span class="o">.</span><span class="n">plans</span><span class="o">.</span><span class="n">combined</span><span class="p">,</span>
-        <span class="n">steps</span><span class="p">,</span>
-        <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
-        <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
-        <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">,</span>
-        <span class="n">refresh</span><span class="o">=</span><span class="n">refresh</span><span class="p">,</span>
-        <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+    <span class="n">integrations</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">integration</span> <span class="k">for</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">)</span>
+    <span class="n">plan_lock_sha256s</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">sha</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">sha</span> <span class="ow">in</span> <span class="n">lock_sha256s</span><span class="p">)</span>
+        <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">sha</span> <span class="k">for</span> <span class="n">sha</span> <span class="ow">in</span> <span class="n">lock_sha256s</span> <span class="k">if</span> <span class="n">sha</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>
     <span class="p">)</span>
-    <span class="k">return</span> <span class="n">setup</span><span class="o">.</span><span class="n">refinement</span><span class="p">,</span> <span class="n">prepared</span>
+    <span class="k">return</span> <span class="n">refinement_setup</span><span class="p">,</span> <span class="n">integrations</span><span class="p">,</span> <span class="n">pooled</span><span class="p">,</span> <span class="n">validation_rotation_indices</span><span class="p">,</span> <span class="n">plan_lock_sha256s</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_prune_stale_dataset_checkpoints</span><span class="p">(</span><span class="n">reproducibility_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">refs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Unlink ``plan.&lt;stem&gt;.{npz,lock}`` files whose stem left ``inputs.exp_data``.</span>
+
+<span class="sd">    A dataset removed (or renamed) in config would otherwise leave a live-looking checkpoint pair</span>
+<span class="sd">    behind. A bare legacy ``plan.npz``/``plan.lock`` has no stem segment, matches neither glob</span>
+<span class="sd">    below, and lingers harmlessly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="p">{</span><span class="n">dataset_checkpoint_stem</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span> <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">refs</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">suffix</span> <span class="ow">in</span> <span class="p">((</span><span class="s2">&quot;plan.*.npz&quot;</span><span class="p">,</span> <span class="s2">&quot;.npz&quot;</span><span class="p">),</span> <span class="p">(</span><span class="s2">&quot;plan.*.lock&quot;</span><span class="p">,</span> <span class="s2">&quot;.lock&quot;</span><span class="p">)):</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">reproducibility_dir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">pattern</span><span class="p">):</span>
+            <span class="n">stem</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="s2">&quot;plan.&quot;</span><span class="p">)</span> <span class="p">:</span> <span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">suffix</span><span class="p">)]</span>
+            <span class="k">if</span> <span class="n">stem</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keep</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+                <span class="n">_log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;pruned stale dataset checkpoint file </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_recipe_steps</span><span class="p">(</span>
@@ -974,6 +1303,8 @@
             <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
             <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>  <span class="c1"># per-rotation fit progress (the run&#39;s long phase)</span>
             <span class="n">absorption</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_absorption</span><span class="p">(),</span>
+            <span class="n">scores</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">to_scores</span><span class="p">(),</span>
+            <span class="n">residual</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">residual</span><span class="p">,</span>
         <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">thickness_fit</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">PlanStep</span><span class="p">:</span>
@@ -985,6 +1316,8 @@
             <span class="n">max_batch</span><span class="o">=</span><span class="n">max_batch</span><span class="p">,</span>
             <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>  <span class="c1"># per-rotation thickness-fit progress (the memory-heavy tail phase)</span>
             <span class="n">absorption</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_absorption</span><span class="p">(),</span>
+            <span class="n">scores</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">to_scores</span><span class="p">(),</span>
+            <span class="n">residual</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">loss_metrics</span><span class="o">.</span><span class="n">residual</span><span class="p">,</span>
         <span class="p">)</span>
 
     <span class="n">steps</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PlanStep</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1043,14 +1376,28 @@
     <span class="o">*</span><span class="p">,</span>
     <span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">cfg</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">,</span>
+    <span class="n">dataset_ref</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">ignored_rotations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">authoritative_cell</span><span class="p">:</span> <span class="n">CellParameters</span><span class="p">,</span>
+    <span class="n">structure_lock</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
+    <span class="n">dataset_lock</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
     <span class="n">checkpoint</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
     <span class="n">refresh</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
     <span class="n">logger</span><span class="p">:</span> <span class="n">Logger</span> <span class="o">=</span> <span class="n">NULL_LOGGER</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Plan</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the preprocess ``steps`` on ``base``, reusing/resuming a valid checkpoint if present.</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Plan</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the preprocess ``steps`` on one dataset&#39;s ``base``, reusing/resuming its checkpoint.</span>
 
+<span class="sd">    The checkpoint pair is this dataset&#39;s own ``plan.&lt;stem&gt;.npz`` + ``plan.&lt;stem&gt;.lock``</span>
+<span class="sd">    (:func:`_plan_npz_name`), and the lock identity is per-dataset (``structure_lock`` +</span>
+<span class="sd">    ``dataset_lock`` input bytes, the authoritative PETS cell, the dataset-scoped config digest,</span>
+<span class="sd">    the file-local ``ignored_rotations``) -- see :class:`~diffBloch.config.PreprocessLock`.</span>
 <span class="sd">    ``logger`` streams a per-step plan summary as the recipe runs (see :func:`pipeline`); it fires</span>
 <span class="sd">    only when steps actually execute (a fresh or resumed run, not a full-reuse load).</span>
+
+<span class="sd">    Returns the settled plan plus the sha256 of the lock this run *verified or wrote* -- the</span>
+<span class="sd">    provenance ``refinement.lock`` may chain to. ``None`` when the run didn&#39;t checkpoint</span>
+<span class="sd">    (``checkpoint=False`` or an opaque recipe): a lock file merely *present* on disk from some</span>
+<span class="sd">    earlier run is not this run&#39;s provenance, and must not be chained to.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Compile any `fork` away against the base grid (invariant across every step), so the recipe the</span>
     <span class="c1"># lock keys on is a flat, fork-free step list -- the fork&#39;s shape is static by construction, so</span>
@@ -1060,23 +1407,33 @@
     <span class="c1"># A recipe with an unrecorded (opaque) step cannot be safely identified -&gt; never checkpoint it.</span>
     <span class="n">can_checkpoint</span> <span class="o">=</span> <span class="n">checkpoint</span> <span class="ow">and</span> <span class="n">OPAQUE</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">records</span>
     <span class="n">recipe</span> <span class="o">=</span> <span class="p">[</span><span class="n">RecipeStep</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">r</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">r</span><span class="o">.</span><span class="n">params</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">records</span><span class="p">]</span>
-    <span class="n">npz</span><span class="p">,</span> <span class="n">lock_path</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="n">_PLAN_NPZ</span><span class="p">,</span> <span class="n">root</span> <span class="o">/</span> <span class="n">_PLAN_LOCK</span>
+    <span class="n">reproducibility_dir</span> <span class="o">=</span> <span class="n">_reproducibility_dir</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
+    <span class="n">npz</span> <span class="o">=</span> <span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="n">_plan_npz_name</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span>
+    <span class="n">lock_path</span> <span class="o">=</span> <span class="n">reproducibility_dir</span> <span class="o">/</span> <span class="n">_plan_lock_name</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">can_checkpoint</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">refresh</span> <span class="ow">and</span> <span class="n">lock_path</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">npz</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-        <span class="n">lock</span> <span class="o">=</span> <span class="n">read_preprocess_lock</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
-        <span class="n">status</span> <span class="o">=</span> <span class="n">preprocess_lock_status</span><span class="p">(</span>
-            <span class="n">lock</span><span class="p">,</span>
-            <span class="n">experiment_lock_sha256</span><span class="o">=</span><span class="n">sha256_file</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;experiment.lock&quot;</span><span class="p">),</span>
-            <span class="n">config_digest</span><span class="o">=</span><span class="n">config_digest</span><span class="p">(</span><span class="n">cfg</span><span class="p">),</span>
-            <span class="n">code_version</span><span class="o">=</span><span class="n">code_version</span><span class="p">(),</span>
-            <span class="n">recipe</span><span class="o">=</span><span class="n">recipe</span><span class="p">,</span>
-            <span class="n">plan_path</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span>
-            <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
+        <span class="n">lock</span> <span class="o">=</span> <span class="n">_read_lock_or_none</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;stale&quot;</span>
+            <span class="k">if</span> <span class="n">lock</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="n">preprocess_lock_status</span><span class="p">(</span>
+                <span class="n">lock</span><span class="p">,</span>
+                <span class="n">structure</span><span class="o">=</span><span class="n">structure_lock</span><span class="p">,</span>
+                <span class="n">experimental_data</span><span class="o">=</span><span class="n">dataset_lock</span><span class="p">,</span>
+                <span class="n">authoritative_cell</span><span class="o">=</span><span class="n">authoritative_cell</span><span class="p">,</span>
+                <span class="n">ignored_rotations</span><span class="o">=</span><span class="n">ignored_rotations</span><span class="p">,</span>
+                <span class="n">config_digest</span><span class="o">=</span><span class="n">dataset_config_digest</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">exp_data</span><span class="o">=</span><span class="n">dataset_ref</span><span class="p">),</span>
+                <span class="n">code_version</span><span class="o">=</span><span class="n">code_version</span><span class="p">(),</span>
+                <span class="n">recipe</span><span class="o">=</span><span class="n">recipe</span><span class="p">,</span>
+                <span class="n">plan_path</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span>
+                <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
+            <span class="p">)</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;reuse&quot;</span><span class="p">:</span>
             <span class="n">_log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;loaded preprocess checkpoint (full reuse) from </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">npz</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">read_plan</span><span class="p">(</span><span class="n">npz</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">read_plan</span><span class="p">(</span><span class="n">npz</span><span class="p">),</span> <span class="n">sha256_file</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;resume&quot;</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">lock</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
             <span class="n">snapshot</span> <span class="o">=</span> <span class="n">read_plan</span><span class="p">(</span><span class="n">npz</span><span class="p">)</span>
             <span class="n">k</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">lock</span><span class="o">.</span><span class="n">recipe</span><span class="p">)</span>
             <span class="n">_log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
@@ -1085,13 +1442,51 @@
                 <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">records</span><span class="p">[</span><span class="n">k</span><span class="p">:]],</span>
             <span class="p">)</span>
             <span class="n">result</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span><span class="n">steps</span><span class="p">[</span><span class="n">k</span><span class="p">:],</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)(</span><span class="n">snapshot</span><span class="p">)</span>
-            <span class="n">_write_checkpoint</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">recipe</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span> <span class="n">npz</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span> <span class="n">lock_path</span><span class="o">=</span><span class="n">lock_path</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">result</span>
+            <span class="n">_write_checkpoint</span><span class="p">(</span>
+                <span class="n">result</span><span class="p">,</span>
+                <span class="n">recipe</span><span class="p">,</span>
+                <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
+                <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
+                <span class="n">dataset_ref</span><span class="o">=</span><span class="n">dataset_ref</span><span class="p">,</span>
+                <span class="n">ignored_rotations</span><span class="o">=</span><span class="n">ignored_rotations</span><span class="p">,</span>
+                <span class="n">authoritative_cell</span><span class="o">=</span><span class="n">authoritative_cell</span><span class="p">,</span>
+                <span class="n">structure_lock</span><span class="o">=</span><span class="n">structure_lock</span><span class="p">,</span>
+                <span class="n">dataset_lock</span><span class="o">=</span><span class="n">dataset_lock</span><span class="p">,</span>
+                <span class="n">npz</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span>
+                <span class="n">lock_path</span><span class="o">=</span><span class="n">lock_path</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span><span class="p">,</span> <span class="n">sha256_file</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
 
     <span class="n">result</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span><span class="n">steps</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)(</span><span class="n">base</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">can_checkpoint</span><span class="p">:</span>
-        <span class="n">_write_checkpoint</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">recipe</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span> <span class="n">npz</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span> <span class="n">lock_path</span><span class="o">=</span><span class="n">lock_path</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">result</span>
+        <span class="n">_write_checkpoint</span><span class="p">(</span>
+            <span class="n">result</span><span class="p">,</span>
+            <span class="n">recipe</span><span class="p">,</span>
+            <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
+            <span class="n">dataset_ref</span><span class="o">=</span><span class="n">dataset_ref</span><span class="p">,</span>
+            <span class="n">ignored_rotations</span><span class="o">=</span><span class="n">ignored_rotations</span><span class="p">,</span>
+            <span class="n">authoritative_cell</span><span class="o">=</span><span class="n">authoritative_cell</span><span class="p">,</span>
+            <span class="n">structure_lock</span><span class="o">=</span><span class="n">structure_lock</span><span class="p">,</span>
+            <span class="n">dataset_lock</span><span class="o">=</span><span class="n">dataset_lock</span><span class="p">,</span>
+            <span class="n">npz</span><span class="o">=</span><span class="n">npz</span><span class="p">,</span>
+            <span class="n">lock_path</span><span class="o">=</span><span class="n">lock_path</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span><span class="p">,</span> <span class="n">sha256_file</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span><span class="p">,</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_lock_or_none</span><span class="p">(</span><span class="n">lock_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreprocessLock</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read a checkpoint lock, treating an unparsable one as absent (stale), not an error.</span>
+
+<span class="sd">    A lock that no longer parses (hand-edited, truncated, or written by an incompatible build) means</span>
+<span class="sd">    the checkpoint cannot be trusted -- recompute rather than crash.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">read_preprocess_lock</span><span class="p">(</span><span class="n">lock_path</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span><span class="p">:</span>
+        <span class="n">_log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;checkpoint lock </span><span class="si">%s</span><span class="s2"> did not parse; treating as stale&quot;</span><span class="p">,</span> <span class="n">lock_path</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_write_checkpoint</span><span class="p">(</span>
@@ -1100,14 +1495,22 @@
     <span class="o">*</span><span class="p">,</span>
     <span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">cfg</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">,</span>
+    <span class="n">dataset_ref</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">ignored_rotations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">authoritative_cell</span><span class="p">:</span> <span class="n">CellParameters</span><span class="p">,</span>
+    <span class="n">structure_lock</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
+    <span class="n">dataset_lock</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
     <span class="n">npz</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">lock_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write ``plan.npz`` + regenerate ``plan.lock`` so the lock always describes the npz.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write the dataset&#39;s ``.npz`` + regenerate its lock so the lock always describes the npz.&quot;&quot;&quot;</span>
     <span class="n">write_plan</span><span class="p">(</span><span class="n">plan</span><span class="p">,</span> <span class="n">npz</span><span class="p">)</span>
     <span class="n">lock</span> <span class="o">=</span> <span class="n">PreprocessLock</span><span class="p">(</span>
-        <span class="n">experiment_lock_sha256</span><span class="o">=</span><span class="n">sha256_file</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;experiment.lock&quot;</span><span class="p">),</span>
-        <span class="n">config_digest</span><span class="o">=</span><span class="n">config_digest</span><span class="p">(</span><span class="n">cfg</span><span class="p">),</span>
+        <span class="n">structure</span><span class="o">=</span><span class="n">structure_lock</span><span class="p">,</span>
+        <span class="n">experimental_data</span><span class="o">=</span><span class="n">dataset_lock</span><span class="p">,</span>
+        <span class="n">authoritative_cell</span><span class="o">=</span><span class="n">authoritative_cell</span><span class="p">,</span>
+        <span class="n">ignored_rotations</span><span class="o">=</span><span class="n">ignored_rotations</span><span class="p">,</span>
+        <span class="n">config_digest</span><span class="o">=</span><span class="n">dataset_config_digest</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">exp_data</span><span class="o">=</span><span class="n">dataset_ref</span><span class="p">),</span>
         <span class="n">code_version</span><span class="o">=</span><span class="n">code_version</span><span class="p">(),</span>
         <span class="n">recipe</span><span class="o">=</span><span class="n">recipe</span><span class="p">,</span>
         <span class="n">plan</span><span class="o">=</span><span class="n">artifact_hash_for</span><span class="p">(</span><span class="n">npz</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">),</span>
@@ -1118,10 +1521,10 @@
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
-          
-          
+
+
         </div>
         <div class="bottom-of-page">
           <div class="left-details">
@@ -1129,21 +1532,21 @@
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer no-toc">
-      
-      
-      
+
+
+
     </aside>
   </div>
 </div><script src="../../../_static/documentation_options.js?v=938c9ccc"></script>

@@ -14,10 +14,11 @@ so each dataset's settled ``Plan`` is checkpointed to ``<experiment_dir>/reprodu
 (``plan.<stem>.npz`` + ``plan.<stem>.lock`` per ``inputs.exp_data`` entry, see
 :func:`_reproducibility_dir` and :func:`~diffBloch.config.schema.dataset_checkpoint_stem`) and
 reused when still valid. The lock binds the checkpoint to *per-dataset* axes -- the structure and
-that dataset's input bytes, the dataset-scoped config projection, its file-local ignored rotations,
-the software version, and the *recipe* (the Plan's own provenance) -- so it is reused only when all
-match, and never restaled by changes to *other* datasets in a pooled experiment. The match is a
-longest-prefix over the recipe: an identical recipe is a full **reuse**; a recipe that *appends*
+that dataset's input bytes, the experiment's authoritative PETS cell, the dataset-scoped config
+projection, its file-local ignored rotations, the software version, and the *recipe* (the Plan's
+own provenance) -- so it is reused only when all match, and never restaled by changes to *other*
+datasets in a pooled experiment unless the first dataset's authoritative cell changes. The match is
+a longest-prefix over the recipe: an identical recipe is a full **reuse**; a recipe that *appends*
 steps **resumes** from the snapshot and runs only the suffix (the append-only increment). Any run
 that computes -- fresh, stale-recompute, ``refresh``, or resume -- regenerates the ``.npz`` +
 ``.lock`` pair, so the lock always describes the on-disk checkpoint. With ``inputs.multi_dataset``
@@ -38,6 +39,7 @@ import torch
 from pydantic import ValidationError
 
 from diffBloch.config import (
+    CellParameters,
     ExperimentConfig,
     InputLock,
     PreprocessLock,
@@ -56,6 +58,7 @@ from diffBloch.config import (
     write_refinement_lock,
 )
 from diffBloch.config.schema import dataset_checkpoint_stem
+from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
@@ -703,6 +706,23 @@ def _write_refinement_outputs(
     reciprocal = reciprocal_basis.detach().cpu().numpy()
     reciprocal_lengths = np.linalg.norm(reciprocal, axis=1)
     reciprocal_metric = reciprocal @ reciprocal.T
+    # refinement.cell_parameters is the authoritative cell reciprocal_basis was actually derived
+    # from (PETS's, not necessarily the structure CIF's own). The written header must match it, or
+    # the file would declare a cell inconsistent with the ADP/position convention refined under.
+    if refinement.cell_parameters is not None:
+        cell_tags = (
+            ("_cell_length_a", refinement.cell_parameters[0]),
+            ("_cell_length_b", refinement.cell_parameters[1]),
+            ("_cell_length_c", refinement.cell_parameters[2]),
+            ("_cell_angle_alpha", refinement.cell_parameters[3]),
+            ("_cell_angle_beta", refinement.cell_parameters[4]),
+            ("_cell_angle_gamma", refinement.cell_parameters[5]),
+        )
+        for tag, value in cell_tags:
+            block.set_pair(tag, f"{float(value):.6f}")
+        if block.find_pair("_cell_volume") is not None:
+            authoritative_unit_cell = cell_matrix_from_parameters(refinement.cell_parameters)
+            block.set_pair("_cell_volume", f"{cell_volume(authoritative_unit_cell):.5f}")
     atom_loop = block.find_loop("_atom_site_label").get_loop()
     tags = list(atom_loop.tags)
     label_column = tags.index("_atom_site_label")
@@ -861,6 +881,15 @@ def _preprocess(
     records = _read_experimental_data(root, cfg)
     refs = _exp_data_refs(cfg)
     refinement_setup, datasets = setup_datasets(structure, records, cfg)
+    cell = records[0].cell_parameters
+    authoritative_cell: CellParameters = (
+        float(cell[0]),
+        float(cell[1]),
+        float(cell[2]),
+        float(cell[3]),
+        float(cell[4]),
+        float(cell[5]),
+    )
     effective_orientations_csv = (
         orientations_csv
         if orientations_csv is not None
@@ -902,6 +931,7 @@ def _preprocess(
             cfg=cfg,
             dataset_ref=ref,
             ignored_rotations=dataset.ignored_rotations,
+            authoritative_cell=authoritative_cell,
             structure_lock=structure_lock,
             dataset_lock=input_lock_for(root / ref, ref=ref),
             checkpoint=checkpoint,
@@ -1080,6 +1110,7 @@ def _prepare(
     cfg: ExperimentConfig,
     dataset_ref: str,
     ignored_rotations: tuple[int, ...],
+    authoritative_cell: CellParameters,
     structure_lock: InputLock,
     dataset_lock: InputLock,
     checkpoint: bool,
@@ -1090,10 +1121,10 @@ def _prepare(
 
     The checkpoint pair is this dataset's own ``plan.<stem>.npz`` + ``plan.<stem>.lock``
     (:func:`_plan_npz_name`), and the lock identity is per-dataset (``structure_lock`` +
-    ``dataset_lock`` input bytes, the dataset-scoped config digest, the file-local
-    ``ignored_rotations``) -- see :class:`~diffBloch.config.PreprocessLock`. ``logger`` streams a
-    per-step plan summary as the recipe runs (see :func:`pipeline`); it fires only when steps
-    actually execute (a fresh or resumed run, not a full-reuse load).
+    ``dataset_lock`` input bytes, the authoritative PETS cell, the dataset-scoped config digest,
+    the file-local ``ignored_rotations``) -- see :class:`~diffBloch.config.PreprocessLock`.
+    ``logger`` streams a per-step plan summary as the recipe runs (see :func:`pipeline`); it fires
+    only when steps actually execute (a fresh or resumed run, not a full-reuse load).
 
     Returns the settled plan plus the sha256 of the lock this run *verified or wrote* -- the
     provenance ``refinement.lock`` may chain to. ``None`` when the run didn't checkpoint
@@ -1121,6 +1152,7 @@ def _prepare(
                 lock,
                 structure=structure_lock,
                 experimental_data=dataset_lock,
+                authoritative_cell=authoritative_cell,
                 ignored_rotations=ignored_rotations,
                 config_digest=dataset_config_digest(cfg, exp_data=dataset_ref),
                 code_version=code_version(),
@@ -1149,6 +1181,7 @@ def _prepare(
                 cfg=cfg,
                 dataset_ref=dataset_ref,
                 ignored_rotations=ignored_rotations,
+                authoritative_cell=authoritative_cell,
                 structure_lock=structure_lock,
                 dataset_lock=dataset_lock,
                 npz=npz,
@@ -1165,6 +1198,7 @@ def _prepare(
             cfg=cfg,
             dataset_ref=dataset_ref,
             ignored_rotations=ignored_rotations,
+            authoritative_cell=authoritative_cell,
             structure_lock=structure_lock,
             dataset_lock=dataset_lock,
             npz=npz,
@@ -1195,6 +1229,7 @@ def _write_checkpoint(
     cfg: ExperimentConfig,
     dataset_ref: str,
     ignored_rotations: tuple[int, ...],
+    authoritative_cell: CellParameters,
     structure_lock: InputLock,
     dataset_lock: InputLock,
     npz: Path,
@@ -1205,6 +1240,7 @@ def _write_checkpoint(
     lock = PreprocessLock(
         structure=structure_lock,
         experimental_data=dataset_lock,
+        authoritative_cell=authoritative_cell,
         ignored_rotations=ignored_rotations,
         config_digest=dataset_config_digest(cfg, exp_data=dataset_ref),
         code_version=code_version(),

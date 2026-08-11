@@ -14,8 +14,9 @@
 <meta property="og:image:alt" content="A diffBloch run starts from an experiment directory. The directory contains a small YAML config, a starting crystal structure, reduced experimental diffraction data, and lock/checkpoint artifacts w..." />
 <meta name="description" content="A diffBloch run starts from an experiment directory. The directory contains a small YAML config, a starting crystal structure, reduced experimental diffraction data, and lock/checkpoint artifacts w..." />
 <meta name="twitter:card" content="summary_large_image" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Preprocessing and Plan" href="preprocessing.html"><link rel="prev" title="Architecture" href="architecture.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Preprocessing and Plan" href="preprocessing.html"><link rel="prev" title="Bloch-wave simulation" href="bloch-wave-simulation.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/inputs.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Inputs and experiment directories - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -288,7 +295,7 @@ available.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exp_data.cif_pets</span></code></p></td>
 <td><p>Reduced experimental diffraction data.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reproducibility/experiment.lock</span></code></p></td>
 <td><p>Content identity for the input CIF/PETS files.</p></td>
 </tr>
 </tbody>
@@ -303,16 +310,16 @@ available.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plan.npz</span></code></p></td>
-<td><p>Serialized preprocessed <code class="docutils literal notranslate"><span class="pre">Plan</span></code>.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reproducibility/plan.&lt;stem&gt;.npz</span></code></p></td>
+<td><p>Serialized preprocessed <code class="docutils literal notranslate"><span class="pre">Plan</span></code>, one per <code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> file (<code class="docutils literal notranslate"><span class="pre">&lt;stem&gt;</span></code> is the file’s path with separators as <code class="docutils literal notranslate"><span class="pre">__</span></code> and no <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> suffix).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plan.lock</span></code></p></td>
-<td><p>Provenance lock tying the checkpoint to inputs, config, recipe, code version, and artifact hash.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reproducibility/plan.&lt;stem&gt;.lock</span></code></p></td>
+<td><p>Provenance lock tying that dataset’s checkpoint to its input bytes, authoritative PETS cell, dataset-scoped config, recipe, code version, and artifact hash.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>Bundled binary artifacts such as <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> experimental data and committed <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> checkpoints are
+<p>Bundled binary artifacts such as <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> experimental data and committed plan checkpoints are
 tracked with Git LFS. After cloning, run <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">lfs</span> <span class="pre">pull</span></code> before validating or running checkpointed
 examples so these files are present as real data rather than LFS pointer files.</p>
 </section>
@@ -322,12 +329,37 @@ examples so these files are present as real data rather than LFS pointer files.<
 occupancies, and the space-group symmetry operations. Reading a <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> gives the reduced
 experimental data: the UB matrix, cell parameters, per-rotation goniometer angles, and the observed
 hkl/intensity/sigma triples. Both are parsed into validated records, so a malformed CIF, an unsupported ADP type, or a unit mismatch fails immediately at read time rather than surfacing later as a silently wrong simulation.</p>
+<p>PETS2’s apparent mosaicity is read from <code class="docutils literal notranslate"><span class="pre">_diffrn_measurement_details</span></code> in degrees. Set
+<code class="docutils literal notranslate"><span class="pre">blochwave.mosaicity:</span> <span class="pre">true</span></code> to use it in the simulated rocking-curve geometry, or <code class="docutils literal notranslate"><span class="pre">false</span></code> to disable
+mosaic averaging.</p>
 <p>The public records are:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">StructureRecord</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">ObservationRecord</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">AdpRecord</span></code></p></li>
 </ul>
+</section>
+<section id="unit-cell-authority-pets-overrides-the-structure-cif">
+<h2>Unit-cell authority: PETS overrides the structure CIF<a class="headerlink" href="#unit-cell-authority-pets-overrides-the-structure-cif" title="Link to this heading">¶</a></h2>
+<p>The structure CIF and the <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file each carry their own unit cell, and they are not always
+identical. diffBloch uses <strong>PETS’s cell, not the CIF’s</strong>, for every piece of simulation geometry: the
+structure-factor grid, the reciprocal basis, the cell volume, the ADP <code class="docutils literal notranslate"><span class="pre">U*</span></code>-frame conversion, and the
+beam geometry derived from that grid. The structure CIF still supplies all atomic content —
+fractional positions, atom types, occupancies, ADPs, and symmetry operators — unchanged; those
+fractions are simply interpreted against PETS’s cell instead of the CIF’s own.</p>
+<p>The CIF’s cell is checked against PETS’s on every load:</p>
+<ul class="simple">
+<li><p><strong>&gt; 1% relative difference</strong> on any of <code class="docutils literal notranslate"><span class="pre">a,</span> <span class="pre">b,</span> <span class="pre">c,</span> <span class="pre">alpha,</span> <span class="pre">beta,</span> <span class="pre">gamma</span></code> logs a warning, stating
+explicitly that the PETS value overrides the CIF value. Ordinary refinement/measurement drift
+stays well under this.</p></li>
+<li><p><strong>&gt; 5% relative difference</strong> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> and stops — listing every offending parameter,
+both values, and the percentage difference — rather than silently deriving the whole simulation’s
+geometry from a mismatch that large.</p></li>
+</ul>
+<p>Under <code class="docutils literal notranslate"><span class="pre">inputs.multi_dataset</span></code>, the first <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file’s cell is the shared authoritative cell.
+The CIF is checked against it, and the same two thresholds apply between combined <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> files
+too (each further file’s cell checked against the first file’s); see
+<a class="reference internal" href="#combining-multiple-datasets">Combining multiple datasets</a> below.</p>
 </section>
 <section id="api-example">
 <h2>API example<a class="headerlink" href="#api-example" title="Link to this heading">¶</a></h2>
@@ -337,7 +369,7 @@ hkl/intensity/sigma triples. Both are parsed into validated records, so a malfor
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_experiment</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
 
-<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint&quot;</span><span class="p">)</span>
+<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/Colmey_et_al_2026/data/quartz-no-abs&quot;</span><span class="p">)</span>
 <span class="n">cfg</span><span class="p">,</span> <span class="n">experiment_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
 
 <span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
@@ -349,7 +381,7 @@ hkl/intensity/sigma triples. Both are parsed into validated records, so a malfor
 </pre></div>
 </div>
 <p>Validate a config from the CLI before launching a longer job:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>validate<span class="w"> </span>examples/experiments/quartz-checkpoint/experiment.yaml
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>validate<span class="w"> </span>examples/Colmey_et_al_2026/data/quartz-no-abs/experiment.yaml
 </pre></div>
 </div>
 </section>
@@ -365,26 +397,96 @@ rotation order:</p>
 inference, or structure refinement. Filtering occurs before the train/validation split, and does
 not renumber later source rotations when deciding split membership. The selection is part of the recorded experiment config and invalidates an incompatible
 preprocess checkpoint.</p>
-<p>The two fitting stages in the standard preprocess command can be selected independently:</p>
+<p>The two optimization stages in the standard preprocess command can be selected independently:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">preprocess</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">optimize_orientation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="w">  </span><span class="nt">optimize_thickness</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 </pre></div>
 </div>
 </section>
-<section id="generated-refinement-artifacts">
-<h2>Generated refinement artifacts<a class="headerlink" href="#generated-refinement-artifacts" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">refine</span></code> writes <code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code>, <code class="docutils literal notranslate"><span class="pre">refined_parameters.npz</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">refinement_summary.json</span></code> into the experiment directory and prints their absolute paths. The CIF
-contains the best epoch’s constrained structural values; the NPZ preserves its exact raw optimizer
-parameters.</p>
+<section id="combining-multiple-datasets">
+<h2>Combining multiple datasets<a class="headerlink" href="#combining-multiple-datasets" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> is a single path by default. Set <code class="docutils literal notranslate"><span class="pre">inputs.multi_dataset:</span> <span class="pre">true</span></code> and give
+<code class="docutils literal notranslate"><span class="pre">exp_data</span></code> a list of two or more distinct paths to combine rotations from several <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> files
+into one experiment – e.g. a damage series, or repeat measurements of the same crystal:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">inputs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">structure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enantiomer_1.cif</span>
+<span class="w">  </span><span class="nt">multi_dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">exp_data</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">undamaged/frame_1.cif_pets</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">undamaged/frame_2.cif_pets</span>
+<span class="nt">refinement</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">thickness_nn</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">   </span><span class="c1"># defaults on; unsupported for pooled experiments (see limitations below)</span>
+</pre></div>
+</div>
+<p><strong>Each dataset is preprocessed and checkpointed on its own.</strong> Every file runs the recipe with its
+own rocking-curve integration geometry – datasets recorded with <em>different precession angles can
+be mixed</em> – and settles into its own checkpoint pair,
+<code class="docutils literal notranslate"><span class="pre">reproducibility/plan.&lt;stem&gt;.npz</span></code> + <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.lock</span></code>, named after the file
+(<code class="docutils literal notranslate"><span class="pre">undamaged/frame_1.cif_pets</span></code> becomes <code class="docutils literal notranslate"><span class="pre">plan.undamaged__frame_1.npz</span></code>). Checkpoint identity follows
+the file, not its list position: adding, removing, or reordering <code class="docutils literal notranslate"><span class="pre">exp_data</span></code> entries never
+recomputes another dataset’s preprocessing – appending frame 5 of a damage series reuses frames
+1-4’s checkpoints untouched. See <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for what each per-dataset
+lock verifies.</p>
+<p>Each file also keeps its own UB matrix/cell for orientation derivation and its own
+mean-inner-potential correction. The shared structure-factor grid and ADP metric come from the
+first file’s authoritative PETS cell; every per-dataset plan lock records that cell, so changing the
+anchor file’s cell restales every pooled checkpoint. The files’ wavelength-derived beam energies
+must snap to the same accelerating voltage: the Bloch engine solves the whole pooled experiment at
+one energy, so mixing e.g. a 120 kV and a 200 kV dataset is rejected with an error rather than
+silently mis-scored.</p>
+<p>Just before refinement the settled per-dataset plans are pooled in memory (never re-checkpointed):
+rotations concatenate file-by-file with a running offset, so <code class="docutils literal notranslate"><span class="pre">rotation_index</span></code> stays globally unique
+across the combined set (the first file’s rotations are <code class="docutils literal notranslate"><span class="pre">0..N-1</span></code>, the second file’s are
+<code class="docutils literal notranslate"><span class="pre">N..N+M-1</span></code>, and so on) – <code class="docutils literal notranslate"><span class="pre">ignore_orientations</span></code> and the train/validation split both key off this
+combined index, and ignoring a rotation leaves a gap rather than renumbering later frames.</p>
+<p>Pooled files must also describe the same crystal: the structure CIF and each further file’s
+recorded cell are checked against the first file’s PETS cell (log a warning past 1% relative
+difference on any cell parameter – ordinary damage-series drift stays under this – raise past
+5%, listing every offending parameter).</p>
+<p>Two current limitations, each rejected with a clear error rather than silently mishandled:
+<code class="docutils literal notranslate"><span class="pre">refinement.thickness_nn</span></code> (the network keys only on each rotation’s tilt angle, so it cannot
+represent per-dataset thickness differences – it defaults <strong>on</strong>, so a pooled config must set
+<code class="docutils literal notranslate"><span class="pre">refinement.thickness_nn.enabled:</span> <span class="pre">false</span></code> explicitly or fail at config load, before any compute)
+and <code class="docutils literal notranslate"><span class="pre">--orientations-csv</span></code> import (its rotation-index column predates pooling). Listing the same
+file twice – or two paths that would collide on one checkpoint name – is rejected at config
+validation, since a duplicated dataset would double-weight its reflections in the refinement.
+<code class="docutils literal notranslate"><span class="pre">multi_dataset</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>, and a single <code class="docutils literal notranslate"><span class="pre">exp_data</span></code> path is simply the one-dataset case
+of the same flow.</p>
+</section>
+<section id="outputs">
+<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading">¶</a></h2>
+<p>An experiment directory accumulates generated files as each command runs, alongside the inputs
+above:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>experiment.yaml
+structure.cif
+exp_data.cif_pets
+refined_structure.cif      # written by `run refine`
+refinement_report.txt      # written by `run refine`
+thickness_optim/           # written by preprocess.thickness.plot / --plot-thickness
+reproducibility/
+  experiment.lock
+  plan.&lt;stem&gt;.npz          # written by `run preprocess` / `run refine`, one per exp_data file
+  plan.&lt;stem&gt;.lock         # written by `run preprocess` / `run refine`, one per exp_data file
+  refined_parameters.npz   # written by `run refine`
+  refined_components.npz   # written by `run refine`, only when components are composed
+  refinement.lock          # written by `run refine`
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code> contains the best epoch’s constrained structural values; the human-facing
+summary lives in <code class="docutils literal notranslate"><span class="pre">refinement_report.txt</span></code> (best epoch, which objective selected it, HKL counts). The
+raw <code class="docutils literal notranslate"><span class="pre">.npz</span></code> snapshots and every lock live under <code class="docutils literal notranslate"><span class="pre">reproducibility/</span></code>, since nobody reads them directly
+– see <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for what each lock verifies. <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">refine</span></code> prints the
+absolute path of every file it writes. See <a class="reference internal" href="refinement.html#refinement-outputs"><span class="std std-ref">Refinement</span></a> for the
+full breakdown.</p>
 </section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="preprocessing.html">
               <div class="page-info">
@@ -395,15 +497,15 @@ parameters.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="architecture.html">
+          <a class="prev-page" href="bloch-wave-simulation.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
-                <div class="title">Architecture</div>
-                
+
+                <div class="title">Bloch-wave simulation</div>
+
               </div>
             </a>
         </div>
@@ -413,20 +515,20 @@ parameters.</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -439,9 +541,11 @@ parameters.</p>
 <li><a class="reference internal" href="#">Inputs and experiment directories</a><ul>
 <li><a class="reference internal" href="#required-inputs">Required inputs</a></li>
 <li><a class="reference internal" href="#reading-the-structure-and-the-experimental-data">Reading the structure and the experimental data</a></li>
+<li><a class="reference internal" href="#unit-cell-authority-pets-overrides-the-structure-cif">Unit-cell authority: PETS overrides the structure CIF</a></li>
 <li><a class="reference internal" href="#api-example">API example</a></li>
 <li><a class="reference internal" href="#excluding-rotations">Excluding rotations</a></li>
-<li><a class="reference internal" href="#generated-refinement-artifacts">Generated refinement artifacts</a></li>
+<li><a class="reference internal" href="#combining-multiple-datasets">Combining multiple datasets</a></li>
+<li><a class="reference internal" href="#outputs">Outputs</a></li>
 </ul>
 </li>
 </ul>
@@ -449,8 +553,8 @@ parameters.</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

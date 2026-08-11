@@ -7,15 +7,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/hyperparameter-selection.html" />
 <meta property="og:site_name" content="diffBloch" />
-<meta property="og:description" content="Bloch-wave calculations use a finite subset of an infinite reciprocal lattice and a finite number of samples across each rocking curve. Too few beams or samples can change the calculated intensitie..." />
+<meta property="og:description" content="Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_hyperparameter-selection_7409ecd9.png" />
-<meta property="og:image:alt" content="Bloch-wave calculations use a finite subset of an infinite reciprocal lattice and a finite number of samples across each rocking curve. Too few beams or samples can change the calculated intensitie..." />
-<meta name="description" content="Bloch-wave calculations use a finite subset of an infinite reciprocal lattice and a finite number of samples across each rocking curve. Too few beams or samples can change the calculated intensitie..." />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_hyperparameter-selection_a97b8002.png" />
+<meta property="og:image:alt" content="Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined..." />
+<meta name="description" content="Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined..." />
 <meta name="twitter:card" content="summary_large_image" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Reproducibility and checkpoints" href="reproducibility.html"><link rel="prev" title="Preprocessing and Plan" href="preprocessing.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Reproducibility and checkpoints" href="reproducibility.html"><link rel="prev" title="Convergence testing" href="convergence-testing.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/hyperparameter-selection.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Hyperparameter selection - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -266,107 +273,468 @@
         <article role="main" id="furo-main-content">
           <section id="hyperparameter-selection">
 <h1>Hyperparameter selection<a class="headerlink" href="#hyperparameter-selection" title="Link to this heading">¶</a></h1>
-<p>Bloch-wave calculations use a finite subset of an infinite reciprocal lattice and a finite number
-of samples across each rocking curve. Too few beams or samples can change the calculated
-intensities; too many increase the cost without improving the result. The required values depend on
-the material, orientation, and thickness.</p>
-<section id="convergence">
-<h2>Convergence<a class="headerlink" href="#convergence" title="Link to this heading">¶</a></h2>
-<p>A calculation is converged when increasing its numerical resolution produces little to no change in the
-simulated intensities. This is different from agreement with experiment: convergence compares two
-simulations, while refinement compares simulation with measurement. A converged calculation can
-still disagree with experiment because the structure or experimental metadata is wrong.</p>
-<p>The main numerical controls are:</p>
+<p>Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined by structural refinement.</p>
+<p>These choices are recorded in <code class="docutils literal notranslate"><span class="pre">experiment.yaml</span></code>. diffBloch keeps this file short by supplying
+defaults for common settings and automatically deriving quantities already defined by the input
+data. Importantly, values specified in the <code class="docutils literal notranslate"><span class="pre">experiment.yaml</span></code> will override defaults.</p>
+<p>This page lists every config, its default, and what it controls. For guidance in selecting appropriate <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and <code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code> specifically, see <a class="reference internal" href="convergence-testing.html"><span class="std std-doc">Convergence testing</span></a>.</p>
+<section id="what-is-not-config-auto-filled-from-cif-pets">
+<h2>What is <em>not</em> config: auto-filled from CIF/PETS<a class="headerlink" href="#what-is-not-config-auto-filled-from-cif-pets" title="Link to this heading">¶</a></h2>
+<p>Some values that other refinement packages expose as settings are deliberately <strong>not</strong> config
+fields in diffBloch — they are read from the structure <code class="docutils literal notranslate"><span class="pre">.cif</span></code> or <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file at load time, so
+they cannot silently drift from the data they describe:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
-<tr class="row-odd"><th class="head"><p>Control</p></th>
-<th class="head"><p>What it changes</p></th>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>Source</p></th>
+<th class="head"><p>Notes</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">g_max</span></code></p></td>
-<td><p>Maximum reciprocal-vector length of beams included in the Bloch-wave simulation.</p></td>
+<tr class="row-even"><td><p>Electron energy / wavelength</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> wavelength</p></td>
+<td><p>Converted to energy and snapped onto the nearest standard TEM voltage when close (<code class="docutils literal notranslate"><span class="pre">snap_to_standard_energy</span></code>). PETS records wavelength to limited precision, so this recovers the operator-selected voltage exactly.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sg_max</span></code></p></td>
-<td><p>Maximum excitation-error magnitude for a beam to enter the simulation at a sampled tilt.</p></td>
+<tr class="row-odd"><td><p>Unit cell (<code class="docutils literal notranslate"><span class="pre">a,</span> <span class="pre">b,</span> <span class="pre">c,</span> <span class="pre">α,</span> <span class="pre">β,</span> <span class="pre">γ</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code>, checked against <code class="docutils literal notranslate"><span class="pre">.cif</span></code></p></td>
+<td><p>PETS’s cell is authoritative for all simulation geometry; the structure CIF’s own cell is only a consistency check (logs a warning past 1%, raises past 5%). See <a class="reference internal" href="inputs.html#unit-cell-authority-pets-overrides-the-structure-cif"><span class="std std-ref">Inputs</span></a>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code></p></td>
-<td><p>Number of tilt samples used to integrate each rocking curve.</p></td>
+<tr class="row-even"><td><p>UB orientation matrix</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code>, per rotation</p></td>
+<td><p>Each rotation’s own PETS UB seeds its starting orientation, later refined by <code class="docutils literal notranslate"><span class="pre">preprocess.orientation</span></code> (below) if enabled.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Integration semiangle</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> precession angle</p></td>
+<td><p>The tilt half-width, read per file; under <code class="docutils literal notranslate"><span class="pre">inputs.multi_dataset</span></code> each dataset’s recipe uses its own (precession angles may differ between files).</p></td>
+</tr>
+<tr class="row-even"><td><p>Apparent mosaicity (Gaussian σ)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> <code class="docutils literal notranslate"><span class="pre">_diffrn_measurement_details</span></code></p></td>
+<td><p>Only read when <code class="docutils literal notranslate"><span class="pre">blochwave.mosaicity:</span> <span class="pre">true</span></code>; missing from the file then raises rather than defaulting silently.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Atomic positions, ADPs, occupancies, symmetry ops</p></td>
+<td><p>structure <code class="docutils literal notranslate"><span class="pre">.cif</span></code></p></td>
+<td><p>Unaffected by PETS’s cell override — fractional coordinates are simply reinterpreted against PETS’s metric.</p></td>
+</tr>
+<tr class="row-even"><td><p>Structure-factor support radius</p></td>
+<td><p>derived, <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">blochwave.g_max</span></code></p></td>
+<td><p>Not independently configurable: a beam set bounded by <code class="docutils literal notranslate"><span class="pre">|g|</span> <span class="pre">&lt;=</span> <span class="pre">g_max</span></code> produces <code class="docutils literal notranslate"><span class="pre">F(g</span> <span class="pre">-</span> <span class="pre">h)</span></code> terms reaching <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">g_max</span></code>, so a separate support setting could silently contradict the solve cutoff.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>Increasing <code class="docutils literal notranslate"><span class="pre">g_max</span></code> or <code class="docutils literal notranslate"><span class="pre">sg_max</span></code> increases the number of beams <span class="math notranslate nohighlight">\(N\)</span>, with simulation cost scaling
-approximately as <span class="math notranslate nohighlight">\(N^3\)</span> (the propagator diagonalizes or exponentiates the <span class="math notranslate nohighlight">\(N \times N\)</span>
-structure matrix once per orientation/thickness). Cost scales approximately linearly with
-<code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code>.</p>
 </section>
-<section id="convergence-testing-in-diffbloch">
-<h2>Convergence testing in diffBloch<a class="headerlink" href="#convergence-testing-in-diffbloch" title="Link to this heading">¶</a></h2>
-<p>For each control, diffBloch increases the value by a chosen step, rebuilds the simulation, and
-compares consecutive calculated intensity sets. The sweep stops when their R-factor falls below
-<code class="docutils literal notranslate"><span class="pre">r_factor_threshold</span></code>; failure to reach the threshold within <code class="docutils literal notranslate"><span class="pre">max_iterations</span></code> raises an error.</p>
-<p>Convergence testing sweeps <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and <code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code>. It should include
-representative experimental orientations because reciprocal-space density varies through a tilt
-series.</p>
-</section>
-<section id="api-example">
-<h2>API example<a class="headerlink" href="#api-example" title="Link to this heading">¶</a></h2>
-<p>Convergence testing is an optional preprocessing step, so its settings are explicit Python values
-rather than fields in <code class="docutils literal notranslate"><span class="pre">experiment.yaml</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_experiment</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">ConvergenceTest</span><span class="p">,</span>
-    <span class="n">ConvergenceTolerance</span><span class="p">,</span>
-    <span class="n">build_orientation_plans</span><span class="p">,</span>
-    <span class="n">converge_numerics</span><span class="p">,</span>
-    <span class="n">from_experiment</span><span class="p">,</span>
-    <span class="n">select_beams</span><span class="p">,</span>
-<span class="p">)</span>
-
-<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz&quot;</span><span class="p">)</span>
-<span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-<span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
-<span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
-<span class="n">setup</span> <span class="o">=</span> <span class="n">from_experiment</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">experimental_data</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
-<span class="n">plan</span> <span class="o">=</span> <span class="n">build_orientation_plans</span><span class="p">()(</span>
-    <span class="n">select_beams</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_beam_selection</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">))(</span><span class="n">setup</span><span class="o">.</span><span class="n">plans</span><span class="o">.</span><span class="n">combined</span><span class="p">)</span>
-<span class="p">)</span>
-
-<span class="n">test</span> <span class="o">=</span> <span class="n">ConvergenceTest</span><span class="p">(</span>
-    <span class="n">g_max_step</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
-    <span class="n">sg_max_step</span><span class="o">=</span><span class="mf">0.005</span><span class="p">,</span>
-    <span class="n">tilt_steps_step</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-    <span class="n">num_passes</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="n">tolerance</span> <span class="o">=</span> <span class="n">ConvergenceTolerance</span><span class="p">(</span>
-    <span class="n">r_factor_threshold</span><span class="o">=</span><span class="mf">0.005</span><span class="p">,</span>
-    <span class="n">max_iterations</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
-<span class="p">)</span>
-
-<span class="n">converged_plan</span> <span class="o">=</span> <span class="n">converge_numerics</span><span class="p">(</span>
-    <span class="n">test</span><span class="p">,</span>
-    <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_rocking_curve</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">),</span>
-    <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_policy</span><span class="p">(),</span>
-    <span class="n">setup</span><span class="o">.</span><span class="n">refinement</span><span class="p">,</span>
-    <span class="n">tolerance</span><span class="p">,</span>
-<span class="p">)(</span><span class="n">plan</span><span class="p">)</span>
-</pre></div>
+<section id="sample">
+<h2><code class="docutils literal notranslate"><span class="pre">sample</span></code><a class="headerlink" href="#sample" title="Link to this heading">¶</a></h2>
+<p>Fixed sample properties (<code class="docutils literal notranslate"><span class="pre">diffBloch.config.schema.SampleConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">thicknesses</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(820.0,)</span></code></p></td>
+<td><p>Seed specimen thickness in Å, one shared value for every rotation (and every dataset under <code class="docutils literal notranslate"><span class="pre">inputs.multi_dataset</span></code>); <code class="docutils literal notranslate"><span class="pre">preprocess.optimize_thickness</span></code> then fits each rotation individually, so datasets with genuinely different thickness converge per rotation from the shared seed.</p></td>
+</tr>
+</tbody>
+</table>
 </div>
-<p>Smaller sweep steps resolve the convergence boundary more precisely but require more simulations.
-The threshold states the numerical accuracy required; it should be chosen before inspecting the
-result and reported with the selected hyperparameters.</p>
+</section>
+<section id="blochwave">
+<h2><code class="docutils literal notranslate"><span class="pre">blochwave</span></code><a class="headerlink" href="#blochwave" title="Link to this heading">¶</a></h2>
+<p>The beam-selection, coupling, and dynamical-solver settings (<code class="docutils literal notranslate"><span class="pre">BlochwaveConfig</span></code>), ordered here by
+how often you’d actually reach for them.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">g_max</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2.25</span></code></p></td>
+<td><p>Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch-wave matrix. See <a class="reference internal" href="convergence-testing.html"><span class="std std-doc">Convergence testing</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sg_max</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.01</span></code></p></td>
+<td><p>Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">50</span></code></p></td>
+<td><p>Tilt samples integrated per rocking curve. See <a class="reference internal" href="convergence-testing.html"><span class="std std-doc">Convergence testing</span></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">absorption</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Include anomalous absorption as an imaginary structure-factor contribution.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mosaicity</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Use PETS’s apparent-mosaicity σ for Gaussian orientation averaging (three-point quadrature) instead of a single static solve per tilt.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rsg</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.66</span></code></p></td>
+<td><p>Klar beam-selection cutoff: relative excitation-error radius.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dsg</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.0015</span></code></p></td>
+<td><p>Klar beam-selection cutoff: excitation-error offset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">coupling_mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;union&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;union&quot;</span></code>: couple the union of excited beams across each tilt-chunk’s boundary tilts. <code class="docutils literal notranslate"><span class="pre">&quot;per_tilt&quot;</span></code>: couple only each tilt’s own excited beams (more accurate, more expensive).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">union_adaptive</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>See <a class="reference internal" href="#adaptive-tilt-chunk-coupling">Adaptive tilt-chunk coupling</a> below.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">union_max_new_beams_pct</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.01</span></code></p></td>
+<td><p>Adaptive-chunking split threshold — see below.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">12</span></code></p></td>
+<td><p>Number of tilt-coupling segments when <code class="docutils literal notranslate"><span class="pre">coupling_mode:</span> <span class="pre">&quot;union&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">union_adaptive:</span> <span class="pre">false</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">solver</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;matrix_exp&quot;</span></code></p></td>
+<td><p>Dynamical solver, used for preprocessing search, refinement, and <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">infer</span></code> alike. Must stay <code class="docutils literal notranslate"><span class="pre">matrix_exp</span></code> if <code class="docutils literal notranslate"><span class="pre">absorption:</span> <span class="pre">true</span></code> (the alternative, <code class="docutils literal notranslate"><span class="pre">bloch_eigen</span></code>, isn’t safe for the non-Hermitian absorptive structure matrix).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ignore_orientations</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">()</span></code></p></td>
+<td><p>Zero-based PETS rotation indices to exclude from the whole experiment (damaged/empty/diagnostic frames).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="adaptive-tilt-chunk-coupling">
+<h3>Adaptive tilt-chunk coupling<a class="headerlink" href="#adaptive-tilt-chunk-coupling" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">coupling_mode:</span> <span class="pre">&quot;union&quot;</span></code> couples, within each tilt chunk, the beam set that is the <em>union</em> of the
+excited beams at the chunk’s two boundary tilts (see <a class="reference internal" href="preprocessing.html"><span class="std std-doc">Preprocessing</span></a> for what
+“coupling” means here). <code class="docutils literal notranslate"><span class="pre">union_adaptive</span></code> picks how those chunk boundaries are chosen:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">true</span></code> (default): recursive bisection. Start with one chunk spanning the whole rocking curve;
+at each step, check the chunk’s midpoint tilt against the union already covered by its two
+endpoints. If the midpoint would add more than <code class="docutils literal notranslate"><span class="pre">union_max_new_beams_pct</span></code> of <em>new</em> beams beyond
+that union, split the chunk in two at the midpoint and recurse into each half; otherwise the
+chunk is left as one piece. This puts more, smaller chunks where the excited beam set is
+changing quickly across the rocking curve (e.g. near a strong systematic row) and fewer, larger
+chunks where it’s stable — without needing to know in advance where that is.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">false</span></code>: <code class="docutils literal notranslate"><span class="pre">fixed_n_segments</span></code> evenly-sized chunks regardless of how much the beam set actually
+changes across them.</p></li>
+</ul>
+<p>Adaptive chunking costs more beam-set unions up front (to evaluate the split predicate) but
+generally solves fewer total beams than a fixed split sized conservatively enough to avoid
+under-coupling; a fixed split is more predictable when you want a fixed, known chunk count instead.</p>
+</section>
+</section>
+<section id="preprocess">
+<h2><code class="docutils literal notranslate"><span class="pre">preprocess</span></code><a class="headerlink" href="#preprocess" title="Link to this heading">¶</a></h2>
+<p>Which preprocessing steps run and their search bounds (<code class="docutils literal notranslate"><span class="pre">PreprocessConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optimize_orientation</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Run the per-rotation Nelder-Mead orientation search.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Run the per-rotation thickness grid search.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">stage_order</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;thickness_first&quot;</span></code></p></td>
+<td><p>Which optimization stage runs first when both are enabled. <code class="docutils literal notranslate"><span class="pre">&quot;thickness_first&quot;</span></code>: optimize thickness against the seed orientation, then orientation against the optimized thickness. <code class="docutils literal notranslate"><span class="pre">&quot;orientation_first&quot;</span></code>: reversed.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="preprocess-orientation-nelder-mead">
+<h3><code class="docutils literal notranslate"><span class="pre">preprocess.orientation.nelder_mead</span></code><a class="headerlink" href="#preprocess-orientation-nelder-mead" title="Link to this heading">¶</a></h3>
+<p>Bounds for the local orientation search (<code class="docutils literal notranslate"><span class="pre">NelderMeadOptimizationConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">step_size</span></code></p></td>
+<td><p>scipy default</p></td>
+<td><p>Initial simplex step size, degrees.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_iterations</span></code></p></td>
+<td><p>scipy default</p></td>
+<td><p>Maximum Nelder-Mead iterations (<code class="docutils literal notranslate"><span class="pre">maxiter</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">x_tolerance</span></code></p></td>
+<td><p>scipy default</p></td>
+<td><p>Simplex convergence tolerance on the orientation parameters (<code class="docutils literal notranslate"><span class="pre">xatol</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">f_tolerance</span></code></p></td>
+<td><p>scipy default</p></td>
+<td><p>Simplex convergence tolerance on the objective (<code class="docutils literal notranslate"><span class="pre">fatol</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">penalize_fewer_reflections</span></code></p></td>
+<td><p>scipy default</p></td>
+<td><p>Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="preprocess-thickness">
+<h3><code class="docutils literal notranslate"><span class="pre">preprocess.thickness</span></code><a class="headerlink" href="#preprocess-thickness" title="Link to this heading">¶</a></h3>
+<p>Bounds for the per-rotation thickness grid search (<code class="docutils literal notranslate"><span class="pre">ThicknessOptimizationConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_thickness</span></code></p></td>
+<td><p>grid default</p></td>
+<td><p>Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_thickness</span></code></p></td>
+<td><p>grid default</p></td>
+<td><p>Upper bound, Å.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">n_steps</span></code></p></td>
+<td><p>grid default</p></td>
+<td><p>Number of evenly-spaced grid candidates.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Write one wR2-vs-thickness PNG per rotation (<code class="docutils literal notranslate"><span class="pre">&lt;inputs.structure's</span> <span class="pre">directory&gt;/thickness_optim</span></code>). Reporting-only — never affects the fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> and is excluded from the reproducibility digest.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+<section id="loss-metrics">
+<h2><code class="docutils literal notranslate"><span class="pre">loss_metrics</span></code><a class="headerlink" href="#loss-metrics" title="Link to this heading">¶</a></h2>
+<p>The one residual driving both preprocessing search and gradient refinement (<code class="docutils literal notranslate"><span class="pre">LossMetricsConfig</span></code>).
+Top-level, not nested under <code class="docutils literal notranslate"><span class="pre">refinement</span></code>, because it governs preprocessing too.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">residual</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;wr2&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;wr2&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;robs&quot;</span></code>. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (<code class="docutils literal notranslate"><span class="pre">core.losses.optimal_scale</span></code>) — necessary since the Bloch-wave solve comes off on an arbitrary structure-factor scale, not PETS’s own intensity scale. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="refinement">
+<h2><code class="docutils literal notranslate"><span class="pre">refinement</span></code><a class="headerlink" href="#refinement" title="Link to this heading">¶</a></h2>
+<p>Execution knobs for the default single-stage <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">refine</span></code> (<code class="docutils literal notranslate"><span class="pre">RefinementConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">steps</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">40</span></code></p></td>
+<td><p>Number of gradient-refinement epochs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">optimizer.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;lbfgs&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;lbfgs&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;adam&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;adamw&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optimizer.lr</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1e-3</span></code></p></td>
+<td><p>Learning rate (Adam/AdamW; L-BFGS uses its own internal line search).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="refinement-trainable">
+<h3><code class="docutils literal notranslate"><span class="pre">refinement.trainable</span></code><a class="headerlink" href="#refinement-trainable" title="Link to this heading">¶</a></h3>
+<p>Whole-group trainable selections (<code class="docutils literal notranslate"><span class="pre">TrainableConfig</span></code>). Element-filtered selections (e.g. freeze
+hydrogens) are Python/API composition, not config — see <code class="docutils literal notranslate"><span class="pre">engine.with_hydrogen_riding</span></code>.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">positions</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>: whether atomic positions are refined.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">adp</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>: whether atomic displacement parameters are refined.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">occupancy</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>: whether site occupancies are refined.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="refinement-split">
+<h3><code class="docutils literal notranslate"><span class="pre">refinement.split</span></code><a class="headerlink" href="#refinement-split" title="Link to this heading">¶</a></h3>
+<p>Train/validation split (<code class="docutils literal notranslate"><span class="pre">DataSplitConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">train_test</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code>: train on every rotation, no held-out set. <code class="docutils literal notranslate"><span class="pre">true</span></code>: hold out an evenly-spaced <code class="docutils literal notranslate"><span class="pre">val_frac</span></code> of rotations from the refinement objective (preprocessing still fits their orientation/thickness) and report their wR2/R_obs separately.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">val_frac</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0.2</span></code></p></td>
+<td><p>Fraction of rotations held out when <code class="docutils literal notranslate"><span class="pre">train_test:</span> <span class="pre">true</span></code>. Must be strictly between 0 and 1.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="refinement-thickness-nn">
+<h3><code class="docutils literal notranslate"><span class="pre">refinement.thickness_nn</span></code><a class="headerlink" href="#refinement-thickness-nn" title="Link to this heading">¶</a></h3>
+<p>Apparent-thickness neural network used by the default refinement path (<code class="docutils literal notranslate"><span class="pre">ThicknessNNConfig</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">enabled</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Whether a learned thickness model replaces the fixed per-rotation seed during refinement.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_samples</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Number of thickness samples the network’s input encoding uses.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sample_thickness</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Whether thickness itself is sampled as part of the network’s forward pass.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">form</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;min_thickness&quot;</span></code></p></td>
+<td><p>Functional form of the network’s output (currently only one implemented).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_thickness</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Lower bound, Å, for the network’s thickness output.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_thickness</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Upper bound, Å, for the network’s thickness output.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">init_seed</span></code></p></td>
+<td><p>spec default</p></td>
+<td><p>Random seed for the network’s initial weights.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+<section id="inputs">
+<h2><code class="docutils literal notranslate"><span class="pre">inputs</span></code><a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
+<p>Input file references, relative to the experiment directory only (<code class="docutils literal notranslate"><span class="pre">Inputs</span></code>).</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">structure</span></code></p></td>
+<td><p>required</p></td>
+<td><p>Relative path to the structure <code class="docutils literal notranslate"><span class="pre">.cif</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">exp_data</span></code></p></td>
+<td><p>required</p></td>
+<td><p>Relative path to a <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code>, or (with <code class="docutils literal notranslate"><span class="pre">multi_dataset:</span> <span class="pre">true</span></code>) a list of 2+ paths.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">multi_dataset</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>See <a class="reference internal" href="#combining-multiple-datasets">Combining multiple datasets</a> below.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">load_hydrogens</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Include hydrogen atom sites from the structure CIF (molecular crystals).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="combining-multiple-datasets">
+<h3>Combining multiple datasets<a class="headerlink" href="#combining-multiple-datasets" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">inputs.multi_dataset:</span> <span class="pre">true</span></code> pools rotations from several <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> files (<code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> as a
+list of 2+ paths) into one experiment, each dataset keeping its own energy, orientation, and
+thickness. Two situations call for it:</p>
+<ul class="simple">
+<li><p><strong>Beam damage series</strong> — repeat measurements of the same crystal taken at increasing dose. Each
+dataset is its own PETS file (its own UB, its own apparent thickness), but they refine one shared
+structure; combining them uses every rotation instead of picking one dataset and discarding the
+rest.</p></li>
+<li><p><strong>Low-symmetry structures</strong> — a single tilt series from one crystal orientation range may not
+cover enough of reciprocal space to constrain the structure well when the space group has few
+symmetry operations to fill in the gaps. Multiple datasets from different crystal
+orientations/mounts fill in coverage that one series alone would leave thin.</p></li>
+</ul>
+<p>Each dataset is preprocessed and checkpointed on its own (<code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.npz</span></code> per file, with its own
+integration geometry – precession angles may differ between files), and the settled per-dataset
+plans are pooled in memory just before refinement. See
+<a class="reference internal" href="inputs.html#combining-multiple-datasets"><span class="std std-ref">Inputs</span></a> for the mechanics (per-dataset checkpoints, the
+first-file authoritative cell, one-energy rule, rotation-index offsets) and
+<a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a> for what each per-dataset lock verifies.</p>
+</section>
 </section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="reproducibility.html">
               <div class="page-info">
@@ -377,15 +745,15 @@ result and reported with the selected hyperparameters.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="preprocessing.html">
+          <a class="prev-page" href="convergence-testing.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
-                <div class="title">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></div>
-                
+
+                <div class="title">Convergence testing</div>
+
               </div>
             </a>
         </div>
@@ -395,20 +763,20 @@ result and reported with the selected hyperparameters.</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -419,9 +787,28 @@ result and reported with the selected hyperparameters.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Hyperparameter selection</a><ul>
-<li><a class="reference internal" href="#convergence">Convergence</a></li>
-<li><a class="reference internal" href="#convergence-testing-in-diffbloch">Convergence testing in diffBloch</a></li>
-<li><a class="reference internal" href="#api-example">API example</a></li>
+<li><a class="reference internal" href="#what-is-not-config-auto-filled-from-cif-pets">What is <em>not</em> config: auto-filled from CIF/PETS</a></li>
+<li><a class="reference internal" href="#sample"><code class="docutils literal notranslate"><span class="pre">sample</span></code></a></li>
+<li><a class="reference internal" href="#blochwave"><code class="docutils literal notranslate"><span class="pre">blochwave</span></code></a><ul>
+<li><a class="reference internal" href="#adaptive-tilt-chunk-coupling">Adaptive tilt-chunk coupling</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess</span></code></a><ul>
+<li><a class="reference internal" href="#preprocess-orientation-nelder-mead"><code class="docutils literal notranslate"><span class="pre">preprocess.orientation.nelder_mead</span></code></a></li>
+<li><a class="reference internal" href="#preprocess-thickness"><code class="docutils literal notranslate"><span class="pre">preprocess.thickness</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#loss-metrics"><code class="docutils literal notranslate"><span class="pre">loss_metrics</span></code></a></li>
+<li><a class="reference internal" href="#refinement"><code class="docutils literal notranslate"><span class="pre">refinement</span></code></a><ul>
+<li><a class="reference internal" href="#refinement-trainable"><code class="docutils literal notranslate"><span class="pre">refinement.trainable</span></code></a></li>
+<li><a class="reference internal" href="#refinement-split"><code class="docutils literal notranslate"><span class="pre">refinement.split</span></code></a></li>
+<li><a class="reference internal" href="#refinement-thickness-nn"><code class="docutils literal notranslate"><span class="pre">refinement.thickness_nn</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#inputs"><code class="docutils literal notranslate"><span class="pre">inputs</span></code></a><ul>
+<li><a class="reference internal" href="#combining-multiple-datasets">Combining multiple datasets</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -429,8 +816,8 @@ result and reported with the selected hyperparameters.</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>
@@ -440,6 +827,5 @@ result and reported with the selected hyperparameters.</p>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="_static/copybutton.js?v=f281be69"></script>
     <script src="_static/tabs.js?v=3ee01567"></script>
-    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     </body>
 </html>

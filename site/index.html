@@ -14,8 +14,9 @@
 <meta property="og:image:alt" content="Coverage Python PyTorch NumPy Pydantic uv Ruff mypy License: MIT Differentiable Bloch-wave structure refinement for 3D electron diffraction. This codebase is entirely open-source, and we welcome co..." />
 <meta name="description" content="Coverage Python PyTorch NumPy Pydantic uv Ruff mypy License: MIT Differentiable Bloch-wave structure refinement for 3D electron diffraction. This codebase is entirely open-source, and we welcome co..." />
 <meta name="twitter:card" content="summary_large_image" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Architecture" href="architecture.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Workflow" href="workflow.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/index.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="#">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -289,8 +296,14 @@
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><a class="reference internal" href="architecture.html"><span class="std std-doc">Architecture</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="workflow.html"><span class="std std-doc">Workflow</span></a></p></td>
 <td><p>Why dynamical diffraction needs a Bloch-wave simulation, and how the pieces fit together.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="architecture.html"><span class="std std-doc">Architecture</span></a></p></td>
+<td><p>How the codebase itself is organised: packages, modules, and the layering between them.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="bloch-wave-simulation.html"><span class="std std-doc">Bloch-wave simulation</span></a></p></td>
+<td><p>The physics: structure factor, relativistic interaction parameter, structure matrix, and its two solvers.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="inputs.html"><span class="std std-doc">Inputs</span></a></p></td>
 <td><p>The starting structure and rocking-curve data a refinement needs.</p></td>
@@ -298,19 +311,22 @@
 <tr class="row-even"><td><p><a class="reference internal" href="preprocessing.html"><span class="std std-doc">Preprocessing</span></a></p></td>
 <td><p>Fitting crystal orientation and specimen thickness before the structure is touched.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="hyperparameter-selection.html"><span class="std std-doc">Hyperparameter selection</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="convergence-testing.html"><span class="std std-doc">Convergence testing</span></a></p></td>
 <td><p>Choosing beam and rocking-curve settings using convergence tests.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="refinement.html"><span class="std std-doc">Refinement</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="hyperparameter-selection.html"><span class="std std-doc">Config reference</span></a></p></td>
+<td><p>Every <code class="docutils literal notranslate"><span class="pre">experiment.yaml</span></code> switch, its default, and what’s auto-filled from CIF/PETS instead.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="refinement.html"><span class="std std-doc">Refinement</span></a></p></td>
 <td><p>The optimization loop: constraints, restraints, and thickness models alongside the structure.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a></p></td>
-<td><p>How <code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code>, <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code>, and <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> pin a fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> so a result can be reproduced exactly.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a></p></td>
+<td><p>How <code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code> and the per-dataset <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.npz</span></code>/<code class="docutils literal notranslate"><span class="pre">.lock</span></code> checkpoints pin a fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> so a result can be reproduced exactly.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="observability-guide.html"><span class="std std-doc">Observability</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="observability-guide.html"><span class="std std-doc">Observability</span></a></p></td>
 <td><p>Tracking wR2, R_obs, and diffraction loss as a run progresses.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="examples.html"><span class="std std-doc">Examples</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="examples.html"><span class="std std-doc">Examples</span></a></p></td>
 <td><p>Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch.</p></td>
 </tr>
 </tbody>
@@ -322,7 +338,7 @@ pieces are available through the public Python API.</p>
 <section id="quickstart">
 <h2>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading">¶</a></h2>
 <p>Prerequisite: install <a class="reference external" href="https://docs.astral.sh/uv/getting-started/installation/">uv</a> and
-<a class="reference external" href="https://git-lfs.com/">Git LFS</a> for the bundled <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> experimental data and <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code>
+<a class="reference external" href="https://git-lfs.com/">Git LFS</a> for the bundled <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> experimental data and plan-checkpoint <code class="docutils literal notranslate"><span class="pre">.npz</span></code>
 checkpoints, then sync the project environment from the repository root:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>lfs<span class="w"> </span>install
 git<span class="w"> </span>lfs<span class="w"> </span>pull
@@ -330,33 +346,22 @@ uv<span class="w"> </span>sync<span class="w"> </span>--dev
 </pre></div>
 </div>
 <p>Run CLI commands through <code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span></code> unless you have separately installed the <code class="docutils literal notranslate"><span class="pre">diffbloch</span></code> console script
-on your shell <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
-<p>Validate a config before launching a longer job:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>validate<span class="w"> </span>examples/experiments/quartz-checkpoint/experiment.yaml
+on your shell <code class="docutils literal notranslate"><span class="pre">PATH</span></code>. Every command below takes an experiment directory (see
+<a class="reference internal" href="inputs.html"><span class="std std-doc">Inputs</span></a>) – try one under <code class="docutils literal notranslate"><span class="pre">examples/</span></code>, e.g. <code class="docutils literal notranslate"><span class="pre">examples/Colmey_et_al_2026/data/quartz-no-abs</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>validate<span class="w"> </span>&lt;experiment_dir&gt;/experiment.yaml<span class="w">   </span><span class="c1"># check the config before a longer job</span>
+uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>preprocess<span class="w"> </span>&lt;experiment_dir&gt;<span class="w">              </span><span class="c1"># settle orientation/thickness, write plan checkpoints</span>
+uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>infer<span class="w"> </span>&lt;experiment_dir&gt;<span class="w">                   </span><span class="c1"># forward-simulate and score a settled Plan</span>
+uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>&lt;experiment_dir&gt;<span class="w">                  </span><span class="c1"># preprocess (or reuse) + gradient-refine</span>
 </pre></div>
 </div>
-<p>Simulate and score the settled quartz checkpoint without changing parameters:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>infer<span class="w"> </span>examples/experiments/quartz-checkpoint
-</pre></div>
-</div>
-<p>Run the small quartz example end to end, including preprocessing and refinement:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz
-</pre></div>
-</div>
-<p>Start refinement faster from the bundled quartz preprocessing checkpoint:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz-checkpoint
-</pre></div>
-</div>
-<p>Use <code class="docutils literal notranslate"><span class="pre">infer</span></code> to run the forward simulation and scoring pass over a settled <code class="docutils literal notranslate"><span class="pre">Plan</span></code>; it does not update
-structural parameters. Use <code class="docutils literal notranslate"><span class="pre">refine</span></code> to run the optimization loop, repeatedly simulating, scoring,
-and updating the selected trainable structural parameters.</p>
-<p>The default refinement runs for 40 epochs, streams <code class="docutils literal notranslate"><span class="pre">wR2</span></code>, <code class="docutils literal notranslate"><span class="pre">R_obs</span></code>, and diffraction loss, then writes
-the best refined CIF, exact raw parameter snapshot, and JSON summary into the experiment directory..</p>
+<p>Add <code class="docutils literal notranslate"><span class="pre">--refresh</span></code> to any command to force a real recompute instead of reusing a checkpoint, and
+<code class="docutils literal notranslate"><span class="pre">--device</span> <span class="pre">cpu</span></code>/<code class="docutils literal notranslate"><span class="pre">--device</span> <span class="pre">cuda</span></code> to pick the execution device. <code class="docutils literal notranslate"><span class="pre">infer</span></code> scores without changing
+parameters; <code class="docutils literal notranslate"><span class="pre">refine</span></code> runs the optimization loop, repeatedly simulating, scoring, and updating the
+selected trainable structural parameters – see <a class="reference internal" href="refinement.html"><span class="std std-doc">Refinement</span></a> for its outputs.</p>
 </section>
 <section id="citation">
 <h2>Citation<a class="headerlink" href="#citation" title="Link to this heading">¶</a></h2>
-<p>If you use diffBloch in your research, please cite it (see
-<a class="reference external" href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/blob/main/CITATION.cff">CITATION.cff</a>):</p>
+<p>If you use diffBloch in your research, please cite it:</p>
 <div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@misc</span><span class="p">{</span><span class="nl">diffBloch</span><span class="p">,</span>
 <span class="w">  </span><span class="na">author</span><span class="w">  </span><span class="p">=</span><span class="w"> </span><span class="s">{Doherty, Tiarnan and Malik, Shreshth and Colmey, Benjamin and Maitland, Iain, and Midgley, Paul}</span><span class="p">,</span>
 <span class="w">  </span><span class="na">title</span><span class="w">   </span><span class="p">=</span><span class="w"> </span><span class="s">{diffBloch}</span><span class="p">,</span>
@@ -376,18 +381,18 @@ the best refined CIF, exact raw parameter snapshot, and JSON summary into the ex
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
-          <a class="next-page" href="architecture.html">
+          <a class="next-page" href="workflow.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Architecture</div>
+                <div class="title">Workflow</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          
+
         </div>
         <div class="bottom-of-page">
           <div class="left-details">
@@ -395,20 +400,20 @@ the best refined CIF, exact raw parameter snapshot, and JSON summary into the ex
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -431,8 +436,8 @@ the best refined CIF, exact raw parameter snapshot, and JSON summary into the ex
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

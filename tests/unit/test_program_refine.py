@@ -28,6 +28,7 @@ _cell_length_c 5
 _cell_angle_alpha 90
 _cell_angle_beta 90
 _cell_angle_gamma 90
+_cell_volume 125
 _symmetry_space_group_name_H-M 'P 1'
 _symmetry_Int_Tables_number 1
 loop_
@@ -58,13 +59,17 @@ O1 0.03 0.04 0.05 0.001 0.002 0.003
 
 def _refinement_result_for(
     tmp_path: Path,
+    *,
+    cell_parameters: np.ndarray | None = None,
 ) -> tuple[ExperimentConfig, RefinementSetup, ModelRefinementResult]:
     source = tmp_path / "q.cif"
     source.write_text(_MINIMAL_CIF)
     cfg = ExperimentConfig.model_validate(
         {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
-    refinement = RefinementSetup.from_structure(read_structure(source))
+    refinement = RefinementSetup.from_structure(
+        read_structure(source), cell_parameters=cell_parameters
+    )
     params = replace(
         refinement.params,
         asu_positions=refinement.params.asu_positions
@@ -129,6 +134,18 @@ def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -
         assert params_file["asu_positions"].shape == (2, 3)
         assert params_file["occupancy_raw"].shape == (2,)
     assert not (tmp_path / "refinement_summary.json").exists()  # superseded by the .txt report
+
+
+def test_write_refinement_outputs_rewrites_the_refined_cif_cell_header(tmp_path: Path) -> None:
+    authoritative = np.array([6.0, 5.0, 5.0, 90.0, 90.0, 90.0], dtype=np.float64)
+    cfg, refinement, result = _refinement_result_for(tmp_path, cell_parameters=authoritative)
+
+    _write_refinement_outputs(tmp_path, cfg, refinement, result, plan_lock_sha256s=("ab" * 32,))
+
+    refined = read_structure(tmp_path / "refined_structure.cif")
+    np.testing.assert_allclose(refined.cell_parameters, authoritative)
+    text = (tmp_path / "refined_structure.cif").read_text()
+    assert "_cell_volume 150.00000" in text
 
 
 def test_write_refinement_outputs_skips_the_lock_when_the_run_did_not_checkpoint(

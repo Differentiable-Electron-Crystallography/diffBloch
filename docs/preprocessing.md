@@ -57,14 +57,16 @@ cell rather than the CIF's own.
 
 diffBloch checks the CIF's cell against PETS's on load:
 
-- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` prints a warning stating that
-  the PETS value overrides the CIF value. Day-to-day refinement/measurement
-  drift stays well under this.
+- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning stating that
+  the PETS value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
+  this.
 - **> 5% relative difference** raises `ValueError` and stops, listing every offending parameter, both
   values, and the percentage difference. A gap this large usually means the two files describe
   different crystals or settings entirely — continuing would silently derive the whole simulation's
   geometry from a mismatch that size.
 
+For a combined experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
+structure CIF and every further `.cif_pets` file are checked against it under the same thresholds.
 Each combined dataset's own {math}`U = (UB)B^{-1}` is still derived from *that dataset's own* UB
 matrix and *its own* PETS cell — so `U` stays close to a pure rotation — only the cell it gets
 composed with downstream is the shared authoritative one.

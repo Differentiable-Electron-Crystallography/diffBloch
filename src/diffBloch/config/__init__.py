@@ -2,6 +2,7 @@
 
 from diffBloch.config.manifest import (
     ArtifactHash,
+    CellParameters,
     ExperimentLock,
     InputLock,
     PreprocessLock,
@@ -31,6 +32,7 @@ from diffBloch.config.schema import (
 
 __all__ = [
     "ArtifactHash",
+    "CellParameters",
     "DataSplitConfig",
     "ExperimentConfig",
     "ExperimentLock",

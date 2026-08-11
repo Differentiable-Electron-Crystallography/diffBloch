@@ -7,15 +7,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html" />
 <meta property="og:site_name" content="diffBloch" />
-<meta property="og:description" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore fits this experimental metadata before refining the structure and stores it in a Plan. PETS2 r..." />
+<meta property="og:description" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore determines this experimental metadata before refining the structure and stores it in a Plan. P..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_preprocessing_61cfea24.png" />
-<meta property="og:image:alt" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore fits this experimental metadata before refining the structure and stores it in a Plan. PETS2 r..." />
-<meta name="description" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore fits this experimental metadata before refining the structure and stores it in a Plan. PETS2 r..." />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_preprocessing_8388bc67.png" />
+<meta property="og:image:alt" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore determines this experimental metadata before refining the structure and stores it in a Plan. P..." />
+<meta name="description" content="Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch therefore determines this experimental metadata before refining the structure and stores it in a Plan. P..." />
 <meta name="twitter:card" content="summary_large_image" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Hyperparameter selection" href="hyperparameter-selection.html"><link rel="prev" title="Inputs and experiment directories" href="inputs.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Convergence testing" href="convergence-testing.html"><link rel="prev" title="Inputs and experiment directories" href="inputs.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/preprocessing.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Preprocessing and Plan - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -267,46 +274,154 @@
           <section id="preprocessing-and-plan">
 <h1>Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code><a class="headerlink" href="#preprocessing-and-plan" title="Link to this heading">¶</a></h1>
 <p>Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
-therefore fits this experimental metadata before refining the structure and stores it in a <code class="docutils literal notranslate"><span class="pre">Plan</span></code>.</p>
-<p>PETS2 reduces continuous-rotation data into overlapping <strong>virtual frames</strong>, allowing complete
-rocking curves to be integrated and partial reflections to be rejected
-(<a class="reference external" href="https://doi.org/10.1038/s41557-023-01186-1">Klar <em>et al.</em>, 2023</a>). diffBloch represents each
-virtual frame by sampled tilt sub-orientations and sums their simulated intensities.</p>
+therefore determines this experimental metadata before refining the structure and stores it in a <code class="docutils literal notranslate"><span class="pre">Plan</span></code>.</p>
+<p>PETS2 reduces continuous-rotation data into overlapping <strong>virtual frames</strong>
+(<a class="reference external" href="https://doi.org/10.1038/s41557-023-01186-1">Klar <em>et al.</em>, 2023</a>). Because the frames overlap, a
+given reflection can appear in several neighbouring frames, but should only be fully integrated in
+one of them – <code class="docutils literal notranslate"><span class="pre">rsg</span></code>/<code class="docutils literal notranslate"><span class="pre">dsg</span></code> (see <a class="reference internal" href="workflow.html#comparing-simulation-with-experiment"><span class="std std-ref">Comparing simulation with experiment</span></a>)
+aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
+intensities: partial reflections are not simulated. It represents each virtual frame by sampled
+tilt sub-orientations and sums their simulated intensities.</p>
 <section id="orientation">
 <h2>Orientation<a class="headerlink" href="#orientation" title="Link to this heading">¶</a></h2>
-<p>PETS2 supplies a best-fit <strong>UB matrix</strong>: <span class="math notranslate nohighlight">\(B\)</span> maps the reciprocal lattice and <span class="math notranslate nohighlight">\(U\)</span>
-orients that lattice in the laboratory frame. For virtual frame <span class="math notranslate nohighlight">\(i\)</span>, diffBloch constructs</p>
+<p>PETS2 supplies a <strong>UB matrix</strong>. The reciprocal-basis matrix <span class="math notranslate nohighlight">\(B\)</span> is calculated from the unit
+cell and maps integer reflection indices <span class="math notranslate nohighlight">\((h,k,l)\)</span> to reciprocal-space vectors. The matrix
+<span class="math notranslate nohighlight">\(U\)</span> places that reciprocal basis in the laboratory coordinate system. Their product <span class="math notranslate nohighlight">\(UB\)</span>
+therefore maps a reflection index directly into the measured laboratory geometry.</p>
+<p>diffBloch separates the two matrices using</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[U = (UB)B^{-1}.\]</div>
+</div>
+<p>For virtual frame <span class="math notranslate nohighlight">\(i\)</span>, the PETS goniometer angles are then applied in their recorded order:</p>
 <div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
 \[M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},\]</div>
 </div>
-<p>where <span class="math notranslate nohighlight">\(\alpha\)</span> is the main varying goniometer angle.</p>
-<p>Using a fixed trial thickness and the starting structure, orientation optimization searches nearby
-orientations for better agreement with experiment. Two approaches are implemented, selected by
-<code class="docutils literal notranslate"><span class="pre">preprocess.orientation.method</span></code>:</p>
+<p>where <span class="math notranslate nohighlight">\(\alpha_i\)</span>, <span class="math notranslate nohighlight">\(\beta_i\)</span>, and <span class="math notranslate nohighlight">\(\omega_i\)</span> are given in degrees and
+<span class="math notranslate nohighlight">\(\alpha_i\)</span> is the main scan angle. <span class="math notranslate nohighlight">\(M_i\)</span> is the starting crystal orientation for that
+virtual frame.</p>
+<p>Using the current thickness and starting unrefined structure, diffBloch searches for a small
+correction to each <span class="math notranslate nohighlight">\(M_i\)</span>. A trial correction is described by three angles
+<span class="math notranslate nohighlight">\((\Delta\alpha,\Delta\beta,\Delta\omega)\)</span> and applied as</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).\]</div>
+</div>
+<p>The Bloch-wave intensities are recalculated for each trial and compared with the observed
+intensities using <code class="docutils literal notranslate"><span class="pre">loss_metrics.residual</span></code>, which defaults to <code class="docutils literal notranslate"><span class="pre">wr2</span></code>.</p>
+<section id="unit-cell-authority-pets-overrides-the-structure-cif">
+<h3>Unit-cell authority: PETS overrides the structure CIF<a class="headerlink" href="#unit-cell-authority-pets-overrides-the-structure-cif" title="Link to this heading">¶</a></h3>
+<p>The reciprocal-basis matrix <span class="math notranslate nohighlight">\(B\)</span> above is built from <strong>PETS’s own recorded cell</strong>, not the
+structure CIF’s. PETS is authoritative for every piece of simulation geometry that needs a unit
+cell — the structure-factor grid, the reciprocal basis, the cell volume, the ADP <span class="math notranslate nohighlight">\(U^*\)</span>-frame
+conversion, and the beam geometry derived from that grid. The structure CIF still supplies every
+piece of atomic content: positions, atom types, occupancies, ADPs, and symmetry operators.
+Fractional coordinates are read from the CIF unchanged; they are simply interpreted against PETS’s
+cell rather than the CIF’s own.</p>
+<p>diffBloch checks the CIF’s cell against PETS’s on load:</p>
+<ul class="simple">
+<li><p><strong>&gt; 1% relative difference</strong> on any of <code class="docutils literal notranslate"><span class="pre">a,</span> <span class="pre">b,</span> <span class="pre">c,</span> <span class="pre">alpha,</span> <span class="pre">beta,</span> <span class="pre">gamma</span></code> logs a warning stating that
+the PETS value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
+this.</p></li>
+<li><p><strong>&gt; 5% relative difference</strong> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> and stops, listing every offending parameter, both
+values, and the percentage difference. A gap this large usually means the two files describe
+different crystals or settings entirely — continuing would silently derive the whole simulation’s
+geometry from a mismatch that size.</p></li>
+</ul>
+<p>For a combined experiment, the first <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file’s cell is the shared authoritative cell. The
+structure CIF and every further <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file are checked against it under the same thresholds.
+Each combined dataset’s own <span class="math notranslate nohighlight">\(U = (UB)B^{-1}\)</span> is still derived from <em>that dataset’s own</em> UB
+matrix and <em>its own</em> PETS cell — so <code class="docutils literal notranslate"><span class="pre">U</span></code> stays close to a pure rotation — only the cell it gets
+composed with downstream is the shared authoritative one.</p>
+</section>
+<section id="orientation-search-method">
+<h3>Orientation-search method<a class="headerlink" href="#orientation-search-method" title="Link to this heading">¶</a></h3>
+<p>diffBloch applies the general Nelder–Mead optimization algorithm
+(<a class="reference external" href="https://doi.org/10.1093/comjnl/7.4.308">Nelder and Mead, 1965</a>) to orientation refinement.</p>
+<p>Nelder–Mead minimizes the orientation residual without requiring its derivatives. For the three
+correction angles, the search holds four trial points: zero correction and one point displaced by
+<code class="docutils literal notranslate"><span class="pre">step_size</span></code> along each angle. These four points form a simplex.</p>
+<p>Each point is evaluated by running the Bloch-wave calculation and comparing its intensities with
+experiment. Nelder–Mead ranks the four residuals and replaces the worst point by reflecting it
+through the opposite face of the simplex. Depending on the new residual, it may expand farther in
+that direction, contract toward the better points, or shrink the whole simplex around the best
+point. The simplex therefore moves and changes size as it approaches a local minimum. The final
+three coordinates are applied to the PETS orientation as
+<span class="math notranslate nohighlight">\((\Delta\alpha,\Delta\beta,\Delta\omega)\)</span>.</p>
+<p>This is a local, unconstrained search. <code class="docutils literal notranslate"><span class="pre">step_size</span></code> defines only the initial simplex; it neither
+limits the correction angles nor guarantees that the search finds the global minimum. The PETS UB
+matrix must already provide a close starting orientation.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Method</p></th>
-<th class="head"><p>Difference</p></th>
+<th class="head"><p>Search</p></th>
+<th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">palatinus_modified_simplex</span></code> (default)</p></td>
-<td><p>Searches progressively smaller tilts around the starting orientation; robust when the PETS2 estimate is close.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nelder_mead</span></code></p></td>
-<td><p>Local simplex search over all three goniometer-correction angles directly (<code class="docutils literal notranslate"><span class="pre">scipy.optimize.minimize</span></code>); efficient but sensitive to the starting orientation and the fixed <code class="docutils literal notranslate"><span class="pre">step_size</span></code> neighbourhood it explores.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nelder_mead</span></code></p></td>
+<td><p>Varies all three correction angles simultaneously using the four-point simplex described above.</p></td>
+<td><p>Implemented and used by the default preprocessing path.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>Bayesian optimization is not implemented.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">step_size</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.05</span></code> degrees</p></td>
+<td><p>Edge length of the initial simplex. The four starting points are zero correction and one positive step along each correction angle. This is not a hard search bound.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_iterations</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">60</span></code></p></td>
+<td><p>Maximum number of simplex iterations for one rotation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">x_tolerance</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1e-3</span></code> degrees</p></td>
+<td><p>Convergence tolerance for changes in the correction angles.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">f_tolerance</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1e-3</span></code></p></td>
+<td><p>Convergence tolerance for changes in the comparison residual.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">penalize_fewer_reflections</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Prevents a trial from appearing better only because its orientation produces a smaller matched-reflection set.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">preprocess</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">orientation</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">nelder_mead</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">step_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span>
+<span class="w">      </span><span class="nt">max_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span>
+<span class="w">      </span><span class="nt">x_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.001</span>
+<span class="w">      </span><span class="nt">f_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.001</span>
+<span class="w">      </span><span class="nt">penalize_fewer_reflections</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</pre></div>
+</div>
+</section>
 </section>
 <section id="thickness">
 <h2>Thickness<a class="headerlink" href="#thickness" title="Link to this heading">¶</a></h2>
-<p>Real crystals have irregular shapes. diffBloch offers two
-approaches, both using the starting structure to improve agreement with experiment:</p>
+<p>Real crystals have irregular shapes. The illuminated area therefore contains regions of different
+thickness, and the thickness distribution changes as the crystal orientation changes. Under the
+column approximation, each region may be simulated at its local thickness and the resulting intensities summed incoherently.</p>
+<p>Multiple scattering transfers amplitude between coupled reflections as the electron wave propagates through the crystal.
+Pendellösung oscillations therefore cause the intensity of an observed reflection to rise and fall
+with thickness. A small change in thickness can produce a large, reflection-specific change in
+intensity.</p>
+<p>diffBloch represents the thickness distribution by an effective mean thickness for each orientation. It can use one shared effective thickness for the complete experiment, determine a separate mean value for each orientation, or learn a smooth orientation-dependent mean thickness distribution:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -315,22 +430,61 @@ approaches, both using the starting structure to improve agreement with experime
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Grid search</p></td>
-<td><p>Selects the best mean thickness independently for each rotation.</p></td>
+<tr class="row-even"><td><p>Shared thickness</p></td>
+<td><p>Uses the value in <code class="docutils literal notranslate"><span class="pre">sample.thickness</span></code> for every orientation.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Neural network</p></td>
-<td><p>Learns how apparent thickness varies smoothly with rotation angle.</p></td>
+<tr class="row-odd"><td><p>Grid search</p></td>
+<td><p>Selects the lowest-residual thickness independently for each orientation.</p></td>
+</tr>
+<tr class="row-even"><td><p>Neural network</p></td>
+<td><p>Learns how apparent thickness varies smoothly with orientation angle.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>The default workflow optimizes orientation first and thickness second when both stages are enabled.
-Either stage can be disabled independently:</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">preprocess</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">optimize_orientation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<p>We normally use one shared value for orientation refinement if the approximate specimen thickness is known:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">sample</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">thicknesses</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">850.0</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Angstroms</span>
+
+<span class="nt">preprocess</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">optimize_thickness</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
 </pre></div>
 </div>
+<p>If the thickness is not known, it is recommended to run thickness optimization before orientation optimization or structural refinement. The result establishes thickness before other parameters are
+changed. A representative value can then be used as the shared thickness if separate values are not
+required.</p>
+<p>The grid search evaluates <code class="docutils literal notranslate"><span class="pre">n_steps</span></code> evenly spaced thicknesses from <code class="docutils literal notranslate"><span class="pre">min_thickness</span></code> to
+<code class="docutils literal notranslate"><span class="pre">max_thickness</span></code>, inclusive, for every orientation. Each candidate is passed through the Bloch-wave
+calculation and scored against experiment. The lowest-residual thickness is stored for that
+orientation. The search uses the starting unrefined structure, so its purpose is to establish the
+experimental geometry before atomic parameters are changed.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">preprocess</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">optimize_thickness</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">thickness</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">min_thickness</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100.0</span>
+<span class="w">    </span><span class="nt">max_thickness</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2000.0</span>
+<span class="w">    </span><span class="nt">n_steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+<span class="w">    </span><span class="nt">plot</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">plot:</span> <span class="pre">true</span></code>, diffBloch writes one residual-versus-thickness PNG for each orientation to
+<code class="docutils literal notranslate"><span class="pre">thickness_optim/</span></code> beside the structure input. Every tested thickness is shown and a dashed line
+marks the selected minimum. These plots show whether the minimum is well defined, whether different
+orientations favor the same thickness range, and whether the chosen search interval is too narrow.</p>
+<p>The neural-network option (<code class="docutils literal notranslate"><span class="pre">refinement.thickness_nn</span></code>) has its own <code class="docutils literal notranslate"><span class="pre">sample_thickness</span></code> switch: when
+enabled, thickness itself is sampled as part of the network’s forward pass during refinement,
+rather than the network predicting one deterministic thickness per orientation. See
+<a class="reference internal" href="hyperparameter-selection.html"><span class="std std-doc">Hyperparameter selection</span></a> for the full field
+list.</p>
+</section>
+<section id="numerical-convergence">
+<h2>Numerical convergence<a class="headerlink" href="#numerical-convergence" title="Link to this heading">¶</a></h2>
+<p>Determine <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and <code class="docutils literal notranslate"><span class="pre">rocking_curve_sampling</span></code> before optimizing thickness or
+orientation and before refining the structure. Numerical convergence depends mainly on the
+simulation basis and integration grid, not on whether the starting orientation or atomic structure
+has already been optimized. Thickness is the important exception because it changes the width of
+the rocking curve. See <a class="reference internal" href="convergence-testing.html"><span class="std std-doc">Convergence testing</span></a> for the convergence procedure
+and the thickness-dependent sampling check.</p>
 </section>
 <section id="the-plan">
 <h2>The <code class="docutils literal notranslate"><span class="pre">Plan</span></code><a class="headerlink" href="#the-plan" title="Link to this heading">¶</a></h2>
@@ -391,136 +545,47 @@ per-rotation thicknesses, reflection sets, and preprocessing provenance.</p>
 <section id="rocking-curves-and-mosaicity-inside-a-plan">
 <h2>Rocking curves and mosaicity inside a <code class="docutils literal notranslate"><span class="pre">Plan</span></code><a class="headerlink" href="#rocking-curves-and-mosaicity-inside-a-plan" title="Link to this heading">¶</a></h2>
 <p>The virtual frame’s angular range is represented by tilt sub-orientations around its central
-orientation. In the default app recipe, <code class="docutils literal notranslate"><span class="pre">build_orientation_plans</span></code> constructs those sub-tilts,
-selects each tilt-dependent SOLVE basis from <code class="docutils literal notranslate"><span class="pre">g_max</span></code> and <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, builds the Bloch geometry, and
-attaches the configured mosaic reduction. Rocking integration and mosaicity are parts of the built
-orientation plan, not separately displayed default stages.</p>
-</section>
-<section id="api-shape-from-experiment-records-to-an-initial-plan">
-<h2>API shape: from experiment records to an initial <code class="docutils literal notranslate"><span class="pre">Plan</span></code><a class="headerlink" href="#api-shape-from-experiment-records-to-an-initial-plan" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_experiment</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_experiment</span>
-
-<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint&quot;</span><span class="p">)</span>
-<span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-<span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
-<span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
-
-<span class="n">setup</span> <span class="o">=</span> <span class="n">from_experiment</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">experimental_data</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
-<span class="n">initial_plan</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">plans</span><span class="o">.</span><span class="n">combined</span>
-<span class="n">refinement_setup</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">refinement</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">initial_plan</span><span class="o">.</span><span class="n">orientations</span><span class="p">))</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">refinement_setup</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">asu_positions</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-</pre></div>
+orientation. <code class="docutils literal notranslate"><span class="pre">build_orientation_plans</span></code> constructs those sub-tilts, selects each tilt-dependent SOLVE
+basis from <code class="docutils literal notranslate"><span class="pre">g_max</span></code> and <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and builds the Bloch geometry.</p>
+<p>Mosaicity describes the spread of crystal orientations within the illuminated volume. Different
+mosaic domains are slightly misoriented, so a reflection is excited over a wider angular range than
+it would be in a single perfectly oriented crystal. Mosaicity therefore broadens the calculated
+rocking curve and changes the integrated intensity, especially for reflections whose excitation
+condition varies rapidly with angle.</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">blochwave.mosaicity:</span> <span class="pre">true</span></code>, diffBloch reads the apparent mosaicity from the source
+<code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> as a Gaussian standard deviation <span class="math notranslate nohighlight">\(\sigma\)</span> in degrees. Every nominal rocking-curve
+tilt is an angular offset about the main PETS <span class="math notranslate nohighlight">\(\alpha\)</span> rocking
+direction.  Each nominal <span class="math notranslate nohighlight">\(\alpha\)</span> tilt is replaced by three
+orientations at
+<span class="math notranslate nohighlight">\((-\sqrt{3}\sigma, 0, +\sqrt{3}\sigma)\)</span> relative to that tilt. Their Gaussian weights are
+<span class="math notranslate nohighlight">\((1/6, 2/3, 1/6)\)</span>.</p>
+<p>For a nominal tilt <span class="math notranslate nohighlight">\(\theta\)</span>, the combined intensity is</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[I_{\mathrm{mosaic}}(\theta) =
+\frac{1}{6}I(\theta-\sqrt{3}\sigma)
++\frac{2}{3}I(\theta)
++\frac{1}{6}I(\theta+\sqrt{3}\sigma).\]</div>
 </div>
-</section>
-<section id="plan-plan-steps">
-<h2><code class="docutils literal notranslate"><span class="pre">Plan</span> <span class="pre">-&gt;</span> <span class="pre">Plan</span></code> steps<a class="headerlink" href="#plan-plan-steps" title="Link to this heading">¶</a></h2>
-<p>Preprocessing is a sequence of small, focused steps, each taking a <code class="docutils literal notranslate"><span class="pre">Plan</span></code> and returning an updated
-one — one step builds the tilt geometry, another fits orientation, another fits thickness.</p>
-<p>The default app recipe begins with one displayed <code class="docutils literal notranslate"><span class="pre">build_orientation_plans</span></code> stage. It calculates the
-shared structure-factor support, constructs every central orientation and rocking sub-tilt,
-calculates excitation errors for reciprocal-lattice points inside the solve cutoff, selects the
-tilt-dependent SOLVE beams, builds the Bloch geometry, and matches the selected scoring reflections
-to PETS experimental data. It does not use experimental presence to choose the SOLVE basis.</p>
-<p>Real steps include:</p>
-<ul class="simple">
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.beams.build_orientation_plans" title="diffBloch.preprocess.steps.beams.build_orientation_plans"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.beams.build_orientation_plans()</span></code></a> — build the default coupled solve geometry, rocking sub-tilts, reduction, and scoring alignment.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.beams.select_beams" title="diffBloch.preprocess.steps.beams.select_beams"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.beams.select_beams()</span></code></a> — lower-level tilt-independent candidate selection for custom API pipelines and convergence work; it is not a separate default app stage.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve" title="diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve()</span></code></a> — expand orientations into virtual rocking-curve tilts.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.mosaicity.mosaicity" title="diffBloch.preprocess.steps.mosaicity.mosaicity"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.mosaicity.mosaicity()</span></code></a> — apply tilt-axis mosaic broadening.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.optimize_orientation.optimize_orientation" title="diffBloch.preprocess.steps.optimize_orientation.optimize_orientation"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.optimize_orientation.optimize_orientation()</span></code></a> — search nearby orientations and keep the best-scoring one.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.steps.optimize_thickness.optimize_thickness" title="diffBloch.preprocess.steps.optimize_thickness.optimize_thickness"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.steps.optimize_thickness.optimize_thickness()</span></code></a> — search mean specimen thickness and keep the best-scoring value.</p></li>
-<li><p><a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.driver.converge_numerics" title="diffBloch.preprocess.driver.converge_numerics"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.driver.converge_numerics()</span></code></a> — test convergence over <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and <code class="docutils literal notranslate"><span class="pre">tilt_steps</span></code>.</p></li>
-</ul>
-</section>
-<section id="api-example-composing-simple-steps">
-<h2>API example: composing simple steps<a class="headerlink" href="#api-example-composing-simple-steps" title="Link to this heading">¶</a></h2>
-<p>This example mirrors the default geometry-build shape. The app additionally handles checkpointing,
-device choices, optional fitting stages, and logging.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_experiment</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_experimental_data</span><span class="p">,</span> <span class="n">read_structure</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_orientation_plans</span><span class="p">,</span> <span class="n">from_experiment</span><span class="p">,</span> <span class="n">pipeline</span>
-
-<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint&quot;</span><span class="p">)</span>
-<span class="n">cfg</span><span class="p">,</span> <span class="n">_lock</span> <span class="o">=</span> <span class="n">load_experiment</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-<span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">load_hydrogens</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">load_hydrogens</span><span class="p">)</span>
-<span class="n">experimental_data</span> <span class="o">=</span> <span class="n">read_experimental_data</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">)</span>
-
-<span class="n">setup</span> <span class="o">=</span> <span class="n">from_experiment</span><span class="p">(</span><span class="n">structure</span><span class="p">,</span> <span class="n">experimental_data</span><span class="p">,</span> <span class="n">cfg</span><span class="p">)</span>
-<span class="n">base_plan</span> <span class="o">=</span> <span class="n">setup</span><span class="o">.</span><span class="n">plans</span><span class="o">.</span><span class="n">combined</span>
-
-<span class="n">prepare</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">([</span>
-    <span class="n">build_orientation_plans</span><span class="p">(</span>
-        <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_rocking_curve</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">),</span>
-        <span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">mosaicity</span><span class="p">,</span>
-        <span class="n">coupling</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_policy</span><span class="p">(),</span>
-        <span class="n">scoring_selection</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">blochwave</span><span class="o">.</span><span class="n">to_beam_selection</span><span class="p">(</span><span class="n">setup</span><span class="o">.</span><span class="n">integration</span><span class="p">),</span>
-    <span class="p">),</span>
-<span class="p">])</span>
-
-<span class="n">prepared_plan</span> <span class="o">=</span> <span class="n">prepare</span><span class="p">(</span><span class="n">base_plan</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>From the CLI, preprocessing prints each completed stage as
-<code class="docutils literal notranslate"><span class="pre">Preprocess</span> <span class="pre">stage</span> <span class="pre">N</span> <span class="pre">│</span> <span class="pre">Name</span> <span class="pre">│</span> <span class="pre">measurements</span></code>, then an aligned completion box, the resolved pipeline,
-and the absolute <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> / <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> locations:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>preprocess<span class="w"> </span>examples/experiments/quartz<span class="w"> </span>--refresh
-</pre></div>
-</div>
-</section>
-<section id="api-example-loading-a-checkpointed-plan">
-<h2>API example: loading a checkpointed <code class="docutils literal notranslate"><span class="pre">Plan</span></code><a class="headerlink" href="#api-example-loading-a-checkpointed-plan" title="Link to this heading">¶</a></h2>
-<p>The end-to-end preprocessing pipeline can take a long time, and it is deliberately decoupled from
-refinement. You can checkpoint a settled <code class="docutils literal notranslate"><span class="pre">Plan</span></code> — for example, a plan whose orientations and
-thicknesses have already been fitted — then run inference or refinement over that reusable scaffold
-without recomputing the preprocessing recipe.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_plan</span><span class="p">,</span> <span class="n">require_built_plans</span>
-
-<span class="n">plan</span> <span class="o">=</span> <span class="n">read_plan</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint/plan.npz&quot;</span><span class="p">)</span>
-<span class="n">orientations</span> <span class="o">=</span> <span class="n">require_built_plans</span><span class="p">(</span><span class="n">plan</span><span class="p">)</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">orientations</span><span class="p">))</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">structure_factor_grid</span><span class="o">.</span><span class="n">structure_factor_hkl</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-</pre></div>
-</div>
-</section>
-<section id="routing-on-cell-size">
-<h2>Routing on cell size<a class="headerlink" href="#routing-on-cell-size" title="Link to this heading">¶</a></h2>
-<p>The coupled orientation search diagonalizes (or exponentiates) the structure matrix <span class="math notranslate nohighlight">\(A\)</span> once
-per trial, an <span class="math notranslate nohighlight">\(O(N^3)\)</span> operation in the beam count <span class="math notranslate nohighlight">\(N\)</span>, and <span class="math notranslate nohighlight">\(N\)</span> grows with
-unit-cell volume. Above a fixed volume threshold, diffBloch skips a per-trial integrity check in the
-search that costs proportionally more on a large coupled beam set, without changing the search
-itself — the fitted orientation is always re-scored under the full check once the search settles.
-Below the threshold (quartz, at <span class="math notranslate nohighlight">\(\sim 113\ \text{Å}^3\)</span>, included) the check runs on every
-trial. This routing is built with <a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.pipeline.fork" title="diffBloch.preprocess.pipeline.fork"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.pipeline.fork()</span></code></a>, which picks one of two
-step lists from the structure-factor grid before the recipe is checkpointed, so a committed <code class="docutils literal notranslate"><span class="pre">Plan</span></code> is
-unaffected by which branch produced it.</p>
-<p>Numerical convergence testing — sweeping <code class="docutils literal notranslate"><span class="pre">g_max</span></code>, <code class="docutils literal notranslate"><span class="pre">sg_max</span></code>, and rocking-curve sampling until the
-simulated intensities stop changing — uses the same <code class="docutils literal notranslate"><span class="pre">Plan</span> <span class="pre">-&gt;</span> <span class="pre">Plan</span></code> step shape, built with
-<a class="reference internal" href="api/preprocess.html#diffBloch.preprocess.driver.converge_numerics" title="diffBloch.preprocess.driver.converge_numerics"><code class="xref py py-func docutils literal notranslate"><span class="pre">diffBloch.preprocess.driver.converge_numerics()</span></code></a>. See
-<a class="reference internal" href="hyperparameter-selection.html"><span class="std std-doc">Hyperparameter selection</span></a> for the physics behind that sweep and a
-runnable example.</p>
+<p>Mosaicity thus triples the number of simulated orientations: <span class="math notranslate nohighlight">\(N\)</span> nominal rocking-curve tilts
+become <span class="math notranslate nohighlight">\(3N\)</span> Bloch-wave calculations. Ten nominal tilts therefore require 30 calculations.
+Some setup is reused, but this option can substantially increase preprocessing and refinement time.</p>
+<p>Set <code class="docutils literal notranslate"><span class="pre">blochwave.mosaicity:</span> <span class="pre">false</span></code> to evaluate only the nominal tilt orientations and sum their
+intensities without mosaic broadening.</p>
 </section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
-          <a class="next-page" href="hyperparameter-selection.html">
+          <a class="next-page" href="convergence-testing.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Hyperparameter selection</div>
+                <div class="title">Convergence testing</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -530,9 +595,9 @@ runnable example.</p>
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Inputs and experiment directories</div>
-                
+
               </div>
             </a>
         </div>
@@ -542,20 +607,20 @@ runnable example.</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -566,16 +631,16 @@ runnable example.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a><ul>
-<li><a class="reference internal" href="#orientation">Orientation</a></li>
+<li><a class="reference internal" href="#orientation">Orientation</a><ul>
+<li><a class="reference internal" href="#unit-cell-authority-pets-overrides-the-structure-cif">Unit-cell authority: PETS overrides the structure CIF</a></li>
+<li><a class="reference internal" href="#orientation-search-method">Orientation-search method</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#thickness">Thickness</a></li>
+<li><a class="reference internal" href="#numerical-convergence">Numerical convergence</a></li>
 <li><a class="reference internal" href="#the-plan">The <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
 <li><a class="reference internal" href="#beam-sets-and-scoring-inside-a-plan">Beam sets and scoring inside a <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
 <li><a class="reference internal" href="#rocking-curves-and-mosaicity-inside-a-plan">Rocking curves and mosaicity inside a <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
-<li><a class="reference internal" href="#api-shape-from-experiment-records-to-an-initial-plan">API shape: from experiment records to an initial <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
-<li><a class="reference internal" href="#plan-plan-steps"><code class="docutils literal notranslate"><span class="pre">Plan</span> <span class="pre">-&gt;</span> <span class="pre">Plan</span></code> steps</a></li>
-<li><a class="reference internal" href="#api-example-composing-simple-steps">API example: composing simple steps</a></li>
-<li><a class="reference internal" href="#api-example-loading-a-checkpointed-plan">API example: loading a checkpointed <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
-<li><a class="reference internal" href="#routing-on-cell-size">Routing on cell size</a></li>
 </ul>
 </li>
 </ul>
@@ -583,8 +648,8 @@ runnable example.</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

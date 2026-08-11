@@ -9,9 +9,17 @@
     "sha256": "96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4",
     "bytes": 303151
   },
+  "authoritative_cell": [
+    4.9226,
+    4.9226,
+    5.4003,
+    90.0,
+    90.0,
+    120.0
+  ],
   "ignored_rotations": [],
   "config_digest": "01c04b0bd39f922628405b9ab7e99818f0a289f719a00cb54df8d7f7f4f57485",
-  "code_version": "0.2.0+g2f46918.dirty",
+  "code_version": "0.2.0+g8535919.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
