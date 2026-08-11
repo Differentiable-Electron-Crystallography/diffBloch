@@ -1,149 +1,143 @@
 # Workflow
 
-diffBloch converts a starting crystal structure and 3D electron-diffraction data into a
-refined structure through the following calculation:
+diffBloch converts a starting crystal structure and 3D electron-diffraction data into a refined structure.
+
+This page walks through that calculation end to end.
+
+Before running diffBloch, an `experiment.yaml` file must be created in the directory containing the
+starting structure `.cif` and experimental `.cif_pets` data. The YAML identifies those files and
+specifies the simulation, preprocessing, and refinement settings that are not selected from the
+input data. See [Hyperparameter selection](hyperparameter-selection.md) for the available settings
+and their defaults.
+
+Commands are run from the repository root with `uv run`. In the examples below,
+`<experiment_dir>` denotes this directory.
+
+## Experiment directory
+
+A calculation begins with an experiment directory containing:
 
 ```text
-.cif structure + .cif_pets experiment
-  -> crystal potential
-  -> Bloch-wave simulation
-  -> calculated/observed intensity comparison
-  -> preprocessing
-  -> structural refinement
+<experiment_dir>/
+  experiment.yaml
+  structure.cif
+  exp_data.cif_pets
 ```
 
-This page walks through that calculation end to end. For how the codebase itself is organised into
-packages and modules, see [Architecture](architecture.md).
+The structure CIF supplies the starting atomic model. The `.cif_pets` file supplies the observed
+intensities, uncertainties, orientations, wavelength, goniometer angles, and PETS unit cell. Both
+files are specified in `experiment.yaml`:
 
-## Structural and experimental data
+```yaml
+name: example-experiment
 
-The structure `.cif` supplies asymmetric-unit atoms, fractional coordinates, elemental identities,
-occupancies, atomic displacement parameters (ADPs), and space-group symmetry operations. It also
-carries its own unit cell, but that cell is used only as a consistency check, never for simulation
-geometry — see [Unit-cell authority](#unit-cell-authority) below.
+inputs:
+  structure: structure.cif
+  exp_data: exp_data.cif_pets
 
-The `.cif_pets` file supplies the measured experimental data: observed reflection intensities and
-uncertainties for each rotation, the UB orientation matrix, electron wavelength, the goniometer
-angles, and its own unit cell.
-
-Both files are parsed into validated numerical records before simulation begins. Malformed values
-and unsupported representations fail at this boundary. See [Inputs](inputs.md) for the file
-requirements and experiment-directory layout.
-
-### Unit-cell authority
-
-**PETS's cell, not the structure CIF's, is authoritative for every piece of simulation
-geometry**: the structure-factor grid, the reciprocal basis, the cell volume, the ADP `U*`-frame
-conversion, and the beam geometry derived from that grid. The CIF's own cell is checked against
-PETS's on load — a >1% relative difference on any of `a, b, c, alpha, beta, gamma` logs a warning
-(stating that PETS overrides the CIF), a >5% difference raises and stops, listing every offending
-parameter, both values, and the percentage difference. Fractional atomic coordinates are read from the CIF
-unchanged; they are simply interpreted against PETS's cell rather than the CIF's own. For a combined
-(`inputs.multi_dataset`) experiment, the first combined `.cif_pets` file is the shared anchor every
-other input — the CIF's and every further combined file's — is checked against, under the same two
-thresholds; see [Inputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif) for the
-full rule and [Preprocessing](preprocessing.md#unit-cell-authority-pets-overrides-the-structure-cif)
-for how each combined file's own orientation matrix still comes from its own UB and cell before
-being composed with that shared anchor.
-
-## Constructing the crystal potential
-
-The asymmetric unit is expanded using the symmetry operations from the `.cif`: symmetry operation
-{math}`(R_m, \mathbf{t}_m)` maps atomic position {math}`\mathbf{r}_i` to
-{math}`\mathbf{r}'_{mi} = R_m\mathbf{r}_i + \mathbf{t}_m`. Each expanded atom then contributes to
-the elastic electron structure factor {math}`F_{\mathbf{g}}` (optionally with an imaginary
-absorptive component) -- see
-[Elastic scattering and the structure factor](bloch-wave-simulation.md#elastic-scattering-and-the-structure-factor)
-for the full expression. {math}`F_{\mathbf{g}}` is the reciprocal-space crystal potential the
-Bloch-wave calculation consumes.
-
-## Bloch-wave simulation
-
-For each experimental orientation, diffBloch selects the reciprocal-lattice vectors included in the
-calculation, calculates their excitation errors, and constructs and solves the Bloch structure
-matrix — the full derivation, from the elastic structure factor through the relativistic
-interaction parameter to the structure matrix and its two equivalent solvers, is in
-[Bloch-wave simulation](bloch-wave-simulation.md). The incident wave begins entirely in the
-transmitted beam; propagating it through specimen thickness {math}`t` and reading off
-{math}`|\psi_{\mathbf{g}}(t)|^2` gives the calculated intensity for every included reflection.
-
-A continuous-rotation frame covers an angular interval rather than one static orientation.
-diffBloch samples that rocking curve, performs a Bloch-wave solve at each sub-orientation, and sums
-the intensities incoherently:
-
-```{math}
-I_{\mathrm{frame}}(t) = \sum_k |\psi^{(k)}(t)|^2.
+sample:
+  thicknesses: [800.0]  # Angstroms
 ```
 
-When mosaicity is enabled, the apparent mosaicity in the `.cif_pets` defines a Gaussian angular
-distribution around every sampled tilt. diffBloch averages three weighted mosaic orientations per
-tilt before integrating the frame. The weights are normalized, so mosaicity redistributes
-orientation contributions without changing the integration scale. The output is one calculated
-diffraction pattern for each experimental rotation.
+The simulation hyperparameters include the reciprocal-space cutoffs and the number of rocking-curve
+samples. Suitable values depend on the experiment and should be established by convergence testing
+before preprocessing or refinement. See [Inputs](inputs.md) for the complete directory layout,
+multiple datasets, excluded rotations, and unit-cell checks.
 
-## Comparing simulation with experiment
+## Convergence testing
 
-The calculated intensities are matched to the observed reflections from the corresponding `.cif_pets`
-rotation. diffBloch distinguishes three reflection sets:
+The convergence test determines suitable values for the main simulation hyperparameters:
 
-- **solve beams** participate in the dynamical calculation;
-- **matched reflections** occur in both the calculated and experimental patterns;
-- **scored reflections** are the matched reflections admitted to the objective.
+```bash
+uv run diffbloch convergence-test <experiment_dir>
+```
 
-Refinement minimises a scaling-optimised residual. The default is {math}`wR_2`.
-{math}`R_{\mathrm{obs}}`, restricted to observations satisfying {math}`I>3\sigma`, is also
-reported.
+The optional `--orientations N` argument includes more than the first orientation:
 
-## Preprocessing the experiment
+```bash
+uv run diffbloch convergence-test <experiment_dir> --orientations 3
+```
 
-The PETS orientations provide the starting geometry. diffBloch searches a small angular region
-around each orientation and retains the orientation with the best agreement to the observed
-intensities.
+The command reports settled values for `gmax`, `sgmax`, and `tilt_steps`. These correspond to
+`blochwave.g_max`, `blochwave.sg_max`, and `blochwave.rocking_curve_sampling` in
+`experiment.yaml`.
 
-Specimen thickness strongly affects dynamical intensities. Preprocessing determines thickness before
-orientation optimization. This improves the orientation comparison and gives the thickness model a
-better starting value during refinement.
-
-Convergence tests determine the reciprocal-space cutoffs and rocking-curve sampling used during
-refinement.
-
-The output is a `Plan` containing the orientations, thicknesses, beam geometry, experimental
-observations, and calculated/observed reflection alignment. The `Plan` remains fixed during
-structural refinement. See [Preprocessing](preprocessing.md) and
+Convergence is normally insensitive to small orientation corrections and changes in atomic coordinates or ADPs during structural refinement. Thickness may matter: a substantially thicker crystal will have a narrower rocking curve and may require more tilt samples to maintain angular sampling. If thickness optimization gives a value far from the thickness used for the convergence test, the test should be repeated at the revised thickness. See
 [Convergence testing](convergence-testing.md).
 
-## Refinement
+## Preprocessing
 
-Refinement holds the settled `Plan` fixed and repeatedly evaluates the scientific calculation:
+Preprocessing establishes specimen thickness and optimizes the experimental orientations before structural refinement.  See [Preprocessing](preprocessing.md) for more information.
 
-```text
-raw structural parameters
-  -> physical crystallographic structure
-  -> crystal potential
-  -> Bloch-wave intensities
-  -> comparison with experiment
-  -> scalar objective
-  -> gradients and updated parameters
+Preprocessing is run with:
+
+```bash
+uv run diffbloch preprocess <experiment_dir>
 ```
 
-Automatic differentiation calculates the gradient of the objective with respect to the selected
-atomic positions, ADPs, and occupancies. Crystallographic constraints are applied before the
-potential is calculated. Molecular constraints, such as hydrogen riding, and soft structural
-restraints can also be included. See [Refinement](refinement.md).
 
-## Learned model components
+When the approximate mean thickness is known, one shared starting value may be used for
+orientation optimization:
 
-Differentiable models can be refined alongside the atomic structure. The current thickness neural
-network takes the experimental rotation coordinate and supplies a thickness to each Bloch-wave
-calculation. Its parameters are updated using the same diffraction objective as the structure.
+```yaml
+sample:
+  thicknesses: [800.0]
 
-The same design can support other quantities that vary through an experiment. Planned beam
-damage models will describe changes across an ordered dataset. Future components could describe
-other systematic experimental changes or additional scattering contributions, including inelastic
-scattering.
+preprocess:
+  optimize_thickness: false
+```
 
-## Logs, locks, and reproducibility
+When the thickness is uncertain, a grid search can be run before orientation optimization:
 
-Logs report preprocessing, comparison metrics, and refinement progress. Locks record the input
-files, configuration, code version, and generated results. See
-[Reproducibility](reproducibility.md).
+```yaml
+preprocess:
+  optimize_thickness: true
+  optimize_orientation: true
+  thickness:
+    min_thickness: 100.0
+    max_thickness: 2000.0
+    n_steps: 100
+    plot: true
+```
+
+With `plot: true`, residual-versus-thickness plots are written to `thickness_optim/`.  These plots may also be examined for debugging purposes. In the ideal cases the minimum-residual thickness should vary smoothly with orientation.
+
+## Structural refinement
+
+The structural parameters and optimizer settings are specified in `experiment.yaml`. Refinement is
+run with:
+
+```bash
+uv run diffbloch refine <experiment_dir>
+```
+
+
+The objective and validation metrics are reported throughout the run. A lower training loss without
+improved validation agreement can indicate over-fitting.
+
+See [Refinement](refinement.md) for trainable positions, ADPs, occupancies, constraints, restraints,
+and optional learned thickness components.
+
+## Outputs
+
+A completed refinement writes the main results beside the inputs and under `reproducibility/`:
+
+```text
+<experiment_dir>/
+  refined_structure.cif
+  refinement_report.txt
+  thickness_optim/                 # when thickness plots are enabled
+  reproducibility/
+    experiment.lock
+    plan.<stem>.npz
+    plan.<stem>.lock
+    refined_parameters.npz
+    refined_components.npz         # only when components are used
+    refinement.lock
+```
+
+`refined_structure.cif` contains the refined structural model, while `refinement_report.txt`
+summarizes the run. The YAML, input CIF/PETS files, and complete `reproducibility/` directory form
+the record associated with a reported result. The locks verify the inputs and preprocessed starting
+point; they do not guarantee identical floating-point optimizer trajectories on different
+hardware. See [Reproducibility](reproducibility.md).

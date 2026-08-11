@@ -85,12 +85,6 @@ print(structure.frac_positions.shape)
 print(experimental_data.hkl.shape)
 ```
 
-Validate a config from the CLI before launching a longer job:
-
-```bash
-uv run diffbloch validate examples/Colmey_et_al_2026/data/quartz-no-abs/experiment.yaml
-```
-
 ## Excluding rotations
 
 Exclude damaged, empty, or diagnostic-only frames with zero-based indices in the original PETS

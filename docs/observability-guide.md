@@ -23,13 +23,13 @@ a new backend is exactly one method -- see `diffBloch.app.loggers` for the built
 
 ### Preprocessing
 
-A fresh preprocess run reports the plan's shape as the recipe reshapes it: one `PlanSeeded` for the
-incoming plan, then one `PlanStepCompleted` per step (`select_beams`, `optimize_orientation`, ...),
+A fresh preprocess run reports the plan's shape as the recipe reshapes it: one event for the
+initial plan, then one `PlanStepCompleted` per step (`select_beams`, `optimize_orientation`, ...),
 each carrying the orientation count, structure-factor support size, solve-beam totals, and
 observed/matched reflection counts. Read consecutively these are per-stage *survival* counts -- how
-many beams and reflections each filter left behind -- which is why the seed baseline (`PlanSeeded`)
-is reported at all: without it, the first stage's numbers are absolutes with nothing to compare
-against. Reusing a checkpoint skips this runner entirely, so these only fire on a fresh run.
+many beams and reflections each filter left behind. Reporting the initial plan provides the
+baseline needed to interpret the first stage. Reusing a checkpoint skips this runner entirely, so
+these only fire on a fresh run.
 
 `n_matched_hkl` is absent rather than zero before `build_orientation_plans` runs, since a candidate
 plan has no alignment yet and a reported `0` would misleadingly mean "matched nothing".

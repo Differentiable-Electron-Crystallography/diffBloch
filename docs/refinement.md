@@ -4,7 +4,7 @@ Refinement holds a settled `Plan` (fitted orientation, tilts, thickness — see
 [Preprocessing](preprocessing.md)) fixed and minimizes the scaling-optimized weighted {math}`wR_2`
 of [Klar *et al.* (2023)](https://doi.org/10.1038/s41557-023-01186-1) over the differentiable
 structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
-dynamical calculation described in [Workflow](workflow.md#refinement). `R_obs`, the Bragg
+dynamical calculation described in [Workflow](workflow.md#structural-refinement). `R_obs`, the Bragg
 {math}`R`-factor restricted to {math}`I_{\mathrm{obs}} > 3\sigma` reflections, is reported alongside
 {math}`wR_2` at every step as the conventional crystallographic residual, but is not itself the
 optimized quantity.
@@ -45,8 +45,8 @@ refinement:
 
 Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
 at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
-`HKLs (Observed/total): X / Y` means matched observed reflections / all matched reflections, where
-the observed classification uses the conventional `I > 3 sigma` test internally.
+In `HKLs (I > 3σ / total): X / Y`, `X` is the number of matched reflections satisfying
+{math}`I > 3\sigma`, and `Y` is the total number of matched reflections.
 
 ## Refinement outputs
 

@@ -6,8 +6,7 @@ therefore determines this experimental metadata before refining the structure an
 PETS2 reduces continuous-rotation data into overlapping **virtual frames**
 ([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
 given reflection can appear in several neighbouring frames, but should only be fully integrated in
-one of them -- `rsg`/`dsg` (see [Comparing simulation with experiment](workflow.md#comparing-simulation-with-experiment))
-aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
+one of them -- `rsg`/`dsg` aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
 intensities: partial reflections are not simulated. It represents each virtual frame by sampled
 tilt sub-orientations and sums their simulated intensities.
 
@@ -238,26 +237,18 @@ it would be in a single perfectly oriented crystal. Mosaicity therefore broadens
 rocking curve and changes the integrated intensity, especially for reflections whose excitation
 condition varies rapidly with angle.
 
-With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity from the source
-`.cif_pets` as a Gaussian standard deviation {math}`\sigma` in degrees. Every nominal rocking-curve
-tilt is an angular offset about the main PETS {math}`\alpha` rocking
-direction.  Each nominal {math}`\alpha` tilt is replaced by three
-orientations at
-{math}`(-\sqrt{3}\sigma, 0, +\sqrt{3}\sigma)` relative to that tilt. Their Gaussian weights are
-{math}`(1/6, 2/3, 1/6)`.
-
-For a nominal tilt {math}`\theta`, the combined intensity is
+With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
+`.cif_pets` and converts it to a sampled-tilt window using
 
 ```{math}
-I_{\mathrm{mosaic}}(\theta) =
-\frac{1}{6}I(\theta-\sqrt{3}\sigma)
-+\frac{2}{3}I(\theta)
-+\frac{1}{6}I(\theta+\sqrt{3}\sigma).
+\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N-1}, \qquad
+w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
 
-Mosaicity thus triples the number of simulated orientations: {math}`N` nominal rocking-curve tilts
-become {math}`3N` Bloch-wave calculations. Ten nominal tilts therefore require 30 calculations.
-Some setup is reused, but this option can substantially increase preprocessing and refinement time.
+The calculated rocking curve is averaged over that window before integration. A width of zero or
+one leaves the curve unchanged. This uses the existing {math}`N` Bloch-wave solves rather than
+adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
-Set `blochwave.mosaicity: false` to evaluate only the nominal tilt orientations and sum their
-intensities without mosaic broadening.
+Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
+sum their intensities without mosaic broadening. The legacy `{window: N}` form sets the
+moving-average width directly, independent of any PETS-reported value.

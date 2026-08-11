@@ -5,6 +5,12 @@ of tilts across each rocking curve. Too few beams or tilts can change the calcul
 intensities; too many increase the cost without improving the result. The required values depend on
 the material, orientation, and thickness.
 
+The convergence test is run before preprocessing or refinement:
+
+```bash
+uv run diffbloch convergence-test <experiment_dir>
+```
+
 ## Simulation convergence
 
 This is *simulation* convergence, not optimizer convergence: it means the finite beam basis and
