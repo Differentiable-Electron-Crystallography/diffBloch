@@ -38,12 +38,10 @@ from diffBloch.engine.forward import (
 )
 from diffBloch.engine.losses import (
     l1_loss,
-    least_squares_scores,
     mse_loss,
     rbragg_loss,
     robs_scores,
     w_rbragg_loss,
-    weighted_mse_loss,
     wr2_loss,
     wr2_scores,
 )
@@ -73,7 +71,6 @@ __all__ = [
     "ConstraintTransform",
     "ForwardContext",
     "HydrogenRiding",
-    "least_squares_scores",
     "LossFn",
     "mean_plan_thickness",
     "ModelComponent",
@@ -110,6 +107,5 @@ __all__ = [
     "wr2_loss",
     "wr2_scores",
     "w_rbragg_loss",
-    "weighted_mse_loss",
     "with_hydrogen_riding",
 ]

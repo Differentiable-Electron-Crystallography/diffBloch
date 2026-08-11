@@ -14,4 +14,4 @@ def test_load_config_reads_yaml_and_applies_defaults() -> None:
     assert cfg.inputs.structure == "enantiomer_1.cif"
     assert cfg.inputs.exp_data == "exp_data.cif_pets"
     # defaults-as-code applied for everything the file omits
-    assert cfg.blochwave.solver.refine == "matrix_exp"
+    assert cfg.blochwave.solver == "matrix_exp"

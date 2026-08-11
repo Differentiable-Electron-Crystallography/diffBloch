@@ -86,7 +86,6 @@ from diffBloch.preprocess import (
     PlanStep,
     build_orientation_plans,
     fork,
-    import_orientations,
     optimize_orientation,
     optimize_thickness,
     pipeline,
@@ -266,7 +265,7 @@ def converge_experiment(
             simulation,
             refinement,
             ConvergenceTolerance(),
-            method=cfg.blochwave.solver.refine,
+            method=cfg.blochwave.solver,
             logger=logger,
         )
         settled_states.append(settled)
@@ -286,7 +285,6 @@ def preprocess_experiment(
     device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
-    orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
 ) -> Plan:
@@ -337,15 +335,6 @@ def preprocess_experiment(
     machine precision), out of the checkpoint lock like ``device``/``workers``. See
     :func:`~diffBloch.engine.build_engine`.
 
-    ``orientations_csv`` (default ``None``), when given, prepends
-    :func:`~diffBloch.preprocess.import_orientations` to the recipe: every candidate's orientation
-    is overwritten from the CSV (a ``Rotation Index`` / ``Orientation Matrix`` file -- this repo's
-    own orientation-search output format) before ``build_orientation_plans`` runs, and
-    ``preprocess.optimize_orientation`` then controls whether the search still refines from that
-    seed or is skipped so the imported orientations are used as-is. Unlike ``device``/``workers``
-    this **is** part of the recipe (the checkpoint lock sees it), so switching the CSV path (or
-    adding/removing it) correctly restales any existing checkpoint.
-
     ``plot_thickness`` (default ``False``) ORs with ``cfg.preprocess.thickness.plot`` -- either
     turns on one wR2-vs-thickness PNG per rotation from ``optimize_thickness``'s grid search, saved
     under ``plot_thickness_dir`` (default ``<inputs.structure's directory>/thickness_optim``).
@@ -364,7 +353,6 @@ def preprocess_experiment(
             device=device,
             workers=workers,
             max_batch=max_batch,
-            orientations_csv=orientations_csv,
             plot_thickness=plot_thickness,
             plot_thickness_dir=plot_thickness_dir,
         )
@@ -381,7 +369,6 @@ def run_experiment(
     device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
-    orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
 ) -> InferenceResult:
@@ -389,7 +376,7 @@ def run_experiment(
 
     :func:`preprocess_experiment` followed by the terminal forward model: it settles the coupled
     ``Plan`` (see that function for the recipe, ``checkpoint``/``refresh``,
-    ``device``/``workers``, ``orientations_csv``, and ``plot_thickness``/``plot_thickness_dir``
+    ``device``/``workers``, and ``plot_thickness``/``plot_thickness_dir``
     semantics -- all shared), then evaluates every rotation with
     ``run_inference`` -- emitting
     per-rotation observations to ``logger`` (the null default discards them). Returns the
@@ -409,7 +396,6 @@ def run_experiment(
             device=device,
             workers=workers,
             max_batch=max_batch,
-            orientations_csv=orientations_csv,
             plot_thickness=plot_thickness,
             plot_thickness_dir=plot_thickness_dir,
         )
@@ -417,7 +403,7 @@ def run_experiment(
     return run_inference(
         prepared,
         refinement,
-        method=cfg.blochwave.solver.inference,
+        method=cfg.blochwave.solver,
         device=device,
         max_batch=max_batch,
         logger=logger,
@@ -437,14 +423,13 @@ def refine_experiment(
     verbose: bool = False,
     profile: bool = False,
     checkpoint_activations: bool = True,
-    orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
 ) -> ModelRefinementResult:
     """Settle the coupled ``Plan`` and gradient-refine the structure against the observed data.
 
     :func:`preprocess_experiment` for the geometry (checkpoint reuse for free -- see it for the
-    recipe and ``checkpoint``/``refresh``/``device``/``workers``/``orientations_csv``/
+    recipe and ``checkpoint``/``refresh``/``device``/``workers``/
     ``plot_thickness``/``plot_thickness_dir`` semantics), then run the
     **default** single-stage refinement on that settled ``Plan``. This is the boring config-knobs
     path: the residual (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_loss`), the trainable
@@ -492,7 +477,6 @@ def refine_experiment(
             device=device,
             workers=workers,
             max_batch=max_batch,
-            orientations_csv=orientations_csv,
             plot_thickness=plot_thickness,
             plot_thickness_dir=plot_thickness_dir,
         )
@@ -505,7 +489,7 @@ def refine_experiment(
         prepared,
         refinement,
         loss=cfg.loss_metrics.to_loss(),
-        method=cfg.blochwave.solver.refine,
+        method=cfg.blochwave.solver,
         max_batch=max_batch,
         absorption=cfg.blochwave.to_absorption(),
         profile=profile,
@@ -532,7 +516,7 @@ def refine_experiment(
             replace(prepared, orientations=train_only),
             refinement,
             loss=cfg.loss_metrics.to_loss(),
-            method=cfg.blochwave.solver.refine,
+            method=cfg.blochwave.solver,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
             profile=profile,
@@ -542,7 +526,7 @@ def refine_experiment(
             replace(prepared, orientations=validation_only),
             refinement,
             loss=cfg.loss_metrics.to_loss(),
-            method=cfg.blochwave.solver.refine,
+            method=cfg.blochwave.solver,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
             profile=profile,
@@ -836,7 +820,6 @@ def _preprocess(
     device: Device | None,
     workers: int,
     max_batch: int | None,
-    orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
 ) -> tuple[
@@ -863,12 +846,6 @@ def _preprocess(
     chains to a leftover lock this run never validated. Hydrogen sites are loaded per
     ``inputs.load_hydrogens``.
 
-    ``orientations_csv`` (the API/CLI argument) overrides ``cfg.preprocess.orientations_csv`` when
-    given; the config value (resolved relative to ``root``, like ``inputs.structure``) is the
-    default so the import is reproducible from ``experiment.yaml`` alone, not just a CLI one-off.
-    Rejected for pooled experiments: the CSV's ``Rotation Index`` column predates pooling and would
-    be ambiguous between file-local and pooled indices.
-
     ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn
     plotting on. ``plot_thickness_dir`` overrides the default output directory,
     ``<inputs.structure's directory>/thickness_optim``, when given. Both are execution-only (they
@@ -890,16 +867,6 @@ def _preprocess(
         float(cell[4]),
         float(cell[5]),
     )
-    effective_orientations_csv = (
-        orientations_csv
-        if orientations_csv is not None
-        else (root / cfg.preprocess.orientations_csv if cfg.preprocess.orientations_csv else None)
-    )
-    if effective_orientations_csv is not None and len(datasets) > 1:
-        raise ValueError(
-            "orientations_csv is not supported with inputs.multi_dataset: the CSV's "
-            "'Rotation Index' column is ambiguous between file-local and pooled indices"
-        )
     if plot_thickness or cfg.preprocess.thickness.plot:
         from diffBloch.app.loggers.plotting import ThicknessPlotLogger
 
@@ -922,7 +889,6 @@ def _preprocess(
             device=device,
             workers=workers,
             max_batch=max_batch,
-            orientations_csv=effective_orientations_csv,
         )
         prepared, lock_sha256 = _prepare(
             dataset.plan,
@@ -987,7 +953,6 @@ def _recipe_steps(
     device: Device | None = None,
     workers: int = 1,
     max_batch: int | None = None,
-    orientations_csv: str | Path | None = None,
 ) -> list[PlanStep]:
     """The default recipe as an inspectable step list (its provenance keys the lock).
 
@@ -995,11 +960,6 @@ def _recipe_steps(
     stages join the fixed recipe order. When enabled, the orientation fit runs under per-trial
     coupling (:func:`_trial_coupling`). The tilt-independent fit is not offered here; compose it
     directly if needed.
-
-    ``orientations_csv``, when given, prepends :func:`~diffBloch.preprocess.import_orientations`
-    (every candidate's orientation is overwritten from the CSV before ``build_orientation_plans``
-    runs). ``optimize_orientation`` still controls whether the search step follows it -- ``true``
-    refines from the imported seed, ``false`` uses the imported orientations as-is.
 
     The orientation fit is a :func:`~diffBloch.preprocess.fork` on unit-cell volume: a **large
     cell** (> ``_LARGE_CELL_THRESHOLD_A3``) skips the per-trial gather integrity checks
@@ -1027,7 +987,7 @@ def _recipe_steps(
         return optimize_orientation(
             refinement,
             search,
-            method=cfg.blochwave.solver.refine,
+            method=cfg.blochwave.solver,
             coupling=coupling,
             validate=validate,
             device=device,
@@ -1043,7 +1003,7 @@ def _recipe_steps(
         return optimize_thickness(
             refinement,
             thickness_grid,
-            method=cfg.blochwave.solver.refine,
+            method=cfg.blochwave.solver,
             device=device,
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
@@ -1053,8 +1013,6 @@ def _recipe_steps(
         )
 
     steps: list[PlanStep] = []
-    if orientations_csv is not None:
-        steps.append(import_orientations(orientations_csv))
     steps.append(
         build_orientation_plans(
             cfg.blochwave.to_rocking_curve(integration),

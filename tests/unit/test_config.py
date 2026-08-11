@@ -15,10 +15,8 @@ from diffBloch.config.schema import (
 )
 from diffBloch.engine import AtomSelection, TrainableSpec
 from diffBloch.engine.losses import (
-    least_squares_scores,
     rbragg_loss,
     robs_scores,
-    weighted_mse_loss,
     wr2_loss,
     wr2_scores,
 )
@@ -42,8 +40,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     )
     assert cfg.name == "quartz"
     # defaults-as-code: the experiment file only needs inputs + overrides
-    assert cfg.blochwave.solver.refine == "matrix_exp"
-    assert cfg.blochwave.solver.inference == "matrix_exp"
+    assert cfg.blochwave.solver == "matrix_exp"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
@@ -60,11 +57,11 @@ def test_minimal_config_validates_with_defaults() -> None:
 
 
 def test_solver_method_must_be_a_known_method() -> None:
-    # The solver fields are typed as the core SolverMethod literal, so an unknown method fails fast at
+    # solver is typed as the core SolverMethod literal, so an unknown method fails fast at
     # config load rather than deep in the forward model.
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):
-        ExperimentConfig.model_validate({**base, "blochwave": {"solver": {"refine": "nope"}}})
+        ExperimentConfig.model_validate({**base, "blochwave": {"solver": "nope"}})
 
 
 def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
@@ -77,7 +74,7 @@ def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
                 **base,
                 "blochwave": {
                     "absorption": True,
-                    "solver": {"refine": "bloch_eigen"},
+                    "solver": "bloch_eigen",
                 },
             }
         )
@@ -307,14 +304,12 @@ def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
 
 def test_loss_metrics_residual_parses_to_loss() -> None:
     assert LossMetricsConfig(residual="wr2").to_loss() is wr2_loss
-    assert LossMetricsConfig(residual="least_squares").to_loss() is weighted_mse_loss
     assert LossMetricsConfig(residual="robs").to_loss() is rbragg_loss
 
 
 def test_loss_metrics_residual_parses_to_scores() -> None:
     """to_scores is the per-thickness counterpart to_loss sums -- same residual, matching metric."""
     assert LossMetricsConfig(residual="wr2").to_scores() is wr2_scores
-    assert LossMetricsConfig(residual="least_squares").to_scores() is least_squares_scores
     assert LossMetricsConfig(residual="robs").to_scores() is robs_scores
 
 

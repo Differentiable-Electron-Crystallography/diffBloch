@@ -16,11 +16,9 @@ import torch
 
 from diffBloch.core.products import AlignedIntensities
 from diffBloch.engine import (
-    least_squares_scores,
     rbragg_loss,
     robs_scores,
     w_rbragg_loss,
-    weighted_mse_loss,
     wr2_loss,
     wr2_scores,
 )
@@ -100,13 +98,3 @@ def test_robs_scores_gradient_alive_on_shape_mismatch(_shapes) -> None:
     calc = (obs * factor).clone().requires_grad_(True)
     rbragg_loss(_aligned(calc, obs, sigmas)).backward()
     assert calc.grad is not None and calc.grad.abs().sum() > 0
-
-
-def test_least_squares_scores_is_raw_unscaled_weighted_mse(_shapes) -> None:
-    # No scale-fit (unlike wr2/robs): a pure scale mismatch does NOT resolve to ~0.
-    obs, sigmas, factor = _shapes
-    aligned = _aligned(obs * factor, obs, sigmas)
-    assert torch.allclose(weighted_mse_loss(aligned), least_squares_scores(aligned).sum())
-    assert least_squares_scores(aligned).shape == (obs.shape[0],)
-    scaled = _aligned(10.0 * obs, obs, sigmas)
-    assert float(weighted_mse_loss(scaled)) > 0.5

@@ -9,9 +9,7 @@ sample:
   thicknesses: [460.0]
 
 blochwave:
-  solver:
-    refine: matrix_exp
-    inference: matrix_exp
+  solver: matrix_exp
   absorption: true
   coupling_mode: union
   g_max: 2.3
@@ -26,7 +24,6 @@ preprocess:
   optimize_orientation: true
   optimize_thickness: false
   stage_order: thickness_first
-  orientations_csv: null #optim_orientation.csv
   orientation:
     nelder_mead:
       step_size: 0.3
