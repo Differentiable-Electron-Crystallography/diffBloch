@@ -9,6 +9,9 @@ sample:
   thicknesses: [820.0]
 blochwave:
   rocking_curve_sampling: 42
+  # Preserve the historical anchor calculation while boolean mosaicity defaults to false.
+  mosaicity:
+    window: 5
   dsg: 0.0015
   rsg: 0.9
   # The faithful SOLVE-union coupling (UnionCoupling defaults); declared explicitly because

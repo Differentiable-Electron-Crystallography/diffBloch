@@ -243,4 +243,5 @@ one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solv
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
 Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
-sum their intensities without mosaic broadening.
+sum their intensities without mosaic broadening. The legacy `{window: N}` form sets the
+moving-average width directly, independent of any PETS-reported value.

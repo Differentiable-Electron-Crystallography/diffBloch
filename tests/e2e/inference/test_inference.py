@@ -29,6 +29,7 @@ from diffBloch.preprocess import (
     run_inference,
     select_beams,
 )
+from diffBloch.specs import Mosaicity
 
 pytestmark = pytest.mark.e2e
 
@@ -113,15 +114,29 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
             for index in indices
         ),
     )
-    prepare = pipeline(
-        [
-            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
-            build_orientation_plans(),
-            integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
-            mosaicity(cfg.blochwave.mosaicity),
-            couple_beams(replace(cfg.blochwave.to_policy(), union_adaptive=case.union_adaptive)),
-        ]
-    )
+    if isinstance(cfg.blochwave.mosaicity, Mosaicity):
+        prepare = pipeline(
+            [
+                select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
+                build_orientation_plans(),
+                integrate_rocking_curve(cfg.blochwave.to_rocking_curve(setup.integration)),
+                mosaicity(cfg.blochwave.mosaicity),
+                couple_beams(
+                    replace(cfg.blochwave.to_policy(), union_adaptive=case.union_adaptive)
+                ),
+            ]
+        )
+    else:
+        prepare = pipeline(
+            [
+                build_orientation_plans(
+                    cfg.blochwave.to_rocking_curve(setup.integration),
+                    cfg.blochwave.mosaicity,
+                    coupling=replace(cfg.blochwave.to_policy(), union_adaptive=case.union_adaptive),
+                    scoring_selection=cfg.blochwave.to_beam_selection(setup.integration),
+                )
+            ]
+        )
 
     started = time.perf_counter()
     result = run_inference(

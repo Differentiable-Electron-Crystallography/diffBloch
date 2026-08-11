@@ -62,6 +62,7 @@ class CandidatePlan:
     thickness: NDArray[np.float64]
     beam_hkl: NDArray[np.int64]
     pattern: PatternBatch
+    mosaicity_degrees: float | None = None
 
     @classmethod
     def seed(
@@ -73,6 +74,7 @@ class CandidatePlan:
         thickness: Tensor | NDArray[np.float64] | Sequence[float],
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
+        mosaicity_degrees: float | None = None,
     ) -> CandidatePlan:
         """Assemble a candidate seed for one orientation (plain-numpy source; builds no gather)."""
         rotation = np.eye(3) if orientation is None else np.asarray(orientation, dtype=np.float64)
@@ -83,6 +85,7 @@ class CandidatePlan:
             thickness=np.atleast_1d(np.asarray(thickness, dtype=np.float64)),
             beam_hkl=np.asarray(beam_hkl, dtype=np.int64),
             pattern=pattern,
+            mosaicity_degrees=mosaicity_degrees,
         )
 
 
