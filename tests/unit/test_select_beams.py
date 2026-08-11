@@ -19,6 +19,7 @@ from diffBloch.preprocess import (
     select_beams,
 )
 from diffBloch.preprocess.plan import CandidatePlan
+from diffBloch.preprocess.steps.beams import _pets_mosaicity_reduction
 from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
@@ -131,28 +132,18 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
 
 
 def test_pets_mosaicity_sets_window_from_actual_tilt_spacing() -> None:
-    plan, config, integration = _quartz_train_plan()
-    candidate = replace(plan.orientations[0], mosaicity_degrees=0.6)
-    plan = replace(plan, orientations=(candidate,))
     rocking = RockingCurve(
         integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
     )
-    built = build_orientation_plans(rocking, True)(plan).orientations[0]
-
-    assert len(built.beam_plans) == rocking.sampling
-    assert isinstance(built.tilt_reduction, MosaicSmoothed)
-    assert built.tilt_reduction.window == 3  # round(0.6 / (2 / (11 - 1)))
+    reduction = _pets_mosaicity_reduction(rocking, 0.6)
+    assert reduction == MosaicSmoothed(3)  # round(0.6 / (2 / (11 - 1)))
 
 
 def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
-    plan, _, _ = _quartz_train_plan()
-    candidate = replace(plan.orientations[0], mosaicity_degrees=0.05)
-    plan = replace(plan, orientations=(candidate,))
     rocking = RockingCurve(
         integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
     )
-    built = build_orientation_plans(rocking, True)(plan).orientations[0]
-    assert isinstance(built.tilt_reduction, PlainSum)
+    assert isinstance(_pets_mosaicity_reduction(rocking, 0.05), PlainSum)
 
 
 def test_legacy_mosaic_window_remains_supported() -> None:

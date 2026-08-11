@@ -144,18 +144,7 @@ def build_orientation_plans(
             raise ValueError(
                 "PETS-derived mosaicity requires mosaicity metadata on every candidate"
             )
-        if rocking.sampling == 1:
-            raise ValueError("PETS-derived mosaicity requires at least two rocking-curve samples")
-        degrees_per_sample = 2.0 * rocking.integration.semiangle / (rocking.sampling - 1)
-        window = round(candidate.mosaicity_degrees / degrees_per_sample)
-        if window <= 1:
-            return plain_tilts, PLAIN_SUM
-        if window > rocking.sampling:
-            raise ValueError(
-                f"PETS-derived mosaicity window {window} exceeds the {rocking.sampling} "
-                "rocking-curve samples"
-            )
-        return plain_tilts, MosaicSmoothed(window)
+        return plain_tilts, _pets_mosaicity_reduction(rocking, candidate.mosaicity_degrees)
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)
@@ -222,6 +211,22 @@ def build_orientation_plans(
         ),
         run,
     )
+
+
+def _pets_mosaicity_reduction(rocking: RockingCurve, mosaicity_degrees: float) -> TiltReduction:
+    """Convert PETS apparent mosaicity to a sampled-tilt moving-average reduction."""
+    if rocking.sampling == 1:
+        raise ValueError("PETS-derived mosaicity requires at least two rocking-curve samples")
+    degrees_per_sample = 2.0 * rocking.integration.semiangle / (rocking.sampling - 1)
+    window = round(mosaicity_degrees / degrees_per_sample)
+    if window <= 1:
+        return PLAIN_SUM
+    if window > rocking.sampling:
+        raise ValueError(
+            f"PETS-derived mosaicity window {window} exceeds the {rocking.sampling} "
+            "rocking-curve samples"
+        )
+    return MosaicSmoothed(window)
 
 
 def _build_coupled_candidate(
