@@ -75,11 +75,11 @@ the intensities incoherently:
 I_{\mathrm{frame}}(t) = \sum_k |\psi^{(k)}(t)|^2.
 ```
 
-When mosaicity is enabled, the apparent mosaicity in the `.cif_pets` defines a Gaussian angular
-distribution around every sampled tilt. diffBloch averages three weighted mosaic orientations per
-tilt before integrating the frame. The weights are normalized, so mosaicity redistributes
-orientation contributions without changing the integration scale. The output is one calculated
-diffraction pattern for each experimental rotation.
+With `mosaicity: true`, diffBloch reads the apparent mosaicity from `.cif_pets` and converts it to a
+moving-average width using the angular spacing between sampled orientations. The calculated
+rocking curve is smoothed over that width before it is summed. This does not add Bloch-wave solves.
+`mosaicity: false` (the default) applies no smoothing. The legacy `{window: N}` form sets the width
+directly. The output is one calculated diffraction pattern for each experimental rotation.
 
 ## Comparing simulation with experiment
 
