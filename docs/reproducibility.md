@@ -11,8 +11,9 @@ entry per `inputs.exp_data` file for a combined experiment) -- by content hash (
 orientations and thicknesses that came out of preprocessing that file. The lock's identity is
 deliberately *per dataset*: nothing in it hashes the whole `experiment.lock` or the full `exp_data`
 list, so adding, removing, reordering, or editing *other* datasets in a combined experiment never
-invalidates this one's checkpoint. Five things are checked, and all five have to match for the
-checkpoint to be reused as-is:
+invalidates this one's checkpoint. The one deliberate shared axis is the authoritative PETS cell:
+in a combined experiment, the first file's cell shapes every checkpointed grid. Six things are
+checked, and all six have to match for the checkpoint to be reused as-is:
 
 1. **The input bytes** -- the structure CIF and *this dataset's* `.cif_pets`, by content hash and
    size (not filename: a byte-identical rename moves the checkpoint to a new stem but is still the
@@ -22,9 +23,12 @@ checkpoint to be reused as-is:
 3. **The file-local ignored rotations** -- the slice of `blochwave.ignore_orientations` that lands
    on this file, translated to its own rotation indices. An ignore edit restales exactly the
    datasets it touches.
-4. **The code version** -- the release version of diffBloch that produced the checkpoint. Commits
+4. **The authoritative PETS cell** -- the first `.cif_pets` file's cell for a combined experiment,
+   or the only `.cif_pets` file's cell for a single-dataset experiment. This keeps every pooled
+   checkpoint tied to the shared grid and ADP metric, even for non-anchor datasets.
+5. **The code version** -- the release version of diffBloch that produced the checkpoint. Commits
    within the same release don't invalidate it (see "code version" below), but a version bump does.
-5. **The recipe** -- the exact ordered list of preprocessing steps that ran, each with its own
+6. **The recipe** -- the exact ordered list of preprocessing steps that ran, each with its own
    parameters (`select_beams`, `optimize_orientation`, `optimize_thickness`, etc., in whatever
    order they ran).
 

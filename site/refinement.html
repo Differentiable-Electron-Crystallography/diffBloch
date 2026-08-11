@@ -16,6 +16,7 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Observability and loggers" href="observability-guide.html"><link rel="prev" title="Reproducibility and checkpoints" href="reproducibility.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/refinement.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Refinement - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -270,7 +277,7 @@
 <a class="reference internal" href="preprocessing.html"><span class="std std-doc">Preprocessing</span></a>) fixed and minimizes the scaling-optimized weighted <span class="math notranslate nohighlight">\(wR_2\)</span>
 of <a class="reference external" href="https://doi.org/10.1038/s41557-023-01186-1">Klar <em>et al.</em> (2023)</a> over the differentiable
 structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
-dynamical calculation described in <a class="reference internal" href="architecture.html#refinement"><span class="std std-ref">Architecture</span></a>. <code class="docutils literal notranslate"><span class="pre">R_obs</span></code>, the Bragg
+dynamical calculation described in <a class="reference internal" href="workflow.html#refinement"><span class="std std-ref">Workflow</span></a>. <code class="docutils literal notranslate"><span class="pre">R_obs</span></code>, the Bragg
 <span class="math notranslate nohighlight">\(R\)</span>-factor restricted to <span class="math notranslate nohighlight">\(I_{\mathrm{obs}} &gt; 3\sigma\)</span> reflections, is reported alongside
 <span class="math notranslate nohighlight">\(wR_2\)</span> at every step as the conventional crystallographic residual, but is not itself the
 optimized quantity.</p>
@@ -293,18 +300,13 @@ parameters, step the optimizer, repeat.</p></li>
 </ul>
 <p>The schema default keeps positions and ADPs trainable, and leaves occupancies frozen.</p>
 </section>
-<section id="cli-examples">
-<h2>CLI examples<a class="headerlink" href="#cli-examples" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Full quartz run, including preprocessing.</span>
-uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz
-
-<span class="c1"># Faster start from a committed preprocessing checkpoint.</span>
-uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/quartz-checkpoint
-
-<span class="c1"># Larger checkpointed example on CUDA.</span>
-uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>examples/experiments/abiraterone-checkpoint<span class="w"> </span>--device<span class="w"> </span>cuda
+<section id="cli-example">
+<h2>CLI example<a class="headerlink" href="#cli-example" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>diffbloch<span class="w"> </span>run<span class="w"> </span>refine<span class="w"> </span>&lt;experiment_dir&gt;<span class="w"> </span>--device<span class="w"> </span>cuda
 </pre></div>
 </div>
+<p>Preprocesses (or reuses settled per-dataset plan checkpoints, see <a class="reference internal" href="reproducibility.html"><span class="std std-doc">Reproducibility</span></a>) and then
+gradient-refines. Add <code class="docutils literal notranslate"><span class="pre">--refresh</span></code> to force a real preprocess recompute.</p>
 <p>The default refinement budget is 40 epochs. Set a different recorded budget in the experiment
 config:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">refinement</span><span class="p">:</span>
@@ -318,7 +320,16 @@ the observed classification uses the conventional <code class="docutils literal 
 </section>
 <section id="refinement-outputs">
 <h2>Refinement outputs<a class="headerlink" href="#refinement-outputs" title="Link to this heading">¶</a></h2>
-<p>The default app writes the best recorded epoch, not merely the final optimizer state:</p>
+<p>The default app writes the best recorded epoch, not merely the final optimizer state. With the
+default <code class="docutils literal notranslate"><span class="pre">refinement.split.train_test</span> <span class="pre">=</span> <span class="pre">false</span></code>, “best” means the lowest recorded training objective
+in the optimizer loop. When <code class="docutils literal notranslate"><span class="pre">train_test</span></code> is enabled, validation rotations are genuinely held out
+from the training engine and the best epoch is selected by the held-out validation objective.
+Validation still does not stop the run early; the loop always runs the configured
+<code class="docutils literal notranslate"><span class="pre">refinement.steps</span></code>.</p>
+<p>Which objective did the selecting is reported, not implied: <code class="docutils literal notranslate"><span class="pre">refinement_report.txt</span></code> carries a
+<code class="docutils literal notranslate"><span class="pre">Best</span> <span class="pre">epoch</span> <span class="pre">selection</span></code> row, and the <code class="docutils literal notranslate"><span class="pre">RefinementCompleted</span></code> event reports its number under
+<code class="docutils literal notranslate"><span class="pre">best_training_loss</span></code> or <code class="docutils literal notranslate"><span class="pre">best_validation_loss</span></code> accordingly. The per-epoch stream is always the
+training objective.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -330,32 +341,27 @@ the observed classification uses the conventional <code class="docutils literal 
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code></p></td>
 <td><p>Best constrained coordinates, occupancies, and ADPs in CIF form.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">refined_parameters.npz</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">refinement_report.txt</span></code></p></td>
+<td><p>Best epoch metrics, which objective selected it, and the compact HKL count.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">refined_parameters.npz</span></code></p></td>
 <td><p>Exact raw optimizer parameters for the best epoch.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">refinement_summary.json</span></code></p></td>
-<td><p>Best epoch metrics, the compact HKL count, and artifact paths.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">refined_components.npz</span></code></p></td>
+<td><p>Trainable component tensors for the best epoch, when components are composed.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> / <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code></p></td>
-<td><p>Settled preprocessing plan and its provenance lock.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.npz</span></code> / <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.lock</span></code></p></td>
+<td><p>Settled preprocessing plan and its provenance lock, one pair per <code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code></p></td>
+<td><p>Binds the refined outputs to every dataset’s plan lock (<code class="docutils literal notranslate"><span class="pre">plan_lock_sha256s</span></code>), config digest, and code version; written only when every plan lock exists.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code> and <code class="docutils literal notranslate"><span class="pre">refinement_report.txt</span></code> land in the experiment directory; the <code class="docutils literal notranslate"><span class="pre">.npz</span></code>
+snapshots and locks go under <code class="docutils literal notranslate"><span class="pre">reproducibility/</span></code>.</p>
 <p>The completion summary prints the absolute location of every output.</p>
-</section>
-<section id="api-example-default-app-refinement">
-<h2>API example: default app refinement<a class="headerlink" href="#api-example-default-app-refinement" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.app</span><span class="w"> </span><span class="kn">import</span> <span class="n">refine_experiment</span>
-
-<span class="n">result</span> <span class="o">=</span> <span class="n">refine_experiment</span><span class="p">(</span><span class="s2">&quot;examples/experiments/quartz-checkpoint&quot;</span><span class="p">)</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">losses</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">best_step</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">best_loss</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">history</span><span class="p">[</span><span class="n">result</span><span class="o">.</span><span class="n">best_step</span><span class="p">]</span><span class="o">.</span><span class="n">wr2</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">history</span><span class="p">[</span><span class="n">result</span><span class="o">.</span><span class="n">best_step</span><span class="p">]</span><span class="o">.</span><span class="n">r_obs</span><span class="p">)</span>
-</pre></div>
-</div>
 </section>
 <section id="advanced-composition-constraints-restraints-and-learned-thickness">
 <h2>Advanced composition: constraints, restraints, and learned thickness<a class="headerlink" href="#advanced-composition-constraints-restraints-and-learned-thickness" title="Link to this heading">¶</a></h2>
@@ -376,98 +382,19 @@ against the diffraction fit, unlike a hard constraint;</p></li>
 alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.</p></li>
 </ul>
 <p>Compose a structure, optional hard constraints, optional restraints, and an optional thickness model,
-then refine every selected parameter through one objective.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_config</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.engine</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">ApparentThicknessNN</span><span class="p">,</span>
-    <span class="n">ThicknessBounds</span><span class="p">,</span>
-    <span class="n">build_refinement_model</span><span class="p">,</span>
-    <span class="n">build_refinement_problem</span><span class="p">,</span>
-    <span class="n">mean_plan_thickness</span><span class="p">,</span>
-    <span class="n">perceive_bond_length_penalty</span><span class="p">,</span>
-    <span class="n">run_refinement_model</span><span class="p">,</span>
-    <span class="n">with_hydrogen_riding</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_structure</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.preprocess</span><span class="w"> </span><span class="kn">import</span> <span class="n">RefinementSetup</span><span class="p">,</span> <span class="n">build_engine</span><span class="p">,</span> <span class="n">read_plan</span>
-
-<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;examples/experiments/abiraterone-checkpoint&quot;</span><span class="p">)</span>
-<span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
-
-<span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;experiment.yaml&quot;</span><span class="p">)</span>
-<span class="n">structure</span> <span class="o">=</span> <span class="n">read_structure</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">load_hydrogens</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="n">refinement</span> <span class="o">=</span> <span class="n">RefinementSetup</span><span class="o">.</span><span class="n">from_structure</span><span class="p">(</span><span class="n">structure</span><span class="p">)</span>
-<span class="n">plan</span> <span class="o">=</span> <span class="n">read_plan</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;plan.npz&quot;</span><span class="p">)</span>
-<span class="n">engine</span> <span class="o">=</span> <span class="n">build_engine</span><span class="p">(</span><span class="n">plan</span><span class="p">,</span> <span class="n">refinement</span><span class="p">)</span>
-
-<span class="c1"># Start from the config&#39;s structural trainable groups, then freeze H optimizer leaves and add a</span>
-<span class="c1"># hard hydrogen-riding transform when hydrogens are present.</span>
-<span class="n">trainable</span><span class="p">,</span> <span class="n">constraints</span> <span class="o">=</span> <span class="n">with_hydrogen_riding</span><span class="p">(</span>
-    <span class="n">structure</span><span class="p">,</span>
-    <span class="n">cfg</span><span class="o">.</span><span class="n">refinement</span><span class="o">.</span><span class="n">trainable</span><span class="o">.</span><span class="n">to_spec</span><span class="p">(),</span>
-<span class="p">)</span>
-
-<span class="c1"># Soft objective term: tether perceived ASU-contiguous bonds to their starting distances. The</span>
-<span class="c1"># optimizer may trade this against diffraction; unlike a hard constraint, it is not exact.</span>
-<span class="n">penalties</span> <span class="o">=</span> <span class="p">(</span>
-    <span class="n">perceive_bond_length_penalty</span><span class="p">(</span>
-        <span class="n">structure</span><span class="p">,</span>
-        <span class="n">include_hydrogen</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-        <span class="n">sigma_angstrom</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>
-        <span class="n">weight</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
-        <span class="n">criterion</span><span class="o">=</span><span class="s2">&quot;flat_bottom_l1&quot;</span><span class="p">,</span>
-    <span class="p">),</span>
-<span class="p">)</span>
-
-<span class="c1"># Train the legacy apparent-thickness component alongside the structural parameters. The input is</span>
-<span class="c1"># the PETS alpha coordinate normalized over the full experiment to [-1, 1].</span>
-<span class="n">thickness_nn</span> <span class="o">=</span> <span class="n">ApparentThicknessNN</span><span class="p">(</span>
-    <span class="n">bounds</span><span class="o">=</span><span class="n">ThicknessBounds</span><span class="p">(</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">2000.0</span><span class="p">),</span>
-    <span class="n">normalized_alphas</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
-    <span class="n">sample_thickness</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="n">initial</span> <span class="o">=</span> <span class="n">refinement</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-<span class="n">component_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="n">thickness_nn</span><span class="o">.</span><span class="n">key</span><span class="p">:</span> <span class="n">thickness_nn</span><span class="o">.</span><span class="n">initial_params</span><span class="p">(</span>
-        <span class="n">dtype</span><span class="o">=</span><span class="n">initial</span><span class="o">.</span><span class="n">asu_positions</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
-        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
-    <span class="p">)</span>
-<span class="p">}</span>
-
-<span class="n">model</span> <span class="o">=</span> <span class="n">build_refinement_model</span><span class="p">(</span>
-    <span class="n">initial</span><span class="o">=</span><span class="n">initial</span><span class="p">,</span>
-    <span class="n">constraints</span><span class="o">=</span><span class="n">constraints</span><span class="p">,</span>
-    <span class="n">components</span><span class="o">=</span><span class="p">(</span><span class="n">thickness_nn</span><span class="p">,),</span>
-    <span class="n">component_params</span><span class="o">=</span><span class="n">component_params</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="n">problem</span> <span class="o">=</span> <span class="n">build_refinement_problem</span><span class="p">(</span><span class="n">penalties</span><span class="o">=</span><span class="n">penalties</span><span class="p">)</span>
-
-<span class="n">result</span> <span class="o">=</span> <span class="n">run_refinement_model</span><span class="p">(</span>
-    <span class="n">engine</span><span class="p">,</span>
-    <span class="n">model</span><span class="p">,</span>
-    <span class="n">problem</span><span class="p">,</span>
-    <span class="n">trainable</span><span class="o">=</span><span class="n">trainable</span><span class="p">,</span>
-    <span class="n">steps</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-    <span class="n">optimizer</span><span class="o">=</span><span class="s2">&quot;adam&quot;</span><span class="p">,</span>
-    <span class="n">lr</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">best_loss</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>For thickness, <code class="docutils literal notranslate"><span class="pre">ApparentThicknessNN</span></code> is one component choice. Simpler alternatives include
-<code class="docutils literal notranslate"><span class="pre">PerOrientationThickness</span></code> for one free positive thickness per rotation, or <code class="docutils literal notranslate"><span class="pre">QuadraticThicknessProfile</span></code>
-for a low-dimensional bounded profile over orientation angle.</p>
+then refine every selected parameter through one objective. The composition entry points –
+<code class="docutils literal notranslate"><span class="pre">build_refinement_model</span></code>, <code class="docutils literal notranslate"><span class="pre">build_refinement_problem</span></code>, <code class="docutils literal notranslate"><span class="pre">with_hydrogen_riding</span></code>,
+<code class="docutils literal notranslate"><span class="pre">perceive_bond_length_penalty</span></code>, <code class="docutils literal notranslate"><span class="pre">run_refinement_model</span></code> – and the thickness component choices
+(<code class="docutils literal notranslate"><span class="pre">ApparentThicknessNN</span></code> for a learned network, <code class="docutils literal notranslate"><span class="pre">PerOrientationThickness</span></code> for one free positive
+thickness per rotation, <code class="docutils literal notranslate"><span class="pre">QuadraticThicknessProfile</span></code> for a low-dimensional bounded profile over
+orientation angle) are documented in <a class="reference internal" href="api/engine.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">diffBloch.engine</span></code></span></a>.</p>
 </section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="observability-guide.html">
               <div class="page-info">
@@ -484,9 +411,9 @@ for a low-dimensional bounded profile over orientation angle.</p>
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Reproducibility and checkpoints</div>
-                
+
               </div>
             </a>
         </div>
@@ -496,20 +423,20 @@ for a low-dimensional bounded profile over orientation angle.</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -522,9 +449,8 @@ for a low-dimensional bounded profile over orientation angle.</p>
 <li><a class="reference internal" href="#">Refinement</a><ul>
 <li><a class="reference internal" href="#infer-vs-refine"><code class="docutils literal notranslate"><span class="pre">infer</span></code> vs <code class="docutils literal notranslate"><span class="pre">refine</span></code></a></li>
 <li><a class="reference internal" href="#refinable-groups">Refinable groups</a></li>
-<li><a class="reference internal" href="#cli-examples">CLI examples</a></li>
+<li><a class="reference internal" href="#cli-example">CLI example</a></li>
 <li><a class="reference internal" href="#refinement-outputs">Refinement outputs</a></li>
-<li><a class="reference internal" href="#api-example-default-app-refinement">API example: default app refinement</a></li>
 <li><a class="reference internal" href="#advanced-composition-constraints-restraints-and-learned-thickness">Advanced composition: constraints, restraints, and learned thickness</a></li>
 </ul>
 </li>
@@ -533,8 +459,8 @@ for a low-dimensional bounded profile over orientation angle.</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

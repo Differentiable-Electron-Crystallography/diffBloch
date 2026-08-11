@@ -28,6 +28,7 @@ from diffBloch.config.manifest import _verify_experimental_data
 
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 EXP_REF = "exp_data.cif_pets"  # locked_min's single inputs.exp_data ref
+AUTH_CELL = (5.0, 5.0, 5.0, 90.0, 90.0, 90.0)
 
 
 def _input_locks(cfg) -> tuple[InputLock, InputLock]:
@@ -49,6 +50,7 @@ def _lock_and_recipe(tmp_path: Path):
     lock = PreprocessLock(
         structure=structure_lock,
         experimental_data=dataset_lock,
+        authoritative_cell=AUTH_CELL,
         ignored_rotations=(),
         config_digest=dataset_config_digest(cfg, exp_data=cfg.inputs.exp_data),
         code_version=code_version(),
@@ -420,6 +422,7 @@ def _args(cfg, recipe, npz, tmp_path):
     return dict(
         structure=structure_lock,
         experimental_data=dataset_lock,
+        authoritative_cell=AUTH_CELL,
         ignored_rotations=(),
         config_digest=dataset_config_digest(cfg, exp_data=EXP_REF),
         code_version=code_version(),
@@ -512,6 +515,13 @@ def test_changed_file_local_ignore_set_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     args = _args(cfg, recipe, npz, tmp_path)
     args["ignored_rotations"] = (2,)
+    assert preprocess_lock_status(lock, **args) == "stale"
+
+
+def test_changed_authoritative_cell_is_stale(tmp_path: Path) -> None:
+    cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
+    args = _args(cfg, recipe, npz, tmp_path)
+    args["authoritative_cell"] = (5.1, 5.0, 5.0, 90.0, 90.0, 90.0)
     assert preprocess_lock_status(lock, **args) == "stale"
 
 

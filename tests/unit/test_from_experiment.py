@@ -1,5 +1,6 @@
 """``from_experiment`` boundary construction: Plan pair split + structure-side RefinementSetup."""
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
+from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
@@ -226,6 +228,88 @@ def test_from_experiment_seeds_per_rotation_thickness_on_the_orientations() -> N
     for plan in (setup.plans.train, setup.plans.validation):
         for orientation in plan.orientations:
             assert orientation.thickness.tolist() == seeded
+
+
+# --- unit-cell authority: PETS overrides the structure CIF ----------------------------------------
+
+
+def test_cell_mismatch_under_1pct_is_silent(caplog: pytest.LogCaptureFixture) -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    nudged = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.005, 1.0, 1.0, 1.0, 1.0, 1.0])
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        setup = from_experiment(structure, nudged, config)
+
+    assert not caplog.records
+    np.testing.assert_allclose(
+        setup.plans.combined.structure_factor_grid.cell.numpy(),
+        cell_matrix_from_parameters(nudged.cell_parameters),
+    )
+
+
+def test_cell_mismatch_over_1pct_warns_and_pets_geometry_wins(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    mismatched = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.02, 1.0, 1.0, 1.0, 1.0, 1.0])
+        }
+    )
+
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        setup = from_experiment(structure, mismatched, config)
+
+    [record] = caplog.records
+    message = record.getMessage()
+    assert "more than 1%" in message
+    assert "structure CIF" in message
+    assert "overrides" in message
+    assert "a:" in message
+
+    grid_cell = setup.plans.combined.structure_factor_grid.cell.numpy()
+    np.testing.assert_allclose(grid_cell, cell_matrix_from_parameters(mismatched.cell_parameters))
+    assert not np.allclose(grid_cell, cell_matrix_from_parameters(structure.cell_parameters))
+    np.testing.assert_allclose(
+        setup.refinement.spec.reciprocal_basis.numpy(),
+        reciprocal_cell(cell_matrix_from_parameters(mismatched.cell_parameters)),
+    )
+    np.testing.assert_allclose(setup.refinement.cell_parameters, mismatched.cell_parameters)
+
+
+def test_cell_mismatch_over_5pct_raises_and_names_every_offending_parameter() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    config = load_config(QUARTZ / "experiment.yaml")
+    mismatched = experimental_data.model_copy(
+        update={
+            "cell_parameters": experimental_data.cell_parameters
+            * np.array([1.06, 1.0, 1.0, 1.07, 1.0, 1.0])
+        }
+    )
+
+    with pytest.raises(ValueError, match="more than 5%") as excinfo:
+        from_experiment(structure, mismatched, config)
+
+    message = str(excinfo.value)
+    assert "a:" in message
+    assert "alpha:" in message
+    assert "b:" not in message
+    assert "beta:" not in message
+    assert f"{mismatched.cell_parameters[0]:.6g}" in message
+    assert f"{structure.cell_parameters[0]:.6g}" in message
+    assert "%" in message
+    assert "refusing to continue" in message
 
 
 # --- mixed Uani + Uiso ADP path -------------------------------------------------------------------

@@ -4,6 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="#"><link rel="search" title="Search" href="search.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/genindex.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 --><title>Index - diffBloch</title>
 <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
@@ -11,37 +12,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -180,11 +181,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -193,9 +197,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -219,7 +226,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -245,7 +252,7 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          
+
 <section class="genindex-section">
   <h1 id="index">Index</h1>
   <div class="genindex-jumpbox"><a href="#A"><strong>A</strong></a> | <a href="#B"><strong>B</strong></a> | <a href="#C"><strong>C</strong></a> | <a href="#D"><strong>D</strong></a> | <a href="#E"><strong>E</strong></a> | <a href="#F"><strong>F</strong></a> | <a href="#G"><strong>G</strong></a> | <a href="#H"><strong>H</strong></a> | <a href="#I"><strong>I</strong></a> | <a href="#K"><strong>K</strong></a> | <a href="#L"><strong>L</strong></a> | <a href="#M"><strong>M</strong></a> | <a href="#N"><strong>N</strong></a> | <a href="#O"><strong>O</strong></a> | <a href="#P"><strong>P</strong></a> | <a href="#R"><strong>R</strong></a> | <a href="#S"><strong>S</strong></a> | <a href="#T"><strong>T</strong></a> | <a href="#U"><strong>U</strong></a> | <a href="#V"><strong>V</strong></a> | <a href="#W"><strong>W</strong></a> | <a href="#X"><strong>X</strong></a> | <a href="#Z"><strong>Z</strong></a></div>
@@ -262,6 +269,8 @@
 
         <ul>
           <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.absorption">(diffBloch.engine.forward.RefinementEngine attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.absorption">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.active_structure_factor_indices">active_structure_factor_indices (diffBloch.engine.forward.RefinementEngine attribute)</a>
@@ -304,16 +313,18 @@
           <li><a href="api/engine.html#diffBloch.engine.plan.OrientationPlan.alignment">(diffBloch.engine.plan.OrientationPlan attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.products.AlignmentPlan">AlignmentPlan (class in diffBloch.core.products)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/engine.html#diffBloch.engine.refine.AtomSelection.all">all() (diffBloch.engine.refine.AtomSelection class method)</a>
 </li>
         <li><a href="api/io.html#diffBloch.io.ExperimentalRecord.alphas">alphas (diffBloch.io.ExperimentalRecord attribute)</a>
 
         <ul>
           <li><a href="api/io.html#diffBloch.io.record.ExperimentalRecord.alphas">(diffBloch.io.record.ExperimentalRecord attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.alphas">(diffBloch.observability.ThicknessProfile attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.products.BlochSolution.amplitudes">amplitudes (diffBloch.core.products.BlochSolution attribute)</a>
@@ -335,7 +346,11 @@
         <li><a href="api/config.html#diffBloch.config.manifest.ArtifactHash">ArtifactHash (class in diffBloch.config.manifest)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.artifacts">artifacts (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten.artifacts">(diffBloch.observability.RefinementOutputsWritten attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.as_step">as_step() (in module diffBloch.preprocess.pipeline)</a>
 </li>
         <li><a href="api/specs.html#diffBloch.specs.assert_grid_covers_coupling">assert_grid_covers_coupling() (in module diffBloch.specs)</a>
@@ -357,6 +372,8 @@
         <li><a href="api/core.html#diffBloch.core.symmetry.AsuExpansionPlan">AsuExpansionPlan (class in diffBloch.core.symmetry)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.refine.AtomSelection">AtomSelection (class in diffBloch.engine.refine)</a>
+</li>
+        <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.authoritative_cell">authoritative_cell (diffBloch.config.manifest.PreprocessLock attribute)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -480,11 +497,11 @@
 </li>
         <li><a href="api/core.html#diffBloch.core.symmetry.DuplicateSite.candidate_asu_index">candidate_asu_index (diffBloch.core.symmetry.DuplicateSite attribute)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.candidate_score">candidate_score (diffBloch.observability.ThicknessOptimized attribute)</a>
+</li>
         <li><a href="api/core.html#diffBloch.core.symmetry.DuplicateSite.candidate_symop_index">candidate_symop_index (diffBloch.core.symmetry.DuplicateSite attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.candidate_thicknesses">candidate_thicknesses (diffBloch.observability.ThicknessOptimized attribute)</a>
-</li>
-        <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.candidate_wr2">candidate_wr2 (diffBloch.observability.ThicknessOptimized attribute)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.CandidatePlan">CandidatePlan (class in diffBloch.preprocess.plan)</a>
 </li>
@@ -503,6 +520,8 @@
 </li>
           <li><a href="api/io.html#diffBloch.io.StructureRecord.cell_parameters">(diffBloch.io.StructureRecord attribute)</a>
 </li>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.RefinementSetup.cell_parameters">(diffBloch.preprocess.experiment.RefinementSetup attribute)</a>
+</li>
         </ul></li>
         <li><a href="api/io.html#diffBloch.io.ExperimentalRecord.cell_parameters_su">cell_parameters_su (diffBloch.io.ExperimentalRecord attribute)</a>
 
@@ -518,6 +537,8 @@
 </li>
         <li><a href="api/core.html#diffBloch.core.crystal.cell_volume">cell_volume() (in module diffBloch.core.crystal)</a>
 </li>
+        <li><a href="api/config.html#diffBloch.config.manifest.CellParameters">CellParameters (in module diffBloch.config.manifest)</a>
+</li>
         <li><a href="api/observability.html#diffBloch.observability.ConvergencePassStarted.channel">channel (diffBloch.observability.ConvergencePassStarted attribute)</a>
 
         <ul>
@@ -527,19 +548,35 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.CouplingSummary.channel">(diffBloch.observability.CouplingSummary attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.channel">(diffBloch.observability.DeviceSelected attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.Event.channel">(diffBloch.observability.Event property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.channel">(diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.InferenceCompleted.channel">(diffBloch.observability.InferenceCompleted attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.channel">(diffBloch.observability.ObjectiveManifest attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationStarted.channel">(diffBloch.observability.OrientationOptimizationStarted attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.channel">(diffBloch.observability.OrientationOptimizationSummary attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.channel">(diffBloch.observability.OrientationOptimized attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.PlanSeeded.channel">(diffBloch.observability.PlanSeeded attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.PlanStepCompleted.channel">(diffBloch.observability.PlanStepCompleted attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.channel">(diffBloch.observability.RefinedRotationMetrics attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementCompleted.channel">(diffBloch.observability.RefinementCompleted attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.channel">(diffBloch.observability.RefinementOrientationStep attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten.channel">(diffBloch.observability.RefinementOutputsWritten attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementStarted.channel">(diffBloch.observability.RefinementStarted attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.channel">(diffBloch.observability.RefinementStep attribute)</a>
 </li>
@@ -547,9 +584,15 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RotationScored.channel">(diffBloch.observability.RotationScored attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimizationStarted.channel">(diffBloch.observability.ThicknessOptimizationStarted attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.channel">(diffBloch.observability.ThicknessOptimized attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.channel">(diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.checkpoint_activations">checkpoint_activations (diffBloch.engine.forward.RefinementEngine attribute)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.adp.cholesky_adp">cholesky_adp() (in module diffBloch.core.adp)</a>
@@ -563,11 +606,7 @@
         <ul>
           <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.code_version">(diffBloch.config.manifest.RefinementLock attribute)</a>
 </li>
-          <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.code_version">(diffBloch.config.manifest.RunManifest attribute)</a>
-</li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/config.html#diffBloch.config.manifest.code_version">code_version() (in module diffBloch.config.manifest)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit.combined">combined (diffBloch.preprocess.experiment.PlanSplit property)</a>
@@ -581,21 +620,23 @@
         <ul>
           <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveValue.components">(diffBloch.engine.refine.ObjectiveValue attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.components">(diffBloch.observability.ObjectiveManifest attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.components">(diffBloch.observability.RefinementStep attribute)</a>
 </li>
         </ul></li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.config_diff">config_diff (diffBloch.config.manifest.RunManifest attribute)</a>
-</li>
         <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.config_digest">config_digest (diffBloch.config.manifest.PreprocessLock attribute)</a>
-</li>
-        <li><a href="api/config.html#diffBloch.config.manifest.config_digest">config_digest() (in module diffBloch.config.manifest)</a>
 </li>
         <li><a href="api/app.html#diffBloch.app.loggers.ConsoleLogger">ConsoleLogger (class in diffBloch.app.loggers)</a>
 </li>
         <li><a href="api/params.html#diffBloch.params.constrain">constrain() (in module diffBloch.params)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.StructureComponent.constraints">constraints (diffBloch.engine.forward.StructureComponent attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.constraints">(diffBloch.observability.ObjectiveManifest attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/params.html#diffBloch.params.ConstraintSpec">ConstraintSpec (class in diffBloch.params)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.constraints.ConstraintTransform">ConstraintTransform (class in diffBloch.engine.constraints)</a>
@@ -652,6 +693,8 @@
 </li>
         <li><a href="api/app.html#diffBloch.app.loggers.CSVLogger">CSVLogger (class in diffBloch.app.loggers)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.cuda_available">cuda_available (diffBloch.observability.DeviceSelected attribute)</a>
+</li>
     </ul></td>
   </tr></table>
 </section>
@@ -660,15 +703,19 @@
   <h2>D</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/config.html#diffBloch.config.schema.ObjectiveConfig.data_term">data_term (diffBloch.config.schema.ObjectiveConfig attribute)</a>
+        <li><a href="api/config.html#diffBloch.config.schema.dataset_checkpoint_stem">dataset_checkpoint_stem() (in module diffBloch.config.schema)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.data_used">data_used (diffBloch.config.manifest.RunManifest attribute)</a>
+        <li><a href="api/config.html#diffBloch.config.manifest.dataset_config_digest">dataset_config_digest() (in module diffBloch.config.manifest)</a>
+</li>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup">DatasetSetup (class in diffBloch.preprocess.experiment)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig">DataSplitConfig (class in diffBloch.config.schema)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.scattering.debye_waller_factor">debye_waller_factor() (in module diffBloch.core.scattering)</a>
 </li>
         <li><a href="api/params.html#diffBloch.params.Device">Device (in module diffBloch.params)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.DeviceSelected">DeviceSelected (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveValue.diagnostics">diagnostics (diffBloch.engine.refine.ObjectiveValue attribute)</a>
 </li>
@@ -1020,7 +1067,15 @@
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.dsg">dsg (diffBloch.config.schema.BlochwaveConfig attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.dsg">(diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.BeamSelection.dsg">(diffBloch.specs.BeamSelection attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/io.html#diffBloch.io.ExperimentalRecord.dstar_max">dstar_max (diffBloch.io.ExperimentalRecord attribute)</a>
+
+        <ul>
+          <li><a href="api/io.html#diffBloch.io.record.ExperimentalRecord.dstar_max">(diffBloch.io.record.ExperimentalRecord attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.symmetry.AsuExpansionPlan.duplicate_sites">duplicate_sites (diffBloch.core.symmetry.AsuExpansionPlan attribute)</a>
@@ -1056,6 +1111,8 @@
         <ul>
           <li><a href="api/engine.html#diffBloch.engine.plan.OrientationPlan.energy">(diffBloch.engine.plan.OrientationPlan attribute)</a>
 </li>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup.energy">(diffBloch.preprocess.experiment.DatasetSetup attribute)</a>
+</li>
           <li><a href="api/preprocess.html#diffBloch.preprocess.plan.CandidatePlan.energy">(diffBloch.preprocess.plan.CandidatePlan attribute)</a>
 </li>
         </ul></li>
@@ -1063,18 +1120,16 @@
 </li>
         <li><a href="api/core.html#diffBloch.core.dynamical.energy2wavelength">energy2wavelength() (in module diffBloch.core.dynamical)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.environment">environment (diffBloch.config.manifest.RunManifest attribute)</a>
-</li>
         <li><a href="api/core.html#diffBloch.core.adp.equivalent_isotropic_adp">equivalent_isotropic_adp() (in module diffBloch.core.adp)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.Event">Event (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.RecordingLogger.events">events (diffBloch.observability.RecordingLogger attribute)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.dynamical.excitation_errors">excitation_errors() (in module diffBloch.core.dynamical)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/engine.html#diffBloch.engine.refine.AtomSelection.exclude_elements">exclude_elements() (diffBloch.engine.refine.AtomSelection class method)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.symmetry.DuplicateSite.existing_asu_index">existing_asu_index (diffBloch.core.symmetry.DuplicateSite attribute)</a>
@@ -1089,14 +1144,14 @@
 </li>
         <li><a href="api/app.html#diffBloch.app.loggers.comet.CometLogger.experiment">experiment (diffBloch.app.loggers.comet.CometLogger attribute)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.experiment_lock_sha256">experiment_lock_sha256 (diffBloch.config.manifest.PreprocessLock attribute)</a>
+        <li><a href="api/config.html#diffBloch.config.manifest.ExperimentLock.experimental_data">experimental_data (diffBloch.config.manifest.ExperimentLock attribute)</a>
 
         <ul>
-          <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.experiment_lock_sha256">(diffBloch.config.manifest.RunManifest attribute)</a>
+          <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.experimental_data">(diffBloch.config.manifest.PreprocessLock attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.experimental_data">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
         </ul></li>
-        <li><a href="api/config.html#diffBloch.config.manifest.ExperimentLock.experimental_data">experimental_data (diffBloch.config.manifest.ExperimentLock attribute)</a>
-</li>
         <li><a href="api/io.html#diffBloch.io.ExperimentalRecord">ExperimentalRecord (class in diffBloch.io)</a>
 
         <ul>
@@ -1104,6 +1159,8 @@
 </li>
         </ul></li>
         <li><a href="api/config.html#diffBloch.config.schema.ExperimentConfig">ExperimentConfig (class in diffBloch.config.schema)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared">ExperimentDeclared (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.ExperimentLock">ExperimentLock (class in diffBloch.config.manifest)</a>
 </li>
@@ -1140,6 +1197,8 @@
         <li><a href="api/config.html#diffBloch.config.schema.ThicknessNNConfig.form">form (diffBloch.config.schema.ThicknessNNConfig attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.form">(diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.ApparentThicknessNetwork.form">(diffBloch.specs.ApparentThicknessNetwork attribute)</a>
 </li>
         </ul></li>
@@ -1249,12 +1308,8 @@
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.orientation.hexagonal_tilt">hexagonal_tilt() (in module diffBloch.preprocess.orientation)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.history">history (diffBloch.config.manifest.RunManifest attribute)</a>
-
-        <ul>
-          <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.history">(diffBloch.engine.forward.ModelRefinementResult attribute)</a>
+        <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.history">history (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
 </li>
-        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.products.AlignmentPlan.hkl">hkl (diffBloch.core.products.AlignmentPlan attribute)</a>
@@ -1281,6 +1336,12 @@
 
         <ul>
           <li><a href="api/specs.html#diffBloch.specs.OrientationSelection.ignore_orientations">(diffBloch.specs.OrientationSelection attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.ignored_rotations">ignored_rotations (diffBloch.config.manifest.PreprocessLock attribute)</a>
+
+        <ul>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup.ignored_rotations">(diffBloch.preprocess.experiment.DatasetSetup attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/engine.html#diffBloch.engine.refine.AtomSelection.include_elements">include_elements() (diffBloch.engine.refine.AtomSelection class method)</a>
@@ -1327,9 +1388,11 @@
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve">integrate_rocking_curve() (in module diffBloch.preprocess.steps.rocking_curve)</a>
 </li>
-        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.ExperimentSetup.integration">integration (diffBloch.preprocess.experiment.ExperimentSetup attribute)</a>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup.integration">integration (diffBloch.preprocess.experiment.DatasetSetup attribute)</a>
 
         <ul>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.ExperimentSetup.integration">(diffBloch.preprocess.experiment.ExperimentSetup attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.BeamSelection.integration">(diffBloch.specs.BeamSelection attribute)</a>
 </li>
           <li><a href="api/specs.html#diffBloch.specs.RockingCurve.integration">(diffBloch.specs.RockingCurve attribute)</a>
@@ -1341,6 +1404,8 @@
           <li><a href="api/io.html#diffBloch.io.record.ExperimentalRecord.integration_semiangle">(diffBloch.io.record.ExperimentalRecord property)</a>
 </li>
         </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.integration_semiangles">integration_semiangles (diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
         <li><a href="api/specs.html#diffBloch.specs.IntegrationGeometry">IntegrationGeometry (class in diffBloch.specs)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.products.BlochSolution.intensities">intensities (diffBloch.core.products.BlochSolution attribute)</a>
@@ -1354,6 +1419,8 @@
 </li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.products.intensities">intensities() (in module diffBloch.core.products)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.is_validation">is_validation (diffBloch.observability.RefinedRotationMetrics attribute)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.adp.isotropic_adp">isotropic_adp() (in module diffBloch.core.adp)</a>
 </li>
@@ -1413,6 +1480,10 @@
           <li><a href="api/io.html#diffBloch.io.StructureRecord.labels">(diffBloch.io.StructureRecord attribute)</a>
 </li>
         </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.learning_rate">learning_rate (diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
+        <li><a href="api/engine.html#diffBloch.engine.losses.least_squares_scores">least_squares_scores() (in module diffBloch.engine.losses)</a>
+</li>
         <li><a href="api/app.html#diffBloch.app.loggers.ConsoleLogger.level">level (diffBloch.app.loggers.ConsoleLogger attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.load_config">load_config() (in module diffBloch.config.schema)</a>
@@ -1435,6 +1506,8 @@
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.loss">(diffBloch.observability.RefinementStep attribute)</a>
 </li>
         </ul></li>
+        <li><a href="api/config.html#diffBloch.config.schema.ExperimentConfig.loss_metrics">loss_metrics (diffBloch.config.schema.ExperimentConfig attribute)</a>
+</li>
         <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.losses">losses (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
 
         <ul>
@@ -1442,6 +1515,8 @@
 </li>
         </ul></li>
         <li><a href="api/engine.html#diffBloch.engine.forward.LossFn">LossFn (in module diffBloch.engine.forward)</a>
+</li>
+        <li><a href="api/config.html#diffBloch.config.schema.LossMetricsConfig">LossMetricsConfig (class in diffBloch.config.schema)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.OptimizerConfig.lr">lr (diffBloch.config.schema.OptimizerConfig attribute)</a>
 </li>
@@ -1484,6 +1559,8 @@
         <ul>
           <li><a href="api/config.html#diffBloch.config.schema.ThicknessOptimizationConfig.max_thickness">(diffBloch.config.schema.ThicknessOptimizationConfig attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.max_thickness">(diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.ApparentThicknessNetwork.max_thickness">(diffBloch.specs.ApparentThicknessNetwork attribute)</a>
 </li>
           <li><a href="api/specs.html#diffBloch.specs.ThicknessGrid.max_thickness">(diffBloch.specs.ThicknessGrid attribute)</a>
@@ -1498,12 +1575,12 @@
         <li><a href="api/observability.html#diffBloch.observability.InferenceCompleted.mean_r_obs">mean_r_obs (diffBloch.observability.InferenceCompleted attribute)</a>
 
         <ul>
-          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.mean_r_obs">(diffBloch.observability.OrientationOptimizationSummary attribute)</a>
-</li>
           <li><a href="api/preprocess.html#diffBloch.preprocess.inference.InferenceResult.mean_r_obs">(diffBloch.preprocess.inference.InferenceResult property)</a>
 </li>
         </ul></li>
-        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.mean_wr2">mean_wr2 (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
+        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.mean_score">mean_score (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
+</li>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.inference.InferenceResult.mean_wr2">mean_wr2 (diffBloch.preprocess.inference.InferenceResult property)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.ConvergencePassStarted.measurements">measurements (diffBloch.observability.ConvergencePassStarted property)</a>
 
@@ -1514,19 +1591,35 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.CouplingSummary.measurements">(diffBloch.observability.CouplingSummary attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.measurements">(diffBloch.observability.DeviceSelected property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.Event.measurements">(diffBloch.observability.Event property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.measurements">(diffBloch.observability.ExperimentDeclared property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.InferenceCompleted.measurements">(diffBloch.observability.InferenceCompleted property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.measurements">(diffBloch.observability.ObjectiveManifest property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationStarted.measurements">(diffBloch.observability.OrientationOptimizationStarted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.measurements">(diffBloch.observability.OrientationOptimizationSummary property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.measurements">(diffBloch.observability.OrientationOptimized property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.PlanSeeded.measurements">(diffBloch.observability.PlanSeeded attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.PlanStepCompleted.measurements">(diffBloch.observability.PlanStepCompleted attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.measurements">(diffBloch.observability.RefinedRotationMetrics property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementCompleted.measurements">(diffBloch.observability.RefinementCompleted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.measurements">(diffBloch.observability.RefinementOrientationStep property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten.measurements">(diffBloch.observability.RefinementOutputsWritten property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementStarted.measurements">(diffBloch.observability.RefinementStarted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.measurements">(diffBloch.observability.RefinementStep property)</a>
 </li>
@@ -1534,7 +1627,11 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RotationScored.measurements">(diffBloch.observability.RotationScored property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimizationStarted.measurements">(diffBloch.observability.ThicknessOptimizationStarted property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.measurements">(diffBloch.observability.ThicknessOptimized property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.measurements">(diffBloch.observability.ThicknessProfile property)</a>
 </li>
         </ul></li>
         <li><a href="api/config.html#diffBloch.config.manifest.ArtifactHash.media_type">media_type (diffBloch.config.manifest.ArtifactHash attribute)</a>
@@ -1560,6 +1657,8 @@
         <ul>
           <li><a href="api/config.html#diffBloch.config.schema.ThicknessOptimizationConfig.min_thickness">(diffBloch.config.schema.ThicknessOptimizationConfig attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.min_thickness">(diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.ApparentThicknessNetwork.min_thickness">(diffBloch.specs.ApparentThicknessNetwork attribute)</a>
 </li>
           <li><a href="api/specs.html#diffBloch.specs.ThicknessGrid.min_thickness">(diffBloch.specs.ThicknessGrid attribute)</a>
@@ -1582,8 +1681,6 @@
 </li>
           <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.model_config">(diffBloch.config.manifest.RefinementLock attribute)</a>
 </li>
-          <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.model_config">(diffBloch.config.manifest.RunManifest attribute)</a>
-</li>
           <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.model_config">(diffBloch.config.schema.BlochwaveConfig attribute)</a>
 </li>
           <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig.model_config">(diffBloch.config.schema.DataSplitConfig attribute)</a>
@@ -1592,9 +1689,9 @@
 </li>
           <li><a href="api/config.html#diffBloch.config.schema.Inputs.model_config">(diffBloch.config.schema.Inputs attribute)</a>
 </li>
-          <li><a href="api/config.html#diffBloch.config.schema.NelderMeadOptimizationConfig.model_config">(diffBloch.config.schema.NelderMeadOptimizationConfig attribute)</a>
+          <li><a href="api/config.html#diffBloch.config.schema.LossMetricsConfig.model_config">(diffBloch.config.schema.LossMetricsConfig attribute)</a>
 </li>
-          <li><a href="api/config.html#diffBloch.config.schema.ObjectiveConfig.model_config">(diffBloch.config.schema.ObjectiveConfig attribute)</a>
+          <li><a href="api/config.html#diffBloch.config.schema.NelderMeadOptimizationConfig.model_config">(diffBloch.config.schema.NelderMeadOptimizationConfig attribute)</a>
 </li>
           <li><a href="api/config.html#diffBloch.config.schema.OptimizerConfig.model_config">(diffBloch.config.schema.OptimizerConfig attribute)</a>
 </li>
@@ -1744,6 +1841,8 @@
 </li>
         <li><a href="api/engine.html#diffBloch.engine.losses.mse_loss">mse_loss() (in module diffBloch.engine.losses)</a>
 </li>
+        <li><a href="api/config.html#diffBloch.config.schema.Inputs.multi_dataset">multi_dataset (diffBloch.config.schema.Inputs attribute)</a>
+</li>
         <li><a href="api/observability.html#diffBloch.observability.MultiLogger">MultiLogger (class in diffBloch.observability)</a>
 </li>
     </ul></td>
@@ -1782,6 +1881,12 @@
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.symmetry.AsuExpansionPlan.n_expanded_sites">n_expanded_sites (diffBloch.core.symmetry.AsuExpansionPlan property)</a>
 </li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RotationMetrics.n_matched">n_matched (diffBloch.engine.forward.RotationMetrics attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.n_matched">(diffBloch.observability.RefinedRotationMetrics attribute)</a>
+</li>
+        </ul></li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.n_matched_hkl">n_matched_hkl (diffBloch.observability.OrientationOptimized attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.RotationScored.n_observed">n_observed (diffBloch.observability.RotationScored attribute)</a>
@@ -1798,6 +1903,8 @@
         </ul></li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.n_passes">n_passes (diffBloch.observability.OrientationOptimized attribute)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementStep.n_r_obs_evaluated">n_r_obs_evaluated (diffBloch.observability.RefinementStep attribute)</a>
+</li>
         <li><a href="api/io.html#diffBloch.io.ExperimentalRecord.n_reflections">n_reflections (diffBloch.io.ExperimentalRecord property)</a>
 
         <ul>
@@ -1811,6 +1918,10 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.InferenceCompleted.n_rotations">(diffBloch.observability.InferenceCompleted attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementStep.n_rotations">(diffBloch.observability.RefinementStep attribute)</a>
+</li>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup.n_rotations">(diffBloch.preprocess.experiment.DatasetSetup attribute)</a>
+</li>
         </ul></li>
         <li><a href="api/config.html#diffBloch.config.schema.ThicknessOptimizationConfig.n_steps">n_steps (diffBloch.config.schema.ThicknessOptimizationConfig attribute)</a>
 
@@ -1820,19 +1931,21 @@
           <li><a href="api/specs.html#diffBloch.specs.ThicknessGrid.n_steps">(diffBloch.specs.ThicknessGrid attribute)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/io.html#diffBloch.io.record.StructureRecord.n_symops">n_symops (diffBloch.io.record.StructureRecord property)</a>
 
         <ul>
           <li><a href="api/io.html#diffBloch.io.StructureRecord.n_symops">(diffBloch.io.StructureRecord property)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/observability.html#diffBloch.observability.RotationCoupling.n_tilts">n_tilts (diffBloch.observability.RotationCoupling attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.n_trials">n_trials (diffBloch.observability.OrientationOptimized attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.RotationCoupling.n_union_beams">n_union_beams (diffBloch.observability.RotationCoupling attribute)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementStep.n_wr2_evaluated">n_wr2_evaluated (diffBloch.observability.RefinementStep attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.RecipeStep.name">name (diffBloch.config.manifest.RecipeStep attribute)</a>
 
@@ -1848,6 +1961,10 @@
           <li><a href="api/engine.html#diffBloch.engine.penalties.BondLengthPenalty.name">(diffBloch.engine.penalties.BondLengthPenalty attribute)</a>
 </li>
           <li><a href="api/engine.html#diffBloch.engine.refine.PenaltyTerm.name">(diffBloch.engine.refine.PenaltyTerm attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.name">(diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveTerm.name">(diffBloch.observability.ObjectiveTerm attribute)</a>
 </li>
           <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.StepRecord.name">(diffBloch.preprocess.pipeline.StepRecord attribute)</a>
 </li>
@@ -1892,9 +2009,7 @@
   <h2>O</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/config.html#diffBloch.config.schema.RefinementConfig.objective">objective (diffBloch.config.schema.RefinementConfig attribute)</a>
-</li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.objective_terms">objective_terms (diffBloch.config.manifest.RunManifest attribute)</a>
+        <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.objective_manifest">objective_manifest (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.RefinementStep.objective_total">objective_total (diffBloch.observability.RefinementStep attribute)</a>
 </li>
@@ -1904,7 +2019,9 @@
 </li>
         <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveComponent">ObjectiveComponent (class in diffBloch.engine.refine)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.schema.ObjectiveConfig">ObjectiveConfig (class in diffBloch.config.schema)</a>
+        <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest">ObjectiveManifest (class in diffBloch.observability)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.ObjectiveTerm">ObjectiveTerm (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveValue">ObjectiveValue (class in diffBloch.engine.refine)</a>
 </li>
@@ -1944,10 +2061,10 @@
           <li><a href="api/io.html#diffBloch.io.record.ExperimentalRecord.omegas">(diffBloch.io.record.ExperimentalRecord attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.losses.optimal_scale">optimal_scale() (in module diffBloch.core.losses)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/config.html#diffBloch.config.schema.PreprocessConfig.optimize_orientation">optimize_orientation (diffBloch.config.schema.PreprocessConfig attribute)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.optimize_orientation.optimize_orientation">optimize_orientation() (in module diffBloch.preprocess.steps.optimize_orientation)</a>
@@ -1957,7 +2074,11 @@
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.optimize_thickness.optimize_thickness">optimize_thickness() (in module diffBloch.preprocess.steps.optimize_thickness)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.RefinementConfig.optimizer">optimizer (diffBloch.config.schema.RefinementConfig attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.optimizer">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/config.html#diffBloch.config.schema.OptimizerConfig">OptimizerConfig (class in diffBloch.config.schema)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.refine.OptimizerName">OptimizerName (in module diffBloch.engine.refine)</a>
@@ -1981,6 +2102,8 @@
         <li><a href="api/preprocess.html#diffBloch.preprocess.orientation.orientation_matrices">orientation_matrices() (in module diffBloch.preprocess.orientation)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.OrientationOptimizationConfig">OrientationOptimizationConfig (class in diffBloch.config.schema)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationStarted">OrientationOptimizationStarted (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary">OrientationOptimizationSummary (class in diffBloch.observability)</a>
 </li>
@@ -2006,11 +2129,7 @@
   <h2>P</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/config.html#diffBloch.config.manifest.pack_run">pack_run() (in module diffBloch.config.manifest)</a>
-</li>
         <li><a href="api/engine.html#diffBloch.engine.penalties.BondLengthPenalty.pairs">pairs (diffBloch.engine.penalties.BondLengthPenalty attribute)</a>
-</li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.parameter_table">parameter_table (diffBloch.config.manifest.RunManifest attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.RecipeStep.params">params (diffBloch.config.manifest.RecipeStep attribute)</a>
 
@@ -2077,15 +2196,23 @@
 </li>
         </ul></li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementProblem.penalties">penalties (diffBloch.engine.forward.RefinementProblem attribute)</a>
-</li>
-        <li><a href="api/engine.html#diffBloch.engine.refine.PenaltyTerm">PenaltyTerm (class in diffBloch.engine.refine)</a>
-</li>
-        <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveValue.per_rotation">per_rotation (diffBloch.engine.refine.ObjectiveValue attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.penalties">(diffBloch.observability.ObjectiveManifest attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/engine.html#diffBloch.engine.refine.PenaltyTerm">PenaltyTerm (class in diffBloch.engine.refine)</a>
+</li>
+        <li><a href="api/app.html#diffBloch.app.loggers.ConsoleLogger.per_rotation">per_rotation (diffBloch.app.loggers.ConsoleLogger attribute)</a>
+
+        <ul>
+          <li><a href="api/engine.html#diffBloch.engine.refine.ObjectiveValue.per_rotation">(diffBloch.engine.refine.ObjectiveValue attribute)</a>
+</li>
           <li><a href="api/preprocess.html#diffBloch.preprocess.inference.InferenceResult.per_rotation">(diffBloch.preprocess.inference.InferenceResult attribute)</a>
 </li>
         </ul></li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.per_rotation_metrics">per_rotation_metrics() (diffBloch.engine.forward.RefinementEngine method)</a>
+</li>
         <li><a href="api/engine.html#diffBloch.engine.penalties.perceive_bond_length_penalty">perceive_bond_length_penalty() (in module diffBloch.engine.penalties)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.constraints.perceive_hydrogen_riding">perceive_hydrogen_riding() (in module diffBloch.engine.constraints)</a>
@@ -2096,10 +2223,10 @@
 </li>
         <li><a href="api/params.html#diffBloch.params.PhysicalState">PhysicalState (class in diffBloch.params)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.pipeline">pipeline() (in module diffBloch.preprocess.pipeline)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.products.PlainSum">PlainSum (class in diffBloch.core.products)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.Plan">Plan (class in diffBloch.preprocess.plan)</a>
@@ -2109,12 +2236,16 @@
         <ul>
           <li><a href="api/engine.html#diffBloch.engine.plan.SegmentPlan.plan">(diffBloch.engine.plan.SegmentPlan attribute)</a>
 </li>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.DatasetSetup.plan">(diffBloch.preprocess.experiment.DatasetSetup attribute)</a>
+</li>
         </ul></li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.coverage.plan_coverage">plan_coverage() (in module diffBloch.preprocess.steps.coverage)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.plan_lock_sha256">plan_lock_sha256 (diffBloch.config.manifest.RefinementLock attribute)</a>
+        <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.plan_lock_sha256s">plan_lock_sha256s (diffBloch.config.manifest.RefinementLock attribute)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.ExperimentSetup.plans">plans (diffBloch.preprocess.experiment.ExperimentSetup attribute)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.PlanSeeded">PlanSeeded (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit">PlanSplit (class in diffBloch.preprocess.experiment)</a>
 </li>
@@ -2200,9 +2331,13 @@
           <li><a href="api/specs.html#diffBloch.specs.ConvergenceTolerance.r_factor_threshold">(diffBloch.specs.ConvergenceTolerance attribute)</a>
 </li>
         </ul></li>
-        <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.r_obs">r_obs (diffBloch.observability.RefinementOrientationStep attribute)</a>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RotationMetrics.r_obs">r_obs (diffBloch.engine.forward.RotationMetrics attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.r_obs">(diffBloch.observability.RefinedRotationMetrics attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.r_obs">(diffBloch.observability.RefinementOrientationStep attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.r_obs">(diffBloch.observability.RefinementStep attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RotationScored.r_obs">(diffBloch.observability.RotationScored attribute)</a>
@@ -2264,11 +2399,11 @@
 </li>
         <li><a href="api/app.html#diffBloch.app.program.refine_experiment">refine_experiment() (in module diffBloch.app.program)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.refined_model">refined_model (diffBloch.config.manifest.RunManifest attribute)</a>
-</li>
         <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.refined_parameters">refined_parameters (diffBloch.config.manifest.RefinementLock attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.RefinementLock.refined_structure">refined_structure (diffBloch.config.manifest.RefinementLock attribute)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics">RefinedRotationMetrics (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.ExperimentConfig.refinement">refinement (diffBloch.config.schema.ExperimentConfig attribute)</a>
 
@@ -2292,9 +2427,9 @@
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementModel">RefinementModel (class in diffBloch.engine.forward)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep">RefinementOrientationStep (class in diffBloch.observability)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten">RefinementOutputsWritten (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementProblem">RefinementProblem (class in diffBloch.engine.forward)</a>
 </li>
@@ -2302,12 +2437,20 @@
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.RefinementSetup">RefinementSetup (class in diffBloch.preprocess.experiment)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementStarted">RefinementStarted (class in diffBloch.observability)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/observability.html#diffBloch.observability.RefinementStep">RefinementStep (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.crystal.reflection_condition">reflection_condition() (in module diffBloch.core.crystal)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.reflection_counts">reflection_counts (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementCompleted.reflection_counts">(diffBloch.observability.RefinementCompleted attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/io.html#diffBloch.io.ExperimentalRecord.reflection_zone_axis_ids">reflection_zone_axis_ids (diffBloch.io.ExperimentalRecord attribute)</a>
 
         <ul>
@@ -2334,20 +2477,38 @@
           <li><a href="api/observability.html#diffBloch.observability.RecordingLogger.report">(diffBloch.observability.RecordingLogger method)</a>
 </li>
         </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.requested">requested (diffBloch.observability.DeviceSelected attribute)</a>
+</li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.require_built_plans">require_built_plans() (in module diffBloch.preprocess.plan)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.require_candidate_plans">require_candidate_plans() (in module diffBloch.preprocess.plan)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.require_orientation_plans">require_orientation_plans() (in module diffBloch.preprocess.plan)</a>
 </li>
+        <li><a href="api/config.html#diffBloch.config.schema.LossMetricsConfig.residual">residual (diffBloch.config.schema.LossMetricsConfig attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.residual">(diffBloch.observability.OrientationOptimizationSummary attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.residual">(diffBloch.observability.OrientationOptimized attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.residual">(diffBloch.observability.ThicknessOptimized attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/app.html#diffBloch.app.loggers.residual_label">residual_label() (in module diffBloch.app.loggers)</a>
+</li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.Fork.resolve">resolve() (diffBloch.preprocess.pipeline.Fork method)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.resolve_recipe">resolve_recipe() (in module diffBloch.preprocess.pipeline)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.resolved_config">resolved_config (diffBloch.config.manifest.RunManifest attribute)</a>
+        <li><a href="api/engine.html#diffBloch.engine.losses.robs_scores">robs_scores() (in module diffBloch.engine.losses)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.rocking_curve_sampling">rocking_curve_sampling (diffBloch.config.schema.BlochwaveConfig attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.rocking_curve_sampling">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.orientation.rocking_curve_tilts">rocking_curve_tilts() (in module diffBloch.preprocess.orientation)</a>
 </li>
         <li><a href="api/specs.html#diffBloch.specs.RockingCurve">RockingCurve (class in diffBloch.specs)</a>
@@ -2355,16 +2516,24 @@
         <li><a href="api/core.html#diffBloch.core.products.PatternBatch.rotation_index">rotation_index (diffBloch.core.products.PatternBatch attribute)</a>
 
         <ul>
+          <li><a href="api/engine.html#diffBloch.engine.forward.RotationMetrics.rotation_index">(diffBloch.engine.forward.RotationMetrics attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.rotation_index">(diffBloch.observability.OrientationOptimized attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.rotation_index">(diffBloch.observability.RefinedRotationMetrics attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.rotation_index">(diffBloch.observability.RefinementOrientationStep attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.rotation_index">(diffBloch.observability.ThicknessOptimized attribute)</a>
 </li>
         </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.rotation_indices">rotation_indices (diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
         <li><a href="api/observability.html#diffBloch.observability.RotationCoupling">RotationCoupling (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.inference.RotationInference">RotationInference (class in diffBloch.preprocess.inference)</a>
+</li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RotationMetrics">RotationMetrics (class in diffBloch.engine.forward)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.symmetry.AsuExpansionPlan.rotations">rotations (diffBloch.core.symmetry.AsuExpansionPlan attribute)</a>
 </li>
@@ -2373,6 +2542,8 @@
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.rsg">rsg (diffBloch.config.schema.BlochwaveConfig attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.rsg">(diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
           <li><a href="api/specs.html#diffBloch.specs.BeamSelection.rsg">(diffBloch.specs.BeamSelection attribute)</a>
 </li>
         </ul></li>
@@ -2387,8 +2558,6 @@
         <li><a href="api/engine.html#diffBloch.engine.refine.run_refinement">run_refinement() (in module diffBloch.engine.refine)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.run_refinement_model">run_refinement_model() (in module diffBloch.engine.forward)</a>
-</li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest">RunManifest (class in diffBloch.config.manifest)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -2416,11 +2585,15 @@
           <li><a href="api/io.html#diffBloch.io.record.ExperimentalRecord.scales">(diffBloch.io.record.ExperimentalRecord attribute)</a>
 </li>
         </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.score">score (diffBloch.observability.OrientationOptimized attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.score">(diffBloch.observability.ThicknessOptimized attribute)</a>
+</li>
+        </ul></li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation">score_orientation() (diffBloch.engine.forward.RefinementEngine method)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation_per_thickness">score_orientation_per_thickness() (diffBloch.engine.forward.RefinementEngine method)</a>
-</li>
-        <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.score_orientation_r_obs">score_orientation_r_obs() (diffBloch.engine.forward.RefinementEngine method)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.scoring.score_orientations">score_orientations() (in module diffBloch.preprocess.scoring)</a>
 </li>
@@ -2428,9 +2601,15 @@
 </li>
         <li><a href="api/specs.html#diffBloch.specs.ScoredHklSelection">ScoredHklSelection (class in diffBloch.specs)</a>
 </li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RefinementEngine.scores">scores() (diffBloch.engine.forward.RefinementEngine method)</a>
+</li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.ScoresFn">ScoresFn (in module diffBloch.engine.forward)</a>
+</li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.plan.CandidatePlan.seed">seed() (diffBloch.preprocess.plan.CandidatePlan class method)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.seed_beam_hkl">seed_beam_hkl() (in module diffBloch.preprocess.experiment)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.seed_thicknesses">seed_thicknesses (diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.coupling.Segment">Segment (class in diffBloch.preprocess.coupling)</a>
 </li>
@@ -2440,14 +2619,24 @@
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.beams.select_beams">select_beams() (in module diffBloch.preprocess.steps.beams)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.selected">selected (diffBloch.observability.DeviceSelected attribute)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementCompleted.selection">selection (diffBloch.observability.RefinementCompleted attribute)</a>
+</li>
+        <li><a href="api/engine.html#diffBloch.engine.forward.ModelRefinementResult.selection_losses">selection_losses (diffBloch.engine.forward.ModelRefinementResult attribute)</a>
+</li>
         <li><a href="api/engine.html#diffBloch.engine.refine.AtomSelection.selects_any">selects_any (diffBloch.engine.refine.AtomSelection property)</a>
 </li>
         <li><a href="api/specs.html#diffBloch.specs.IntegrationGeometry.semiangle">semiangle (diffBloch.specs.IntegrationGeometry attribute)</a>
+</li>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.setup_datasets">setup_datasets() (in module diffBloch.preprocess.experiment)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.sg_max">sg_max (diffBloch.config.schema.BlochwaveConfig attribute)</a>
 
         <ul>
           <li><a href="api/observability.html#diffBloch.observability.ConvergencePassStarted.sg_max">(diffBloch.observability.ConvergencePassStarted attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.sg_max">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
           <li><a href="api/preprocess.html#diffBloch.preprocess.driver.ConvergenceState.sg_max">(diffBloch.preprocess.driver.ConvergenceState attribute)</a>
 </li>
@@ -2484,9 +2673,11 @@
 </li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.steps.convergence.simulation_rfactor">simulation_rfactor() (in module diffBloch.preprocess.steps.convergence)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.manifest.RunManifest.snapshot">snapshot (diffBloch.config.manifest.RunManifest attribute)</a>
+        <li><a href="api/core.html#diffBloch.core.dynamical.snap_to_standard_energy">snap_to_standard_energy() (in module diffBloch.core.dynamical)</a>
 </li>
         <li><a href="api/core.html#diffBloch.core.products.AlignmentPlan.solution_index">solution_index (diffBloch.core.products.AlignmentPlan attribute)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.solve_g_max">solve_g_max (diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.solver">solver (diffBloch.config.schema.BlochwaveConfig attribute)</a>
 </li>
@@ -2522,12 +2713,12 @@
           <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.RefinementSetup.spec">(diffBloch.preprocess.experiment.RefinementSetup attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.spec_to_params">spec_to_params() (in module diffBloch.preprocess.pipeline)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.RefinementConfig.split">split (diffBloch.config.schema.RefinementConfig attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/core.html#diffBloch.core.dynamical.stack_beam_plans">stack_beam_plans() (in module diffBloch.core.dynamical)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.PreprocessConfig.stage_order">stage_order (diffBloch.config.schema.PreprocessConfig attribute)</a>
@@ -2551,19 +2742,35 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.CouplingSummary.step">(diffBloch.observability.CouplingSummary property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.DeviceSelected.step">(diffBloch.observability.DeviceSelected property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.Event.step">(diffBloch.observability.Event property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.step">(diffBloch.observability.ExperimentDeclared property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.InferenceCompleted.step">(diffBloch.observability.InferenceCompleted property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveManifest.step">(diffBloch.observability.ObjectiveManifest property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationStarted.step">(diffBloch.observability.OrientationOptimizationStarted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.step">(diffBloch.observability.OrientationOptimizationSummary property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.step">(diffBloch.observability.OrientationOptimized property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.PlanSeeded.step">(diffBloch.observability.PlanSeeded property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.PlanStepCompleted.step">(diffBloch.observability.PlanStepCompleted property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.step">(diffBloch.observability.RefinedRotationMetrics property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementCompleted.step">(diffBloch.observability.RefinementCompleted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.step">(diffBloch.observability.RefinementOrientationStep property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten.step">(diffBloch.observability.RefinementOutputsWritten property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementStarted.step">(diffBloch.observability.RefinementStarted property)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.step">(diffBloch.observability.RefinementStep property)</a>
 </li>
@@ -2571,7 +2778,11 @@
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RotationScored.step">(diffBloch.observability.RotationScored property)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimizationStarted.step">(diffBloch.observability.ThicknessOptimizationStarted property)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.step">(diffBloch.observability.ThicknessOptimized property)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.step">(diffBloch.observability.ThicknessProfile property)</a>
 </li>
         </ul></li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.step_records">step_records() (in module diffBloch.preprocess.pipeline)</a>
@@ -2585,13 +2796,23 @@
         <li><a href="api/preprocess.html#diffBloch.preprocess.pipeline.StepRecord">StepRecord (class in diffBloch.preprocess.pipeline)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.RefinementConfig.steps">steps (diffBloch.config.schema.RefinementConfig attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.steps">(diffBloch.observability.ExperimentDeclared attribute)</a>
 </li>
+        </ul></li>
         <li><a href="api/config.html#diffBloch.config.manifest.ExperimentLock.structure">structure (diffBloch.config.manifest.ExperimentLock attribute)</a>
 
         <ul>
+          <li><a href="api/config.html#diffBloch.config.manifest.PreprocessLock.structure">(diffBloch.config.manifest.PreprocessLock attribute)</a>
+</li>
           <li><a href="api/config.html#diffBloch.config.schema.Inputs.structure">(diffBloch.config.schema.Inputs attribute)</a>
 </li>
           <li><a href="api/engine.html#diffBloch.engine.forward.RefinementModel.structure">(diffBloch.engine.forward.RefinementModel attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.ExperimentDeclared.structure">(diffBloch.observability.ExperimentDeclared attribute)</a>
+</li>
+          <li><a href="api/observability.html#diffBloch.observability.RefinementOutputsWritten.structure">(diffBloch.observability.RefinementOutputsWritten attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.scattering.structure_factor_cutoff">structure_factor_cutoff() (in module diffBloch.core.scattering)</a>
@@ -2677,6 +2898,8 @@
         <ul>
           <li><a href="api/core.html#diffBloch.core.products.BlochSolution.thicknesses">(diffBloch.core.products.BlochSolution attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile.thicknesses">(diffBloch.observability.ThicknessProfile attribute)</a>
+</li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.solver.Thicknesses">Thicknesses (in module diffBloch.core.solver)</a>
 </li>
@@ -2686,7 +2909,11 @@
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.ThicknessOptimizationConfig">ThicknessOptimizationConfig (class in diffBloch.config.schema)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimizationStarted">ThicknessOptimizationStarted (class in diffBloch.observability)</a>
+</li>
         <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized">ThicknessOptimized (class in diffBloch.observability)</a>
+</li>
+        <li><a href="api/observability.html#diffBloch.observability.ThicknessProfile">ThicknessProfile (class in diffBloch.observability)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.plan.CoupledOrientationPlan.tilt_reduction">tilt_reduction (diffBloch.engine.plan.CoupledOrientationPlan attribute)</a>
 
@@ -2712,21 +2939,25 @@
         </ul></li>
         <li><a href="api/params.html#diffBloch.params.RefinableParams.to">to() (diffBloch.params.RefinableParams method)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.to_absorption">to_absorption() (diffBloch.config.schema.BlochwaveConfig method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.to_beam_selection">to_beam_selection() (diffBloch.config.schema.BlochwaveConfig method)</a>
+</li>
+        <li><a href="api/config.html#diffBloch.config.schema.ExperimentConfig.to_declaration">to_declaration() (diffBloch.config.schema.ExperimentConfig method)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.ThicknessOptimizationConfig.to_grid">to_grid() (diffBloch.config.schema.ThicknessOptimizationConfig method)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.schema.ObjectiveConfig.to_loss">to_loss() (diffBloch.config.schema.ObjectiveConfig method)</a>
+        <li><a href="api/config.html#diffBloch.config.schema.LossMetricsConfig.to_loss">to_loss() (diffBloch.config.schema.LossMetricsConfig method)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.to_orientation_selection">to_orientation_selection() (diffBloch.config.schema.BlochwaveConfig method)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.to_policy">to_policy() (diffBloch.config.schema.BlochwaveConfig method)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.BlochwaveConfig.to_rocking_curve">to_rocking_curve() (diffBloch.config.schema.BlochwaveConfig method)</a>
+</li>
+        <li><a href="api/config.html#diffBloch.config.schema.LossMetricsConfig.to_scores">to_scores() (diffBloch.config.schema.LossMetricsConfig method)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.NelderMeadOptimizationConfig.to_search">to_search() (diffBloch.config.schema.NelderMeadOptimizationConfig method)</a>
 
@@ -2746,18 +2977,24 @@
 </li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.total_observed_hkl">total_observed_hkl (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
 </li>
+        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationStarted.total_rotations">total_rotations (diffBloch.observability.OrientationOptimizationStarted attribute)</a>
+
+        <ul>
+          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimizationStarted.total_rotations">(diffBloch.observability.ThicknessOptimizationStarted attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/observability.html#diffBloch.observability.RefinementStarted.total_steps">total_steps (diffBloch.observability.RefinementStarted attribute)</a>
+</li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.total_strong_hkl">total_strong_hkl (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.total_trials">total_trials (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
 </li>
         <li><a href="api/observability.html#diffBloch.observability.OrientationOptimizationSummary.total_weak_hkl">total_weak_hkl (diffBloch.observability.OrientationOptimizationSummary attribute)</a>
 </li>
-        <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig.train">train (diffBloch.config.schema.DataSplitConfig attribute)</a>
-
-        <ul>
-          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit.train">(diffBloch.preprocess.experiment.PlanSplit attribute)</a>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit.train">train (diffBloch.preprocess.experiment.PlanSplit attribute)</a>
 </li>
-        </ul></li>
+        <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig.train_test">train_test (diffBloch.config.schema.DataSplitConfig attribute)</a>
+</li>
         <li><a href="api/config.html#diffBloch.config.schema.RefinementConfig.trainable">trainable (diffBloch.config.schema.RefinementConfig attribute)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.schema.TrainableConfig">TrainableConfig (class in diffBloch.config.schema)</a>
@@ -2872,14 +3109,14 @@
   <h2>V</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig.validation">validation (diffBloch.config.schema.DataSplitConfig attribute)</a>
-
-        <ul>
-          <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit.validation">(diffBloch.preprocess.experiment.PlanSplit attribute)</a>
+        <li><a href="api/config.html#diffBloch.config.schema.DataSplitConfig.val_frac">val_frac (diffBloch.config.schema.DataSplitConfig attribute)</a>
 </li>
-        </ul></li>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.PlanSplit.validation">validation (diffBloch.preprocess.experiment.PlanSplit attribute)</a>
+</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/preprocess.html#diffBloch.preprocess.experiment.validation_mask">validation_mask() (in module diffBloch.preprocess.experiment)</a>
+</li>
         <li><a href="api/engine.html#diffBloch.engine.penalties.BondLengthPenalty.value">value() (diffBloch.engine.penalties.BondLengthPenalty method)</a>
 
         <ul>
@@ -2917,6 +3154,8 @@
 </li>
           <li><a href="api/engine.html#diffBloch.engine.refine.PenaltyTerm.weight">(diffBloch.engine.refine.PenaltyTerm attribute)</a>
 </li>
+          <li><a href="api/observability.html#diffBloch.observability.ObjectiveTerm.weight">(diffBloch.observability.ObjectiveTerm attribute)</a>
+</li>
         </ul></li>
         <li><a href="api/core.html#diffBloch.core.losses.weighted_mse">weighted_mse() (in module diffBloch.core.losses)</a>
 </li>
@@ -2942,27 +3181,29 @@
           <li><a href="api/engine.html#diffBloch.engine.plan.OrientationPlan.with_orientation">(diffBloch.engine.plan.OrientationPlan method)</a>
 </li>
         </ul></li>
-        <li><a href="api/observability.html#diffBloch.observability.OrientationOptimized.wr2">wr2 (diffBloch.observability.OrientationOptimized attribute)</a>
+        <li><a href="api/engine.html#diffBloch.engine.forward.RotationMetrics.wr2">wr2 (diffBloch.engine.forward.RotationMetrics attribute)</a>
 
         <ul>
+          <li><a href="api/observability.html#diffBloch.observability.RefinedRotationMetrics.wr2">(diffBloch.observability.RefinedRotationMetrics attribute)</a>
+</li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementOrientationStep.wr2">(diffBloch.observability.RefinementOrientationStep attribute)</a>
 </li>
           <li><a href="api/observability.html#diffBloch.observability.RefinementStep.wr2">(diffBloch.observability.RefinementStep attribute)</a>
 </li>
-          <li><a href="api/observability.html#diffBloch.observability.ThicknessOptimized.wr2">(diffBloch.observability.ThicknessOptimized attribute)</a>
+          <li><a href="api/preprocess.html#diffBloch.preprocess.inference.RotationInference.wr2">(diffBloch.preprocess.inference.RotationInference attribute)</a>
 </li>
         </ul></li>
         <li><a href="api/app.html#diffBloch.app.loggers.EarlyAbortLogger.wr2_ceiling">wr2_ceiling (diffBloch.app.loggers.EarlyAbortLogger attribute)</a>
 </li>
         <li><a href="api/engine.html#diffBloch.engine.losses.wr2_loss">wr2_loss() (in module diffBloch.engine.losses)</a>
 </li>
+        <li><a href="api/engine.html#diffBloch.engine.losses.wr2_scores">wr2_scores() (in module diffBloch.engine.losses)</a>
+</li>
         <li><a href="api/preprocess.html#diffBloch.preprocess.serialize.write_plan">write_plan() (in module diffBloch.preprocess.serialize)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.write_preprocess_lock">write_preprocess_lock() (in module diffBloch.config.manifest)</a>
 </li>
         <li><a href="api/config.html#diffBloch.config.manifest.write_refinement_lock">write_refinement_lock() (in module diffBloch.config.manifest)</a>
-</li>
-        <li><a href="api/config.html#diffBloch.config.manifest.write_run_manifest">write_run_manifest() (in module diffBloch.config.manifest)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -3008,10 +3249,10 @@
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
-          
-          
+
+
         </div>
         <div class="bottom-of-page">
           <div class="left-details">
@@ -3019,21 +3260,21 @@
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer no-toc">
-      
-      
-      
+
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

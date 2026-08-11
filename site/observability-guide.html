@@ -7,15 +7,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html" />
 <meta property="og:site_name" content="diffBloch" />
-<meta property="og:description" content="A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure ref..." />
+<meta property="og:description" content="diffBloch reports what it’s doing as a stream of typed events – a rotation’s orientation score, a preprocessing stage’s beam counts, a refinement epoch’s wR2 – rather than ad hoc print statements. ..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_observability-guide_b32cd8aa.png" />
-<meta property="og:image:alt" content="A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure ref..." />
-<meta name="description" content="A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure ref..." />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_observability-guide_5c656728.png" />
+<meta property="og:image:alt" content="diffBloch reports what it’s doing as a stream of typed events – a rotation’s orientation score, a preprocessing stage’s beam counts, a refinement epoch’s wR2 – rather than ad hoc print statements. ..." />
+<meta name="description" content="diffBloch reports what it’s doing as a stream of typed events – a rotation’s orientation score, a preprocessing stage’s beam counts, a refinement epoch’s wR2 – rather than ad hoc print statements. ..." />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Examples" href="examples.html"><link rel="prev" title="Refinement" href="refinement.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/observability-guide.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Observability and loggers - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -186,18 +187,21 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -259,20 +266,143 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
         <article role="main" id="furo-main-content">
           <section id="observability-and-loggers">
 <h1>Observability and loggers<a class="headerlink" href="#observability-and-loggers" title="Link to this heading">¶</a></h1>
-<p>A refinement run reports relevant quantities: wR2 and R_obs per rotation during orientation optimization and thickness optimization, and the epoch-by-epoch loss, wR2, and R_obs during structure refinement. A logger is any object with one method:</p>
+<p>diffBloch reports what it’s doing as a stream of typed events – a rotation’s orientation score, a
+preprocessing stage’s beam counts, a refinement epoch’s wR2 – rather than ad hoc print statements.
+Every backend (console, TUI, CSV, W&amp;B, Comet) consumes the same stream, so adding a new sink never
+requires touching the core.</p>
+<section id="the-event-logger-pattern">
+<h2>The event/logger pattern<a class="headerlink" href="#the-event-logger-pattern" title="Link to this heading">¶</a></h2>
+<p>An event is anything with a <code class="docutils literal notranslate"><span class="pre">channel</span></code> (its stable name), <code class="docutils literal notranslate"><span class="pre">measurements</span></code> (metric name -&gt; value), and
+<code class="docutils literal notranslate"><span class="pre">step</span></code> (its position on a run’s x-axis, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for a run-level fact). A logger is any object with
+one method:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">report</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">Event</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</pre></div>
+</div>
+<p>The core hands events to whatever logger it was given and knows nothing about backends; the default
+is <code class="docutils literal notranslate"><span class="pre">NULL_LOGGER</span></code>, which discards everything, so a run with no logger attached costs nothing. Writing
+a new backend is exactly one method – see <code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers</span></code> for the built-in ones.</p>
+</section>
+<section id="what-gets-reported">
+<h2>What gets reported<a class="headerlink" href="#what-gets-reported" title="Link to this heading">¶</a></h2>
+<section id="preprocessing">
+<h3>Preprocessing<a class="headerlink" href="#preprocessing" title="Link to this heading">¶</a></h3>
+<p>A fresh preprocess run reports the plan’s shape as the recipe reshapes it: one <code class="docutils literal notranslate"><span class="pre">PlanSeeded</span></code> for the
+incoming plan, then one <code class="docutils literal notranslate"><span class="pre">PlanStepCompleted</span></code> per step (<code class="docutils literal notranslate"><span class="pre">select_beams</span></code>, <code class="docutils literal notranslate"><span class="pre">optimize_orientation</span></code>, …),
+each carrying the orientation count, structure-factor support size, solve-beam totals, and
+observed/matched reflection counts. Read consecutively these are per-stage <em>survival</em> counts – how
+many beams and reflections each filter left behind – which is why the seed baseline (<code class="docutils literal notranslate"><span class="pre">PlanSeeded</span></code>)
+is reported at all: without it, the first stage’s numbers are absolutes with nothing to compare
+against. Reusing a checkpoint skips this runner entirely, so these only fire on a fresh run.</p>
+<p><code class="docutils literal notranslate"><span class="pre">n_matched_hkl</span></code> is absent rather than zero before <code class="docutils literal notranslate"><span class="pre">build_orientation_plans</span></code> runs, since a candidate
+plan has no alignment yet and a reported <code class="docutils literal notranslate"><span class="pre">0</span></code> would misleadingly mean “matched nothing”.</p>
+</section>
+<section id="orientation-and-thickness-optimization">
+<h3>Orientation and thickness optimization<a class="headerlink" href="#orientation-and-thickness-optimization" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">OrientationOptimizationStarted</span></code>/<code class="docutils literal notranslate"><span class="pre">ThicknessOptimizationStarted</span></code> report the rotation count once,
+before either search begins. Each rotation then reports one <code class="docutils literal notranslate"><span class="pre">OrientationOptimized</span></code>/
+<code class="docutils literal notranslate"><span class="pre">ThicknessOptimized</span></code> as it finishes, carrying that rotation’s index, its residual, and (for
+thickness) the full candidate-thickness/score grid the search evaluated – not just the winner, so
+a plot backend (see <code class="docutils literal notranslate"><span class="pre">ThicknessPlotLogger</span></code> below) can show the whole curve. An
+<code class="docutils literal notranslate"><span class="pre">OrientationOptimizationSummary</span></code> closes out the stage with the mean score and deduplicated matched
+HKL count across every rotation.</p>
+</section>
+<section id="refinement">
+<h3>Refinement<a class="headerlink" href="#refinement" title="Link to this heading">¶</a></h3>
+<p>Before the first step, a refinement run declares its whole objective once: <code class="docutils literal notranslate"><span class="pre">ObjectiveManifest</span></code>
+names every composed penalty with its weight, every hard constraint, and every model component –
+so what’s active is stated up front rather than inferred from the per-epoch stream. It prints
+<code class="docutils literal notranslate"><span class="pre">none</span></code> for an empty category, because the default CLI path composes no penalties and that is a fact
+worth reading, not an omission.</p>
+<p>Each epoch then reports one <code class="docutils literal notranslate"><span class="pre">RefinementStep</span></code>: the epoch-mean wR2, R_obs, and diffraction loss, plus
+every objective term the run actually composed as <code class="docutils literal notranslate"><span class="pre">{term}/raw</span></code>, <code class="docutils literal notranslate"><span class="pre">{term}/weight</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">{term}/contribution</span></code> – so a weighted restraint’s scientific value stays legible next to the
+number the optimizer actually minimises. A restraint that was <em>not</em> composed into the objective
+produces no measurement at all; that absence is what distinguishes an inactive term from a
+satisfied one.</p>
+<p>Each epoch mean carries its own denominator, e.g. <code class="docutils literal notranslate"><span class="pre">wR2</span> <span class="pre">0.050000</span> <span class="pre">[97/99]</span></code>: the mean covers only the
+rotations that produced a finite score, and wR2/R_obs are filtered independently, so a run that
+quietly evaluates fewer rotations cannot pass as a run that got better.</p>
+<p><code class="docutils literal notranslate"><span class="pre">RefinementCompleted</span></code> closes the run: the best epoch, which objective selected it
+(<code class="docutils literal notranslate"><span class="pre">best_training_loss</span></code> vs <code class="docutils literal notranslate"><span class="pre">best_validation_loss</span></code> – see <a class="reference internal" href="refinement.html#refinement-outputs"><span class="std std-ref">Refinement</span></a>),
+and <code class="docutils literal notranslate"><span class="pre">RefinedRotationMetrics</span></code> gives the settled per-rotation wR2/R_obs/reflection counts for the
+final report.</p>
+</section>
+</section>
+<section id="backends">
+<h2>Backends<a class="headerlink" href="#backends" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Backend</p></th>
+<th class="head"><p>Where</p></th>
+<th class="head"><p>What it does</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ConsoleLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers</span></code></p></td>
+<td><p>Bridges every event onto stdlib <code class="docutils literal notranslate"><span class="pre">logging</span></code> as a scrolling log. The CLI’s default sink.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TuiLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers.tui</span></code> (<code class="docutils literal notranslate"><span class="pre">diffBloch[tui]</span></code> extra, <code class="docutils literal notranslate"><span class="pre">--tui</span></code>)</p></td>
+<td><p>Repaints the same event stream as a live terminal dashboard: experiment/objective panels, a per-phase progress bar, the epoch table with its denominators, the settled per-rotation table.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CSVLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers</span></code> (<code class="docutils literal notranslate"><span class="pre">--csv</span> <span class="pre">PATH</span></code>)</p></td>
+<td><p>Appends every event’s measurements as long-format rows (<code class="docutils literal notranslate"><span class="pre">channel,</span> <span class="pre">step,</span> <span class="pre">metric,</span> <span class="pre">value</span></code>) – one flat, tailable table for a heterogeneous stream, ready to filter by channel or pivot by step.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">WandbLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers.wandb</span></code></p></td>
+<td><p>Logs each event’s measurements to Weights &amp; Biases as <code class="docutils literal notranslate"><span class="pre">{channel}/{metric}</span></code> series.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CometLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers.comet</span></code></p></td>
+<td><p>Logs each event’s measurements to a Comet ML experiment.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ThicknessPlotLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.app.loggers.plotting</span></code> (<code class="docutils literal notranslate"><span class="pre">--plot-thickness</span></code>)</p></td>
+<td><p>Saves one residual-vs-thickness PNG per rotation from <code class="docutils literal notranslate"><span class="pre">ThicknessOptimized</span></code>’s full candidate grid; a no-op on every other event.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MultiLogger</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffBloch.observability</span></code></p></td>
+<td><p>Fans one event stream out to several loggers at once (e.g. console and W&amp;B together).</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ConsoleLogger</span></code> and <code class="docutils literal notranslate"><span class="pre">TuiLogger</span></code> are alternatives, never both at once – a live terminal display owns
+the terminal, so composing them would interleave garbled output. File and vendor sinks (<code class="docutils literal notranslate"><span class="pre">CSVLogger</span></code>,
+<code class="docutils literal notranslate"><span class="pre">WandbLogger</span></code>, <code class="docutils literal notranslate"><span class="pre">CometLogger</span></code>, <code class="docutils literal notranslate"><span class="pre">ThicknessPlotLogger</span></code>) compose freely with either, and with each
+other, via <code class="docutils literal notranslate"><span class="pre">MultiLogger</span></code>.</p>
+</section>
+<section id="writing-your-own-backend">
+<h2>Writing your own backend<a class="headerlink" href="#writing-your-own-backend" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.observability</span><span class="w"> </span><span class="kn">import</span> <span class="n">Event</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">PrintLogger</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">report</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">Event</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">channel</span><span class="si">}</span><span class="s2">[</span><span class="si">{</span><span class="n">event</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="nb">dict</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">measurements</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Pass an instance wherever a <code class="docutils literal notranslate"><span class="pre">logger:</span></code> parameter is accepted (the preprocessing/refinement drivers,
+<code class="docutils literal notranslate"><span class="pre">from_experiment</span></code>, the CLI’s programmatic entry points), or compose it with the built-in backends
+via <code class="docutils literal notranslate"><span class="pre">MultiLogger((ConsoleLogger(),</span> <span class="pre">PrintLogger()))</span></code>.</p>
+<p>See <a class="reference internal" href="api/observability.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">diffBloch.observability</span></code></span></a> for the full event list and every event’s
+exact fields.</p>
+</section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="examples.html">
               <div class="page-info">
@@ -289,9 +419,9 @@
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Refinement</div>
-                
+
               </div>
             </a>
         </div>
@@ -301,21 +431,48 @@
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
-      
-      
-      
+    <aside class="toc-drawer">
+
+
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Observability and loggers</a><ul>
+<li><a class="reference internal" href="#the-event-logger-pattern">The event/logger pattern</a></li>
+<li><a class="reference internal" href="#what-gets-reported">What gets reported</a><ul>
+<li><a class="reference internal" href="#preprocessing">Preprocessing</a></li>
+<li><a class="reference internal" href="#orientation-and-thickness-optimization">Orientation and thickness optimization</a></li>
+<li><a class="reference internal" href="#refinement">Refinement</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#backends">Backends</a></li>
+<li><a class="reference internal" href="#writing-your-own-backend">Writing your own backend</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

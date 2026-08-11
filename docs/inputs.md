@@ -18,7 +18,7 @@ Checkpointed examples also include:
 | File | Role |
 |---|---|
 | `reproducibility/plan.<stem>.npz` | Serialized preprocessed `Plan`, one per `inputs.exp_data` file (`<stem>` is the file's path with separators as `__` and no `.cif_pets` suffix). |
-| `reproducibility/plan.<stem>.lock` | Provenance lock tying that dataset's checkpoint to its input bytes, dataset-scoped config, recipe, code version, and artifact hash. |
+| `reproducibility/plan.<stem>.lock` | Provenance lock tying that dataset's checkpoint to its input bytes, authoritative PETS cell, dataset-scoped config, recipe, code version, and artifact hash. |
 
 Bundled binary artifacts such as `.cif_pets` experimental data and committed plan checkpoints are
 tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
@@ -52,15 +52,16 @@ fractions are simply interpreted against PETS's cell instead of the CIF's own.
 
 The CIF's cell is checked against PETS's on every load:
 
-- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` warns, stating explicitly that
-  the PETS value overrides the CIF value. Ordinary refinement/measurement drift stays well under
-  this.
+- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning, stating
+  explicitly that the PETS value overrides the CIF value. Ordinary refinement/measurement drift
+  stays well under this.
 - **> 5% relative difference** raises `ValueError` and stops — listing every offending parameter,
   both values, and the percentage difference — rather than silently deriving the whole simulation's
   geometry from a mismatch that large.
 
-Under `inputs.multi_dataset` the same two thresholds apply between combined `.cif_pets` files too
-(each further file's cell checked against the first file's); see
+Under `inputs.multi_dataset`, the first `.cif_pets` file's cell is the shared authoritative cell.
+The CIF is checked against it, and the same two thresholds apply between combined `.cif_pets` files
+too (each further file's cell checked against the first file's); see
 [Combining multiple datasets](#combining-multiple-datasets) below.
 
 ## API example
@@ -142,9 +143,12 @@ recomputes another dataset's preprocessing -- appending frame 5 of a damage seri
 lock verifies.
 
 Each file also keeps its own UB matrix/cell for orientation derivation and its own
-mean-inner-potential correction. The files' wavelength-derived beam energies must snap to the same
-accelerating voltage: the Bloch engine solves the whole pooled experiment at one energy, so mixing
-e.g. a 120 kV and a 200 kV dataset is rejected with an error rather than silently mis-scored.
+mean-inner-potential correction. The shared structure-factor grid and ADP metric come from the
+first file's authoritative PETS cell; every per-dataset plan lock records that cell, so changing the
+anchor file's cell restales every pooled checkpoint. The files' wavelength-derived beam energies
+must snap to the same accelerating voltage: the Bloch engine solves the whole pooled experiment at
+one energy, so mixing e.g. a 120 kV and a 200 kV dataset is rejected with an error rather than
+silently mis-scored.
 
 Just before refinement the settled per-dataset plans are pooled in memory (never re-checkpointed):
 rotations concatenate file-by-file with a running offset, so `rotation_index` stays globally unique
@@ -152,9 +156,10 @@ across the combined set (the first file's rotations are `0..N-1`, the second fil
 `N..N+M-1`, and so on) -- `ignore_orientations` and the train/validation split both key off this
 combined index, and ignoring a rotation leaves a gap rather than renumbering later frames.
 
-Pooled files must also describe the same crystal: each further file's recorded cell is checked
-against the first file's (warn past 1% relative difference on any cell parameter -- ordinary
-damage-series drift stays under this -- raise past 5%, listing every offending parameter).
+Pooled files must also describe the same crystal: the structure CIF and each further file's
+recorded cell are checked against the first file's PETS cell (log a warning past 1% relative
+difference on any cell parameter -- ordinary damage-series drift stays under this -- raise past
+5%, listing every offending parameter).
 
 Two current limitations, each rejected with a clear error rather than silently mishandled:
 `refinement.thickness_nn` (the network keys only on each rotation's tilt angle, so it cannot

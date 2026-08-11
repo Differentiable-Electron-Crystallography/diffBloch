@@ -4,6 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/_modules/diffBloch/config/manifest.html">
+        <link rel="prefetch" href="../../../_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>diffBloch.config.manifest - diffBloch</title>
@@ -12,37 +13,37 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -181,11 +182,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -194,9 +198,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../reproducibility.html">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../refinement.html">Refinement</a></li>
@@ -220,7 +227,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -247,10 +254,11 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for diffBloch.config.manifest</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Experiment and run manifest helpers.</span>
+<span></span><span class="sd">&quot;&quot;&quot;Experiment lock and checkpoint-lock helpers.</span>
 
-<span class="sd">``experiment.lock`` identifies input bytes only. ``run_manifest.json`` identifies generated run</span>
-<span class="sd">artifacts. Keeping those separate avoids circular provenance and keeps cache keys stable.</span>
+<span class="sd">``experiment.lock`` identifies input bytes only; the preprocess and refinement locks identify</span>
+<span class="sd">generated artifacts and execution identity. Keeping those separate avoids circular provenance and</span>
+<span class="sd">keeps cache keys stable.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
@@ -258,12 +266,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">mimetypes</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">tarfile</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span>
 
@@ -272,6 +275,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch</span><span class="w"> </span><span class="kn">import</span> <span class="n">__version__</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">diffBloch.config.schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExperimentConfig</span><span class="p">,</span> <span class="n">load_config</span>
+
+<span class="nb">type</span> <span class="n">CellParameters</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
 
 
 <div class="viewcode-block" id="InputLock">
@@ -288,10 +293,14 @@
 <div class="viewcode-block" id="ExperimentLock">
 <a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.ExperimentLock">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ExperimentLock</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;``experiment.lock``: exact input identity, never generated outputs.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;``experiment.lock``: exact input identity, never generated outputs.</span>
+
+<span class="sd">    ``experimental_data`` is one lock for a single dataset or a list in ``inputs.exp_data`` order</span>
+<span class="sd">    for a pooled (``inputs.multi_dataset``) experiment.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">structure</span><span class="p">:</span> <span class="n">InputLock</span>
-    <span class="n">experimental_data</span><span class="p">:</span> <span class="n">InputLock</span></div>
+    <span class="n">experimental_data</span><span class="p">:</span> <span class="n">InputLock</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">InputLock</span><span class="p">]</span></div>
 
 
 
@@ -304,25 +313,6 @@
     <span class="n">sha256</span><span class="p">:</span> <span class="nb">str</span>
     <span class="nb">bytes</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">media_type</span><span class="p">:</span> <span class="nb">str</span></div>
-
-
-
-<div class="viewcode-block" id="RunManifest">
-<a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.RunManifest">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">RunManifest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;``run_manifest.json``: generated artifact hashes and execution identity.&quot;&quot;&quot;</span>
-
-    <span class="n">experiment_lock_sha256</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">resolved_config</span><span class="p">:</span> <span class="n">ArtifactHash</span>
-    <span class="n">config_diff</span><span class="p">:</span> <span class="n">ArtifactHash</span>
-    <span class="n">data_used</span><span class="p">:</span> <span class="n">ArtifactHash</span>
-    <span class="n">history</span><span class="p">:</span> <span class="n">ArtifactHash</span>
-    <span class="n">parameter_table</span><span class="p">:</span> <span class="n">ArtifactHash</span>
-    <span class="n">objective_terms</span><span class="p">:</span> <span class="n">ArtifactHash</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">snapshot</span><span class="p">:</span> <span class="n">ArtifactHash</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">refined_model</span><span class="p">:</span> <span class="n">ArtifactHash</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">code_version</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">environment</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span></div>
 
 
 
@@ -343,20 +333,33 @@
 <div class="viewcode-block" id="PreprocessLock">
 <a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.PreprocessLock">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PreprocessLock</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;``plan.lock``: binds a serialized ``Plan`` checkpoint to everything that determined it.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;``plan.&lt;stem&gt;.lock``: binds one dataset&#39;s ``Plan`` checkpoint to everything that determined it.</span>
 
-<span class="sd">    A checkpoint is safe to reuse only when the current run matches on all four axes -- the input</span>
-<span class="sd">    bytes, the resolved config, the software version, and the composed recipe -- AND the ``.npz``</span>
-<span class="sd">    verifies against ``plan``. The recipe axis distinguishes checkpoints built from the same inputs</span>
-<span class="sd">    and config by different step sequences;</span>
-<span class="sd">    ``code_version`` is the software-implementation axis the recipe (step shape + params) cannot</span>
-<span class="sd">    capture. The full ``code_version`` string (``__version__+g&lt;sha&gt;[.dirty]``) is recorded here as a</span>
-<span class="sd">    build stamp, but the reuse gate compares only its release ``__version__`` (see</span>
-<span class="sd">    :func:`preprocess_lock_status`), so the checkpoint survives commits within a release. Identity</span>
-<span class="sd">    only: hashes + a readable recipe, never payload.</span>
+<span class="sd">    A checkpoint is safe to reuse only when the current run matches on every axis -- the structure</span>
+<span class="sd">    and *this dataset&#39;s* input bytes, the authoritative PETS cell shared by the experiment, the</span>
+<span class="sd">    dataset-scoped config projection (:func:`dataset_config_digest`), this dataset&#39;s file-local</span>
+<span class="sd">    ignored rotations, the software version, and the composed recipe -- AND the ``.npz`` verifies</span>
+<span class="sd">    against ``plan``. The identity is deliberately **per dataset**: nothing here hashes the whole</span>
+<span class="sd">    ``experiment.lock`` or the full ``inputs.exp_data`` list, so adding, removing, or reordering</span>
+<span class="sd">    *other* datasets in a pooled experiment never restales this one&#39;s checkpoint unless the first</span>
+<span class="sd">    dataset&#39;s authoritative cell changes. The recipe axis distinguishes checkpoints built from the</span>
+<span class="sd">    same inputs and config by different step sequences; ``code_version`` is the</span>
+<span class="sd">    software-implementation axis the recipe (step shape + params) cannot capture. The full</span>
+<span class="sd">    ``code_version`` string (``__version__+g&lt;sha&gt;[.dirty]``) is recorded here as a build stamp, but</span>
+<span class="sd">    the reuse gate compares only its release ``__version__`` (see :func:`preprocess_lock_status`),</span>
+<span class="sd">    so the checkpoint survives commits within a release. Identity only: hashes + a readable recipe,</span>
+<span class="sd">    never payload.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">experiment_lock_sha256</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">structure</span><span class="p">:</span> <span class="n">InputLock</span>
+    <span class="n">experimental_data</span><span class="p">:</span> <span class="n">InputLock</span>  <span class="c1"># this dataset&#39;s file only, ref = its inputs.exp_data entry</span>
+    <span class="c1"># The experiment-wide PETS cell every dataset&#39;s shared grid/refinement metric was built from,</span>
+    <span class="c1"># recorded on every per-dataset lock because dataset 0&#39;s cell shapes all pooled checkpoints.</span>
+    <span class="n">authoritative_cell</span><span class="p">:</span> <span class="n">CellParameters</span>
+    <span class="c1"># File-local (position within this dataset&#39;s own PETS file), sorted. Lives here rather than in</span>
+    <span class="c1"># the config digest: the config&#39;s ignore_orientations indexes the pooled rotation space, so a</span>
+    <span class="c1"># given file&#39;s checkpoint identity is only the slice that lands on it.</span>
+    <span class="n">ignored_rotations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">config_digest</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">code_version</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">recipe</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RecipeStep</span><span class="p">]</span>
@@ -369,17 +372,19 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">RefinementLock</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;``refinement.lock``: binds refined-structure outputs to everything that produced them.</span>
 
-<span class="sd">    The refinement-stage counterpart to :class:`PreprocessLock`. Refinement runs on top of an</span>
-<span class="sd">    already-settled ``Plan``, so everything that determines *that* -- inputs, sample, blochwave,</span>
-<span class="sd">    preprocess config, recipe -- is already pinned by ``plan_lock_sha256`` (the hash of the exact</span>
-<span class="sd">    ``plan.lock`` this run refined from, which itself chains back to ``experiment.lock``). What this</span>
-<span class="sd">    lock adds is what refinement itself contributes on top: the refinement-determining config</span>
-<span class="sd">    (:func:`refinement_config_digest`) and the code version that ran it, plus hashes of the refined</span>
-<span class="sd">    outputs. Verifiable independently of whether ``plan.lock`` is still present or matches --</span>
-<span class="sd">    ``plan_lock_sha256`` is a recorded fact about that run, not a live re-check.</span>
+<span class="sd">    The refinement-stage counterpart to :class:`PreprocessLock`. Refinement runs on top of</span>
+<span class="sd">    already-settled per-dataset ``Plan``\\ s, so everything that determines *those* -- inputs,</span>
+<span class="sd">    sample, blochwave, preprocess config, recipe -- is already pinned by ``plan_lock_sha256s`` (the</span>
+<span class="sd">    hashes of the exact ``plan.&lt;stem&gt;.lock`` files this run refined from, in ``inputs.exp_data``</span>
+<span class="sd">    order). What this lock adds is what refinement itself contributes on top: the</span>
+<span class="sd">    refinement-determining config (:func:`refinement_config_digest`, which includes the train/val</span>
+<span class="sd">    ``split`` -- the split partitions rotations at refinement time and no longer shapes the</span>
+<span class="sd">    checkpointed plans) and the code version that ran it, plus hashes of the refined outputs.</span>
+<span class="sd">    Verifiable independently of whether the plan locks are still present or match --</span>
+<span class="sd">    ``plan_lock_sha256s`` is a recorded fact about that run, not a live re-check.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="n">plan_lock_sha256</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">plan_lock_sha256s</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
     <span class="n">refinement_config_digest</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">code_version</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">refined_structure</span><span class="p">:</span> <span class="n">ArtifactHash</span>
@@ -427,39 +432,38 @@
 <div class="viewcode-block" id="load_experiment">
 <a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.load_experiment">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_experiment</span><span class="p">(</span><span class="n">directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ExperimentConfig</span><span class="p">,</span> <span class="n">ExperimentLock</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load ``experiment.yaml`` and verify ``experiment.lock`` against input bytes.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load ``experiment.yaml`` and verify ``experiment.lock`` (in ``reproducibility/``) against</span>
+<span class="sd">    input bytes.&quot;&quot;&quot;</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
     <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;experiment.yaml&quot;</span><span class="p">)</span>
-    <span class="n">lock_path</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;experiment.lock&quot;</span>
+    <span class="n">lock_path</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;reproducibility&quot;</span> <span class="o">/</span> <span class="s2">&quot;experiment.lock&quot;</span>
     <span class="n">lock</span> <span class="o">=</span> <span class="n">ExperimentLock</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">lock_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">()))</span>
     <span class="n">_verify_input</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">structure</span><span class="p">,</span> <span class="n">lock</span><span class="o">.</span><span class="n">structure</span><span class="p">)</span>
-    <span class="n">_verify_input</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">,</span> <span class="n">lock</span><span class="o">.</span><span class="n">experimental_data</span><span class="p">)</span>
+    <span class="n">_verify_experimental_data</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">inputs</span><span class="o">.</span><span class="n">exp_data</span><span class="p">,</span> <span class="n">lock</span><span class="o">.</span><span class="n">experimental_data</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">cfg</span><span class="p">,</span> <span class="n">lock</span></div>
 
 
 
-<div class="viewcode-block" id="write_run_manifest">
-<a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.write_run_manifest">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">write_run_manifest</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">manifest</span><span class="p">:</span> <span class="n">RunManifest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Write ``run_manifest.json`` in a stable, human-readable form.&quot;&quot;&quot;</span>
-    <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">manifest</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span></div>
-
-
-
-<div class="viewcode-block" id="config_digest">
-<a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.config_digest">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">config_digest</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;SHA256 of the *preprocess-determining* config -- the checkpoint&#39;s config identity.</span>
+<div class="viewcode-block" id="dataset_config_digest">
+<a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.dataset_config_digest">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">dataset_config_digest</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">exp_data</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;SHA256 of the config that determines *one dataset&#39;s* settled ``Plan`` -- its lock identity.</span>
 
 <span class="sd">    Keyed on the resolved :class:`ExperimentConfig` (not the ``experiment.yaml`` bytes): stable</span>
 <span class="sd">    under comment/whitespace/field-order edits, sensitive to any validated-value change in scope.</span>
 <span class="sd">    ``sort_keys`` makes it order-independent.</span>
 
-<span class="sd">    Scope is an **explicit projection** onto exactly what determines the settled preprocess</span>
-<span class="sd">    ``Plan`` -- so a committed preprocess checkpoint is restaled only by a change that could alter</span>
-<span class="sd">    it:</span>
+<span class="sd">    Scope is an **explicit projection** onto exactly what determines the settled per-dataset</span>
+<span class="sd">    ``Plan`` -- so a committed checkpoint is restaled only by a change that could alter it:</span>
 
-<span class="sd">    - ``inputs``, ``sample``, ``blochwave`` -- shape the grid and beams;</span>
+<span class="sd">    - ``inputs`` -- rewritten to this dataset&#39;s view: ``exp_data`` is the single ``exp_data`` ref</span>
+<span class="sd">      the checkpoint belongs to (never the full list -- other datasets joining or leaving the pool</span>
+<span class="sd">      cannot alter this one&#39;s plan), and ``multi_dataset`` is dropped for the same reason (a</span>
+<span class="sd">      dataset&#39;s settled plan is independent of whether it is pooled);</span>
+<span class="sd">    - ``sample``, ``blochwave`` -- shape the grid and beams; ``blochwave.ignore_orientations``</span>
+<span class="sd">      is dropped here because it indexes the *pooled* rotation space -- the translated file-local</span>
+<span class="sd">      slice lives explicitly in :attr:`PreprocessLock.ignored_rotations` instead, so an ignore edit</span>
+<span class="sd">      restales exactly the datasets it lands on;</span>
 <span class="sd">    - ``preprocess`` -- shapes and configures the fitting steps, but ``orientation``/``thickness``</span>
 <span class="sd">      only when the matching ``optimize_orientation``/``optimize_thickness`` flag enables that step</span>
 <span class="sd">      (the step&#39;s own params already ride in the recipe axis whenever it actually runs -- see</span>
@@ -467,16 +471,18 @@
 <span class="sd">      restale a checkpoint over config that provably never touched it), and always excluding</span>
 <span class="sd">      ``thickness.plot`` (reporting-only, never touches the Plan even when ``thickness`` is in</span>
 <span class="sd">      scope);</span>
-<span class="sd">    - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.</span>
+<span class="sd">    - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search</span>
+<span class="sd">      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).</span>
 
 <span class="sd">    Everything else is excluded because it cannot change the Plan: ``name`` (a label),</span>
-<span class="sd">    ``solver.inference`` (terminal scoring only), and the rest of ``refinement``</span>
-<span class="sd">    (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` -- refinement-stage execution). This</span>
-<span class="sd">    is the config axis of the preprocess lock only, not a whole-config identity.</span>
+<span class="sd">    ``solver.inference`` (terminal scoring only), and all of ``refinement`` -- including ``split``,</span>
+<span class="sd">    which partitions rotations at refinement time and no longer shapes the checkpointed plan (it</span>
+<span class="sd">    rides in :func:`refinement_config_digest`). This is the config axis of the per-dataset</span>
+<span class="sd">    preprocess lock only, not a whole-config identity.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">dump</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
     <span class="n">blochwave</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="o">**</span><span class="n">dump</span><span class="p">[</span><span class="s2">&quot;blochwave&quot;</span><span class="p">],</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;blochwave&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;ignore_orientations&quot;</span><span class="p">},</span>
         <span class="s2">&quot;solver&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;refine&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;blochwave&quot;</span><span class="p">][</span><span class="s2">&quot;solver&quot;</span><span class="p">][</span><span class="s2">&quot;refine&quot;</span><span class="p">]},</span>
     <span class="p">}</span>
     <span class="n">preprocess</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">dump</span><span class="p">[</span><span class="s2">&quot;preprocess&quot;</span><span class="p">])</span>
@@ -487,14 +493,18 @@
     <span class="k">elif</span> <span class="s2">&quot;thickness&quot;</span> <span class="ow">in</span> <span class="n">preprocess</span><span class="p">:</span>
         <span class="c1"># thickness.plot only selects whether a PNG gets written; it never touches the Plan.</span>
         <span class="n">preprocess</span><span class="p">[</span><span class="s2">&quot;thickness&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">preprocess</span><span class="p">[</span><span class="s2">&quot;thickness&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;plot&quot;</span><span class="p">}</span>
-    <span class="n">preprocess_identity</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s2">&quot;inputs&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">],</span>
+    <span class="n">dataset_identity</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;inputs&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;structure&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">][</span><span class="s2">&quot;structure&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;exp_data&quot;</span><span class="p">:</span> <span class="n">exp_data</span><span class="p">,</span>
+            <span class="s2">&quot;load_hydrogens&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">][</span><span class="s2">&quot;load_hydrogens&quot;</span><span class="p">],</span>
+        <span class="p">},</span>
         <span class="s2">&quot;sample&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;sample&quot;</span><span class="p">],</span>
         <span class="s2">&quot;blochwave&quot;</span><span class="p">:</span> <span class="n">blochwave</span><span class="p">,</span>
         <span class="s2">&quot;preprocess&quot;</span><span class="p">:</span> <span class="n">preprocess</span><span class="p">,</span>
-        <span class="s2">&quot;refinement&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;split&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;refinement&quot;</span><span class="p">][</span><span class="s2">&quot;split&quot;</span><span class="p">]},</span>
+        <span class="s2">&quot;loss_metrics&quot;</span><span class="p">:</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;loss_metrics&quot;</span><span class="p">],</span>
     <span class="p">}</span>
-    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">preprocess_identity</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">dataset_identity</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span></div>
 
 
@@ -504,16 +514,18 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">refinement_config_digest</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">ExperimentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;SHA256 of the *refinement-determining* config -- the refinement lock&#39;s config identity.</span>
 
-<span class="sd">    The complement of :func:`config_digest`: everything that function excludes from the preprocess</span>
-<span class="sd">    checkpoint&#39;s identity (``objective`` / ``optimizer`` / ``steps`` / ``trainable`` /</span>
-<span class="sd">    ``thickness_nn``) is exactly what determines the gradient-refined result on top of an</span>
-<span class="sd">    already-settled ``Plan``, so this hashes precisely that complement. ``refinement.split`` is</span>
-<span class="sd">    omitted here too -- it shapes the ``Plan`` itself and is already covered by ``config_digest``</span>
-<span class="sd">    (and therefore by the ``plan.lock`` a refinement run is built from).</span>
+<span class="sd">    The complement of :func:`dataset_config_digest`: everything that function excludes from the</span>
+<span class="sd">    per-dataset checkpoint&#39;s identity under ``refinement`` (``optimizer`` / ``steps`` /</span>
+<span class="sd">    ``trainable`` / ``thickness_nn`` / ``split``) is exactly what determines the gradient-refined</span>
+<span class="sd">    result on top of already-settled ``Plan``\\ s, so this hashes the whole ``refinement`` section.</span>
+<span class="sd">    ``split`` belongs here (not in the preprocess digest) because the train/validation partition is</span>
+<span class="sd">    applied when the pooled plan is handed to refinement -- it never shapes a checkpointed</span>
+<span class="sd">    per-dataset plan. ``loss_metrics`` is a top-level ``ExperimentConfig`` field (not under</span>
+<span class="sd">    ``refinement``, so this dump never sees it): it determines the preprocess search, so it belongs</span>
+<span class="sd">    solely to :func:`dataset_config_digest`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">dump</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
-    <span class="n">refinement</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">dump</span><span class="p">[</span><span class="s2">&quot;refinement&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;split&quot;</span><span class="p">}</span>
-    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">refinement</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
+    <span class="n">canonical</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">dump</span><span class="p">[</span><span class="s2">&quot;refinement&quot;</span><span class="p">],</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">canonical</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span></div>
 
 
@@ -605,7 +617,10 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">preprocess_lock_status</span><span class="p">(</span>
     <span class="n">lock</span><span class="p">:</span> <span class="n">PreprocessLock</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
-    <span class="n">experiment_lock_sha256</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">structure</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
+    <span class="n">experimental_data</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">,</span>
+    <span class="n">authoritative_cell</span><span class="p">:</span> <span class="n">CellParameters</span><span class="p">,</span>
+    <span class="n">ignored_rotations</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
     <span class="n">config_digest</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">code_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">recipe</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">RecipeStep</span><span class="p">],</span>
@@ -614,10 +629,14 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreprocessLockStatus</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;How the checkpoint ``lock`` relates to the current run&#39;s ``recipe`` -- the resume verdict.</span>
 
-<span class="sd">    ``&quot;stale&quot;`` unless the non-recipe axes all match (inputs, config, and the *release* portion of</span>
-<span class="sd">    the software version -- :func:`_release`, so a differing git SHA within the same release still</span>
-<span class="sd">    matches) AND the ``.npz`` verifies against the lock&#39;s :class:`ArtifactHash` (a tampered/missing</span>
-<span class="sd">    checkpoint is stale). Given those hold:</span>
+<span class="sd">    ``&quot;stale&quot;`` unless the non-recipe axes all match (the structure and this dataset&#39;s input bytes,</span>
+<span class="sd">    the authoritative PETS cell, the file-local ignored rotations, the dataset config digest, and</span>
+<span class="sd">    the *release* portion of the software version -- :func:`_release`, so a differing git SHA within</span>
+<span class="sd">    the same release still matches) AND the ``.npz`` verifies against the lock&#39;s</span>
+<span class="sd">    :class:`ArtifactHash` (a tampered/missing checkpoint is stale). Input identity compares</span>
+<span class="sd">    ``sha256``/``bytes`` only, never ``ref``: renaming a dataset file without changing its bytes</span>
+<span class="sd">    moves its checkpoint (new stem) but a lock whose recorded ref differs while the bytes match is</span>
+<span class="sd">    still the same measurement. Given those hold:</span>
 
 <span class="sd">    - ``&quot;reuse&quot;`` when the recipe is identical -- the snapshot is exactly this run&#39;s output.</span>
 <span class="sd">    - ``&quot;resume&quot;`` when the lock&#39;s recipe is a *proper prefix* of ``recipe`` -- the run appends</span>
@@ -628,7 +647,11 @@
 <span class="sd">    be safely reused); this function assumes a clean, comparable recipe.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="p">(</span>
-        <span class="n">lock</span><span class="o">.</span><span class="n">experiment_lock_sha256</span> <span class="o">!=</span> <span class="n">experiment_lock_sha256</span>
+        <span class="p">(</span><span class="n">lock</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">sha256</span><span class="p">,</span> <span class="n">lock</span><span class="o">.</span><span class="n">structure</span><span class="o">.</span><span class="n">bytes</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">structure</span><span class="o">.</span><span class="n">sha256</span><span class="p">,</span> <span class="n">structure</span><span class="o">.</span><span class="n">bytes</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="p">(</span><span class="n">lock</span><span class="o">.</span><span class="n">experimental_data</span><span class="o">.</span><span class="n">sha256</span><span class="p">,</span> <span class="n">lock</span><span class="o">.</span><span class="n">experimental_data</span><span class="o">.</span><span class="n">bytes</span><span class="p">)</span>
+        <span class="o">!=</span> <span class="p">(</span><span class="n">experimental_data</span><span class="o">.</span><span class="n">sha256</span><span class="p">,</span> <span class="n">experimental_data</span><span class="o">.</span><span class="n">bytes</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="n">lock</span><span class="o">.</span><span class="n">authoritative_cell</span> <span class="o">!=</span> <span class="n">authoritative_cell</span>
+        <span class="ow">or</span> <span class="n">lock</span><span class="o">.</span><span class="n">ignored_rotations</span> <span class="o">!=</span> <span class="n">ignored_rotations</span>
         <span class="ow">or</span> <span class="n">lock</span><span class="o">.</span><span class="n">config_digest</span> <span class="o">!=</span> <span class="n">config_digest</span>
         <span class="ow">or</span> <span class="n">_release</span><span class="p">(</span><span class="n">lock</span><span class="o">.</span><span class="n">code_version</span><span class="p">)</span> <span class="o">!=</span> <span class="n">_release</span><span class="p">(</span><span class="n">code_version</span><span class="p">)</span>
     <span class="p">):</span>
@@ -648,32 +671,6 @@
 
 
 
-<div class="viewcode-block" id="pack_run">
-<a class="viewcode-back" href="../../../api/config.html#diffBloch.config.manifest.pack_run">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">pack_run</span><span class="p">(</span>
-    <span class="n">run_directory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">package_format</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;zip&quot;</span><span class="p">,</span> <span class="s2">&quot;tar&quot;</span><span class="p">,</span> <span class="s2">&quot;bagit&quot;</span><span class="p">,</span> <span class="s2">&quot;ro-crate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;zip&quot;</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Export a canonical run directory for transfer/archive/publication.</span>
-
-<span class="sd">    The run directory is the working format. Archives are export artifacts.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">run_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">run_directory</span><span class="p">)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">&quot;run_manifest.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_dir</span><span class="si">}</span><span class="s2">/run_manifest.json&quot;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">package_format</span> <span class="o">==</span> <span class="s2">&quot;zip&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_zip_tree</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">_export_path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="s2">&quot;.zip&quot;</span><span class="p">))</span>
-    <span class="k">if</span> <span class="n">package_format</span> <span class="o">==</span> <span class="s2">&quot;tar&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_tar_tree</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">_export_path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="s2">&quot;.tar&quot;</span><span class="p">))</span>
-    <span class="k">if</span> <span class="n">package_format</span> <span class="o">==</span> <span class="s2">&quot;bagit&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_pack_bagit</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">package_format</span> <span class="o">==</span> <span class="s2">&quot;ro-crate&quot;</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_pack_ro_crate</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span>
-    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unsupported run package format: </span><span class="si">{</span><span class="n">package_format</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
-
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">_verify_input</span><span class="p">(</span><span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">ref</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">lock</span><span class="p">:</span> <span class="n">InputLock</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="k">if</span> <span class="n">ref</span> <span class="o">!=</span> <span class="n">lock</span><span class="o">.</span><span class="n">ref</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;lock ref mismatch for </span><span class="si">{</span><span class="n">ref</span><span class="si">!r}</span><span class="s2">: </span><span class="si">{</span><span class="n">lock</span><span class="o">.</span><span class="n">ref</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -683,61 +680,35 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;input drift detected for </span><span class="si">{</span><span class="n">ref</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_export_path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">suffix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-    <span class="k">return</span> <span class="n">run_dir</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_dir</span><span class="o">.</span><span class="n">name</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_zip_tree</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="n">zipfile</span><span class="o">.</span><span class="n">ZIP_DEFLATED</span><span class="p">)</span> <span class="k">as</span> <span class="n">archive</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">_iter_files</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
-            <span class="n">archive</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">path</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">source</span><span class="o">.</span><span class="n">parent</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">output</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_tar_tree</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">output</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">tarfile</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">archive</span><span class="p">:</span>
-        <span class="n">archive</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">arcname</span><span class="o">=</span><span class="n">source</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">output</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_pack_bagit</span><span class="p">(</span><span class="n">run_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
-        <span class="n">bag</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_dir</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.bag&quot;</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="n">bag</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span>
-        <span class="n">shutil</span><span class="o">.</span><span class="n">copytree</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
-        <span class="p">(</span><span class="n">bag</span> <span class="o">/</span> <span class="s2">&quot;bagit.txt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">&quot;BagIt-Version: 1.0</span><span class="se">\n</span><span class="s2">Tag-File-Character-Encoding: UTF-8</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="n">manifest</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sha256_file</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">bag</span><span class="p">)</span><span class="o">.</span><span class="n">as_posix</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">_iter_files</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="p">(</span><span class="n">bag</span> <span class="o">/</span> <span class="s2">&quot;manifest-sha256.txt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">manifest</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">_zip_tree</span><span class="p">(</span><span class="n">bag</span><span class="p">,</span> <span class="n">_export_path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="s2">&quot;.bagit.zip&quot;</span><span class="p">))</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_pack_ro_crate</span><span class="p">(</span><span class="n">run_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
-        <span class="n">crate</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_dir</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.ro-crate&quot;</span>
-        <span class="n">shutil</span><span class="o">.</span><span class="n">copytree</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">crate</span><span class="p">)</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;@context&quot;</span><span class="p">:</span> <span class="s2">&quot;https://w3id.org/ro/crate/1.1/context&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;@graph&quot;</span><span class="p">:</span> <span class="p">[</span>
-                <span class="p">{</span><span class="s2">&quot;@id&quot;</span><span class="p">:</span> <span class="s2">&quot;ro-crate-metadata.json&quot;</span><span class="p">,</span> <span class="s2">&quot;@type&quot;</span><span class="p">:</span> <span class="s2">&quot;CreativeWork&quot;</span><span class="p">,</span> <span class="s2">&quot;about&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;@id&quot;</span><span class="p">:</span> <span class="s2">&quot;./&quot;</span><span class="p">}},</span>
-                <span class="p">{</span><span class="s2">&quot;@id&quot;</span><span class="p">:</span> <span class="s2">&quot;./&quot;</span><span class="p">,</span> <span class="s2">&quot;@type&quot;</span><span class="p">:</span> <span class="s2">&quot;Dataset&quot;</span><span class="p">,</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">run_dir</span><span class="o">.</span><span class="n">name</span><span class="p">},</span>
-            <span class="p">],</span>
-        <span class="p">}</span>
-        <span class="p">(</span><span class="n">crate</span> <span class="o">/</span> <span class="s2">&quot;ro-crate-metadata.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">_zip_tree</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="n">_export_path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="s2">&quot;.ro-crate.zip&quot;</span><span class="p">))</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_iter_files</span><span class="p">(</span><span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
-    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">path</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_file</span><span class="p">())</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_verify_experimental_data</span><span class="p">(</span>
+    <span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">ref</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">lock</span><span class="p">:</span> <span class="n">InputLock</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">InputLock</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Verify either one experimental file or every file of a pooled experiment.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lock</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lock</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;experiment.lock experimental_data shape does not match inputs.exp_data &quot;</span>
+                <span class="s2">&quot;(one is a list, the other is not)&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">lock</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;experiment.lock has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">lock</span><span class="p">)</span><span class="si">}</span><span class="s2"> experimental_data entries, &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;inputs.exp_data has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ref</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># The length guard above already ensures equal counts (with a friendlier message);</span>
+        <span class="c1"># strict=True is repo lint policy (B905), not a second check.</span>
+        <span class="k">for</span> <span class="n">one_ref</span><span class="p">,</span> <span class="n">one_lock</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">lock</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">_verify_input</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">one_ref</span><span class="p">,</span> <span class="n">one_lock</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">_verify_input</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="n">lock</span><span class="p">)</span>
 </pre></div>
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
-          
-          
+
+
         </div>
         <div class="bottom-of-page">
           <div class="left-details">
@@ -745,21 +716,21 @@
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer no-toc">
-      
-      
-      
+
+
+
     </aside>
   </div>
 </div><script src="../../../_static/documentation_options.js?v=938c9ccc"></script>

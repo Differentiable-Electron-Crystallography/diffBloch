@@ -7,15 +7,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html" />
 <meta property="og:site_name" content="diffBloch" />
-<meta property="og:description" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry and locks it to everything that determined it. experiment.lock pins the raw ..." />
+<meta property="og:description" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry per dataset and locks each checkpoint to everything that determined it. expe..." />
 <meta property="og:image:width" content="1146" />
 <meta property="og:image:height" content="600" />
-<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_reproducibility_0e46ba83.png" />
-<meta property="og:image:alt" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry and locks it to everything that determined it. experiment.lock pins the raw ..." />
-<meta name="description" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry and locks it to everything that determined it. experiment.lock pins the raw ..." />
+<meta property="og:image" content="https://differentiable-electron-crystallography.github.io/diffBloch/_images/social_previews/summary_reproducibility_ac3d6fc6.png" />
+<meta property="og:image:alt" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry per dataset and locks each checkpoint to everything that determined it. expe..." />
+<meta name="description" content="Reproducing a specific result means starting from the exact same fitted Plan. diffBloch checkpoints that fitted geometry per dataset and locks each checkpoint to everything that determined it. expe..." />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Refinement" href="refinement.html"><link rel="prev" title="Hyperparameter selection" href="hyperparameter-selection.html">
         <link rel="canonical" href="https://differentiable-electron-crystallography.github.io/diffBloch/reproducibility.html">
+        <link rel="prefetch" href="_static/logo.png" as="image">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Reproducibility and checkpoints - diffBloch</title>
@@ -24,37 +25,37 @@
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/tabs.css?v=4c969af8" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
-    
-    
+
+
 
 
 <style>
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
-  
+
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
-  
+
       }
     }
   }
 </style></head>
   <body>
-    
+
     <script>
       document.body.dataset.theme = localStorage.getItem("theme") || "auto";
     </script>
-    
+
 
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
   <symbol id="svg-toc" viewBox="0 0 24 24">
@@ -193,11 +194,14 @@
   </header>
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
-      
+
       <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
-  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/logo.png" alt="Logo"/>
+  </div>
+
   <span class="sidebar-brand-text">diffBloch</span>
-  
+
 </a><form class="sidebar-search-container" method="get" action="search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
   <input type="hidden" name="check_keywords" value="yes">
@@ -206,9 +210,12 @@
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Workflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="bloch-wave-simulation.html">Bloch-wave simulation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="inputs.html">Inputs and experiment directories</a></li>
 <li class="toctree-l1"><a class="reference internal" href="preprocessing.html">Preprocessing and <code class="docutils literal notranslate"><span class="pre">Plan</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="convergence-testing.html">Convergence testing</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hyperparameter-selection.html">Hyperparameter selection</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Reproducibility and checkpoints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="refinement.html">Refinement</a></li>
@@ -232,7 +239,7 @@
 </div>
 
       </div>
-      
+
     </div>
   </aside>
   <div class="main">
@@ -266,38 +273,54 @@
         <article role="main" id="furo-main-content">
           <section id="reproducibility-and-checkpoints">
 <h1>Reproducibility and checkpoints<a class="headerlink" href="#reproducibility-and-checkpoints" title="Link to this heading">¶</a></h1>
-<p>Reproducing a specific result means starting from the exact same fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code>. diffBloch checkpoints
-that fitted geometry and locks it to everything that determined it.</p>
-<p><strong><code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code></strong> pins the raw input files – the structure CIF and the experimental data – by
-content hash (SHA256).</p>
-<p><strong><code class="docutils literal notranslate"><span class="pre">plan.lock</span></code></strong> pins the checkpointed <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> itself – the optimized orientations and thicknesses
-that came out of preprocessing. It’s checked against four separate things, and all four have to
-match for the checkpoint to be reused as-is:</p>
+<p>Reproducing a specific result means starting from the exact same fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code>. diffBloch
+checkpoints that fitted geometry <strong>per dataset</strong> and locks each checkpoint to everything that
+determined it.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code></strong> pins the raw input files – the structure CIF and the experimental data (one
+entry per <code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> file for a combined experiment) – by content hash (SHA256).</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.lock</span></code></strong> pins that one dataset’s checkpointed <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.npz</span></code> – the optimized
+orientations and thicknesses that came out of preprocessing that file. The lock’s identity is
+deliberately <em>per dataset</em>: nothing in it hashes the whole <code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code> or the full <code class="docutils literal notranslate"><span class="pre">exp_data</span></code>
+list, so adding, removing, reordering, or editing <em>other</em> datasets in a combined experiment never
+invalidates this one’s checkpoint. The one deliberate shared axis is the authoritative PETS cell:
+in a combined experiment, the first file’s cell shapes every checkpointed grid. Six things are
+checked, and all six have to match for the checkpoint to be reused as-is:</p>
 <ol class="arabic simple">
-<li><p><strong>The input lock</strong> – <code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code> must match (see above).</p></li>
-<li><p><strong>The resolved config</strong> – a hash (<code class="docutils literal notranslate"><span class="pre">config_digest</span></code>) of exactly the settings that could have
-changed the fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code>. See below for exactly what’s in and out of this hash.</p></li>
+<li><p><strong>The input bytes</strong> – the structure CIF and <em>this dataset’s</em> <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code>, by content hash and
+size (not filename: a byte-identical rename moves the checkpoint to a new stem but is still the
+same measurement).</p></li>
+<li><p><strong>The dataset-scoped config</strong> – a hash (<code class="docutils literal notranslate"><span class="pre">dataset_config_digest</span></code>) of exactly the settings that
+could have changed this dataset’s fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code>. See below for what’s in and out.</p></li>
+<li><p><strong>The file-local ignored rotations</strong> – the slice of <code class="docutils literal notranslate"><span class="pre">blochwave.ignore_orientations</span></code> that lands
+on this file, translated to its own rotation indices. An ignore edit restales exactly the
+datasets it touches.</p></li>
+<li><p><strong>The authoritative PETS cell</strong> – the first <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file’s cell for a combined experiment,
+or the only <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> file’s cell for a single-dataset experiment. This keeps every pooled
+checkpoint tied to the shared grid and ADP metric, even for non-anchor datasets.</p></li>
 <li><p><strong>The code version</strong> – the release version of diffBloch that produced the checkpoint. Commits
 within the same release don’t invalidate it (see “code version” below), but a version bump does.</p></li>
 <li><p><strong>The recipe</strong> – the exact ordered list of preprocessing steps that ran, each with its own
 parameters (<code class="docutils literal notranslate"><span class="pre">select_beams</span></code>, <code class="docutils literal notranslate"><span class="pre">optimize_orientation</span></code>, <code class="docutils literal notranslate"><span class="pre">optimize_thickness</span></code>, etc., in whatever
 order they ran).</p></li>
 </ol>
-<p>Additionally, the <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> file itself is hashed and checked against the hash recorded in
-the lock, so even direct tampering or corruption of the checkpoint file is caught.</p>
-<p>The config fields that can change the fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> include:</p>
+<p>Additionally, the <code class="docutils literal notranslate"><span class="pre">.npz</span></code> file itself is hashed and checked against the hash recorded in the lock,
+so even direct tampering or corruption of the checkpoint file is caught. A lock file that no longer
+parses is treated as stale (recompute), never as an error.</p>
+<p>The config fields that can change a dataset’s fitted <code class="docutils literal notranslate"><span class="pre">Plan</span></code> include:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">inputs</span></code>, <code class="docutils literal notranslate"><span class="pre">sample</span></code>, <code class="docutils literal notranslate"><span class="pre">blochwave</span></code> – these shape the diffraction geometry and the beam grid, so any
-change here can change the fit.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">inputs</span></code> – reduced to <em>this dataset’s</em> view: the structure ref, this one <code class="docutils literal notranslate"><span class="pre">exp_data</span></code> entry, and
+<code class="docutils literal notranslate"><span class="pre">load_hydrogens</span></code>. The <code class="docutils literal notranslate"><span class="pre">multi_dataset</span></code> flag and the rest of the list are excluded – a dataset’s
+settled plan doesn’t depend on what it’s pooled with.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sample</span></code>, <code class="docutils literal notranslate"><span class="pre">blochwave</span></code> – these shape the diffraction geometry and the beam grid (minus
+<code class="docutils literal notranslate"><span class="pre">ignore_orientations</span></code>, which is covered by axis 3 above).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">preprocess</span></code> settings.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">refinement.split</span></code> – this decides how the fitted rotations get grouped into train/test, which is
-baked into the checkpointed <code class="docutils literal notranslate"><span class="pre">Plan</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">loss_metrics</span></code> – the residual the orientation/thickness searches minimise.</p></li>
 </ul>
-<p>Everything else in <code class="docutils literal notranslate"><span class="pre">refinement</span></code> – <code class="docutils literal notranslate"><span class="pre">objective</span></code>, <code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">steps</span></code>, <code class="docutils literal notranslate"><span class="pre">trainable</span></code>, and so on – is
-<strong>exempt</strong>. Those only control what happens <em>after</em> preprocessing, during refinement, and refinement
-never touches the checkpoint. You can double the number of refinement epochs, swap optimizers, or
-change loss weights, and your preprocess checkpoint stays valid – because none of those settings
-were ever read while building it.</p>
+<p>Everything in <code class="docutils literal notranslate"><span class="pre">refinement</span></code> – including <code class="docutils literal notranslate"><span class="pre">split</span></code> – is <strong>exempt</strong>. The train/validation split
+partitions rotations when the pooled plan is handed to refinement; it never shapes a checkpointed
+per-dataset plan. You can double the number of refinement epochs, swap optimizers, change loss
+weights, or re-cut the split, and your preprocess checkpoints stay valid – because none of those
+settings were ever read while building them.</p>
 <section id="code-version">
 <h2>Code version<a class="headerlink" href="#code-version" title="Link to this heading">¶</a></h2>
 <p>The full build stamp (<code class="docutils literal notranslate"><span class="pre">version+g&lt;git-sha&gt;[.dirty]</span></code>) is recorded in the lock for provenance, but the
@@ -310,27 +333,62 @@ it maybe shouldn’t. <code class="docutils literal notranslate"><span class="pr
 <h2>Can it be turned off?<a class="headerlink" href="#can-it-be-turned-off" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">experiment.lock</span></code> verification cannot be disabled – it runs on every <code class="docutils literal notranslate"><span class="pre">load_experiment</span></code> call, no
 flag skips it. If the input files don’t match, the run stops.</p>
-<p><code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> has two explicit, deliberate bypasses, both opt-in per run:</p>
+<p>The plan locks have two explicit, deliberate bypasses, both opt-in per run:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--no-checkpoint</span></code> – don’t read or write <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code>/<code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> at all. Preprocessing always runs
-from scratch and nothing is saved. Use this when you don’t want checkpointing in the loop at all.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--refresh</span></code> – force preprocessing to run from scratch and overwrite the existing checkpoint,
-regardless of whether the current lock would have matched. Use this when you know you want a new
-checkpoint (e.g. after a genuine, unreleased physics change that a version bump hasn’t caught up
+<li><p><code class="docutils literal notranslate"><span class="pre">--no-checkpoint</span></code> – don’t read or write any <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.npz</span></code>/<code class="docutils literal notranslate"><span class="pre">.lock</span></code> at all. Preprocessing
+always runs from scratch and nothing is saved. Use this when you don’t want checkpointing in the
+loop at all.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--refresh</span></code> – force preprocessing to run from scratch and overwrite the existing checkpoints,
+regardless of whether the current locks would have matched. Use this when you know you want new
+checkpoints (e.g. after a genuine, unreleased physics change that a version bump hasn’t caught up
 with yet).</p></li>
 </ul>
 <p>Short of those two flags, there’s no way to make a stale or mismatched checkpoint get reused
-quietly – a mismatch on any of the four axes, or a corrupted <code class="docutils literal notranslate"><span class="pre">.npz</span></code>, makes the run refuse to reuse
-the checkpoint and fall back to running preprocessing fresh.</p>
-<p>In committed examples, <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code> and <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> files are Git LFS artifacts; <code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> verifies
-the realized file bytes after LFS checkout, not the small pointer file.</p>
+quietly – a mismatch on any axis, or a corrupted <code class="docutils literal notranslate"><span class="pre">.npz</span></code>, makes the run refuse to reuse that
+dataset’s checkpoint and fall back to preprocessing it fresh (other datasets’ valid checkpoints
+still reuse).</p>
+<p>Checkpoint files whose dataset left <code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> are pruned on the next checkpointing run. A
+bare <code class="docutils literal notranslate"><span class="pre">plan.npz</span></code>/<code class="docutils literal notranslate"><span class="pre">plan.lock</span></code> pair from an older diffBloch has no stem segment, is never read or
+pruned, and can be deleted by hand.</p>
+<p>In committed examples, plan checkpoints and <code class="docutils literal notranslate"><span class="pre">.cif_pets</span></code> files are Git LFS artifacts; each lock
+verifies the realized file bytes after LFS checkout, not the small pointer file.</p>
+</section>
+<section id="refinement-lock">
+<h2><code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code><a class="headerlink" href="#refinement-lock" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code> is the refinement-stage counterpart to the plan locks, written alongside
+<code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code> whenever a checkpointing <code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">refine</span></code> completes. It chains only to the
+plan locks <strong>this run verified or wrote</strong> – a <code class="docutils literal notranslate"><span class="pre">--no-checkpoint</span></code> run writes no <code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code>
+at all, even if lock files from an earlier run are still on disk, because those are not the
+provenance of the plans this run actually refined.
+Refinement runs on top of already-settled per-dataset <code class="docutils literal notranslate"><span class="pre">Plan</span></code>s, so everything that determines
+<em>those</em> – inputs, sample, blochwave, preprocess config, recipe – is already pinned by the plan
+locks this run refined from. <code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code> adds exactly what refinement itself contributes on
+top of that:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">plan_lock_sha256s</span></code></strong> – the hashes of the exact <code class="docutils literal notranslate"><span class="pre">plan.&lt;stem&gt;.lock</span></code> files this run refined
+from, in <code class="docutils literal notranslate"><span class="pre">inputs.exp_data</span></code> order. A recorded fact about that run, not a live re-check: it doesn’t
+require the plan locks to still be present or still match to be verified.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">refinement_config_digest</span></code></strong> – the hash of the refinement-determining config (<code class="docutils literal notranslate"><span class="pre">steps</span></code>,
+<code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">trainable</span></code>, <code class="docutils literal notranslate"><span class="pre">thickness_nn</span></code>, <code class="docutils literal notranslate"><span class="pre">split</span></code>; everything <code class="docutils literal notranslate"><span class="pre">dataset_config_digest</span></code> excludes
+under <code class="docutils literal notranslate"><span class="pre">refinement</span></code> because it can’t change a settled per-dataset <code class="docutils literal notranslate"><span class="pre">Plan</span></code> – see the config-scope
+split above).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">code_version</span></code></strong> – the build that produced this refinement.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">refined_structure</span></code>/<code class="docutils literal notranslate"><span class="pre">refined_parameters</span></code></strong> – content hashes of <code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code> and
+<code class="docutils literal notranslate"><span class="pre">refined_parameters.npz</span></code>, so the outputs themselves are pinned, not just the config that produced
+them.</p></li>
+</ul>
+<p>Unlike the plan locks, <code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code> is not a reuse gate – there’s no “reuse this refined
+structure if the config matches” path the way a preprocess checkpoint is reused. It exists purely
+as a verifiable provenance record: given a <code class="docutils literal notranslate"><span class="pre">refined_structure.cif</span></code>, <code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code> states
+exactly which <code class="docutils literal notranslate"><span class="pre">Plan</span></code>s, which refinement config, and which code version produced it, and lets you
+confirm the file bytes haven’t changed since.</p>
 </section>
 </section>
 
         </article>
       </div>
       <footer>
-        
+
         <div class="related-pages">
           <a class="next-page" href="refinement.html">
               <div class="page-info">
@@ -347,9 +405,9 @@ the realized file bytes after LFS checkout, not the small pointer file.</p>
                 <div class="context">
                   <span>Previous</span>
                 </div>
-                
+
                 <div class="title">Hyperparameter selection</div>
-                
+
               </div>
             </a>
         </div>
@@ -359,20 +417,20 @@ the realized file bytes after LFS checkout, not the small pointer file.</p>
                 Copyright &#169; 2026, diffBloch contributors
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
-            
+
             <a href="https://github.com/pradyunsg/furo">Furo</a>
-            
+
           </div>
           <div class="right-details">
-            
+
           </div>
         </div>
-        
+
       </footer>
     </div>
     <aside class="toc-drawer">
-      
-      
+
+
       <div class="toc-sticky toc-scroll">
         <div class="toc-title-container">
           <span class="toc-title">
@@ -385,6 +443,7 @@ the realized file bytes after LFS checkout, not the small pointer file.</p>
 <li><a class="reference internal" href="#">Reproducibility and checkpoints</a><ul>
 <li><a class="reference internal" href="#code-version">Code version</a></li>
 <li><a class="reference internal" href="#can-it-be-turned-off">Can it be turned off?</a></li>
+<li><a class="reference internal" href="#refinement-lock"><code class="docutils literal notranslate"><span class="pre">refinement.lock</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -392,8 +451,8 @@ the realized file bytes after LFS checkout, not the small pointer file.</p>
           </div>
         </div>
       </div>
-      
-      
+
+
     </aside>
   </div>
 </div><script src="_static/documentation_options.js?v=938c9ccc"></script>

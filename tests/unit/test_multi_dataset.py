@@ -4,6 +4,7 @@ The pooling mechanics themselves are covered in ``test_pool.py``; the checkpoint
 ``test_program_checkpoint.py``; the config validation in ``test_config.py``.
 """
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ import yaml
 
 from diffBloch.app.program import _read_experimental_data, converge_experiment
 from diffBloch.config import input_lock_for, load_config
+from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import setup_datasets
 from diffBloch.preprocess.driver import ConvergenceState
@@ -145,18 +147,48 @@ def test_setup_datasets_computes_u0_once_per_distinct_energy(
     assert len(calls) == 1  # three identical-wavelength datasets -> one u0 computation
 
 
-def test_setup_datasets_warns_on_cell_drift_and_rejects_a_different_cell() -> None:
-    """Pooled files must describe one crystal: >1% cell drift warns, >5% raises."""
+def test_multi_dataset_second_file_checked_against_first_not_structure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     structure, record, config = _quartz_inputs()
     cell = np.asarray(record.cell_parameters, dtype=np.float64)
+    second = record.model_copy(
+        update={
+            "cell_parameters": cell * np.array([1.02, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            "source_path": Path("second.cif_pets"),
+        }
+    )
 
-    drifted = record.model_copy(update={"cell_parameters": cell * 1.02})  # 2% -> warn
-    with pytest.warns(UserWarning, match="drifts from dataset 0"):
-        setup_datasets(structure, (record, drifted), config)
+    with caplog.at_level(logging.WARNING, logger="diffBloch.preprocess.experiment"):
+        _, datasets = setup_datasets(structure, (record, second), config)
 
-    different = record.model_copy(update={"cell_parameters": cell * 1.10})  # 10% -> raise
-    with pytest.raises(ValueError, match="disagrees with dataset 0"):
-        setup_datasets(structure, (record, different), config)
+    [log_record] = caplog.records
+    message = log_record.getMessage()
+    assert "second.cif_pets" in message
+    assert str(record.source_path) in message
+    assert "overrides" in message
+    np.testing.assert_allclose(
+        datasets[0].plan.structure_factor_grid.cell.numpy(),
+        cell_matrix_from_parameters(record.cell_parameters),
+    )
+
+
+def test_multi_dataset_over_5pct_between_combined_files_raises() -> None:
+    structure, record, config = _quartz_inputs()
+    second = record.model_copy(
+        update={
+            "cell_parameters": record.cell_parameters * np.array([1.08, 1.0, 1.0, 1.0, 1.0, 1.0]),
+            "source_path": Path("second.cif_pets"),
+        }
+    )
+
+    with pytest.raises(ValueError, match="more than 5%") as excinfo:
+        setup_datasets(structure, (record, second), config)
+
+    message = str(excinfo.value)
+    assert "second.cif_pets" in message
+    assert str(record.source_path) in message
+    assert "a:" in message
 
 
 # --- converge_experiment: per-dataset sweeps ---

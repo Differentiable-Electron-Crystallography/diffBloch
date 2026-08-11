@@ -1,59 +1,38 @@
 # Examples
 
-The repository ships runnable experiment directories under `examples/`. The top-level
-`examples/experiments` entries are mostly baked-in demonstration runs: small or checkpointed
-experiments that exercise preprocessing, inference, and refinement paths.
-
-## Quick examples
-
-### Quartz, end to end
-
-Runs preprocessing and refinement from the ordinary quartz example directory.
+The repository ships runnable experiment directories under `examples/`. Each holds an
+`experiment.yaml` plus its structure `.cif` and `.cif_pets` data -- see
+[Inputs](inputs.md) for the directory layout.
 
 ```bash
-uv run diffbloch run refine examples/experiments/quartz
+uv run diffbloch run preprocess <experiment_dir>
+uv run diffbloch run refine <experiment_dir>
 ```
 
-The live refinement line reports `wR2`, `R_obs`, and diffraction loss for each epoch. The final
-summary identifies the best epoch, reports matched observed / total matched HKLs, and lists the
-refined CIF, raw parameter snapshot, JSON summary, and plan artifacts.
+## Colmey et al. (2026)
 
-### Quartz, checkpointed
-
-Starts from a committed `plan.npz` + `plan.lock`, so it skips preprocessing and reaches refinement
-quickly.
+[`examples/Colmey_et_al_2026`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026)
+holds six runnable experiment configs reproducing the three-material (CsPbBr₃, alpha-quartz,
+borane), elastic-vs-absorptive refinement comparison from Colmey *et al.* (2026), *The role of
+absorption in three-dimensional electron diffraction dynamical structure refinement*, submitted to
+Acta Crystallographica A ([arXiv:2602.08935](https://arxiv.org/abs/2602.08935)):
 
 ```bash
-uv run diffbloch run refine examples/experiments/quartz-checkpoint
+uv run diffbloch run preprocess examples/Colmey_et_al_2026/data/quartz-absorption
+uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-absorption
 ```
 
-### Abiraterone, checkpointed on CUDA
-
-A larger compound; use an accelerator when available.
-
-```bash
-uv run diffbloch run refine examples/experiments/abiraterone-checkpoint --device cuda
-```
-
-## Catalog
-
-The four bundled examples span the two axes that matter most for cost and behavior: unit-cell size
-(which sets the beam count, and with it the O(N³) eigensolve cost and whether the large-cell fork
-routes past it — see [Preprocessing](preprocessing.md#routing-on-cell-size)) and structural
-complexity (whether hydrogens and their riding-model treatment are in play).
-
-| Example | What it demonstrates |
-|---|---|
-| `examples/experiments/quartz` | Small unit cell (~113 Å³), no hydrogens; a full run from raw inputs, and the reproducibility anchor other changes are checked against. |
-| `examples/experiments/quartz-checkpoint` | Same structure, starting from a committed fitted `Plan` — the fast path once orientation/thickness are already settled. |
-| `examples/experiments/abiraterone-checkpoint` | A larger organic molecule with hydrogens, so the hydrogen riding-model constraint (see [Refinement](refinement.md#advanced-composition-constraints-restraints-and-learned-thickness)) is exercised; a CUDA/refine demonstration. |
-| `examples/experiments/lta` | A zeolite well above the large-cell threshold — routes through the faster orientation-search branch and benefits most from a GPU. |
+Swap in any of `quartz-no-abs`, `cspbbr3-no-abs`, `cspbbr3-absorption`, `borane-no-abs`,
+`borane-absorption` for the other materials/absorption settings. See that directory's own
+`README.md` for the published-vs-reproduced R-factor table and data provenance; diffBloch has
+changed since the runs behind the paper's own numbers, so this reproduces the same experiments
+rather than bit-for-bit values.
 
 ## Python API example
 
 ```python
 from diffBloch.app import run_experiment
 
-result = run_experiment("examples/experiments/quartz-checkpoint")
+result = run_experiment("<experiment_dir>")
 print(result.n_evaluated, result.mean_r_obs)
 ```
