@@ -67,7 +67,7 @@ def optimize_thickness(
     search argmins over -- pass ``cfg.loss_metrics.to_scores()`` to search the same residual the
     gradient refinement stage minimises (:func:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
     Execution-only like ``method``: the resolved ``ExperimentConfig.loss_metrics`` already rides in
-    :func:`~diffBloch.config.manifest.config_digest`. ``residual`` (default ``"wr2"``) is the
+    :func:`~diffBloch.config.manifest.dataset_config_digest`. ``residual`` (default ``"wr2"``) is the
     display name for ``scores`` -- pass ``cfg.loss_metrics.residual`` alongside it so
     :class:`~diffBloch.observability.ThicknessOptimized` reports the score under its real name.
 

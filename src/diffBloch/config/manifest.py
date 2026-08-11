@@ -61,20 +61,29 @@ class RecipeStep(BaseModel):
 
 
 class PreprocessLock(BaseModel):
-    """``plan.lock``: binds a serialized ``Plan`` checkpoint to everything that determined it.
+    """``plan.<stem>.lock``: binds one dataset's ``Plan`` checkpoint to everything that determined it.
 
-    A checkpoint is safe to reuse only when the current run matches on all four axes -- the input
-    bytes, the resolved config, the software version, and the composed recipe -- AND the ``.npz``
-    verifies against ``plan``. The recipe axis distinguishes checkpoints built from the same inputs
-    and config by different step sequences;
-    ``code_version`` is the software-implementation axis the recipe (step shape + params) cannot
-    capture. The full ``code_version`` string (``__version__+g<sha>[.dirty]``) is recorded here as a
-    build stamp, but the reuse gate compares only its release ``__version__`` (see
-    :func:`preprocess_lock_status`), so the checkpoint survives commits within a release. Identity
-    only: hashes + a readable recipe, never payload.
+    A checkpoint is safe to reuse only when the current run matches on every axis -- the structure
+    and *this dataset's* input bytes, the dataset-scoped config projection
+    (:func:`dataset_config_digest`), this dataset's file-local ignored rotations, the software
+    version, and the composed recipe -- AND the ``.npz`` verifies against ``plan``. The identity is
+    deliberately **per dataset**: nothing here hashes the whole ``experiment.lock`` or the full
+    ``inputs.exp_data`` list, so adding, removing, or reordering *other* datasets in a pooled
+    experiment never restales this one's checkpoint. The recipe axis distinguishes checkpoints built
+    from the same inputs and config by different step sequences; ``code_version`` is the
+    software-implementation axis the recipe (step shape + params) cannot capture. The full
+    ``code_version`` string (``__version__+g<sha>[.dirty]``) is recorded here as a build stamp, but
+    the reuse gate compares only its release ``__version__`` (see :func:`preprocess_lock_status`),
+    so the checkpoint survives commits within a release. Identity only: hashes + a readable recipe,
+    never payload.
     """
 
-    experiment_lock_sha256: str
+    structure: InputLock
+    experimental_data: InputLock  # this dataset's file only, ref = its inputs.exp_data entry
+    # File-local (position within this dataset's own PETS file), sorted. Lives here rather than in
+    # the config digest: the config's ignore_orientations indexes the pooled rotation space, so a
+    # given file's checkpoint identity is only the slice that lands on it.
+    ignored_rotations: tuple[int, ...]
     config_digest: str
     code_version: str
     recipe: list[RecipeStep]
@@ -84,17 +93,19 @@ class PreprocessLock(BaseModel):
 class RefinementLock(BaseModel):
     """``refinement.lock``: binds refined-structure outputs to everything that produced them.
 
-    The refinement-stage counterpart to :class:`PreprocessLock`. Refinement runs on top of an
-    already-settled ``Plan``, so everything that determines *that* -- inputs, sample, blochwave,
-    preprocess config, recipe -- is already pinned by ``plan_lock_sha256`` (the hash of the exact
-    ``plan.lock`` this run refined from, which itself chains back to ``experiment.lock``). What this
-    lock adds is what refinement itself contributes on top: the refinement-determining config
-    (:func:`refinement_config_digest`) and the code version that ran it, plus hashes of the refined
-    outputs. Verifiable independently of whether ``plan.lock`` is still present or matches --
-    ``plan_lock_sha256`` is a recorded fact about that run, not a live re-check.
+    The refinement-stage counterpart to :class:`PreprocessLock`. Refinement runs on top of
+    already-settled per-dataset ``Plan``\\ s, so everything that determines *those* -- inputs,
+    sample, blochwave, preprocess config, recipe -- is already pinned by ``plan_lock_sha256s`` (the
+    hashes of the exact ``plan.<stem>.lock`` files this run refined from, in ``inputs.exp_data``
+    order). What this lock adds is what refinement itself contributes on top: the
+    refinement-determining config (:func:`refinement_config_digest`, which includes the train/val
+    ``split`` -- the split partitions rotations at refinement time and no longer shapes the
+    checkpointed plans) and the code version that ran it, plus hashes of the refined outputs.
+    Verifiable independently of whether the plan locks are still present or match --
+    ``plan_lock_sha256s`` is a recorded fact about that run, not a live re-check.
     """
 
-    plan_lock_sha256: str
+    plan_lock_sha256s: list[str]
     refinement_config_digest: str
     code_version: str
     refined_structure: ArtifactHash
@@ -141,18 +152,24 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     return cfg, lock
 
 
-def config_digest(config: ExperimentConfig) -> str:
-    """SHA256 of the *preprocess-determining* config -- the checkpoint's config identity.
+def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
+    """SHA256 of the config that determines *one dataset's* settled ``Plan`` -- its lock identity.
 
     Keyed on the resolved :class:`ExperimentConfig` (not the ``experiment.yaml`` bytes): stable
     under comment/whitespace/field-order edits, sensitive to any validated-value change in scope.
     ``sort_keys`` makes it order-independent.
 
-    Scope is an **explicit projection** onto exactly what determines the settled preprocess
-    ``Plan`` -- so a committed preprocess checkpoint is restaled only by a change that could alter
-    it:
+    Scope is an **explicit projection** onto exactly what determines the settled per-dataset
+    ``Plan`` -- so a committed checkpoint is restaled only by a change that could alter it:
 
-    - ``inputs``, ``sample``, ``blochwave`` -- shape the grid and beams;
+    - ``inputs`` -- rewritten to this dataset's view: ``exp_data`` is the single ``exp_data`` ref
+      the checkpoint belongs to (never the full list -- other datasets joining or leaving the pool
+      cannot alter this one's plan), and ``multi_dataset`` is dropped for the same reason (a
+      dataset's settled plan is independent of whether it is pooled);
+    - ``sample``, ``blochwave`` -- shape the grid and beams; ``blochwave.ignore_orientations``
+      is dropped here because it indexes the *pooled* rotation space -- the translated file-local
+      slice lives explicitly in :attr:`PreprocessLock.ignored_rotations` instead, so an ignore edit
+      restales exactly the datasets it lands on;
     - ``preprocess`` -- shapes and configures the fitting steps, but ``orientation``/``thickness``
       only when the matching ``optimize_orientation``/``optimize_thickness`` flag enables that step
       (the step's own params already ride in the recipe axis whenever it actually runs -- see
@@ -161,18 +178,17 @@ def config_digest(config: ExperimentConfig) -> str:
       ``thickness.plot`` (reporting-only, never touches the Plan even when ``thickness`` is in
       scope);
     - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search
-      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`), so it determines
-      the settled Plan exactly like ``refinement.split`` below;
-    - ``refinement.split`` -- orders :attr:`PlanSplit.combined`, the checkpointed plan.
+      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
 
     Everything else is excluded because it cannot change the Plan: ``name`` (a label),
-    ``solver.inference`` (terminal scoring only), and the rest of ``refinement``
-    (``optimizer`` / ``steps`` / ``trainable`` -- refinement-stage execution). This
-    is the config axis of the preprocess lock only, not a whole-config identity.
+    ``solver.inference`` (terminal scoring only), and all of ``refinement`` -- including ``split``,
+    which partitions rotations at refinement time and no longer shapes the checkpointed plan (it
+    rides in :func:`refinement_config_digest`). This is the config axis of the per-dataset
+    preprocess lock only, not a whole-config identity.
     """
     dump = config.model_dump(mode="json")
     blochwave = {
-        **dump["blochwave"],
+        **{k: v for k, v in dump["blochwave"].items() if k != "ignore_orientations"},
         "solver": {"refine": dump["blochwave"]["solver"]["refine"]},
     }
     preprocess = dict(dump["preprocess"])
@@ -183,34 +199,36 @@ def config_digest(config: ExperimentConfig) -> str:
     elif "thickness" in preprocess:
         # thickness.plot only selects whether a PNG gets written; it never touches the Plan.
         preprocess["thickness"] = {k: v for k, v in preprocess["thickness"].items() if k != "plot"}
-    preprocess_identity = {
-        "inputs": dump["inputs"],
+    dataset_identity = {
+        "inputs": {
+            "structure": dump["inputs"]["structure"],
+            "exp_data": exp_data,
+            "load_hydrogens": dump["inputs"]["load_hydrogens"],
+        },
         "sample": dump["sample"],
         "blochwave": blochwave,
         "preprocess": preprocess,
         "loss_metrics": dump["loss_metrics"],
-        "refinement": {"split": dump["refinement"]["split"]},
     }
-    canonical = json.dumps(preprocess_identity, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(dataset_identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def refinement_config_digest(config: ExperimentConfig) -> str:
     """SHA256 of the *refinement-determining* config -- the refinement lock's config identity.
 
-    The complement of :func:`config_digest`: everything that function excludes from the preprocess
-    checkpoint's identity (``optimizer`` / ``steps`` / ``trainable`` / ``thickness_nn``, all under
-    ``refinement``) is exactly what determines the gradient-refined result on top of an
-    already-settled ``Plan``, so this hashes precisely that complement. ``refinement.split`` is
-    omitted here too -- it shapes the ``Plan`` itself and is already covered by ``config_digest``
-    (and therefore by the ``plan.lock`` a refinement run is built from). ``loss_metrics`` is a
-    top-level ``ExperimentConfig`` field (not under ``refinement``, so this dump never sees it) for
-    exactly the same reason: it now determines the preprocess search too, so it belongs solely to
-    ``config_digest``.
+    The complement of :func:`dataset_config_digest`: everything that function excludes from the
+    per-dataset checkpoint's identity under ``refinement`` (``optimizer`` / ``steps`` /
+    ``trainable`` / ``thickness_nn`` / ``split``) is exactly what determines the gradient-refined
+    result on top of already-settled ``Plan``\\ s, so this hashes the whole ``refinement`` section.
+    ``split`` belongs here (not in the preprocess digest) because the train/validation partition is
+    applied when the pooled plan is handed to refinement -- it never shapes a checkpointed
+    per-dataset plan. ``loss_metrics`` is a top-level ``ExperimentConfig`` field (not under
+    ``refinement``, so this dump never sees it): it determines the preprocess search, so it belongs
+    solely to :func:`dataset_config_digest`.
     """
     dump = config.model_dump(mode="json")
-    refinement = {k: v for k, v in dump["refinement"].items() if k != "split"}
-    canonical = json.dumps(refinement, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(dump["refinement"], sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -284,7 +302,9 @@ def _release(code_version: str) -> str:
 def preprocess_lock_status(
     lock: PreprocessLock,
     *,
-    experiment_lock_sha256: str,
+    structure: InputLock,
+    experimental_data: InputLock,
+    ignored_rotations: tuple[int, ...],
     config_digest: str,
     code_version: str,
     recipe: list[RecipeStep],
@@ -293,10 +313,13 @@ def preprocess_lock_status(
 ) -> PreprocessLockStatus:
     """How the checkpoint ``lock`` relates to the current run's ``recipe`` -- the resume verdict.
 
-    ``"stale"`` unless the non-recipe axes all match (inputs, config, and the *release* portion of
-    the software version -- :func:`_release`, so a differing git SHA within the same release still
+    ``"stale"`` unless the non-recipe axes all match (the structure and this dataset's input bytes,
+    the file-local ignored rotations, the dataset config digest, and the *release* portion of the
+    software version -- :func:`_release`, so a differing git SHA within the same release still
     matches) AND the ``.npz`` verifies against the lock's :class:`ArtifactHash` (a tampered/missing
-    checkpoint is stale). Given those hold:
+    checkpoint is stale). Input identity compares ``sha256``/``bytes`` only, never ``ref``: renaming
+    a dataset file without changing its bytes moves its checkpoint (new stem) but a lock whose
+    recorded ref differs while the bytes match is still the same measurement. Given those hold:
 
     - ``"reuse"`` when the recipe is identical -- the snapshot is exactly this run's output.
     - ``"resume"`` when the lock's recipe is a *proper prefix* of ``recipe`` -- the run appends
@@ -307,7 +330,10 @@ def preprocess_lock_status(
     be safely reused); this function assumes a clean, comparable recipe.
     """
     if (
-        lock.experiment_lock_sha256 != experiment_lock_sha256
+        (lock.structure.sha256, lock.structure.bytes) != (structure.sha256, structure.bytes)
+        or (lock.experimental_data.sha256, lock.experimental_data.bytes)
+        != (experimental_data.sha256, experimental_data.bytes)
+        or lock.ignored_rotations != ignored_rotations
         or lock.config_digest != config_digest
         or _release(lock.code_version) != _release(code_version)
     ):

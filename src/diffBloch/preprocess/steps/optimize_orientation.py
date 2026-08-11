@@ -114,7 +114,7 @@ def optimize_orientation(
     ``cfg.loss_metrics.to_scores()`` to search the same residual the gradient refinement stage
     minimises (:func:`~diffBloch.config.schema.LossMetricsConfig.to_scores`). Execution-only like
     ``method``: it changes what the search optimizes for, not the recipe's own identity (the
-    resolved ``ExperimentConfig.loss_metrics`` already rides in :func:`~diffBloch.config.manifest.config_digest`).
+    resolved ``ExperimentConfig.loss_metrics`` already rides in :func:`~diffBloch.config.manifest.dataset_config_digest`).
 
     ``refinement`` (constraint spec, ASU expansion, atomic numbers, seeded params) is captured
     read-only and rejoined to the geometry ``Plan`` via :func:`build_engine`; the

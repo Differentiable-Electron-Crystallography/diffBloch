@@ -68,7 +68,8 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="ignore any existing preprocess checkpoint and recompute (regenerates plan.npz/.lock)",
+        help="ignore any existing preprocess checkpoints and recompute (regenerates each "
+        "dataset's plan.<stem>.npz/.lock)",
     )
     parser.add_argument(
         "--no-checkpoint",
@@ -305,10 +306,18 @@ def main(argv: list[str] | None = None) -> int:
         for index, record in enumerate(plan.provenance, start=1):
             print(f"  {index:>2}. {record.name.replace('_', ' ').title()}")
         print()
-        print("Output files")
+        # List the checkpoint pairs actually on disk (one per dataset; none under --no-checkpoint).
         reproducibility_dir = Path(args.experiment_directory) / "reproducibility"
-        print(f"  • {'Plan':<20} {(reproducibility_dir / 'plan.npz').resolve()}")
-        print(f"  • {'Plan Lock':<20} {(reproducibility_dir / 'plan.lock').resolve()}")
+        checkpoints = (
+            sorted(reproducibility_dir.glob("plan.*.npz")) if reproducibility_dir.is_dir() else []
+        )
+        if checkpoints:
+            print("Output files")
+            for npz in checkpoints:
+                print(f"  • {'Plan':<20} {npz.resolve()}")
+                lock = npz.with_suffix(".lock")
+                if lock.exists():
+                    print(f"  • {'Plan Lock':<20} {lock.resolve()}")
         return 0
 
     if args.command == "refine":

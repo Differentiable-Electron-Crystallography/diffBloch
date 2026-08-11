@@ -519,7 +519,8 @@ class ExperimentDeclared:
     experimental_data: str
     optimizer: str
     seed_thicknesses: tuple[float, ...]
-    integration_semiangle: float
+    # One semiangle per inputs.exp_data entry, in that order -- pooled datasets may differ.
+    integration_semiangles: tuple[float, ...]
     rocking_curve_sampling: int
     dsg: float
     rsg: float
@@ -535,8 +536,18 @@ class ExperimentDeclared:
 
     @property
     def measurements(self) -> Mapping[str, float]:
+        # Single dataset keeps the flat unindexed key (the common case, and stable across
+        # dashboards); a pooled experiment emits one indexed key per dataset in exp_data order.
+        semiangles: dict[str, float] = (
+            {"integration_semiangle": self.integration_semiangles[0]}
+            if len(self.integration_semiangles) == 1
+            else {
+                f"integration_semiangle_{index}": semiangle
+                for index, semiangle in enumerate(self.integration_semiangles)
+            }
+        )
         return {
-            "integration_semiangle": self.integration_semiangle,
+            **semiangles,
             "rocking_curve_sampling": float(self.rocking_curve_sampling),
             "dsg": self.dsg,
             "rsg": self.rsg,

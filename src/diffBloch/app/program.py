@@ -10,15 +10,20 @@ different composition composes their own ``pipeline([...])`` with ``from_experim
 ``run_inference`` directly. The CLI stays thin by delegating here and holds no science.
 
 **Checkpoint / resume.** The preprocess (the coupled fit especially) is the run's expensive phase,
-so its settled ``Plan`` is checkpointed to ``<experiment_dir>/reproducibility/`` (``plan.npz`` +
-``plan.lock``, see :func:`_reproducibility_dir`) and reused when still valid. The lock binds the
-checkpoint to four axes -- input bytes, resolved config,
-software version, and the *recipe* (the Plan's own provenance) -- so it is reused only when all
-match. The match is a longest-prefix over the recipe: an identical recipe is a full **reuse**; a
-recipe that *appends* steps **resumes** from the snapshot and runs only the suffix (the append-only
-increment). Any run that computes -- fresh, stale-recompute, ``refresh``, or resume -- regenerates
-``plan.npz`` + ``plan.lock``, so the lock always describes the on-disk checkpoint. Diagnostics about
-load/resume go through stdlib ``logging`` (not the domain-observation ``logger``).
+so each dataset's settled ``Plan`` is checkpointed to ``<experiment_dir>/reproducibility/``
+(``plan.<stem>.npz`` + ``plan.<stem>.lock`` per ``inputs.exp_data`` entry, see
+:func:`_reproducibility_dir` and :func:`~diffBloch.config.schema.dataset_checkpoint_stem`) and
+reused when still valid. The lock binds the checkpoint to *per-dataset* axes -- the structure and
+that dataset's input bytes, the dataset-scoped config projection, its file-local ignored rotations,
+the software version, and the *recipe* (the Plan's own provenance) -- so it is reused only when all
+match, and never restaled by changes to *other* datasets in a pooled experiment. The match is a
+longest-prefix over the recipe: an identical recipe is a full **reuse**; a recipe that *appends*
+steps **resumes** from the snapshot and runs only the suffix (the append-only increment). Any run
+that computes -- fresh, stale-recompute, ``refresh``, or resume -- regenerates the ``.npz`` +
+``.lock`` pair, so the lock always describes the on-disk checkpoint. With ``inputs.multi_dataset``
+the settled per-dataset plans are pooled in memory (:func:`~diffBloch.preprocess.pool`) just before
+refinement; the pooled plan itself is never checkpointed. Diagnostics about load/resume go through
+stdlib ``logging`` (not the domain-observation ``logger``).
 """
 
 from __future__ import annotations
@@ -30,15 +35,18 @@ from pathlib import Path
 import gemmi
 import numpy as np
 import torch
+from pydantic import ValidationError
 
 from diffBloch.config import (
     ExperimentConfig,
+    InputLock,
     PreprocessLock,
     RecipeStep,
     RefinementLock,
     artifact_hash_for,
     code_version,
-    config_digest,
+    dataset_config_digest,
+    input_lock_for,
     load_experiment,
     preprocess_lock_status,
     read_preprocess_lock,
@@ -47,6 +55,7 @@ from diffBloch.config import (
     write_preprocess_lock,
     write_refinement_lock,
 )
+from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
@@ -56,7 +65,7 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import read_experimental_data, read_structure
+from diffBloch.io import ExperimentalRecord, read_experimental_data, read_structure
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
@@ -74,16 +83,18 @@ from diffBloch.preprocess import (
     PlanStep,
     build_orientation_plans,
     fork,
-    from_experiment,
     import_orientations,
     optimize_orientation,
     optimize_thickness,
     pipeline,
+    pool,
     read_plan,
     resolve_recipe,
     run_inference,
     select_beams,
+    setup_datasets,
     step_records,
+    validation_mask,
     write_plan,
 )
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
@@ -101,10 +112,37 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-_PLAN_NPZ = "plan.npz"
-_PLAN_LOCK = "plan.lock"
 _REFINEMENT_LOCK = "refinement.lock"
 _REPRODUCIBILITY_DIRNAME = "reproducibility"
+
+
+def _plan_npz_name(dataset_ref: str) -> str:
+    """This dataset's checkpoint filename, ``plan.<stem>.npz`` -- keyed on the file, not its
+    position in ``inputs.exp_data``, so reordering or inserting datasets moves nothing."""
+    return f"plan.{dataset_checkpoint_stem(dataset_ref)}.npz"
+
+
+def _plan_lock_name(dataset_ref: str) -> str:
+    """This dataset's checkpoint-lock filename, ``plan.<stem>.lock`` (see :func:`_plan_npz_name`)."""
+    return f"plan.{dataset_checkpoint_stem(dataset_ref)}.lock"
+
+
+def _exp_data_refs(cfg: ExperimentConfig) -> tuple[str, ...]:
+    """The experiment's dataset refs in pooled order -- ``inputs.exp_data`` as always-a-tuple."""
+    if isinstance(cfg.inputs.exp_data, list):
+        return tuple(cfg.inputs.exp_data)
+    return (cfg.inputs.exp_data,)
+
+
+def _read_experimental_data(root: Path, cfg: ExperimentConfig) -> tuple[ExperimentalRecord, ...]:
+    """Read every ``inputs.exp_data`` file, single or pooled alike -- always a tuple.
+
+    Order matches ``inputs.exp_data``, which is also the order
+    :func:`~diffBloch.preprocess.setup_datasets` seeds datasets in and
+    :func:`~diffBloch.preprocess.pool` pools rotation indices in -- callers that need a flat array
+    aligned to the pooled ``rotation_index`` space can rely on that order without recomputing it.
+    """
+    return tuple(read_experimental_data(root / ref) for ref in _exp_data_refs(cfg))
 
 
 def _reproducibility_dir(root: Path) -> Path:
@@ -163,13 +201,19 @@ def converge_experiment(
 ) -> ConvergenceState:
     """Run the standard numerical-convergence test for an experiment.
 
-    Starting ``g_max`` prefers the PETS file's own ``dstarmax`` (its processing-resolution cutoff,
+    Starting ``g_max`` prefers each PETS file's own ``dstarmax`` (its processing-resolution cutoff,
     :attr:`~diffBloch.io.record.ExperimentalRecord.dstar_max`) when present; a PETS version that
     doesn't record it (or a file where the tag is otherwise absent) falls back to the experiment's
     configured ``blochwave.g_max``, the previous manual-only behaviour. ``sg_max`` and rocking-curve
     tilt steps still start from the configured simulation settings. The sweep then follows the
     defaults owned by :class:`ConvergenceTest` and :class:`ConvergenceTolerance`, returning the
     smallest settled values found.
+
+    With ``inputs.multi_dataset`` the sweep runs **per dataset** -- each file with its own
+    integration geometry, its own ``dstar_max``-or-fallback starting point, and its first
+    ``n_orientations`` rotations -- and the returned state is the elementwise maximum over the
+    per-dataset settled states: the tightest single setting adequate for every pooled file. The
+    per-dataset settled values remain visible through the convergence logger events.
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
@@ -178,49 +222,56 @@ def converge_experiment(
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, experimental_data, cfg)
-    refinement = replace(setup.refinement, params=setup.refinement.params.to(device))
-    combined = setup.plans.combined
+    records = _read_experimental_data(root, cfg)
+    refinement_setup, datasets = setup_datasets(structure, records, cfg)
+    refinement = replace(refinement_setup, params=refinement_setup.params.to(device))
     if n_orientations < 1:
         raise ValueError("n_orientations must be >= 1")
-    if n_orientations > len(combined.orientations):
-        raise ValueError(
-            f"n_orientations={n_orientations} exceeds the experiment's "
-            f"{len(combined.orientations)} orientations"
-        )
-    selected = replace(
-        combined,
-        orientations=combined.orientations[:n_orientations],
-    )
-    rocking = cfg.blochwave.to_rocking_curve(setup.integration)
-    simulation = cfg.blochwave.to_policy()
-    starting_g_max = (
-        experimental_data.dstar_max if experimental_data.dstar_max is not None else simulation.g_max
-    )
-    plan = pipeline(
-        [
-            select_beams(cfg.blochwave.to_beam_selection(setup.integration)),
-            build_orientation_plans(),
-        ]
-    )(selected)
 
-    _plan, settled = run_convergence(
-        plan,
-        ConvergenceState(
-            g_max=starting_g_max,
-            sg_max=simulation.sg_max,
-            tilt_steps=rocking.sampling,
-        ),
-        ConvergenceTest(),
-        rocking,
-        simulation,
-        refinement,
-        ConvergenceTolerance(),
-        method=cfg.blochwave.solver.refine,
-        logger=logger,
+    simulation = cfg.blochwave.to_policy()
+    settled_states: list[ConvergenceState] = []
+    for dataset_index, (record, dataset) in enumerate(zip(records, datasets, strict=True)):
+        if n_orientations > len(dataset.plan.orientations):
+            raise ValueError(
+                f"n_orientations={n_orientations} exceeds dataset {dataset_index}'s "
+                f"{len(dataset.plan.orientations)} orientations"
+            )
+        selected = replace(
+            dataset.plan,
+            orientations=dataset.plan.orientations[:n_orientations],
+        )
+        rocking = cfg.blochwave.to_rocking_curve(dataset.integration)
+        # Per dataset: a file without a dstar_max tag anchors at the configured g_max rather than
+        # inheriting another file's processing resolution.
+        starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
+        plan = pipeline(
+            [
+                select_beams(cfg.blochwave.to_beam_selection(dataset.integration)),
+                build_orientation_plans(),
+            ]
+        )(selected)
+
+        _plan, settled = run_convergence(
+            plan,
+            ConvergenceState(
+                g_max=starting_g_max,
+                sg_max=simulation.sg_max,
+                tilt_steps=rocking.sampling,
+            ),
+            ConvergenceTest(),
+            rocking,
+            simulation,
+            refinement,
+            ConvergenceTolerance(),
+            method=cfg.blochwave.solver.refine,
+            logger=logger,
+        )
+        settled_states.append(settled)
+    return ConvergenceState(
+        g_max=max(state.g_max for state in settled_states),
+        sg_max=max(state.sg_max for state in settled_states),
+        tilt_steps=max(state.tilt_steps for state in settled_states),
     )
-    return settled
 
 
 def preprocess_experiment(
@@ -300,7 +351,7 @@ def preprocess_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    _refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
+    _refinement, _integrations, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -343,7 +394,7 @@ def run_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, _integration, prepared, _validation_rotation_indices = _preprocess(
+    refinement, _integrations, prepared, _validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -424,7 +475,7 @@ def refine_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, integration, prepared, validation_rotation_indices = _preprocess(
+    refinement, integrations, prepared, validation_rotation_indices = _preprocess(
         root,
         cfg,
         logger=logger,
@@ -451,6 +502,10 @@ def refine_experiment(
         profile=profile,
         checkpoint_activations=checkpoint_activations,
     )
+    # Pre-existing inconsistency, recorded not fixed: PerOrientationThickness keys its per-rotation
+    # lookup on the *positional* enumerate index the engine passes to forward_context, while
+    # ApparentThicknessNN keys on pattern.rotation_index -- the two disagree whenever an engine is
+    # built over a subset like the train/validation partitions below.
     train_engine = engine
     selection_engine = None
     if validation_rotation_indices:
@@ -484,20 +539,31 @@ def refine_experiment(
             profile=profile,
             checkpoint_activations=checkpoint_activations,
         )
-    logger.report(cfg.to_declaration(integration))
+    logger.report(cfg.to_declaration(integrations))
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
+    if thickness_spec.enabled and cfg.inputs.multi_dataset:
+        raise ValueError(
+            "refinement.thickness_nn is not supported with inputs.multi_dataset: the thickness "
+            "network keys only on each rotation's normalized alpha, so pooled datasets with "
+            "overlapping tilt ranges would be forced onto one shared thickness-vs-alpha curve; "
+            "per-dataset thickness is future work"
+        )
     thickness_nn: ApparentThicknessNN | None = None
     raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
-        experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-        raw_alphas = experimental_data.alphas
+        # Concatenated in inputs.exp_data order -- the order pool() numbers rotation_index in --
+        # so raw_alphas[rotation_index] resolves even with ignore gaps. The guard above keeps this
+        # single-dataset today; the concatenation is already pooled-order-correct for the day the
+        # network learns a per-dataset input.
+        records = _read_experimental_data(root, cfg)
+        raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
         thickness_nn = ApparentThicknessNN(
             bounds=ThicknessBounds(
                 thickness_spec.min_thickness,
                 thickness_spec.max_thickness,
             ),
-            normalized_alphas=_normalized_pets_alphas(experimental_data.alphas),
+            normalized_alphas=_normalized_pets_alphas(raw_alphas),
             form=thickness_spec.form,
             sample_thickness=thickness_spec.sample_thickness,
             num_samples=thickness_spec.num_samples,
@@ -703,18 +769,23 @@ def _write_refinement_outputs(
     artifacts: dict[str, str] = {
         "refined_structure": str(structure_path),
         "refined_parameters": str(params_path),
-        "plan": str((reproducibility_dir / _PLAN_NPZ).resolve()),
-        "plan_lock": str((reproducibility_dir / _PLAN_LOCK).resolve()),
     }
+    refs = _exp_data_refs(cfg)
+    plan_lock_paths: list[Path] = []
+    for ref in refs:
+        stem = dataset_checkpoint_stem(ref)
+        artifacts[f"plan_{stem}"] = str((reproducibility_dir / _plan_npz_name(ref)).resolve())
+        artifacts[f"plan_lock_{stem}"] = str((reproducibility_dir / _plan_lock_name(ref)).resolve())
+        plan_lock_paths.append(reproducibility_dir / _plan_lock_name(ref))
     if component_arrays:
         artifacts["refined_components"] = str(components_path)
-    plan_lock_path = reproducibility_dir / _PLAN_LOCK
-    if plan_lock_path.exists():
+    # A refinement.lock only makes sense when every dataset's plan lock exists to chain back to.
+    if all(path.exists() for path in plan_lock_paths):
         lock_path = (reproducibility_dir / _REFINEMENT_LOCK).resolve()
         write_refinement_lock(
             lock_path,
             RefinementLock(
-                plan_lock_sha256=sha256_file(plan_lock_path),
+                plan_lock_sha256s=[sha256_file(path) for path in plan_lock_paths],
                 refinement_config_digest=refinement_config_digest(cfg),
                 code_version=code_version(),
                 refined_structure=artifact_hash_for(structure_path, root=root.resolve()),
@@ -738,40 +809,49 @@ def _preprocess(
     orientations_csv: str | Path | None = None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[RefinementSetup, IntegrationGeometry, Plan, frozenset[int]]:
-    """Shared spine of the two public entry points: read inputs, run the recipe, settle the Plan.
+) -> tuple[RefinementSetup, tuple[IntegrationGeometry, ...], Plan, frozenset[int]]:
+    """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
-    Returns the structure ``RefinementSetup`` (which the terminal ``run_inference`` needs), the
-    ``IntegrationGeometry`` (the PETS-derived integration semiangle, for reporting), the settled
-    ``Plan`` (still over *every* rotation -- the train/validation split never restricts
-    preprocessing, only :func:`refine_experiment`'s gradient stage), and the ``rotation_index`` set
-    ``cfg.refinement.split`` holds out as validation (empty when ``train_test`` is off), so
-    :func:`preprocess_experiment` can drop the setup and :func:`run_experiment` can score with it --
-    neither loads the inputs twice. Hydrogen sites are loaded per ``inputs.load_hydrogens``.
+    Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --
+    sequentially, one dataset at a time -- that dataset's recipe under its own checkpoint
+    (:func:`_prepare`), and finally :func:`~diffBloch.preprocess.pool`\\ s the settled plans onto
+    the pooled ``rotation_index`` space. Returns the structure ``RefinementSetup`` (which the
+    terminal ``run_inference`` needs), the per-dataset ``IntegrationGeometry``\\ s in
+    ``inputs.exp_data`` order (PETS-derived integration semiangles, for reporting), the pooled
+    settled ``Plan`` (still over *every* non-ignored rotation -- the train/validation split never
+    restricts preprocessing, only :func:`refine_experiment`'s gradient stage), and the
+    ``rotation_index`` set ``cfg.refinement.split`` holds out as validation (empty when
+    ``train_test`` is off; the mask runs over the pooled pre-ignore index space, so membership is
+    stable under ignore edits). Hydrogen sites are loaded per ``inputs.load_hydrogens``.
 
     ``orientations_csv`` (the API/CLI argument) overrides ``cfg.preprocess.orientations_csv`` when
     given; the config value (resolved relative to ``root``, like ``inputs.structure``) is the
     default so the import is reproducible from ``experiment.yaml`` alone, not just a CLI one-off.
+    Rejected for pooled experiments: the CSV's ``Rotation Index`` column predates pooling and would
+    be ambiguous between file-local and pooled indices.
 
     ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn
     plotting on. ``plot_thickness_dir`` overrides the default output directory,
     ``<inputs.structure's directory>/thickness_optim``, when given. Both are execution-only (they
     only decide whether/where a PNG gets written, never the fitted ``Plan``) -- see
-    :func:`~diffBloch.config.manifest.config_digest`.
+    :func:`~diffBloch.config.manifest.dataset_config_digest`.
     """
     structure = read_structure(
         root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
     )
-    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-    setup = from_experiment(structure, experimental_data, cfg)
-    validation_rotation_indices = frozenset(
-        op.pattern.rotation_index for op in setup.plans.validation.orientations
-    )
+    records = _read_experimental_data(root, cfg)
+    refs = _exp_data_refs(cfg)
+    refinement_setup, datasets = setup_datasets(structure, records, cfg)
     effective_orientations_csv = (
         orientations_csv
         if orientations_csv is not None
         else (root / cfg.preprocess.orientations_csv if cfg.preprocess.orientations_csv else None)
     )
+    if effective_orientations_csv is not None and len(datasets) > 1:
+        raise ValueError(
+            "orientations_csv is not supported with inputs.multi_dataset: the CSV's "
+            "'Rotation Index' column is ambiguous between file-local and pooled indices"
+        )
     if plot_thickness or cfg.preprocess.thickness.plot:
         from diffBloch.app.loggers.plotting import ThicknessPlotLogger
 
@@ -781,26 +861,66 @@ def _preprocess(
             else (root / cfg.inputs.structure).parent / "thickness_optim"
         )
         logger = MultiLogger((logger, ThicknessPlotLogger(effective_plot_dir)))
-    steps = _recipe_steps(
-        cfg,
-        setup.refinement,
-        setup.integration,
-        logger,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-        orientations_csv=effective_orientations_csv,
+
+    structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
+    prepared_plans: list[Plan] = []
+    for ref, dataset in zip(refs, datasets, strict=True):
+        steps = _recipe_steps(
+            cfg,
+            refinement_setup,
+            dataset.integration,
+            logger,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
+            orientations_csv=effective_orientations_csv,
+        )
+        prepared_plans.append(
+            _prepare(
+                dataset.plan,
+                steps,
+                root=root,
+                cfg=cfg,
+                dataset_ref=ref,
+                ignored_rotations=dataset.ignored_rotations,
+                structure_lock=structure_lock,
+                dataset_lock=input_lock_for(root / ref, ref=ref),
+                checkpoint=checkpoint,
+                refresh=refresh,
+                logger=logger,
+            )
+        )
+    if checkpoint:
+        _prune_stale_dataset_checkpoints(_reproducibility_dir(root), refs)
+
+    offsets: list[int] = []
+    offset = 0
+    for dataset in datasets:
+        offsets.append(offset)
+        offset += dataset.n_rotations
+    pooled = pool(prepared_plans, offsets=offsets)
+    mask = validation_mask(offset, cfg.refinement.split)
+    validation_rotation_indices = frozenset(
+        op.pattern.rotation_index for op in pooled.orientations if mask[op.pattern.rotation_index]
     )
-    prepared = _prepare(
-        setup.plans.combined,
-        steps,
-        root=root,
-        cfg=cfg,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        logger=logger,
-    )
-    return setup.refinement, setup.integration, prepared, validation_rotation_indices
+    integrations = tuple(dataset.integration for dataset in datasets)
+    return refinement_setup, integrations, pooled, validation_rotation_indices
+
+
+def _prune_stale_dataset_checkpoints(reproducibility_dir: Path, refs: tuple[str, ...]) -> None:
+    """Unlink ``plan.<stem>.{npz,lock}`` files whose stem left ``inputs.exp_data``.
+
+    A dataset removed (or renamed) in config would otherwise leave a live-looking checkpoint pair
+    behind. A bare legacy ``plan.npz``/``plan.lock`` has no stem segment, matches neither glob
+    below, and lingers harmlessly.
+    """
+    keep = {dataset_checkpoint_stem(ref) for ref in refs}
+    for pattern, suffix in (("plan.*.npz", ".npz"), ("plan.*.lock", ".lock")):
+        for path in reproducibility_dir.glob(pattern):
+            stem = path.name[len("plan.") : -len(suffix)]
+            if stem not in keep:
+                path.unlink()
+                _log.info("pruned stale dataset checkpoint file %s", path.name)
 
 
 def _recipe_steps(
@@ -933,14 +1053,22 @@ def _prepare(
     *,
     root: Path,
     cfg: ExperimentConfig,
+    dataset_ref: str,
+    ignored_rotations: tuple[int, ...],
+    structure_lock: InputLock,
+    dataset_lock: InputLock,
     checkpoint: bool,
     refresh: bool,
     logger: Logger = NULL_LOGGER,
 ) -> Plan:
-    """Run the preprocess ``steps`` on ``base``, reusing/resuming a valid checkpoint if present.
+    """Run the preprocess ``steps`` on one dataset's ``base``, reusing/resuming its checkpoint.
 
-    ``logger`` streams a per-step plan summary as the recipe runs (see :func:`pipeline`); it fires
-    only when steps actually execute (a fresh or resumed run, not a full-reuse load).
+    The checkpoint pair is this dataset's own ``plan.<stem>.npz`` + ``plan.<stem>.lock``
+    (:func:`_plan_npz_name`), and the lock identity is per-dataset (``structure_lock`` +
+    ``dataset_lock`` input bytes, the dataset-scoped config digest, the file-local
+    ``ignored_rotations``) -- see :class:`~diffBloch.config.PreprocessLock`. ``logger`` streams a
+    per-step plan summary as the recipe runs (see :func:`pipeline`); it fires only when steps
+    actually execute (a fresh or resumed run, not a full-reuse load).
     """
     # Compile any `fork` away against the base grid (invariant across every step), so the recipe the
     # lock keys on is a flat, fork-free step list -- the fork's shape is static by construction, so
@@ -951,23 +1079,31 @@ def _prepare(
     can_checkpoint = checkpoint and OPAQUE not in records
     recipe = [RecipeStep(name=r.name, params=r.params) for r in records]
     reproducibility_dir = _reproducibility_dir(root)
-    npz, lock_path = reproducibility_dir / _PLAN_NPZ, reproducibility_dir / _PLAN_LOCK
+    npz = reproducibility_dir / _plan_npz_name(dataset_ref)
+    lock_path = reproducibility_dir / _plan_lock_name(dataset_ref)
 
     if can_checkpoint and not refresh and lock_path.exists() and npz.exists():
-        lock = read_preprocess_lock(lock_path)
-        status = preprocess_lock_status(
-            lock,
-            experiment_lock_sha256=sha256_file(root / "reproducibility" / "experiment.lock"),
-            config_digest=config_digest(cfg),
-            code_version=code_version(),
-            recipe=recipe,
-            plan_path=npz,
-            root=root,
+        lock = _read_lock_or_none(lock_path)
+        status = (
+            "stale"
+            if lock is None
+            else preprocess_lock_status(
+                lock,
+                structure=structure_lock,
+                experimental_data=dataset_lock,
+                ignored_rotations=ignored_rotations,
+                config_digest=dataset_config_digest(cfg, exp_data=dataset_ref),
+                code_version=code_version(),
+                recipe=recipe,
+                plan_path=npz,
+                root=root,
+            )
         )
         if status == "reuse":
             _log.info("loaded preprocess checkpoint (full reuse) from %s", npz)
             return read_plan(npz)
         if status == "resume":
+            assert lock is not None
             snapshot = read_plan(npz)
             k = len(lock.recipe)
             _log.info(
@@ -976,13 +1112,48 @@ def _prepare(
                 [r.name for r in records[k:]],
             )
             result = pipeline(steps[k:], logger=logger)(snapshot)
-            _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
+            _write_checkpoint(
+                result,
+                recipe,
+                root=root,
+                cfg=cfg,
+                dataset_ref=dataset_ref,
+                ignored_rotations=ignored_rotations,
+                structure_lock=structure_lock,
+                dataset_lock=dataset_lock,
+                npz=npz,
+                lock_path=lock_path,
+            )
             return result
 
     result = pipeline(steps, logger=logger)(base)
     if can_checkpoint:
-        _write_checkpoint(result, recipe, root=root, cfg=cfg, npz=npz, lock_path=lock_path)
+        _write_checkpoint(
+            result,
+            recipe,
+            root=root,
+            cfg=cfg,
+            dataset_ref=dataset_ref,
+            ignored_rotations=ignored_rotations,
+            structure_lock=structure_lock,
+            dataset_lock=dataset_lock,
+            npz=npz,
+            lock_path=lock_path,
+        )
     return result
+
+
+def _read_lock_or_none(lock_path: Path) -> PreprocessLock | None:
+    """Read a checkpoint lock, treating an unparsable one as absent (stale), not an error.
+
+    A lock that no longer parses (hand-edited, truncated, or written by an incompatible build) means
+    the checkpoint cannot be trusted -- recompute rather than crash.
+    """
+    try:
+        return read_preprocess_lock(lock_path)
+    except ValidationError:
+        _log.info("checkpoint lock %s did not parse; treating as stale", lock_path.name)
+        return None
 
 
 def _write_checkpoint(
@@ -991,14 +1162,20 @@ def _write_checkpoint(
     *,
     root: Path,
     cfg: ExperimentConfig,
+    dataset_ref: str,
+    ignored_rotations: tuple[int, ...],
+    structure_lock: InputLock,
+    dataset_lock: InputLock,
     npz: Path,
     lock_path: Path,
 ) -> None:
-    """Write ``plan.npz`` + regenerate ``plan.lock`` so the lock always describes the npz."""
+    """Write the dataset's ``.npz`` + regenerate its lock so the lock always describes the npz."""
     write_plan(plan, npz)
     lock = PreprocessLock(
-        experiment_lock_sha256=sha256_file(root / "reproducibility" / "experiment.lock"),
-        config_digest=config_digest(cfg),
+        structure=structure_lock,
+        experimental_data=dataset_lock,
+        ignored_rotations=ignored_rotations,
+        config_digest=dataset_config_digest(cfg, exp_data=dataset_ref),
         code_version=code_version(),
         recipe=recipe,
         plan=artifact_hash_for(npz, root=root),

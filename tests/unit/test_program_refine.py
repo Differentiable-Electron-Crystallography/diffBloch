@@ -114,8 +114,8 @@ def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -
     assert set(written.artifacts) == {
         "refined_structure",
         "refined_parameters",
-        "plan",
-        "plan_lock",
+        "plan_q",
+        "plan_lock_q",
     }
     refined = read_structure(tmp_path / "refined_structure.cif")
     assert np.allclose(refined.frac_positions, [[0.11, 0.2, 0.3], [0.4, 0.51, 0.6]])
@@ -142,7 +142,7 @@ def test_write_refinement_outputs_writes_a_refinement_lock_beside_an_existing_pl
 ) -> None:
     cfg, refinement, result = _refinement_result_for(tmp_path)
     (tmp_path / "reproducibility").mkdir()
-    (tmp_path / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
+    (tmp_path / "reproducibility" / "plan.q.lock").write_text("fake-plan-lock-bytes")
 
     written = _write_refinement_outputs(tmp_path, cfg, refinement, result)
 
@@ -202,7 +202,7 @@ def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
     relative_root = Path(".")
     cfg, refinement, result = _refinement_result_for(relative_root)
     (relative_root / "reproducibility").mkdir()
-    (relative_root / "reproducibility" / "plan.lock").write_text("fake-plan-lock-bytes")
+    (relative_root / "reproducibility" / "plan.q.lock").write_text("fake-plan-lock-bytes")
 
     written = _write_refinement_outputs(relative_root, cfg, refinement, result)
 

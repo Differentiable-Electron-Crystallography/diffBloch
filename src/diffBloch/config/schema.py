@@ -7,6 +7,7 @@ input references and overrides.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -363,7 +364,7 @@ class ThicknessOptimizationConfig(_StrictConfig):
     ``plot`` is reporting-only -- it selects whether the CLI attaches a
     :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` (one wR2-vs-thickness PNG per
     rotation, default ``<inputs.structure's directory>/thickness_optim``); it never changes the
-    fitted ``Plan``, so :func:`~diffBloch.config.manifest.config_digest` excludes it explicitly even
+    fitted ``Plan``, so :func:`~diffBloch.config.manifest.dataset_config_digest` excludes it explicitly even
     when the rest of this block is in scope.
     """
 
@@ -508,14 +509,15 @@ class ExperimentConfig(_StrictConfig):
     loss_metrics: LossMetricsConfig = Field(default_factory=LossMetricsConfig)
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
-    def to_declaration(self, integration: IntegrationGeometry) -> ExperimentDeclared:
+    def to_declaration(self, integrations: Sequence[IntegrationGeometry]) -> ExperimentDeclared:
         """Project the result-determining knobs onto the run's declaration event.
 
         One more ``to_*`` edge alongside :meth:`BlochwaveConfig.to_policy` /
         :meth:`~BlochwaveConfig.to_absorption`: the config already owns every value here, so mapping
         them lives with it rather than in whichever caller happens to emit the event. Any backend
         (W&B/Comet hyperparameters, the written summary) reads the run's settings from this one
-        event instead of being handed the config object.
+        event instead of being handed the config object. ``integrations`` is one PETS-derived
+        geometry per ``inputs.exp_data`` entry, in that order.
         """
         experimental_data = (
             ", ".join(self.inputs.exp_data)
@@ -528,7 +530,7 @@ class ExperimentConfig(_StrictConfig):
             experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
             seed_thicknesses=tuple(self.sample.thicknesses),
-            integration_semiangle=integration.semiangle,
+            integration_semiangles=tuple(integration.semiangle for integration in integrations),
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
             dsg=self.blochwave.dsg,
             rsg=self.blochwave.rsg,

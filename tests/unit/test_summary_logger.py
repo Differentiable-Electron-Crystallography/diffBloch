@@ -59,7 +59,7 @@ def _experiment() -> ExperimentDeclared:
         experimental_data="q.cif_pets",
         optimizer="lbfgs",
         seed_thicknesses=(820.0,),
-        integration_semiangle=1.0,
+        integration_semiangles=(1.0,),
         rocking_curve_sampling=42,
         dsg=0.0015,
         rsg=0.9,
