@@ -21,7 +21,10 @@ QUARTZ = FIXTURE_ROOT / "quartz_anchor"
 def _quartz_setup() -> object:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
-    config = load_config(QUARTZ / "experiment.yaml")
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": False})}
+    )
     return (
         structure,
         experimental_data,
@@ -80,7 +83,10 @@ def test_mosaicity_is_disabled_by_default() -> None:
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
         update={"mosaicity_degrees": None}
     )
-    config = load_config(QUARTZ / "experiment.yaml")
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": False})}
+    )
 
     setup = from_experiment(structure, experimental_data, config)
 

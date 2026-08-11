@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicAverage, MosaicSmoothed, PlainSum
+from diffBloch.core.products import MosaicAverage, MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -127,7 +127,7 @@ def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> Non
 
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
     assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
-    assert isinstance(built.tilt_reduction, PlainSum)
+    assert isinstance(built.tilt_reduction, MosaicSmoothed)
 
 
 def test_pets_mosaicity_expands_each_nominal_tilt_to_three_weighted_orientations() -> None:
