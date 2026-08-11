@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +26,7 @@ from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionC
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
 
+@lru_cache(maxsize=1)
 def _quartz_train_plan():
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
@@ -148,9 +150,9 @@ def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
 
 def test_legacy_mosaic_window_remains_supported() -> None:
     plan, config, integration = _quartz_train_plan()
-    built = build_orientation_plans(
-        config.blochwave.to_rocking_curve(integration), Mosaicity(window=3)
-    )(plan).orientations[0]
+    plan = replace(plan, orientations=plan.orientations[:1])
+    rocking = replace(config.blochwave.to_rocking_curve(integration), sampling=3)
+    built = build_orientation_plans(rocking, Mosaicity(window=3))(plan).orientations[0]
 
     assert isinstance(built.tilt_reduction, MosaicSmoothed)
     assert built.tilt_reduction.window == 3
