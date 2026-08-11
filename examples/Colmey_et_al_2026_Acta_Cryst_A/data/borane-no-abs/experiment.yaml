@@ -9,6 +9,7 @@ sample:
   thicknesses: [1900.0]
 
 blochwave:
+  mosaicity: true
   solver:
     refine: matrix_exp
     inference: matrix_exp

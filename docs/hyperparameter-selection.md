@@ -20,7 +20,7 @@ they cannot silently drift from the data they describe:
 | Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif). |
 | UB orientation matrix | `.cif_pets`, per rotation | Each rotation's own PETS UB seeds its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
 | Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
-| Apparent mosaicity (Gaussian σ) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
+| Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
 | Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by PETS's cell override — fractional coordinates are simply reinterpreted against PETS's metric. |
 | Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
 
@@ -43,7 +43,7 @@ how often you'd actually reach for them.
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
 | `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
-| `mosaicity` | `true` | Use PETS's apparent-mosaicity σ for Gaussian orientation averaging (three-point quadrature) instead of a single static solve per tilt. |
+| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width from the rocking-curve angular spacing; `false` applies no smoothing. The legacy `{window: N}` form sets the width directly. |
 | `rsg` | `0.66` | Klar beam-selection cutoff: relative excitation-error radius. |
 | `dsg` | `0.0015` | Klar beam-selection cutoff: excitation-error offset. |
 | `coupling_mode` | `"union"` | `"union"`: couple the union of excited beams across each tilt-chunk's boundary tilts. `"per_tilt"`: couple only each tilt's own excited beams (more accurate, more expensive). |

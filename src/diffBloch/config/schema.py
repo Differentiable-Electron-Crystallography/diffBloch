@@ -89,7 +89,8 @@ class BlochwaveConfig(_StrictConfig):
     separate smaller radius. ``rsg`` / ``dsg`` are
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
     integration semi-angle is read from the PETS experimental data rather than configured.
-    ``mosaicity`` is the :class:`Mosaicity` reduction.
+    ``mosaicity: true`` enables PETS-derived angular mosaic averaging, while ``false`` disables it.
+    The legacy ``mosaicity: {window: N}`` form remains available for moving-window smoothing.
     """
 
     solver: SolverConfig = Field(default_factory=SolverConfig)
@@ -97,7 +98,7 @@ class BlochwaveConfig(_StrictConfig):
     rsg: float = 0.9
     dsg: float = 0.0015
     rocking_curve_sampling: int = 42
-    mosaicity: Mosaicity = Field(default_factory=Mosaicity)
+    mosaicity: bool | Mosaicity = False
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
