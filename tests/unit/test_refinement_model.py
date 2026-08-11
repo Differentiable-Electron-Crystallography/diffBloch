@@ -92,7 +92,7 @@ def test_refinement_model_path_matches_legacy_hydrogen_riding_objective() -> Non
 def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     """The model wrapper must not perturb the quartz Bloch physics path.
 
-    Use the committed quartz anchor ``plan.npz`` and the first settled orientation as a fast unit
+    Use the committed quartz anchor ``plan.exp_data.npz`` and the first settled orientation as a fast unit
     guard. Both paths consume the same engine/static context and the same raw parameters; any drift
     here indicates the refactor changed objective plumbing rather than only API shape.
     """
@@ -100,7 +100,7 @@ def test_quartz_refinement_model_path_matches_legacy_objective() -> None:
     structure = read_structure(_QUARTZ_ROOT / cfg.inputs.structure)
     experimental_data = read_experimental_data(_QUARTZ_ROOT / cfg.inputs.exp_data)
     setup = from_experiment(structure, experimental_data, cfg)
-    plan = read_plan(_QUARTZ_ROOT / "reproducibility" / "plan.npz")
+    plan = read_plan(_QUARTZ_ROOT / "reproducibility" / "plan.exp_data.npz")
     engine = build_engine(
         plan,
         setup.refinement,

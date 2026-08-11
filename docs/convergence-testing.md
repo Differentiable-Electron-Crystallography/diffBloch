@@ -63,6 +63,13 @@ compares consecutive calculated intensity sets. The sweep stops when their R-fac
 Convergence testing sweeps `g_max`, `sg_max`, and `rocking_curve_sampling`. It should include
 representative experimental orientations because reciprocal-space density varies through a tilt
 series.
+
+For a combined (`inputs.multi_dataset`) experiment the sweep runs once per dataset -- each file
+with its own integration geometry and its own starting `g_max` (the file's recorded `dstarmax`
+when present, the configured `blochwave.g_max` otherwise) -- and the reported result is the
+elementwise maximum over the per-dataset settled states: the tightest single setting adequate for
+every pooled file. Per-dataset settled values remain visible in the convergence log events.
+
 ## API example
 
 Convergence testing is an optional preprocessing step, so its settings are explicit Python values

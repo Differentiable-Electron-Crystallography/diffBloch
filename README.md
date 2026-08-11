@@ -19,7 +19,7 @@ Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 ## Quickstart
 
 Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and `plan.npz`
+[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint `.npz`
 checkpoints, then sync the project environment from the repository root:
 
 ```bash
@@ -38,9 +38,9 @@ uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-no-abs
 
 ## For Developers
 
-We welcome collaborations and interested parties may contribute to the codebase. 
+We welcome collaborations and interested parties may contribute to the codebase.
 
-Every merge to `main` re-runs the end to end (e2e) physics anchors. These correspond to rapid tests of the codebase's key functionalities and integration. Spefically, the measured mean R_obs for 
+Every merge to `main` re-runs the end to end (e2e) physics anchors. These correspond to rapid tests of the codebase's key functionalities and integration. Spefically, the measured mean R_obs for
 the example quartz refinement is expected to remain the same upon changes made to the directory. This Fig. tracks the result of this test upon every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
 outcome, evidence the physics is reproducible commit over commit. Gaps are commits with no valid
 measurement (the committed checkpoint was stale for that commit's recipe, so the fast anchor

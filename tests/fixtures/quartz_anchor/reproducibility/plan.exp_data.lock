@@ -1,7 +1,17 @@
 {
-  "experiment_lock_sha256": "798ba1b49d7511e116a5c682ccfa501232f64ba7ab108c2407dc5f10771c55cf",
-  "config_digest": "2f7373625cdb32a91a2fc81d8f05301f333c1d8782d250caf29dd3eb79084c3c",
-  "code_version": "0.2.0+gba75224.dirty",
+  "structure": {
+    "ref": "enantiomer_1.cif",
+    "sha256": "4a1ed50ae8eff95b652e49a872979f4dca19bf77b2b34fa14be2ebc06b0bb306",
+    "bytes": 942
+  },
+  "experimental_data": {
+    "ref": "exp_data.cif_pets",
+    "sha256": "96c730df000c9c218a9e2ea259f03361775038b2ea36c07274de0c6b5e4770f4",
+    "bytes": 303151
+  },
+  "ignored_rotations": [],
+  "config_digest": "01c04b0bd39f922628405b9ab7e99818f0a289f719a00cb54df8d7f7f4f57485",
+  "code_version": "0.2.0+g9b7d363.dirty",
   "recipe": [
     {
       "name": "select_beams",
@@ -87,9 +97,9 @@
     }
   ],
   "plan": {
-    "path": "plan.npz",
-    "sha256": "4d4eaf9b65f9e1e4a38a93c43b945e0e3891ee433fe42664ab60d634a686a352",
-    "bytes": 1049181,
+    "path": "reproducibility/plan.exp_data.npz",
+    "sha256": "c25d94f72d0c70c1e5b57b5dd0a9cbd989a2f9210c172aaa7ca30a0b8f80fdd3",
+    "bytes": 1049585,
     "media_type": "application/octet-stream"
   }
 }
