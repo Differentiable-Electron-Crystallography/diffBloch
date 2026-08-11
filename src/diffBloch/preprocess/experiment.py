@@ -277,7 +277,12 @@ def from_experiment(
                 thickness=config.sample.thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
-                mosaicity_degrees=(record.mosaicity_degrees if pets_mosaicity else None),
+                # Always carry the record's own mosaicity through, regardless of
+                # blochwave.mosaicity: a CandidatePlan should be as complete as its source PETS
+                # data, not truncated by one default app config choice. build_orientation_plans
+                # decides whether to *use* it (and still raises if PETS mosaicity is requested but
+                # missing -- see steps/beams.py); this is just carrying the metadata.
+                mosaicity_degrees=record.mosaicity_degrees,
             )
             for local_index, zone_id in enumerate(record.zone_axis_ids)
         )

@@ -10,6 +10,7 @@ sample:
   thicknesses: [850.0]
 
 blochwave:
+  mosaicity: true
   coupling_mode: union
   absorption: true
   g_max: 2.0
