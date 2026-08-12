@@ -45,7 +45,7 @@ F_{\mathbf{g}} = \frac{1}{\Omega}\sum_j f^e_j(s)\,T_j(\mathbf{h})\,O_j\,
 \exp(2\pi i\,\mathbf{h}\cdot\mathbf{r}_j),
 ```
 
-diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using the Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`.
+diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using the Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`. 
 
 These values may then be converted to {math}`U_{\mathbf{g}}` using:
 
@@ -54,7 +54,7 @@ U_{\mathbf{g}} = \gamma\,\frac{F_{\mathbf{g}}}{\pi\Omega} = \frac{2m|e|V_{\mathb
 ```
 
 with {math}`\gamma` the relativistic mass factor, {math}`m` the (relativistic) electron mass,
-{math}`e` the elementary charge, and {math}`h` Planck's constant.
+{math}`e` the elementary charge, and {math}`h` Planck's constant. 
 
 
 ## The Bloch wave formalism
@@ -117,9 +117,6 @@ C_{\mathbf{g}}
 = 0.
 ```
 
-It is useful for analytical treatments and weakly scattering objects, but breaks down once several
-reflections are simultaneously strongly excited — the case the many-beam matrix above is built to
-handle.
 
 ## Solving: two equivalent routes
 
@@ -137,8 +134,7 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
   {math}`\psi_{\mathbf{g}}(t) = \sum_i C_0^{(i)-1}C_{\mathbf{g}}^{(i)}\exp(2\pi i\gamma^{(i)}t)` —
   the classical closed-form Bloch wave solution, cheap once diagonalised.
 - **`matrix_exp`** evaluates the matrix exponential directly, without an intermediate
-  eigendecomposition ([Pennington, Wang & Koch, 2014](https://www.sciencedirect.com/science/article/pii/S0304399114000485)).
-  It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
+  eigendecomposition. It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
   whenever `absorption: true` adds an imaginary component to {math}`A`) is numerically unstable to
   differentiate through, so `bloch_eigen` is rejected outright when absorption is enabled.
 

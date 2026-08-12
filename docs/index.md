@@ -43,7 +43,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 
 ### Command line
 
-The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a complete experiment.
+The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a complete experiment. 
 
 `uv` installs the required Python packages and runs diffBloch inside the
 project environment. Git LFS downloads the larger experimental-data files stored in the repository.
