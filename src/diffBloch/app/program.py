@@ -104,7 +104,12 @@ from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.specs import IntegrationGeometry, ScoredHklSelection, TrialCoupling
+from diffBloch.specs import (
+    ApparentThicknessNetwork,
+    IntegrationGeometry,
+    ScoredHklSelection,
+    TrialCoupling,
+)
 
 __all__ = [
     "converge_experiment",
@@ -541,38 +546,7 @@ def refine_experiment(
     if thickness_spec.enabled:
         records = _read_experimental_data(root, cfg)
         raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
-        bounds = ThicknessBounds(thickness_spec.min_thickness, thickness_spec.max_thickness)
-        if cfg.inputs.multi_dataset:
-            offsets = np.cumsum([0, *(record.n_rotations for record in records)])
-            thickness_nns = tuple(
-                ApparentThicknessNN(
-                    bounds=bounds,
-                    normalized_alphas=_normalized_pets_alphas(raw_alphas[start:end]),
-                    key=f"apparent_thickness[{dataset_ref}]",
-                    form=thickness_spec.form,
-                    sample_thickness=thickness_spec.sample_thickness,
-                    num_samples=thickness_spec.num_samples,
-                    init_seed=thickness_spec.init_seed,
-                    rotation_range=(start, end),
-                    label=dataset_ref,
-                )
-                for dataset_ref, start, end in zip(
-                    _exp_data_refs(cfg), offsets[:-1], offsets[1:], strict=True
-                )
-            )
-        else:
-            thickness_nns = (
-                ApparentThicknessNN(
-                    bounds=bounds,
-                    normalized_alphas=_normalized_pets_alphas(raw_alphas),
-                    form=thickness_spec.form,
-                    sample_thickness=thickness_spec.sample_thickness,
-                    num_samples=thickness_spec.num_samples,
-                    init_seed=thickness_spec.init_seed,
-                    rotation_range=(0, len(raw_alphas)),
-                    label=_exp_data_refs(cfg)[0],
-                ),
-            )
+        thickness_nns = _thickness_networks(cfg, records, thickness_spec)
         model = build_refinement_model(
             initial=initial,
             components=thickness_nns,
@@ -655,6 +629,39 @@ def _report_refinement_outcome(
     logger.report(
         RefinementOutputsWritten(
             structure=result.artifacts["refined_structure"], artifacts=result.artifacts
+        )
+    )
+
+
+def _thickness_networks(
+    cfg: ExperimentConfig,
+    records: tuple[ExperimentalRecord, ...],
+    spec: ApparentThicknessNetwork,
+) -> tuple[ApparentThicknessNN, ...]:
+    """One thickness network per dataset, scoped to its pooled rotation-index range.
+
+    Ranges follow the cumulative pre-ignore rotation counts in ``inputs.exp_data`` order --
+    exactly how :func:`~diffBloch.preprocess.pool` numbers the pooled ``rotation_index`` space --
+    so the networks partition that space and composition finds exactly one thickness per
+    orientation. Alphas are normalized independently per dataset so overlapping tilt ranges do
+    not share one thickness-vs-alpha curve. A single dataset is simply the N=1 case.
+    """
+    bounds = ThicknessBounds(spec.min_thickness, spec.max_thickness)
+    offsets = np.cumsum([0, *(record.n_rotations for record in records)])
+    return tuple(
+        ApparentThicknessNN(
+            bounds=bounds,
+            normalized_alphas=_normalized_pets_alphas(np.asarray(record.alphas)),
+            key=f"apparent_thickness[{ref}]",
+            form=spec.form,
+            sample_thickness=spec.sample_thickness,
+            num_samples=spec.num_samples,
+            init_seed=spec.init_seed,
+            rotation_range=(int(start), int(end)),
+            label=ref,
+        )
+        for ref, record, start, end in zip(
+            _exp_data_refs(cfg), records, offsets[:-1], offsets[1:], strict=True
         )
     )
 

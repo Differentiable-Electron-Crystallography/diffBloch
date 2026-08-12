@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import torch
 
-from diffBloch.app.program import _write_refinement_outputs
+from diffBloch.app.program import _thickness_networks, _write_refinement_outputs
 from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.core.products import PatternBatch
@@ -17,9 +17,11 @@ from diffBloch.engine import (
     build_refinement_model,
 )
 from diffBloch.io import read_structure
+from diffBloch.io.record import ExperimentalRecord
 from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
+from diffBloch.specs import ApparentThicknessNetwork
 
 _MINIMAL_CIF = """data_q
 _cell_length_a 5
@@ -55,6 +57,72 @@ _atom_site_aniso_U_13
 _atom_site_aniso_U_12
 O1 0.03 0.04 0.05 0.001 0.002 0.003
 """
+
+
+def _record_with_alphas(alphas: tuple[float, ...]) -> ExperimentalRecord:
+    n = len(alphas)
+    return ExperimentalRecord(
+        unit_cell=np.eye(3),
+        cell_parameters=np.asarray([1.0, 1.0, 1.0, 90.0, 90.0, 90.0]),
+        cell_parameters_su=np.full((6,), np.nan),
+        wavelength=0.0251,
+        ub_matrix=np.eye(3),
+        zone_axis_ids=np.arange(1, n + 1),
+        zone_axes=np.zeros((n, 3)),
+        precession_angles=np.ones(n),
+        alphas=np.asarray(alphas, dtype=np.float64),
+        betas=np.zeros(n),
+        omegas=np.zeros(n),
+        scales=np.ones(n),
+        hkl=np.asarray([[1, 0, 0]], dtype=np.int64),
+        intensities=np.asarray([10.0]),
+        sigmas=np.asarray([1.0]),
+        reflection_zone_axis_ids=np.asarray([1]),
+    )
+
+
+def test_thickness_networks_partition_the_pooled_rotation_space() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "q",
+            "inputs": {
+                "structure": "q.cif",
+                "exp_data": ["a.cif_pets", "sub/b.cif_pets"],
+                "multi_dataset": True,
+            },
+        }
+    )
+    records = (
+        _record_with_alphas((0.0, 10.0)),
+        _record_with_alphas((100.0, 110.0, 120.0)),
+    )
+
+    networks = _thickness_networks(cfg, records, ApparentThicknessNetwork())
+
+    assert [network.key for network in networks] == [
+        "apparent_thickness[a.cif_pets]",
+        "apparent_thickness[sub/b.cif_pets]",
+    ]
+    assert [network.label for network in networks] == ["a.cif_pets", "sub/b.cif_pets"]
+    assert [network.rotation_range for network in networks] == [(0, 2), (2, 5)]
+    # Each dataset normalizes its own alpha span, so overlapping tilt ranges stay independent.
+    assert networks[0].normalized_alphas == (-1.0, 1.0)
+    assert networks[1].normalized_alphas == (-1.0, 0.0, 1.0)
+
+
+def test_thickness_networks_treat_a_single_dataset_as_the_n_1_case() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    )
+    records = (_record_with_alphas((0.0, 5.0, 10.0)),)
+
+    networks = _thickness_networks(cfg, records, ApparentThicknessNetwork())
+
+    assert len(networks) == 1
+    assert networks[0].key == "apparent_thickness[q.cif_pets]"
+    assert networks[0].label == "q.cif_pets"
+    assert networks[0].rotation_range == (0, 3)
+    assert networks[0].normalized_alphas == (-1.0, 0.0, 1.0)
 
 
 def _refinement_result_for(
