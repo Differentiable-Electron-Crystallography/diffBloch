@@ -569,6 +569,8 @@ def refine_experiment(
                     sample_thickness=thickness_spec.sample_thickness,
                     num_samples=thickness_spec.num_samples,
                     init_seed=thickness_spec.init_seed,
+                    rotation_range=(0, len(raw_alphas)),
+                    label=_exp_data_refs(cfg)[0],
                 ),
             )
         model = build_refinement_model(
@@ -641,22 +643,12 @@ def _report_refinement_outcome(
             )
         )
     if raw_alphas is not None:
+        # Each network filters the pooled orientations to its own rotation_range itself.
         for thickness_nn in thickness_nns:
-            orientations = (
-                engine.orientations
-                if thickness_nn.rotation_range is None
-                else tuple(
-                    orientation
-                    for orientation in engine.orientations
-                    if thickness_nn.rotation_range[0]
-                    <= orientation.pattern.rotation_index
-                    < thickness_nn.rotation_range[1]
-                )
-            )
             logger.report(
                 thickness_nn.profile(
                     result.best_model.component_params[thickness_nn.key],
-                    orientations,
+                    engine.orientations,
                     raw_alphas,
                 )
             )
