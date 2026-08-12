@@ -58,55 +58,69 @@ with {math}`\gamma` the relativistic mass factor, {math}`m` the (relativistic) e
 
 ## The Bloch wave formalism
 
-Expanding the electron wavefunction inside the crystal as a sum of Bloch states,
+The Bloch wave formalism starts from the time-independent Schrödinger equation for the incident
+electron inside the crystal potential {math}`V(\mathbf{r})`:
+
+```{math}
+-\frac{h^2}{2m}\nabla^2\psi(\mathbf{r}) - |e|V(\mathbf{r})\psi(\mathbf{r}) = \frac{h^2K^2}{2m}\psi(\mathbf{r}).
+```
+
+Expanding the wavefunction inside the crystal as a sum of Bloch states,
 
 ```{math}
 \psi(\mathbf{r}) = \sum_i c_i \exp(2\pi i\mathbf{k}^{(i)}\cdot\mathbf{r})
 \sum_{\mathbf{g}} C_{\mathbf{g}}^{(i)}\exp(2\pi i\mathbf{g}\cdot\mathbf{r}),
 ```
 
-and substituting into the time-independent Schrödinger equation yields, a coupled
-linear system for the Fourier coefficients — an eigenvalue problem
-{math}`AC^{(i)} = 2K_n\gamma^{(i)}C^{(i)}` in the **structure matrix** {math}`A`:
+and substituting into the Schrödinger equation gives the dispersion relation coupling every pair of
+beams through the potential:
+
+```{math}
+\left[K^2-(\mathbf{k}^{(i)}+\mathbf{g})^2\right]C_{\mathbf{g}}^{(i)}
++ \sum_{\mathbf{h}} U_{\mathbf{g}-\mathbf{h}}C_{\mathbf{h}}^{(i)} = 0,
+```
+
+an eigenvalue problem {math}`\det(A-\lambda I)=0`. Retaining every beam within
+`blochwave.g_max`/`sg_max` at a given tilt is the **many-beam** solution; a true solution would sum
+the infinite reciprocal lattice, but in practice diffBloch
+truncates to the beams that matter at that orientation.
+
+This raw form is not Hermitian. Symmetrising it by the per-beam factor
+{math}`M_{ii} = 1/\sqrt{1+g_{i,n}/K_n}` (with {math}`g_{i,n}` beam {math}`g_i`'s component along the
+surface normal) casts it in the compact, Hermitian form diffBloch actually solves,
+{math}`AC^{(i)} = 2K_n\gamma^{(i)}C^{(i)}`, with
 
 ```{math}
 A_{ii} = 2K_nS_{g_i}M_{ii}, \qquad
 A_{ij} = \sigma M_{ii}M_{jj}F(\mathbf{g}_j-\mathbf{g}_i) \quad (i\ne j).
 ```
 
-The diagonal holds each beam's own excitation error; the off-diagonal couples every pair of beams
-through the structure factor of their difference vector — an electron diffracted from
-{math}`(000)` into {math}`(200)` can be rescattered into {math}`(220)`, and so on. Retaining every
-beam within `blochwave.g_max`/`sg_max` at a given tilt is the **many-beam** solution; the classical
-**two-beam approximation** keeps only {math}`(000)` and one diffracted beam, reducing {math}`A` to
-a {math}`2\times2` matrix — useful for intuition (see the rocking-curve width formula in
-[Convergence testing](convergence-testing.md#simulation-convergence)) but too coarse for
-quantitative refinement once several reflections are simultaneously strongly excited.
+The diagonal holds each beam's own excitation error; entry {math}`(i,j)` couples {math}`g_i` to
+{math}`g_j` through the structure factor of their difference — an electron diffracted from
+{math}`(000)` into {math}`(200)` can be rescattered into {math}`(220)`, and so on. The lower
+triangle is the conjugate of the upper triangle, since {math}`A` is Hermitian by construction, which
+`bloch_eigen`'s eigendecomposition depends on.
 
-### Example structure matrix
-
-Instantiating {math}`A_{ii}`/{math}`A_{ij}` above for a concrete systematic row of five beams
-{math}`(\overline{2}00), (\overline{1}00), (000), (100), (200)` (all in the zero-order Laue zone, so
-{math}`M_{ii}=1` throughout):
+The classical **two-beam approximation** keeps only {math}`(000)` and one diffracted beam
+{math}`\mathbf{g}`, reducing the eigenvalue problem to:
 
 ```{math}
-A =
 \begin{pmatrix}
-2K_nS_{\overline{2}00} & \sigma F(100) & \sigma F(200) & \sigma F(300) & \sigma F(400) \\
-\sigma F(100)^{*} & 2K_nS_{\overline{1}00} & \sigma F(100) & \sigma F(200) & \sigma F(300) \\
-\sigma F(200)^{*} & \sigma F(100)^{*} & 2K_nS_{000} & \sigma F(100) & \sigma F(200) \\
-\sigma F(300)^{*} & \sigma F(200)^{*} & \sigma F(100)^{*} & 2K_nS_{100} & \sigma F(100) \\
-\sigma F(400)^{*} & \sigma F(300)^{*} & \sigma F(200)^{*} & \sigma F(100)^{*} & 2K_nS_{200}
+-2K_n\gamma & U_{-\mathbf{g}} \\
+U_{\mathbf{g}} & 2KS_{\mathbf{g}}-2K_n\gamma
 \end{pmatrix}
+\begin{pmatrix}
+C_0 \\
+C_{\mathbf{g}}
+\end{pmatrix}
+= 0.
 ```
 
-The diagonal holds each beam's excitation error, growing outward along the row. Every off-diagonal
-entry depends only on the difference vector {math}`\mathbf{g}_j-\mathbf{g}_i`, so the matrix is
-Toeplitz along each band — the {math}`(000,100)` and {math}`(100,200)` couplings are both
-{math}`\sigma F(100)`. The lower triangle is the conjugate of the upper triangle, since {math}`A`
-must be Hermitian for `bloch_eigen`'s eigendecomposition to apply.
+It is useful for analytical treatments and weakly scattering objects, but breaks down once several
+reflections are simultaneously strongly excited — the case the many-beam matrix above is built to
+handle.
 
-## Solving: two equivalent routes, one gradient-safe
+## Solving: two equivalent routes
 
 With boundary conditions {math}`\psi(0)` fixed at the entrance surface, the wavefield at thickness
 {math}`t` is
@@ -124,15 +138,11 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
 - **`matrix_exp`** evaluates the matrix exponential directly, without an intermediate
   eigendecomposition. It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
   whenever `absorption: true` adds an imaginary component to {math}`A`) is numerically unstable to
-  differentiate through, so `bloch_eigen` is rejected outright when absorption is enabled — see
-  `BlochwaveConfig`'s validation.
+  differentiate through, so `bloch_eigen` is rejected outright when absorption is enabled.
 
-{math}`\psi(t)` has one entry per beam in {math}`A`'s own index set — the **solve beams** (see
-[Beam sets and scoring](preprocessing.md#beam-sets-and-scoring-inside-a-plan)) — so an intensity is
-only ever calculated for a reflection that beam selection actually admitted into {math}`A`, never
-for an arbitrary {math}`\mathbf{g}` outside it. For each solve beam, the calculated intensity is
+For each solve beam, the calculated intensity is
 {math}`I_{\mathbf{g}}(t) = |\psi_{\mathbf{g}}(t)|^2`. A continuous-rotation frame sums this over sampled sub-orientations
 across the rocking curve (and, when `blochwave.mosaicity` is enabled, smoothed over a moving-average
-window derived from the apparent mosaicity recorded in `.cif_pets`) rather than evaluating a single static orientation
-— see [Preprocessing](preprocessing.md) for how those tilts and beam couplings are assembled around
-this solve.
+window derived from the apparent mosaicity recorded in `.cif_pets`) rather than evaluating a single static orientation.
+
+For more information, see [Preprocessing](preprocessing.md).
