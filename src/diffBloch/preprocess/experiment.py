@@ -267,9 +267,17 @@ def setup_datasets(
         )
 
     u0_by_energy: dict[float, float] = {}
+    dataset_refs = (
+        tuple(config.inputs.exp_data)
+        if isinstance(config.inputs.exp_data, list)
+        else (config.inputs.exp_data,)
+    )
     datasets: list[DatasetSetup] = []
     offset = 0
     for dataset_index, record in enumerate(records):
+        seed_thicknesses = config.sample.thicknesses
+        if config.sample.mean_thickness_by_dataset:
+            seed_thicknesses = config.sample.seed_thicknesses_for(dataset_refs[dataset_index])
         count = counts[dataset_index]
         local_ignored = tuple(
             sorted(index - offset for index in ignored if offset <= index < offset + count)
@@ -310,7 +318,7 @@ def setup_datasets(
                     rotation_index=local_index,
                 ),
                 energy=energy,
-                thickness=config.sample.thicknesses,
+                thickness=seed_thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
             )

@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from diffBloch.app.program import _read_experimental_data, converge_experiment
-from diffBloch.config import input_lock_for, load_config
+from diffBloch.config import ExperimentConfig, input_lock_for, load_config
 from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import setup_datasets
@@ -100,6 +100,30 @@ def test_setup_datasets_preserves_each_dataset_collection_geometry() -> None:
     _, datasets = setup_datasets(structure, (record, precession), config)
     assert datasets[0].integration.geometry == "continuous_rotation"
     assert datasets[1].integration.geometry == "precession"
+
+
+def test_setup_datasets_seeds_each_dataset_with_its_configured_mean_thickness() -> None:
+    structure, record, config = _quartz_inputs()
+    raw = config.model_dump(mode="python")
+    raw["inputs"] = {
+        **raw["inputs"],
+        "exp_data": ["a.cif_pets", "b.cif_pets"],
+        "multi_dataset": True,
+    }
+    raw["sample"] = {
+        **raw["sample"],
+        "mean_thickness_by_dataset": {
+            "a.cif_pets": 400.0,
+            "b.cif_pets": 800.0,
+        },
+    }
+    raw["refinement"]["thickness_nn"]["enabled"] = False
+    multi_config = ExperimentConfig.model_validate(raw)
+
+    _, datasets = setup_datasets(structure, (record, record), multi_config)
+
+    assert datasets[0].plan.orientations[0].thickness.tolist() == [400.0]
+    assert datasets[1].plan.orientations[0].thickness.tolist() == [800.0]
 
 
 def test_setup_datasets_translates_global_ignore_to_file_local_slices() -> None:

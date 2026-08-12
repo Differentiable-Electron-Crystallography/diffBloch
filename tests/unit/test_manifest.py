@@ -146,6 +146,29 @@ def test_dataset_config_digest_is_stable_and_value_sensitive() -> None:
     )
 
 
+def test_dataset_config_digest_scopes_per_dataset_mean_thickness() -> None:
+    cfg = load_config(LOCKED / "experiment.yaml")
+    raw = cfg.model_dump()
+    raw["inputs"] = {
+        "structure": cfg.inputs.structure,
+        "exp_data": [EXP_REF, "b.cif_pets"],
+        "multi_dataset": True,
+    }
+    raw["sample"]["mean_thickness_by_dataset"] = {EXP_REF: 400.0, "b.cif_pets": 800.0}
+    raw["refinement"]["thickness_nn"]["enabled"] = False
+    pooled = cfg.__class__.model_validate(raw)
+    changed_raw = pooled.model_dump()
+    changed_raw["sample"]["mean_thickness_by_dataset"]["b.cif_pets"] = 900.0
+    changed = cfg.__class__.model_validate(changed_raw)
+
+    assert dataset_config_digest(pooled, exp_data=EXP_REF) == dataset_config_digest(
+        changed, exp_data=EXP_REF
+    )
+    assert dataset_config_digest(pooled, exp_data="b.cif_pets") != dataset_config_digest(
+        changed, exp_data="b.cif_pets"
+    )
+
+
 def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     """The digest keys only on what determines the settled per-dataset Plan."""
     cfg = load_config(LOCKED / "experiment.yaml")

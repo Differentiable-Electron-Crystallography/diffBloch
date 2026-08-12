@@ -207,7 +207,9 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
             "exp_data": exp_data,
             "load_hydrogens": dump["inputs"]["load_hydrogens"],
         },
-        "sample": dump["sample"],
+        # Resolve the optional per-dataset mapping to this Plan's effective seed. This keeps a
+        # change for dataset B from invalidating dataset A's checkpoint.
+        "sample": {"thicknesses": list(config.sample.seed_thicknesses_for(exp_data))},
         "blochwave": blochwave,
         "preprocess": preprocess,
         "loss_metrics": dump["loss_metrics"],
