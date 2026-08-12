@@ -1,118 +1,61 @@
-# Reproducibility and checkpoints
+# Reproducibility
 
-Reproducing a specific result means starting from the exact same fitted `Plan`. diffBloch
-checkpoints that fitted geometry **per dataset** and locks each checkpoint to everything that
-determined it.
+diffBloch records the files and settings used during preprocessing and refinement. These records
+are stored in the experiment directory under `reproducibility/`.
 
-**`experiment.lock`** pins the raw input files -- the structure CIF and the experimental data (one
-entry per `inputs.exp_data` file for a combined experiment) -- by content hash (SHA256).
+| File | Purpose |
+|---|---|
+| `experiment.lock` | Identifies the structure CIF and `.cif_pets` input files. |
+| `plan.<stem>.npz` | Stores the orientations, thicknesses, and simulation setup produced by preprocessing. |
+| `plan.<stem>.lock` | Records the inputs and settings used to produce that preprocessing file. |
+| `refinement.lock` | Records the preprocessing, refinement settings, code version, and final outputs used for a refinement. |
 
-**`plan.<stem>.lock`** pins that one dataset's checkpointed `plan.<stem>.npz` -- the optimized
-orientations and thicknesses that came out of preprocessing that file. The lock's identity is
-deliberately *per dataset*: nothing in it hashes the whole `experiment.lock` or the full `exp_data`
-list, so adding, removing, reordering, or editing *other* datasets in a combined experiment never
-invalidates this one's checkpoint. The one deliberate shared axis is the authoritative PETS cell:
-in a combined experiment, the first file's cell shapes every checkpointed grid. Six things are
-checked, and all six have to match for the checkpoint to be reused as-is:
+## Input files
 
-1. **The input bytes** -- the structure CIF and *this dataset's* `.cif_pets`, by content hash and
-   size (not filename: a byte-identical rename moves the checkpoint to a new stem but is still the
-   same measurement).
-2. **The dataset-scoped config** -- a hash (`dataset_config_digest`) of exactly the settings that
-   could have changed this dataset's fitted `Plan`. See below for what's in and out.
-3. **The file-local ignored rotations** -- the slice of `blochwave.ignore_orientations` that lands
-   on this file, translated to its own rotation indices. An ignore edit restales exactly the
-   datasets it touches.
-4. **The authoritative PETS cell** -- the first `.cif_pets` file's cell for a combined experiment,
-   or the only `.cif_pets` file's cell for a single-dataset experiment. This keeps every pooled
-   checkpoint tied to the shared grid and ADP metric, even for non-anchor datasets.
-5. **The code version** -- the release version of diffBloch that produced the checkpoint. Commits
-   within the same release don't invalidate it (see "code version" below), but a version bump does.
-6. **The recipe** -- the exact ordered list of preprocessing steps that ran, each with its own
-   parameters (`select_beams`, `optimize_orientation`, `optimize_thickness`, etc., in whatever
-   order they ran).
+`experiment.lock` records a checksum for each input file. A checksum changes when the contents of a
+file change. This prevents a calculation from using input files that differ from those recorded for
+the experiment.
 
-Additionally, the `.npz` file itself is hashed and checked against the hash recorded in the lock,
-so even direct tampering or corruption of the checkpoint file is caught. A lock file that no longer
-parses is treated as stale (recompute), never as an error.
+## Preprocessing
 
-The config fields that can change a dataset's fitted `Plan` include:
+Preprocessing results are saved under `reproducibility/` so they can be reused. Combined experiments
+save the preprocessing for each `.cif_pets` dataset separately.
 
-- `inputs` -- reduced to *this dataset's* view: the structure ref, this one `exp_data` entry, and
-  `load_hydrogens`. The `multi_dataset` flag and the rest of the list are excluded -- a dataset's
-  settled plan doesn't depend on what it's pooled with.
-- `sample`, `blochwave` -- these shape the diffraction geometry and the beam grid (minus
-  `ignore_orientations`, which is covered by axis 3 above).
-- `preprocess` settings.
-- `loss_metrics` -- the residual the orientation/thickness searches minimise.
+The corresponding `plan.<stem>.lock` records:
 
-Everything in `refinement` -- including `split` -- is **exempt**. The train/validation split
-partitions rotations when the pooled plan is handed to refinement; it never shapes a checkpointed
-per-dataset plan. You can double the number of refinement epochs, swap optimizers, change loss
-weights, or re-cut the split, and your preprocess checkpoints stay valid -- because none of those
-settings were ever read while building them.
+- The structure CIF and `.cif_pets` data.
+- The unit cell used for the simulation.
+- The preprocessing settings and steps.
+- The diffBloch version.
 
-## Code version
+The saved preprocessing is reused when these records still match the current experiment. If they
+do not match, preprocessing runs again.
 
-The full build stamp (`version+g<git-sha>[.dirty]`) is recorded in the lock for provenance, but the
-reuse check only compares the release version. Committing changes within the same release (no
-version bump) doesn't invalidate existing checkpoints -- deliberately, since not every commit
-changes the physics. The trade-off: an un-released physics change technically reuses a checkpoint
-it maybe shouldn't. `--refresh` is the manual escape hatch for that case.
+Use `--refresh` to rebuild preprocessing even when the existing files still match:
 
-## Can it be turned off?
+```bash
+uv run diffbloch preprocess <experiment_dir> --refresh
+```
 
-`experiment.lock` verification cannot be disabled -- it runs on every `load_experiment` call, no
-flag skips it. If the input files don't match, the run stops.
+Use `--no-checkpoint` to run preprocessing without reading or writing saved preprocessing:
 
-The plan locks have two explicit, deliberate bypasses, both opt-in per run:
+```bash
+uv run diffbloch preprocess <experiment_dir> --no-checkpoint
+```
 
-- `--no-checkpoint` -- don't read or write any `plan.<stem>.npz`/`.lock` at all. Preprocessing
-  always runs from scratch and nothing is saved. Use this when you don't want checkpointing in the
-  loop at all.
-- `--refresh` -- force preprocessing to run from scratch and overwrite the existing checkpoints,
-  regardless of whether the current locks would have matched. Use this when you know you want new
-  checkpoints (e.g. after a genuine, unreleased physics change that a version bump hasn't caught up
-  with yet).
+## Refinement
 
-Short of those two flags, there's no way to make a stale or mismatched checkpoint get reused
-quietly -- a mismatch on any axis, or a corrupted `.npz`, makes the run refuse to reuse that
-dataset's checkpoint and fall back to preprocessing it fresh (other datasets' valid checkpoints
-still reuse).
+`refinement.lock` is written after refinement. It records:
 
-Checkpoint files whose dataset left `inputs.exp_data` are pruned on the next checkpointing run. A
-bare `plan.npz`/`plan.lock` pair from an older diffBloch has no stem segment, is never read or
-pruned, and can be deleted by hand.
+- The preprocessing files used by the refinement.
+- The refinement settings.
+- The diffBloch version.
+- Checksums for the refined CIF and refined parameters.
 
-In committed examples, plan checkpoints and `.cif_pets` files are Git LFS artifacts; each lock
-verifies the realized file bytes after LFS checkout, not the small pointer file.
+This file identifies how the refined structure was produced. It is not used to resume or reuse a
+completed refinement.
 
-## `refinement.lock`
+## Limits
 
-`refinement.lock` is the refinement-stage counterpart to the plan locks, written alongside
-`refined_structure.cif` whenever a checkpointing `run refine` completes. It chains only to the
-plan locks **this run verified or wrote** -- a `--no-checkpoint` run writes no `refinement.lock`
-at all, even if lock files from an earlier run are still on disk, because those are not the
-provenance of the plans this run actually refined.
-Refinement runs on top of already-settled per-dataset `Plan`s, so everything that determines
-*those* -- inputs, sample, blochwave, preprocess config, recipe -- is already pinned by the plan
-locks this run refined from. `refinement.lock` adds exactly what refinement itself contributes on
-top of that:
-
-- **`plan_lock_sha256s`** -- the hashes of the exact `plan.<stem>.lock` files this run refined
-  from, in `inputs.exp_data` order. A recorded fact about that run, not a live re-check: it doesn't
-  require the plan locks to still be present or still match to be verified.
-- **`refinement_config_digest`** -- the hash of the refinement-determining config (`steps`,
-  `optimizer`, `trainable`, `thickness_nn`, `split`; everything `dataset_config_digest` excludes
-  under `refinement` because it can't change a settled per-dataset `Plan` -- see the config-scope
-  split above).
-- **`code_version`** -- the build that produced this refinement.
-- **`refined_structure`/`refined_parameters`** -- content hashes of `refined_structure.cif` and
-  `refined_parameters.npz`, so the outputs themselves are pinned, not just the config that produced
-  them.
-
-Unlike the plan locks, `refinement.lock` is not a reuse gate -- there's no "reuse this refined
-structure if the config matches" path the way a preprocess checkpoint is reused. It exists purely
-as a verifiable provenance record: given a `refined_structure.cif`, `refinement.lock` states
-exactly which `Plan`s, which refinement config, and which code version produced it, and lets you
-confirm the file bytes haven't changed since.
+The lock files confirm the identity of the inputs, settings, preprocessing, and outputs. They do
+not guarantee identical floating-point results on different hardware.
