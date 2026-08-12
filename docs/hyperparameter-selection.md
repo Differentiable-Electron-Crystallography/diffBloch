@@ -17,7 +17,7 @@ they cannot silently drift from the data they describe:
 | Value | Source | Notes |
 |---|---|---|
 | Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). The wavelength is recorded to limited precision, so this recovers the operator-selected voltage exactly. |
-| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
+| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md). |
 | UB orientation matrix | `.cif_pets`, per rotation | Each rotation's UB supplies its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
 | Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
 | Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
@@ -34,17 +34,17 @@ Fixed sample properties (`diffBloch.config.schema.SampleConfig`).
 
 ## `blochwave`
 
-Bloch wave simulation hyperparameters.
+Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled. |
+| `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled -- the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix. |
 | `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
-| `dsg` | `0.0015` | Absolute excitation-error margin. |
+| `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `mosaicity` | `false` | Convert the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. |
-| `coupling_mode` | `"union"` | Beam-coupling method. See [Union coupling](#union-coupling). |
+| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. The legacy `{window: N}` form sets the width directly. |
+| `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
 | `union_max_new_beams_pct` | `0.01` | Threshold for adaptive splitting. See [Union coupling](#union-coupling). |
@@ -63,11 +63,7 @@ frame and the excitation-error half-range {math}`\Delta S_g` swept from the cent
 that frame. The reflection is retained when both conditions are satisfied:
 
 ```{math}
-\frac{|S_g|}{\Delta S_g} < rsg
-```
-
-```{math}
-\Delta S_g-|S_g| > dsg.
+\frac{|S_g|}{\Delta S_g} < rsg, \qquad \Delta S_g - |S_g| > dsg.
 ```
 
 `rsg` is dimensionless. It limits the reflection's central excitation error relative to its swept
@@ -79,10 +75,10 @@ beams included in the Bloch wave calculation.
 ### Union coupling
 
 Each virtual frame covers a small angular range of the crystal's rotation. To simulate its
-integrated intensity, diffBloch samples a rocking curve across that range.
-`rocking_curve_sampling` sets the number of samples. Each sample is a **tilt**: one crystal
-orientation within the virtual frame. The intensities calculated at all tilts are summed to give
-the simulated integrated intensity for that frame.
+integrated intensity, diffBloch samples a rocking curve across that range. `rocking_curve_sampling`
+sets the number of samples. Each sample is a tilt: one crystal orientation within the virtual
+frame. The intensities calculated at all tilts are summed to give the simulated integrated
+intensity for that frame.
 
 Changing the tilt changes every reflection's excitation error {math}`S_g`. At each tilt, beams are
 selected when {math}`|S_g| < sg_\mathrm{max}`. In `per_tilt` mode, diffBloch applies this test and
@@ -100,11 +96,20 @@ structure matrices are small or moderate in size.
 The combined beam set is larger than the set needed by any one tilt. Union mode therefore solves
 larger matrices and stores several of them on the GPU at once. When the matrices are already large,
 or GPU memory is nearly full, this cost can outweigh the benefit of batching. In that case,
-`coupling_mode: "per_tilt"` is likely to be faster and use less memory.
+`coupling_mode: "per_tilt"` is likely to be faster and use less memory. See
+[Devices and scaling](devices-and-scaling.md) for measured comparisons.
 
 With `union_adaptive: true`, diffBloch makes shorter groups where the beam set changes rapidly and
-longer groups where it remains stable. `union_max_new_beams_pct` controls when a group is split.
-With adaptive grouping disabled, `fixed_n_segments` sets the number of equal groups.
+longer groups where it remains stable: starting from one chunk spanning the whole rocking curve,
+each chunk's midpoint tilt is checked against the beam union already covered by its two endpoints,
+and the chunk is split in two and recursed into if the midpoint would add more than
+`union_max_new_beams_pct` of new beams beyond that union. Adaptive chunking costs more beam-set
+unions up front (to evaluate the split predicate) but generally solves fewer total beams than a
+fixed split sized conservatively enough to avoid under-coupling.
+
+With `union_adaptive: false`, `fixed_n_segments` sets the number of equal groups regardless of how
+much the beam set actually changes across them -- more predictable when a fixed, known chunk count
+is wanted instead.
 
 ## `preprocess`
 
@@ -221,6 +226,6 @@ thickness. Two situations call for it:
 Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
 integration geometry -- precession angles may differ between files), and the settled per-dataset
 plans are pooled in memory just before refinement. See
-[Inputs and outputs](inputs.md#multiple-datasets) for the mechanics (per-dataset checkpoints, the
+[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
 first-file authoritative cell, one-energy rule, rotation-index offsets) and
 [Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
