@@ -158,7 +158,7 @@ def _reproducibility_dir(root: Path) -> Path:
 
     Keeps ``root`` itself down to the handful of files someone actually reads (``experiment.yaml``,
     the input structure/experimental-data files, ``refined_structure.cif``,
-    ``refinement_report.txt``, the thickness-NN shape plot) -- everything else, including
+    ``refinement_report.txt``, the per-dataset thickness-NN shape plots) -- everything else, including
     ``experiment.lock`` (input-identity verification, not a generated output, but bookkeeping all
     the same), lives here instead: preprocess/refinement checkpoints and their locks, and the raw
     parameter/component ``.npz`` snapshots.

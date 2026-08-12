@@ -39,10 +39,6 @@ sample:
   mean_thickness_by_dataset:
     dataset_1.cif_pets: 400.0
     dataset_2.cif_pets: 800.0
-
-refinement:
-  thickness_nn:
-    enabled: false
 ```
 
 ## `blochwave`
@@ -210,6 +206,10 @@ Apparent-thickness neural network used by the default refinement path (`Thicknes
 | `max_thickness` | `2000.0` | Upper bound, Å, for the network's thickness output. |
 | `init_seed` | `0` | Random seed for the network's initial weights. |
 
+With `inputs.multi_dataset: true`, one network is trained per dataset, each scoped to its own
+rotations and normalizing its own tilt range; these fields configure every network identically
+(including `init_seed` — per-dataset seeds would make results depend on `exp_data` ordering).
+
 ## `inputs`
 
 Input file references, relative to the experiment directory only (`Inputs`).
@@ -236,8 +236,9 @@ geometry, and thickness seed. Two situations call for it:
 
 Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
 integration geometry -- precession angles may differ between files), and the settled per-dataset
-plans are pooled in memory just before refinement. See
-[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
+plans are pooled in memory just before refinement. The learned thickness model follows the same
+per-dataset shape: one `refinement.thickness_nn` network per file, reported per dataset. See
+[Inputs and outputs](inputs.md#multiple-datasets) for the mechanics (per-dataset checkpoints, the
 first-file authoritative cell, one-energy rule, rotation-index offsets) and
 [Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
 

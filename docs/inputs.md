@@ -59,15 +59,16 @@ inputs:
   exp_data:
     - crystal_1.cif_pets
     - crystal_2.cif_pets
-
-refinement:
-  thickness_nn:
-    enabled: false
 ```
 
 The rotations from all files are combined against one structure. Each dataset keeps its own
 orientations and thicknesses. The files must describe the same crystal and use the same electron
 energy. The first `.cif_pets` file supplies the unit cell used for the combined refinement.
+
+When the learned thickness model is enabled (`refinement.thickness_nn`, the default), each dataset
+trains its own network over its own tilt range — pooled datasets with overlapping tilt ranges are
+never forced onto one shared thickness-vs-alpha curve. The refinement report carries one
+`Thickness NN -- <ref>` section and one `thickness_nn_shape_<stem>.png` plot per dataset.
 
 ## Outputs
 
@@ -78,6 +79,7 @@ Running preprocessing or refinement adds results to the experiment directory:
 | `refined_structure.cif` | Refined crystal structure. |
 | `refinement_report.txt` | Final residuals, reflection counts, and refinement summary. |
 | `thickness_optim/` | Thickness-search plots when plotting is enabled. |
+| `thickness_nn_shape_<stem>.png` | Learned thickness curve per `.cif_pets` dataset, when the thickness network and plotting are enabled. |
 | `reproducibility/experiment.lock` | Record of the input files. |
 | `reproducibility/plan.<stem>.npz` | Saved preprocessing for each `.cif_pets` dataset. |
 | `reproducibility/plan.<stem>.lock` | Inputs and settings used for the saved preprocessing. |

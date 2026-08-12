@@ -117,7 +117,6 @@ def test_setup_datasets_seeds_each_dataset_with_its_configured_mean_thickness() 
             "b.cif_pets": 800.0,
         },
     }
-    raw["refinement"]["thickness_nn"]["enabled"] = False
     multi_config = ExperimentConfig.model_validate(raw)
 
     _, datasets = setup_datasets(structure, (record, record), multi_config)
@@ -239,7 +238,7 @@ def _multi_experiment(tmp_path: Path) -> Path:
         "exp_data": ["a.cif_pets", "b.cif_pets"],
         "multi_dataset": True,
     }
-    # thickness_nn defaults ON and is rejected for pooled experiments at config load.
+    # Disabled to keep these preprocess-focused tests off the (supported) per-dataset networks.
     base.setdefault("refinement", {})["thickness_nn"] = {"enabled": False}
     (exp / "experiment.yaml").write_text(yaml.safe_dump(base))
     lock = {
