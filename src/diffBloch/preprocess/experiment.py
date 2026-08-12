@@ -278,7 +278,10 @@ def setup_datasets(
             raise ValueError(
                 f"ignore_orientations excludes every PETS rotation of dataset {dataset_index}"
             )
-        integration = IntegrationGeometry(semiangle=record.integration_semiangle)
+        integration = IntegrationGeometry(
+            semiangle=record.integration_semiangle,
+            geometry=record.data_collection_geometry,
+        )
         mosaicity = resolve_dataset_mosaicity(
             config.blochwave.mosaicity,
             record,
