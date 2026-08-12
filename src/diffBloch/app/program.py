@@ -536,35 +536,50 @@ def refine_experiment(
     logger.report(cfg.to_declaration(integrations))
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
-    thickness_nn: ApparentThicknessNN | None = None
+    thickness_nns: tuple[ApparentThicknessNN, ...] = ()
     raw_alphas: np.ndarray | None = None
     if thickness_spec.enabled:
-        # Concatenated in inputs.exp_data order -- the order pool() numbers rotation_index in --
-        # so raw_alphas[rotation_index] resolves even with ignore gaps. ExperimentConfig rejects
-        # thickness_nn + multi_dataset at load time, so this is single-dataset today; the
-        # concatenation is already pooled-order-correct for the day the network learns a
-        # per-dataset input.
         records = _read_experimental_data(root, cfg)
         raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
-        thickness_nn = ApparentThicknessNN(
-            bounds=ThicknessBounds(
-                thickness_spec.min_thickness,
-                thickness_spec.max_thickness,
-            ),
-            normalized_alphas=_normalized_pets_alphas(raw_alphas),
-            form=thickness_spec.form,
-            sample_thickness=thickness_spec.sample_thickness,
-            num_samples=thickness_spec.num_samples,
-            init_seed=thickness_spec.init_seed,
-        )
+        bounds = ThicknessBounds(thickness_spec.min_thickness, thickness_spec.max_thickness)
+        if cfg.inputs.multi_dataset:
+            offsets = np.cumsum([0, *(record.n_rotations for record in records)])
+            thickness_nns = tuple(
+                ApparentThicknessNN(
+                    bounds=bounds,
+                    normalized_alphas=_normalized_pets_alphas(raw_alphas[start:end]),
+                    key=f"apparent_thickness[{dataset_ref}]",
+                    form=thickness_spec.form,
+                    sample_thickness=thickness_spec.sample_thickness,
+                    num_samples=thickness_spec.num_samples,
+                    init_seed=thickness_spec.init_seed,
+                    rotation_range=(start, end),
+                    label=dataset_ref,
+                )
+                for dataset_ref, start, end in zip(
+                    _exp_data_refs(cfg), offsets[:-1], offsets[1:], strict=True
+                )
+            )
+        else:
+            thickness_nns = (
+                ApparentThicknessNN(
+                    bounds=bounds,
+                    normalized_alphas=_normalized_pets_alphas(raw_alphas),
+                    form=thickness_spec.form,
+                    sample_thickness=thickness_spec.sample_thickness,
+                    num_samples=thickness_spec.num_samples,
+                    init_seed=thickness_spec.init_seed,
+                ),
+            )
         model = build_refinement_model(
             initial=initial,
-            components=(thickness_nn,),
+            components=thickness_nns,
             component_params={
                 thickness_nn.key: thickness_nn.initial_params(
                     dtype=initial.asu_positions.dtype,
                     device=initial.asu_positions.device,
                 )
+                for thickness_nn in thickness_nns
             },
         )
     else:
@@ -592,7 +607,7 @@ def refine_experiment(
         engine,
         result,
         validation_rotation_indices=validation_rotation_indices,
-        thickness_nn=thickness_nn,
+        thickness_nns=thickness_nns,
         raw_alphas=raw_alphas,
     )
     return result
@@ -604,7 +619,7 @@ def _report_refinement_outcome(
     result: ModelRefinementResult,
     *,
     validation_rotation_indices: frozenset[int],
-    thickness_nn: ApparentThicknessNN | None,
+    thickness_nns: tuple[ApparentThicknessNN, ...],
     raw_alphas: np.ndarray | None,
 ) -> None:
     """Emit the settled-result events the refinement loop itself cannot produce.
@@ -625,14 +640,26 @@ def _report_refinement_outcome(
                 is_validation=row.rotation_index in validation_rotation_indices,
             )
         )
-    if thickness_nn is not None and raw_alphas is not None:
-        logger.report(
-            thickness_nn.profile(
-                result.best_model.component_params[thickness_nn.key],
-                engine.orientations,
-                raw_alphas,
+    if raw_alphas is not None:
+        for thickness_nn in thickness_nns:
+            orientations = (
+                engine.orientations
+                if thickness_nn.rotation_range is None
+                else tuple(
+                    orientation
+                    for orientation in engine.orientations
+                    if thickness_nn.rotation_range[0]
+                    <= orientation.pattern.rotation_index
+                    < thickness_nn.rotation_range[1]
+                )
             )
-        )
+            logger.report(
+                thickness_nn.profile(
+                    result.best_model.component_params[thickness_nn.key],
+                    orientations,
+                    raw_alphas,
+                )
+            )
     logger.report(
         RefinementOutputsWritten(
             structure=result.artifacts["refined_structure"], artifacts=result.artifacts

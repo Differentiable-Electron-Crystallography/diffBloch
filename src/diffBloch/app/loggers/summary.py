@@ -106,7 +106,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
-    _profile: ThicknessProfile | None = field(default=None, init=False, repr=False)
+    _profiles: list[ThicknessProfile] = field(default_factory=list, init=False, repr=False)
     _started_at: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -127,7 +127,7 @@ class SummaryLogger:
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
         elif isinstance(event, ThicknessProfile):
-            self._profile = event
+            self._profiles.append(event)
         elif isinstance(event, RefinementOutputsWritten):
             self._write(event)
 
@@ -339,46 +339,49 @@ class SummaryLogger:
             block(validation)
 
     def _thickness_profile(self, lines: list[str], rule: Callable[[str], None]) -> None:
-        rule("Thickness NN")
-        profile = self._profile
-        if profile is None:
+        if not self._profiles:
+            rule("Thickness NN")
             lines.append(" enabled: no (preprocess-baked per-rotation thickness only)")
             return
-        lines.append(
-            f" enabled: yes ({profile.form}, bounds "
-            f"[{profile.min_thickness:g}, {profile.max_thickness:g}] A)"
-        )
-        lines.append("")
-        lines.append(
-            ascii_table(
-                ["Rotation", "alpha (degrees)", "Thickness (A)"],
-                [
-                    [str(index), f"{alpha:.4f}", f"{thickness:.2f}"]
-                    for index, alpha, thickness in zip(
-                        profile.rotation_indices,
-                        profile.alphas,
-                        profile.thicknesses,
-                        strict=True,
-                    )
-                ],
+        for profile in self._profiles:
+            title = "Thickness NN" if profile.label is None else f"Thickness NN -- {profile.label}"
+            rule(title)
+            lines.append(
+                f" enabled: yes ({profile.form}, bounds "
+                f"[{profile.min_thickness:g}, {profile.max_thickness:g}] A)"
             )
-        )
-        if not self.plot:
-            return
-        plot_path = self.path.parent / "thickness_nn_shape.png"
-        try:
-            from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
-
-            plot_thickness_nn_shape(
-                list(zip(profile.alphas, profile.thicknesses, strict=True)), plot_path
-            )
-            lines.append("")
-            lines.append(f" plot: {plot_path.name}")
-        except ModuleNotFoundError:
             lines.append("")
             lines.append(
-                " plot: skipped (matplotlib not installed -- see the diffBloch[plot] extra)"
+                ascii_table(
+                    ["Rotation", "alpha (degrees)", "Thickness (A)"],
+                    [
+                        [str(index), f"{alpha:.4f}", f"{thickness:.2f}"]
+                        for index, alpha, thickness in zip(
+                            profile.rotation_indices,
+                            profile.alphas,
+                            profile.thicknesses,
+                            strict=True,
+                        )
+                    ],
+                )
             )
+            if not self.plot:
+                continue
+            suffix = "" if profile.label is None else f"_{profile.label.replace('/', '_')}"
+            plot_path = self.path.parent / f"thickness_nn_shape{suffix}.png"
+            try:
+                from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
+
+                plot_thickness_nn_shape(
+                    list(zip(profile.alphas, profile.thicknesses, strict=True)), plot_path
+                )
+                lines.append("")
+                lines.append(f" plot: {plot_path.name}")
+            except ModuleNotFoundError:
+                lines.append("")
+                lines.append(
+                    " plot: skipped (matplotlib not installed -- see the diffBloch[plot] extra)"
+                )
 
     def _refined_structure(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path

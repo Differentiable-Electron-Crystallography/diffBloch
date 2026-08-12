@@ -188,6 +188,8 @@ class ApparentThicknessNN:
     sample_thickness: bool = False
     num_samples: int = 40
     init_seed: int = 0
+    rotation_range: tuple[int, int] | None = None
+    label: str | None = None
 
     def __post_init__(self) -> None:
         if self.form != "min_thickness":
@@ -198,6 +200,15 @@ class ApparentThicknessNN:
             raise ValueError("normalized_alphas must lie in [-1, 1]")
         if self.num_samples < 1:
             raise ValueError("num_samples must be >= 1")
+        if self.rotation_range is not None:
+            start, end = self.rotation_range
+            if start < 0 or end <= start:
+                raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+            if end - start != len(self.normalized_alphas):
+                raise ValueError(
+                    "rotation_range width must match len(normalized_alphas) "
+                    f"({end - start} != {len(self.normalized_alphas)})"
+                )
 
     def initial_params(
         self,
@@ -256,6 +267,7 @@ class ApparentThicknessNN:
             rotation_indices=tuple(indices),
             alphas=tuple(float(raw_alphas[index]) for index in indices),
             thicknesses=tuple(thicknesses),
+            label=self.label,
         )
 
     def forward_context(
@@ -279,9 +291,16 @@ class ApparentThicknessNN:
             raise ValueError(f"apparent thickness NN params tensors missing {missing!r}")
         w0 = params["layer0.weight"]
         source_index = orientation.pattern.rotation_index
-        if source_index < 0 or source_index >= len(self.normalized_alphas):
+        if self.rotation_range is not None:
+            start, end = self.rotation_range
+            if source_index < start or source_index >= end:
+                return ForwardContext(thickness=None)
+            local_index = source_index - start
+        else:
+            local_index = source_index
+        if local_index < 0 or local_index >= len(self.normalized_alphas):
             raise ValueError("source rotation index is outside normalized_alphas")
-        x = w0.new_tensor(self.normalized_alphas[source_index]).reshape(1, 1)
+        x = w0.new_tensor(self.normalized_alphas[local_index]).reshape(1, 1)
         x = torch.tanh(F.linear(x, w0, params["layer0.bias"]))
         x = torch.tanh(F.linear(x, params["layer1.weight"], params["layer1.bias"]))
         output = F.linear(x, params["layer2.weight"], params["layer2.bias"])
@@ -300,7 +319,7 @@ class ApparentThicknessNN:
             (len(self.normalized_alphas), self.num_samples),
             generator=generator,
             dtype=w0.dtype,
-        )[source_index].to(w0.device)
+        )[local_index].to(w0.device)
         thickness = F.softplus(mu + sigma * epsilon)
         return ForwardContext(thickness=thickness)
 

@@ -358,22 +358,19 @@ def test_multi_dataset_rejects_exp_data_paths_with_colliding_checkpoint_stems() 
         )
 
 
-def test_multi_dataset_rejects_the_default_on_thickness_nn_at_config_load() -> None:
-    """thickness_nn defaults ON; a pooled config must opt out explicitly, and fails fast if not."""
-    base = {
-        "name": "bad",
-        "inputs": {
-            "structure": "q.cif",
-            "exp_data": ["a.cif_pets", "b.cif_pets"],
-            "multi_dataset": True,
-        },
-    }
-    with pytest.raises(ValidationError, match="thickness_nn is not supported"):
-        ExperimentConfig.model_validate(base)
+def test_multi_dataset_accepts_default_thickness_nn() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "q",
+            "inputs": {
+                "structure": "q.cif",
+                "exp_data": ["a.cif_pets", "b.cif_pets"],
+                "multi_dataset": True,
+            },
+        }
+    )
 
-    ok = {**base, "name": "q", "refinement": {"thickness_nn": {"enabled": False}}}
-    cfg = ExperimentConfig.model_validate(ok)
-    assert cfg.refinement.thickness_nn.enabled is False
+    assert cfg.refinement.thickness_nn.enabled is True
 
 
 def test_dataset_checkpoint_stem_flattens_paths_and_drops_the_pets_suffix() -> None:

@@ -618,6 +618,7 @@ class ThicknessProfile:
     rotation_indices: tuple[int, ...]
     alphas: tuple[float, ...]
     thicknesses: tuple[float, ...]
+    label: str | None = None
 
     def __post_init__(self) -> None:
         lengths = {len(self.rotation_indices), len(self.alphas), len(self.thicknesses)}
