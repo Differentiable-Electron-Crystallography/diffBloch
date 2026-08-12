@@ -56,7 +56,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.15",
     "mypy>=1.10",
-    "types-pyyaml>=6.0",
+    "types-pyyaml>=6.0.12.20260724",
     "pre-commit>=3.7",
     # Sphinx docs: furo theme, MyST for the Markdown sources, autodoc+napoleon for the API reference.
     "sphinx>=7.4",
