@@ -9,11 +9,16 @@ license-files = ["LICENSE"]
 dependencies = [
     "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
     "gemmi>=0.7.5",
+    # Report plots are on by default (SummaryLogger.plot), so the renderer is not optional in
+    # practice: as an extra it left the default output silently degraded and its code untested in
+    # CI (`uv sync --dev` installs no extras). The wandb/comet SDKs below stay opt-in -- those are
+    # external services, not part of any default run.
+    "matplotlib>=3.7",
     "numpy>=2.5",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "scipy>=1.11",  # preprocess.steps.optimize_orientation: Nelder-Mead orientation search
-    "torch>=2.12.1",
+    "torch>=2.13.0",  # >=2.13.0: GHSA-rrmf-rvhw-rf47 (torch.jit.script memory corruption)
     # Scientific deps are added as their modules land:
     #   abtem -> core/scattering (electron form factors), wrapped behind a seam
 ]
@@ -23,7 +28,14 @@ dependencies = [
 # install the extra to use that backend. The core never imports these.
 wandb = ["wandb>=0.16"]
 comet = ["comet_ml>=3.0"]
-plot = ["matplotlib>=3.7"]
+
+[tool.uv]
+# Security floors for packages we do not depend on directly: wandb pulls gitpython, torch and
+# comet-ml pull setuptools. Pinned here so a future re-lock cannot drift back below the fix.
+constraint-dependencies = [
+    "gitpython>=3.1.58",  # 18 advisories through 3.1.57 (git option-injection / config-injection RCE)
+    "setuptools>=83.0.0",  # GHSA-h35f-9h28-mq5c (sdist MANIFEST.in exclusion bypass)
+]
 
 [project.scripts]
 diffbloch = "diffBloch.app.cli:main"

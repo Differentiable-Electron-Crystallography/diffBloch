@@ -103,8 +103,8 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--plot-thickness",
         action="store_true",
-        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search (requires "
-        "the 'diffBloch[plot]' extra); ORs with preprocess.thickness.plot in experiment.yaml, so "
+        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search; ORs with "
+        "preprocess.thickness.plot in experiment.yaml, so "
         "either turns it on. Defaults to '<inputs.structure's directory>/thickness_optim', "
         "override with --plot-thickness-dir",
     )

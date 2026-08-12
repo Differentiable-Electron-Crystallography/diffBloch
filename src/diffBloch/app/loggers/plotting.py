@@ -1,8 +1,9 @@
-"""Matplotlib plotting backend (the ``diffBloch[plot]`` extra).
+"""Matplotlib plotting backend.
 
-Confines the matplotlib dependency to this module, imported lazily on first use, mirroring
-``app.loggers.wandb``/``app.loggers.comet`` -- importing ``diffBloch.app.loggers`` never requires
-matplotlib to be installed.
+matplotlib is a core dependency (report plots are on by default), but it stays confined to this
+module and imported lazily on first use, as with ``app.loggers.wandb``/``app.loggers.comet``:
+importing ``diffBloch.app.loggers`` never pulls in a plotting stack, so a headless caller that
+attaches no plot sink pays nothing for it.
 """
 
 from __future__ import annotations

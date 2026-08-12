@@ -271,7 +271,6 @@ def test_summary_reports_the_thickness_profile_when_one_was_trained(tmp_path: Pa
     assert "alpha (degrees)" in text
     assert "12.5000" in text and "430.25" in text
 
-    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
     assert (tmp_path / "thickness_nn_shape_q.png").is_file()
     assert "plot: thickness_nn_shape_q.png" in text
 
@@ -290,7 +289,6 @@ def test_summary_reports_one_thickness_section_per_dataset(tmp_path: Path) -> No
     assert "Thickness NN -- sub/b.cif_pets" in text
     assert "430.25" in text and "210.00" in text
 
-    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
     # Filenames use the dataset checkpoint stem: path separators fold to "__", suffix drops.
     assert (tmp_path / "thickness_nn_shape_a.png").is_file()
     assert (tmp_path / "thickness_nn_shape_sub__b.png").is_file()
@@ -309,6 +307,29 @@ def test_summary_keeps_the_last_thickness_profile_reported_per_dataset(tmp_path:
     assert text.count("Thickness NN -- a.cif_pets") == 1
     assert "555.50" in text
     assert "430.25" not in text
+
+
+def test_summary_still_writes_when_the_plot_renderer_cannot_be_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """matplotlib is a core dependency, so this is broken-install insurance, not a supported mode.
+
+    The report is written on the run's terminal event, potentially hours in; a rendering import
+    that fails must cost the plot, not the whole report.
+    """
+
+    def unimportable(*args: object, **kwargs: object) -> None:
+        raise ModuleNotFoundError("No module named 'matplotlib'")
+
+    monkeypatch.setattr("diffBloch.app.loggers.plotting.plot_thickness_nn_shape", unimportable)
+
+    text = _run(tmp_path, rotations=(_rotation(0),), profiles=(_profile("q.cif_pets"),))
+
+    assert "plot: skipped (matplotlib is not importable in this environment)" in text
+    assert not (tmp_path / "thickness_nn_shape_q.png").exists()
+    # The section itself survives: the table is rendered from the event, not from the renderer.
+    assert "Thickness NN -- q.cif_pets" in text
+    assert "430.25" in text
 
 
 def test_thickness_profile_channel_names_its_dataset() -> None:
