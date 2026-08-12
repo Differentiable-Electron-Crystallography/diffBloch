@@ -21,7 +21,7 @@ The main controls governing simulation convergence are:
 
 | Control | What it changes |
 |---|---|
-| `g_max` | Largest reflection {math}`g` vector simulated. Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
+| `g_max` | Largest reflection {math}`g` vector simulated. Off-diagonal structure factors included in structure matrix extend to {math}`2g_\mathrm{max}`. |
 | `sg_max` | A beam is simulated at a sampled orientation when {math}`|S_g| < sg_\mathrm{max}`. |
 | `rocking_curve_sampling` | Number of crystal orientations sampled across each `.cif_pets` virtual frame and summed to give its integrated intensity. |
 
@@ -44,8 +44,7 @@ I(s_g) \propto \operatorname{sinc}^2(\pi t s_g),
 
 where {math}`t` is thickness and {math}`s_g` is excitation error. Its width is therefore inversely
 proportional to thickness: a thinner crystal produces a broader rocking curve. If the actual experimental crystal
-thickness is much thicker than the value used for convergence testing, preserving the same angular sampling requires
-more tilt samples. The user should therefore consider performing convergence testing again if thickness optimization returns a substantially different value.
+thickness is different than the value used for convergence testing, preserving the same angular sampling may requires a different number of tilt samples. The user should therefore consider performing convergence testing again if thickness optimization returns a substantially different value than was used in initial convergence test.
 
 ## Stopping the sweep
 
