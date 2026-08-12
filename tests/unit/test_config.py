@@ -45,7 +45,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
-    assert cfg.refinement.optimizer.name == "lbfgs"
+    assert cfg.refinement.optimizer.name == "adam"
     assert cfg.loss_metrics.residual == "wr2"
     assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
     assert cfg.refinement.split.train_test is False

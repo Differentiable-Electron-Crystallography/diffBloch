@@ -237,7 +237,7 @@ class LossMetricsConfig(_StrictConfig):
 class OptimizerConfig(_StrictConfig):
     """Explicit optimizer backend for a refinement stage (matches ``OptimizerName``)."""
 
-    name: Literal["lbfgs", "adam", "adamw"] = "lbfgs"
+    name: Literal["lbfgs", "adam", "adamw"] = "adam"
     lr: float = 1e-3
 
 
