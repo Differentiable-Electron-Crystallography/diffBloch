@@ -67,7 +67,7 @@ training objective.
 | `refined_structure.cif` | Best constrained coordinates, occupancies, and ADPs in CIF form. |
 | `refinement_report.txt` | Best epoch metrics, which objective selected it, and the compact HKL count. |
 | `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
-| `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. |
+| `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. Thickness-network tensors are stored per dataset under `apparent_thickness[<ref>]__<parameter>` names. |
 | `plan.<stem>.npz` / `plan.<stem>.lock` | Settled preprocessing plan and its provenance lock, one pair per `inputs.exp_data` file. |
 | `refinement.lock` | Binds the refined outputs to every dataset's plan lock (`plan_lock_sha256s`), config digest, and code version; written only when every plan lock exists. |
 

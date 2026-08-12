@@ -155,7 +155,6 @@ def test_dataset_config_digest_scopes_per_dataset_mean_thickness() -> None:
         "multi_dataset": True,
     }
     raw["sample"]["mean_thickness_by_dataset"] = {EXP_REF: 400.0, "b.cif_pets": 800.0}
-    raw["refinement"]["thickness_nn"]["enabled"] = False
     pooled = cfg.__class__.model_validate(raw)
     changed_raw = pooled.model_dump()
     changed_raw["sample"]["mean_thickness_by_dataset"]["b.cif_pets"] = 900.0

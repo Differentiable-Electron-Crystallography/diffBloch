@@ -101,7 +101,6 @@ def test_multi_dataset_mean_thicknesses_are_keyed_by_exp_data() -> None:
             "exp_data": ["a.cif_pets", "b.cif_pets"],
             "multi_dataset": True,
         },
-        "refinement": {"thickness_nn": {"enabled": False}},
     }
     cfg = ExperimentConfig.model_validate(
         {
@@ -151,7 +150,6 @@ def test_multi_dataset_mean_thicknesses_must_be_finite() -> None:
             "exp_data": ["a.cif_pets", "b.cif_pets"],
             "multi_dataset": True,
         },
-        "refinement": {"thickness_nn": {"enabled": False}},
     }
 
     with pytest.raises(ValidationError, match="finite and positive"):
@@ -288,8 +286,6 @@ def test_multi_dataset_true_accepts_a_list_of_two_or_more_paths() -> None:
                 "exp_data": ["a.cif_pets", "b.cif_pets"],
                 "multi_dataset": True,
             },
-            # required opt-out: thickness_nn defaults ON and is unsupported for pooled experiments
-            "refinement": {"thickness_nn": {"enabled": False}},
         }
     )
     assert cfg.inputs.exp_data == ["a.cif_pets", "b.cif_pets"]
