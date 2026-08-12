@@ -65,7 +65,7 @@ def test_integration_geometry_defaults_and_validation() -> None:
 
 def test_beam_selection_defaults() -> None:
     selection = BeamSelection()
-    assert selection.rsg == 0.9
+    assert selection.rsg == 0.66
     assert selection.dsg == 0.0015
     assert selection.integration == IntegrationGeometry()  # the shared integration geometry
 

@@ -16,10 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.losses import (
-    least_squares_scores,
     rbragg_loss,
     robs_scores,
-    weighted_mse_loss,
     wr2_loss,
     wr2_scores,
 )
@@ -49,6 +47,7 @@ from diffBloch.specs import (
 _NELDER_MEAD_DEFAULTS = NelderMeadSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
 _THICKNESS_NN_DEFAULTS = ApparentThicknessNetwork()
+_BEAM_SELECTION_DEFAULTS = BeamSelection()
 
 
 class _StrictConfig(BaseModel):
@@ -65,20 +64,8 @@ class _StrictConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class SolverConfig(_StrictConfig):
-    """Which dynamical solver to use for each phase.
-
-    Both fields are typed as the solver's own :data:`~diffBloch.core.solver.SolverMethod` literal (the
-    single source of truth), so an unknown method fails fast at config load rather than deep in the
-    forward model.
-    """
-
-    refine: SolverMethod = "matrix_exp"  # gradient-safe default for the refinement (backprop) path
-    inference: SolverMethod = "matrix_exp"
-
-
 class BlochwaveConfig(_StrictConfig):
-    """Numerical-accuracy controls, frozen into the simulation spec.
+    """The beam-selection, coupling, and dynamical-solver settings for the Bloch-wave simulation.
 
     The structure-factor support grid is *not* a config field: it is derived as ``2x`` the
     solve cutoff (``g_max``), because a beam set bounded by ``|g| <= cutoff`` produces ``F(g - h)`` terms
@@ -92,10 +79,13 @@ class BlochwaveConfig(_StrictConfig):
     ``mosaicity`` is the :class:`Mosaicity` reduction.
     """
 
-    solver: SolverConfig = Field(default_factory=SolverConfig)
+    # One solver for every phase (preprocessing search, refinement, and inference/scoring) --
+    # typed as the solver's own SolverMethod literal (the single source of truth), so an unknown
+    # method fails fast at config load rather than deep in the forward model.
+    solver: SolverMethod = "matrix_exp"
     absorption: bool = False
-    rsg: float = 0.9
-    dsg: float = 0.0015
+    rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
+    dsg: float = _BEAM_SELECTION_DEFAULTS.dsg
     rocking_curve_sampling: int = 42
     mosaicity: Mosaicity = Field(default_factory=Mosaicity)
     fixed_n_segments: int = 12
@@ -147,9 +137,7 @@ class BlochwaveConfig(_StrictConfig):
         self.to_policy()
         self.to_orientation_selection()
         self.to_absorption()
-        if self.absorption and (
-            self.solver.refine == "bloch_eigen" or self.solver.inference == "bloch_eigen"
-        ):
+        if self.absorption and self.solver == "bloch_eigen":
             raise ValueError("absorption requires the non-Hermitian-safe 'matrix_exp' solver")
         return self
 
@@ -208,13 +196,12 @@ class LossMetricsConfig(_StrictConfig):
     are Python/API composition, not config).
     """
 
-    residual: Literal["wr2", "least_squares", "robs"] = "wr2"
+    residual: Literal["wr2", "robs"] = "wr2"
 
     def to_loss(self) -> LossFn:
         """Parse the residual into the scalar ``LossFn`` the gradient refinement minimises."""
         return {
             "wr2": wr2_loss,
-            "least_squares": weighted_mse_loss,
             "robs": rbragg_loss,
         }[self.residual]
 
@@ -226,7 +213,6 @@ class LossMetricsConfig(_StrictConfig):
         """
         return {
             "wr2": wr2_scores,
-            "least_squares": least_squares_scores,
             "robs": robs_scores,
         }[self.residual]
 
@@ -402,20 +388,14 @@ class PreprocessConfig(_StrictConfig):
 
     optimize_orientation: bool = True
     optimize_thickness: bool = True
-    # Fitting stage order when both are enabled: orientation then thickness (default) fits
-    # orientation against the seed thickness, then thickness against the fitted orientation;
-    # "thickness_first" reverses that, fitting thickness against the seed orientation first.
-    stage_order: Literal["orientation_first", "thickness_first"] = "orientation_first"
+    # Fitting stage order when both are enabled: thickness then orientation (default) fits
+    # thickness against the seed orientation, then orientation against the fitted thickness;
+    # "orientation_first" reverses that, fitting orientation against the seed thickness first.
+    stage_order: Literal["orientation_first", "thickness_first"] = "thickness_first"
     orientation: OrientationOptimizationConfig = Field(
         default_factory=OrientationOptimizationConfig
     )
     thickness: ThicknessOptimizationConfig = Field(default_factory=ThicknessOptimizationConfig)
-    # Path (relative to the experiment directory) to a 'Rotation Index'/'Orientation Matrix' CSV
-    # that overwrites every candidate's orientation before the recipe's fitting steps run -- see
-    # diffBloch.preprocess.import_orientations. None (default) skips the import; optimize_orientation
-    # still controls whether the search refines from the imported seed or is skipped so the CSV's
-    # orientations are used as-is. The CLI's --orientations-csv flag overrides this when given.
-    orientations_csv: str | None = None
 
 
 def dataset_checkpoint_stem(ref: str) -> str:

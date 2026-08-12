@@ -162,8 +162,9 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     # Step wide enough to cross the intermediate count plateaus (the seed admits beams in bands as
     # the window widens: 15 -> 39 -> 43); the sweep then saturates and the trailing nulls settle it
     # on the fully-selected beam set.
+    selection = BeamSelection(rsg=0.9, integration=IntegrationGeometry(semiangle=0.68))
     step = converge_beams(
-        BeamSelection(integration=IntegrationGeometry(semiangle=0.68)),
+        selection,
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
         step=0.6,
@@ -171,8 +172,10 @@ def test_converge_beams_widens_the_window_until_the_pattern_saturates() -> None:
     converged = step(seed)
 
     # It widened past the starting selection, all the way to the fully-reachable (saturated) set.
-    started = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=0.68)))(seed)
-    saturated = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=5.0)))(seed)
+    started = select_beams(selection)(seed)
+    saturated = select_beams(
+        BeamSelection(rsg=selection.rsg, integration=IntegrationGeometry(semiangle=5.0))
+    )(seed)
     assert beam_count(started) < beam_count(converged) == beam_count(saturated)
 
 
@@ -181,16 +184,19 @@ def test_converge_beams_fine_step_stops_early_at_an_intermediate_plateau() -> No
     # Faithful first-dip stop is step-sensitive: too fine a step lets the consecutive-sim R-factor
     # dip below threshold on an intermediate count plateau, stopping short of the saturated set.
     # This is the documented discrete-plateau sensitivity (managed by step choice, not patience).
+    selection = BeamSelection(rsg=0.9, integration=IntegrationGeometry(semiangle=0.68))
     step = converge_beams(
-        BeamSelection(integration=IntegrationGeometry(semiangle=0.68)),
+        selection,
         refinement,
         ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=20),
         step=0.06,
     )
     converged = step(seed)
 
-    started = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=0.68)))(seed)
-    saturated = select_beams(BeamSelection(integration=IntegrationGeometry(semiangle=5.0)))(seed)
+    started = select_beams(selection)(seed)
+    saturated = select_beams(
+        BeamSelection(rsg=selection.rsg, integration=IntegrationGeometry(semiangle=5.0))
+    )(seed)
     assert beam_count(started) < beam_count(converged) < beam_count(saturated)
 
 

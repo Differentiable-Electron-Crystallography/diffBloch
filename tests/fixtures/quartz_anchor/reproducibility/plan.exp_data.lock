@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "01c04b0bd39f922628405b9ab7e99818f0a289f719a00cb54df8d7f7f4f57485",
-  "code_version": "0.2.0+g8535919.dirty",
+  "config_digest": "eec438debd359fe0ce6d8b7cf3ae6d6aa222ad6a563d6faf5ae14787f8f14008",
+  "code_version": "0.2.0+ga386ae0.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",

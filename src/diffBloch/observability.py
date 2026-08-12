@@ -253,8 +253,8 @@ class OrientationOptimized:
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
     PETS rotation index, ``score`` the final orientation's value under ``residual`` -- the
-    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"least_squares"``/
-    ``"robs"``) that produced it, carried alongside so a consumer can label the number correctly
+    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
+    it, carried alongside so a consumer can label the number correctly
     (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``) rather
     than a generic, misleading ``wr2`` field under a different residual. ``n_trials`` the number of
     trial orientations the search scored, ``n_passes`` scipy's reported iteration count (the
@@ -357,8 +357,8 @@ class ThicknessOptimized:
     ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationOptimized` this makes it a
     progress stream rather than a silent block: ``rotation_index`` is the original zero-based PETS
     rotation index, ``score`` the baked thickness's value under ``residual`` -- the
-    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"least_squares"``/
-    ``"robs"``) that produced it, carried alongside so a consumer can label the number correctly
+    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
+    it, carried alongside so a consumer can label the number correctly
     (:attr:`measurements` keys on it directly) rather than a generic, misleading ``wr2`` field
     under a different residual, and ``thickness`` that winning candidate (Angstrom).
     ``candidate_thicknesses``/``candidate_score`` carry the whole scored grid (same order, one

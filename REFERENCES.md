@@ -1,6 +1,6 @@
-# References 
+# References
 
-diffBloch stands on published science and several open-source projects. This file attempts to record all relevant sources used throughout the codebase. 
+diffBloch stands on published science and several open-source projects. This file attempts to record all relevant sources used throughout the codebase.
 
 
 
@@ -9,17 +9,17 @@ diffBloch stands on published science and several open-source projects. This fil
   densities and electrostatic potentials for neutral atoms that obey all physical constraints.*
   **Acta Crystallographica A70(6), 636–649.** DOI: [10.1107/S205327331401643X](https://doi.org/10.1107/S205327331401643X)
   — open access ([PDF](https://nano.uantwerpen.be/nanorefs/pdfs/OA_10.1107_S205327331401643X.pdf)).
-  
+
 
 - **Dynamical electron diffraction (Bloch-wave method).**
   Spence, J. C. H. & Zuo, J. M. (1992). *Electron Microdiffraction.* Plenum Press, New York.
-  
+
 
 - **Bloch-wave matrix-exponential propagation (GPU-accelerated).**
   Pennington, R. S., Wang, F. & Koch, C. T. (2014). *Stacked-Bloch-wave electron diffraction
   simulations using GPU acceleration.* **Ultramicroscopy 141, 32–37.**
   <https://www.sciencedirect.com/science/article/pii/S0304399114000485>
-  
+
 
 - **Dynamical refinement of 3D electron diffraction data (rocking-curve integration framework).**
   Palatinus, L., Petříček, V. & Corrêa, C. A. (2015). *Structure refinement using precession electron
@@ -28,13 +28,13 @@ diffBloch stands on published science and several open-source projects. This fil
   [10.1107/S2053273315001266](https://doi.org/10.1107/S2053273315001266); with the companion tests
   paper Palatinus, L. et al. (2015). *…: tests on experimental data.* **Acta Crystallographica B71,
   740–751.** DOI: [10.1107/S2052520615017023](https://doi.org/10.1107/S2052520615017023).
-  
+
 
 
 - **Orientation refinement (hexagonal modified-simplex search).**
   Palatinus, L., Jacob, D., Cuvillier, P., Klementová, M., Sinkler, W. & Marks, L. D. (2013).
   *Structure refinement from precession electron diffraction data.* **Acta Crystallographica A69,
-  171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X). 
+  171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X).
 
 
 ## Software we depend on, extract from, or verify against

@@ -151,13 +151,9 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     cfg = load_config(LOCKED / "experiment.yaml")
     base = dataset_config_digest(cfg, exp_data=EXP_REF)
 
-    def with_solver(**update: object) -> object:
+    def with_solver(method: str) -> object:
         return cfg.model_copy(
-            update={
-                "blochwave": cfg.blochwave.model_copy(
-                    update={"solver": cfg.blochwave.solver.model_copy(update=update)}
-                )
-            }
+            update={"blochwave": cfg.blochwave.model_copy(update={"solver": method})}
         )
 
     def with_refinement(**update: object) -> object:
@@ -166,13 +162,6 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     # excluded -- cannot alter the per-dataset preprocess Plan, so must not restale the checkpoint
     assert (
         dataset_config_digest(cfg.model_copy(update={"name": "different"}), exp_data=EXP_REF)
-        == base
-    )
-    assert (
-        dataset_config_digest(
-            with_solver(inference=_other_method(cfg.blochwave.solver.inference)),
-            exp_data=EXP_REF,
-        )
         == base
     )
     assert (
@@ -193,9 +182,7 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     )
     # included -- determine the settled Plan, so a change must restale
     assert (
-        dataset_config_digest(
-            with_solver(refine=_other_method(cfg.blochwave.solver.refine)), exp_data=EXP_REF
-        )
+        dataset_config_digest(with_solver(_other_method(cfg.blochwave.solver)), exp_data=EXP_REF)
         != base
     )
     # included -- objective drives optimize_orientation/optimize_thickness's search

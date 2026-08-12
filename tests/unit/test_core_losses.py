@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from diffBloch.core.losses import l1, mse, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.losses import l1, mse, rbragg, w_rbragg
 from diffBloch.core.products import intensities
 
 
@@ -20,11 +20,6 @@ def _oracle_mse(sim, exp, sigmas=None):
 
 def _oracle_l1(sim, exp, sigmas=None):
     return torch.mean(torch.abs(sim - exp), dim=-1)
-
-
-def _oracle_weighted_mse(sim, exp, sigmas):
-    weight = 1 / sigmas**2
-    return torch.sum(weight * (sim - exp) ** 2, dim=-1)
 
 
 def _oracle_rbragg_abs(sim, exp, sigmas):
@@ -87,11 +82,6 @@ def test_l1_matches_oracle(_intensity_pair) -> None:
     assert torch.allclose(l1(calc, obs), _oracle_l1(calc, obs))
 
 
-def test_weighted_mse_matches_oracle(_intensity_pair) -> None:
-    calc, obs, sigmas = _intensity_pair
-    assert torch.allclose(weighted_mse(calc, obs, sigmas), _oracle_weighted_mse(calc, obs, sigmas))
-
-
 def test_rbragg_matches_oracle(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
     assert torch.allclose(rbragg(calc, obs, sigmas), _oracle_rbragg_abs(calc, obs, sigmas))
@@ -152,4 +142,4 @@ def test_loss_shape_mismatch_raises(_intensity_pair) -> None:
     with pytest.raises(ValueError, match="same shape"):
         mse(calc, obs[:, :3])
     with pytest.raises(ValueError, match="sigmas must have shape"):
-        weighted_mse(calc, obs, sigmas[:, :3])
+        rbragg(calc, obs, sigmas[:, :3])

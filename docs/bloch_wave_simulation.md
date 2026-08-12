@@ -45,7 +45,7 @@ F_{\mathbf{g}} = \frac{1}{\Omega}\sum_j f^e_j(s)\,T_j(\mathbf{h})\,O_j\,
 \exp(2\pi i\,\mathbf{h}\cdot\mathbf{r}_j),
 ```
 
-diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using the Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`. 
+diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using the Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`.
 
 These values may then be converted to {math}`U_{\mathbf{g}}` using:
 
@@ -54,7 +54,7 @@ U_{\mathbf{g}} = \gamma\,\frac{F_{\mathbf{g}}}{\pi\Omega} = \frac{2m|e|V_{\mathb
 ```
 
 with {math}`\gamma` the relativistic mass factor, {math}`m` the (relativistic) electron mass,
-{math}`e` the elementary charge, and {math}`h` Planck's constant. 
+{math}`e` the elementary charge, and {math}`h` Planck's constant.
 
 
 ## The Bloch wave formalism

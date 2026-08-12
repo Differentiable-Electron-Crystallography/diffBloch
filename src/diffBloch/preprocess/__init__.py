@@ -83,7 +83,6 @@ from diffBloch.preprocess.steps.coverage import (
     plan_coverage,
 )
 from diffBloch.preprocess.steps.frames import select_finite_loss_frames, select_frames
-from diffBloch.preprocess.steps.import_orientations import import_orientations
 from diffBloch.preprocess.steps.mosaicity import mosaicity
 from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
 from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
@@ -134,7 +133,6 @@ __all__ = [
     "cover_beams",
     "optimize_orientation",
     "optimize_thickness",
-    "import_orientations",
     "fork",
     "from_experiment",
     "goniometer_rotation",
