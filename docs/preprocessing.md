@@ -3,7 +3,7 @@
 Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
 therefore determines this experimental metadata before refining the structure and stores it in a `Plan`.
 
-PETS2 reduces continuous-rotation data into overlapping **virtual frames**
+Continuous-rotation data is recorded in the `.cif_pets` file as overlapping **virtual frames**
 ([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
 given reflection can appear in several neighbouring frames, but should only be fully integrated in
 one of them -- `rsg`/`dsg` (see [`blochwave`](hyperparameter-selection.md#blochwave))
@@ -13,7 +13,7 @@ tilt sub-orientations and sums their simulated intensities.
 
 ## Orientation
 
-PETS2 supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
+The `.cif_pets` file supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
 cell and maps integer reflection indices {math}`(h,k,l)` to reciprocal-space vectors. The matrix
 {math}`U` places that reciprocal basis in the laboratory coordinate system. Their product {math}`UB`
 therefore maps a reflection index directly into the measured laboratory geometry.
@@ -245,6 +245,13 @@ With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity in degr
 \Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N-1}, \qquad
 w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
+
+{math}`\theta_{\mathrm{semi}}` is the rocking-curve integration semiangle, the tilt half-width
+around each orientation's nominal angle. {math}`N` is `rocking_curve_sampling`, the number of tilt
+samples spanning that full range. {math}`\Delta\theta` is the resulting angular spacing between
+adjacent tilt samples. {math}`m` is the apparent mosaicity in degrees read from `.cif_pets`.
+{math}`w` is the mosaicity window, the number of adjacent tilt samples averaged together, rounded
+to the nearest integer.
 
 The calculated rocking curve is averaged over that window before integration. A width of zero or
 one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
