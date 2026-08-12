@@ -134,7 +134,8 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
   {math}`\psi_{\mathbf{g}}(t) = \sum_i C_0^{(i)-1}C_{\mathbf{g}}^{(i)}\exp(2\pi i\gamma^{(i)}t)` —
   the classical closed-form Bloch wave solution, cheap once diagonalised.
 - **`matrix_exp`** evaluates the matrix exponential directly, without an intermediate
-  eigendecomposition. It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
+  eigendecomposition ([Pennington, Wang & Koch, 2014](https://www.sciencedirect.com/science/article/pii/S0304399114000485)).
+  It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
   whenever `absorption: true` adds an imaginary component to {math}`A`) is numerically unstable to
   differentiate through, so `bloch_eigen` is rejected outright when absorption is enabled.
 
