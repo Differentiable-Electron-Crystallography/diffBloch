@@ -16,6 +16,7 @@ from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
     goniometer_rotation,
+    hexagonal_tilt,
     orientation_basis,
     orientation_matrices,
     rocking_curve_tilts,
@@ -122,6 +123,21 @@ def test_rocking_curve_tilts_unit_sampling_is_the_identity() -> None:
     assert np.allclose(rocking_curve_tilts(1.0, 1), np.eye(3)[None])
 
 
-def test_rocking_curve_tilts_reject_unimplemented_geometry() -> None:
-    with pytest.raises(NotImplementedError, match="precession"):
-        rocking_curve_tilts(1.0, 42, geometry="precession")
+def test_precession_tilts_sample_the_fixed_angle_cone() -> None:
+    tilts = rocking_curve_tilts(1.0, 4, geometry="precession")
+    assert tilts.shape == (4, 3, 3)
+    assert np.allclose(np.linalg.det(tilts), 1.0)
+    assert np.allclose(tilts @ np.swapaxes(tilts, 1, 2), np.eye(3))
+    assert np.allclose(
+        tilts,
+        np.stack([hexagonal_tilt(azimuth, 1.0) for azimuth in (0.0, 90.0, 180.0, 270.0)]),
+    )
+
+
+def test_precession_unit_sampling_retains_the_cone_angle() -> None:
+    # Unlike continuous rotation, one precession sample is the phi=0 cone orientation, matching
+    # the legacy precession generator rather than silently turning integration off.
+    assert np.allclose(
+        rocking_curve_tilts(1.0, 1, geometry="precession"),
+        hexagonal_tilt(0.0, 1.0)[None],
+    )

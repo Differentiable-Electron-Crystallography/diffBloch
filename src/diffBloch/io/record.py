@@ -196,6 +196,10 @@ class ExperimentalRecord(BaseModel):
     cell_parameters: FloatArray
     cell_parameters_su: FloatArray
     wavelength: float
+    # PETS2 records the acquisition mode in the free-text measurement-details block. The
+    # ``_diffrn_zone_axis_precession_angle`` column is used for the integration semi-angle in both
+    # modes, so its name alone cannot distinguish continuous rotation from precession.
+    data_collection_geometry: Literal["continuous_rotation", "precession"] = "continuous_rotation"
     # PETS2's own processing-resolution cutoff (Angstrom^-1), parsed from the free-text
     # _diffrn_measurement_details block when present; None if that field is absent or the PETS
     # version that wrote this file doesn't record it (a manual/config g_max is then the only option).
