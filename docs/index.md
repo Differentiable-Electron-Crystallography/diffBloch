@@ -37,6 +37,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 | [Devices and scaling](devices-and-scaling.md) | CPU and GPU execution, memory controls, and refinement profiling. |
 | [Reproducibility](reproducibility.md) | Records identifying the inputs and preprocessing used for a refinement. |
 | [Examples](examples.md) | Runnable experiments included with diffBloch. |
+| [Publications and references](publications-and-references.md) | Publications using diffBloch and the sources the codebase draws on. |
 
 ## Quickstart
 
@@ -92,6 +93,7 @@ refinement.md
 devices-and-scaling.md
 reproducibility.md
 examples.md
+publications-and-references.md
 ```
 
 ```{toctree}
