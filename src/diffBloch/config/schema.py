@@ -507,17 +507,9 @@ class ExperimentConfig(_StrictConfig):
     refinement: RefinementConfig = Field(default_factory=RefinementConfig)
 
     @model_validator(mode="after")
-    def _multi_dataset_supported_refinement(self) -> ExperimentConfig:
-        # Fail at config load, not after the (potentially hours-long) preprocess: the thickness
-        # network keys only on each rotation's normalized alpha, so pooled datasets with
-        # overlapping tilt ranges would be forced onto one shared thickness-vs-alpha curve.
-        # thickness_nn defaults ON, so a pooled experiment must opt out explicitly.
-        if self.inputs.multi_dataset and self.refinement.thickness_nn.enabled:
-            raise ValueError(
-                "refinement.thickness_nn is not supported with inputs.multi_dataset (the network "
-                "cannot represent per-dataset thickness; that is future work) -- set "
-                "refinement.thickness_nn.enabled: false to pool datasets"
-            )
+    def _multi_dataset_cross_checks(self) -> ExperimentConfig:
+        # thickness_nn needs no gate here: refinement builds one network per dataset, so pooled
+        # experiments are supported with the default config.
         per_dataset = set(self.sample.mean_thickness_by_dataset)
         if per_dataset:
             if not self.inputs.multi_dataset or not isinstance(self.inputs.exp_data, list):

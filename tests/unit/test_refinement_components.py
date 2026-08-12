@@ -125,6 +125,43 @@ def test_apparent_thickness_nn_validates_legacy_settings() -> None:
         )
 
 
+def test_apparent_thickness_nn_can_be_scoped_to_one_dataset() -> None:
+    engine = _engine()
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(-1.0, 1.0),
+        rotation_range=(5, 7),
+        key="apparent_thickness[a.cif_pets]",
+        label="a.cif_pets",
+    )
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+    inside = dataclasses.replace(
+        engine.orientations[0],
+        pattern=dataclasses.replace(engine.orientations[0].pattern, rotation_index=5),
+    )
+    outside = dataclasses.replace(
+        engine.orientations[0],
+        pattern=dataclasses.replace(engine.orientations[0].pattern, rotation_index=2),
+    )
+
+    assert (
+        component.forward_context(params, rotation_index=5, orientation=inside).thickness
+        is not None
+    )
+    assert (
+        component.forward_context(params, rotation_index=2, orientation=outside).thickness is None
+    )
+
+
+def test_apparent_thickness_nn_rejects_mismatched_dataset_range() -> None:
+    with pytest.raises(ValueError, match="rotation_range width"):
+        ApparentThicknessNN(
+            bounds=ThicknessBounds(200.0, 800.0),
+            normalized_alphas=(0.0,),
+            rotation_range=(5, 7),
+        )
+
+
 def test_apparent_thickness_nn_legacy_mean_is_differentiable() -> None:
     engine = _engine()
     component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,))
