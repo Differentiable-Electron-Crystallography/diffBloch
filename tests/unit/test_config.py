@@ -51,9 +51,11 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.split.train_test is False
     assert cfg.refinement.split.val_frac == 0.2
     assert cfg.blochwave.ignore_orientations == ()
+    assert cfg.blochwave.rsg == 0.66
     assert cfg.blochwave.to_absorption() == Absorption()
     assert cfg.preprocess.optimize_orientation is True
     assert cfg.preprocess.optimize_thickness is True
+    assert cfg.preprocess.stage_order == "thickness_first"
 
 
 def test_solver_method_must_be_a_known_method() -> None:
@@ -62,6 +64,17 @@ def test_solver_method_must_be_a_known_method() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):
         ExperimentConfig.model_validate({**base, "blochwave": {"solver": "nope"}})
+
+
+def test_removed_nested_solver_config_is_rejected() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="Input should be|Extra"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "blochwave": {"solver": {"refine": "matrix_exp", "inference": "matrix_exp"}},
+            }
+        )
 
 
 def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
@@ -335,6 +348,8 @@ def test_data_split_config_rejects_val_frac_outside_zero_one(val_frac: float) ->
 def test_loss_metrics_rejects_unimplemented_residual() -> None:
     with pytest.raises(ValidationError):
         LossMetricsConfig(residual="poisson_nll")  # deferred: no LossFn
+    with pytest.raises(ValidationError):
+        LossMetricsConfig(residual="least_squares")  # removed residual, not optimizer backend
 
 
 def test_optimizer_rejects_deferred_backend() -> None:
@@ -537,6 +552,14 @@ def test_numerics_rejects_removed_integration_config() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="[Ee]xtra"):
         ExperimentConfig.model_validate({**base, "blochwave": {"integration": {"semiangle": 1.0}}})
+
+
+def test_preprocess_rejects_removed_orientations_csv_config() -> None:
+    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    with pytest.raises(ValidationError, match="[Ee]xtra"):
+        ExperimentConfig.model_validate(
+            {**base, "preprocess": {"orientations_csv": "optim_orientation.csv"}}
+        )
 
 
 def test_thickness_grid_bounds_are_validated() -> None:

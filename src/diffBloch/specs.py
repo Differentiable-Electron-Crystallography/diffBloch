@@ -140,7 +140,7 @@ class BeamSelection:
     The default cutoffs are the values used by the default preprocess path.
     """
 
-    rsg: float = 0.9  # relative excitation-error cutoff: keep when |Sg| / sg_max < rsg
+    rsg: float = 0.66  # relative excitation-error cutoff: keep when |Sg| / sg_max < rsg
     dsg: float = 0.0015  # absolute excitation-error margin: keep when sg_max - |Sg| > dsg
     integration: IntegrationGeometry = field(default_factory=IntegrationGeometry)
 

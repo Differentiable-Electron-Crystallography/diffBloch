@@ -5,7 +5,7 @@ the engine/eval layer and are out of scope here.) All functions compare a ``calc
 tensor against an ``observed`` one and reduce over the final (reflection) axis, so a ``(T, N)``
 thickness/orientation batch yields a ``(T,)`` loss.
 
-- ``mse`` / ``l1`` / ``weighted_mse`` -- generic regression losses.
+- ``mse`` / ``l1`` -- generic regression losses.
 - ``rbragg`` -- the crystallographic Bragg R(obs) factor over reflections with ``I_obs > 3*sigma``.
 - ``w_rbragg`` -- the weighted R2 of Klar et al. 2023.
 
@@ -19,7 +19,7 @@ from collections.abc import Callable
 import torch
 from torch import Tensor
 
-__all__ = ["l1", "mse", "optimal_scale", "rbragg", "w_rbragg", "weighted_mse"]
+__all__ = ["l1", "mse", "optimal_scale", "rbragg", "w_rbragg"]
 
 
 def _check_pair(calculated: Tensor, observed: Tensor) -> None:
@@ -47,13 +47,6 @@ def l1(calculated: Tensor, observed: Tensor) -> Tensor:
     """Mean absolute error over the reflection axis."""
     _check_pair(calculated, observed)
     return (calculated - observed).abs().mean(dim=-1)
-
-
-def weighted_mse(calculated: Tensor, observed: Tensor, sigmas: Tensor) -> Tensor:
-    """Inverse-variance (``1/sigma^2``) weighted squared error, summed over the reflection axis."""
-    _check_pair(calculated, observed)
-    _check_sigmas(sigmas, observed)
-    return ((calculated - observed) ** 2 / sigmas**2).sum(dim=-1)
 
 
 def rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor) -> Tensor:

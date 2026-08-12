@@ -47,6 +47,7 @@ from diffBloch.specs import (
 _NELDER_MEAD_DEFAULTS = NelderMeadSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
 _THICKNESS_NN_DEFAULTS = ApparentThicknessNetwork()
+_BEAM_SELECTION_DEFAULTS = BeamSelection()
 
 
 class _StrictConfig(BaseModel):
@@ -83,8 +84,8 @@ class BlochwaveConfig(_StrictConfig):
     # method fails fast at config load rather than deep in the forward model.
     solver: SolverMethod = "matrix_exp"
     absorption: bool = False
-    rsg: float = 0.66
-    dsg: float = 0.0015
+    rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
+    dsg: float = _BEAM_SELECTION_DEFAULTS.dsg
     rocking_curve_sampling: int = 42
     mosaicity: Mosaicity = Field(default_factory=Mosaicity)
     fixed_n_segments: int = 12

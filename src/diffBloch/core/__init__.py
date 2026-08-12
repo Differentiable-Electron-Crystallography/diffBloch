@@ -40,7 +40,7 @@ from diffBloch.core.dynamical import (
     wavelength2energy,
     wavevector_magnitude,
 )
-from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg, weighted_mse
+from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
     AlignmentPlan,
@@ -134,5 +134,4 @@ __all__ = [
     "w_rbragg",
     "wavelength2energy",
     "wavevector_magnitude",
-    "weighted_mse",
 ]

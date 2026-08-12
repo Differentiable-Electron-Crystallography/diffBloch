@@ -15,6 +15,11 @@ blochwave:
   # coupling has no config default -- it determines the fit's physics.
   g_max: 2.25
   sg_max: 0.01
+preprocess:
+  # The committed reference artifacts (reference_results.json, optim_orientation.json, the
+  # reproducibility/ checkpoint) were fitted orientation-first; pinned like rsg above so config
+  # defaults can move without silently re-ordering the anchor's fit.
+  stage_order: orientation_first
 refinement:
   split:
     train_test: true
