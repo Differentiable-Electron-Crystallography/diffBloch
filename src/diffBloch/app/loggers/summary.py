@@ -34,6 +34,7 @@ from pathlib import Path
 
 import gemmi
 
+from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.core.crystal import cell_volume
 from diffBloch.io import read_structure
 from diffBloch.observability import (
@@ -94,9 +95,9 @@ class SummaryLogger:
     rendered and written; a run that never emits that event writes nothing, which is the correct
     behaviour for an aborted run (there is no committed structure to describe).
 
-    ``plot`` (default ``True``) additionally writes the thickness-NN shape PNG beside the report when
-    a :class:`~diffBloch.observability.ThicknessProfile` was seen and matplotlib is installed; the
-    report notes the omission otherwise, exactly as before.
+    ``plot`` (default ``True``) additionally writes one thickness-NN shape PNG beside the report
+    per :class:`~diffBloch.observability.ThicknessProfile` seen (one per dataset, named by its
+    checkpoint stem) when matplotlib is installed; the report notes the omission otherwise.
     """
 
     path: Path
@@ -106,7 +107,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
-    _profiles: list[ThicknessProfile] = field(default_factory=list, init=False, repr=False)
+    _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
     _started_at: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -127,7 +128,9 @@ class SummaryLogger:
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
         elif isinstance(event, ThicknessProfile):
-            self._profiles.append(event)
+            # Keyed by dataset so a re-reported profile replaces its section (last event wins),
+            # while insertion order keeps sections in exp_data order.
+            self._profiles[event.label] = event
         elif isinstance(event, RefinementOutputsWritten):
             self._write(event)
 
@@ -343,9 +346,8 @@ class SummaryLogger:
             rule("Thickness NN")
             lines.append(" enabled: no (preprocess-baked per-rotation thickness only)")
             return
-        for profile in self._profiles:
-            title = "Thickness NN" if profile.label is None else f"Thickness NN -- {profile.label}"
-            rule(title)
+        for profile in self._profiles.values():
+            rule(f"Thickness NN -- {profile.label}")
             lines.append(
                 f" enabled: yes ({profile.form}, bounds "
                 f"[{profile.min_thickness:g}, {profile.max_thickness:g}] A)"
@@ -367,13 +369,17 @@ class SummaryLogger:
             )
             if not self.plot:
                 continue
-            suffix = "" if profile.label is None else f"_{profile.label.replace('/', '_')}"
-            plot_path = self.path.parent / f"thickness_nn_shape{suffix}.png"
+            # The checkpoint stem is the established filesystem-safe dataset name; refs are
+            # validated stem-unique, so per-dataset plot files cannot collide.
+            stem = dataset_checkpoint_stem(profile.label)
+            plot_path = self.path.parent / f"thickness_nn_shape_{stem}.png"
             try:
                 from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
 
                 plot_thickness_nn_shape(
-                    list(zip(profile.alphas, profile.thicknesses, strict=True)), plot_path
+                    list(zip(profile.alphas, profile.thicknesses, strict=True)),
+                    plot_path,
+                    title=f"Thickness NN final shape -- {profile.label}",
                 )
                 lines.append("")
                 lines.append(f" plot: {plot_path.name}")

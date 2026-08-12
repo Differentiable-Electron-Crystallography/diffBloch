@@ -90,12 +90,14 @@ def plot_thickness_nn_shape(
     output_path: str | Path,
     *,
     xlabel: str = "alpha (degrees)",
+    title: str = "Thickness NN final shape",
 ) -> None:
     """Save one PNG: the fitted thickness NN's predicted thickness vs. rotation angle.
 
     ``rows`` is ``(angle, thickness)`` pairs, one per rotation, in any order -- plotted sorted by
     angle so the curve reads left to right. This is the final learned shape after refinement
-    completes, not a training-progress plot.
+    completes, not a training-progress plot. ``title`` names the dataset when several networks
+    each get a plot, so the PNGs are self-identifying.
     """
     import matplotlib
 
@@ -120,7 +122,7 @@ def plot_thickness_nn_shape(
     )
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Predicted thickness (Å)")
-    ax.set_title("Thickness NN final shape")
+    ax.set_title(title)
     _apply_house_style(ax)
     fig.tight_layout()
     output_path = Path(output_path)

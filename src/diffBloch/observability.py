@@ -603,27 +603,36 @@ class RefinedRotationMetrics:
 
 @dataclass(frozen=True)
 class ThicknessProfile:
-    """The trained apparent-thickness curve, sampled at every rotation's tilt angle.
+    """One dataset's trained apparent-thickness curve, sampled at its rotations' tilt angles.
 
-    Emitted once after refinement when a thickness component was composed. The whole curve rides on
-    the dataclass as parallel tuples (one entry per rotation, in plan order) rather than as ~100
-    separate events or ~300 flat measurement keys -- the shape :class:`ThicknessOptimized` already
-    uses for its candidate grid. ``measurements`` carries only the scalar summary.
+    Emitted once per composed thickness network after refinement -- one event per dataset, each
+    labeled by its ``inputs.exp_data`` ref. The whole curve rides on the dataclass as parallel
+    tuples (one entry per rotation, in plan order) rather than as ~100 separate events or ~300
+    flat measurement keys -- the shape :class:`ThicknessOptimized` already uses for its candidate
+    grid. ``measurements`` carries only the scalar summary.
+
+    ``channel`` embeds the label (the per-instance form the :class:`Event` protocol anticipates)
+    so metric sinks that key series on ``channel/name`` keep pooled datasets' curves apart.
     """
 
-    channel: ClassVar[str] = "thickness_profile"
     form: str
     min_thickness: float
     max_thickness: float
     rotation_indices: tuple[int, ...]
     alphas: tuple[float, ...]
     thicknesses: tuple[float, ...]
-    label: str | None = None
+    label: str
 
     def __post_init__(self) -> None:
         lengths = {len(self.rotation_indices), len(self.alphas), len(self.thicknesses)}
         if len(lengths) != 1:
             raise ValueError("thickness profile columns must have equal length")
+        if not self.label:
+            raise ValueError("thickness profile label must name its dataset")
+
+    @property
+    def channel(self) -> str:
+        return f"thickness_profile[{self.label}]"
 
     @property
     def step(self) -> int | None:

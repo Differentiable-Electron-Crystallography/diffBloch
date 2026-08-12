@@ -97,7 +97,7 @@ def _run(
     experiment: ExperimentDeclared | None = None,
     steps: tuple[RefinementStep, ...] = (),
     rotations: tuple[RefinedRotationMetrics, ...] = (),
-    profile: ThicknessProfile | None = None,
+    profiles: tuple[ThicknessProfile, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
 ) -> str:
@@ -124,7 +124,7 @@ def _run(
     )
     for rotation in rotations:
         logger.report(rotation)
-    if profile is not None:
+    for profile in profiles:
         logger.report(profile)
     logger.report(RefinementOutputsWritten(structure=str(structure)))
     return (tmp_path / "refinement_report.txt").read_text()
@@ -245,27 +245,74 @@ def test_summary_adds_a_validation_section_only_when_rotations_are_held_out(
     assert "Validation set" not in none_held_out
 
 
-def test_summary_reports_the_thickness_profile_when_one_was_trained(tmp_path: Path) -> None:
-    text = _run(
-        tmp_path,
-        rotations=(_rotation(0),),
-        profile=ThicknessProfile(
-            form="quadratic",
-            min_thickness=100.0,
-            max_thickness=1000.0,
-            rotation_indices=(0,),
-            alphas=(12.5,),
-            thicknesses=(430.25,),
-        ),
+def _profile(
+    label: str,
+    *,
+    rotation_indices: tuple[int, ...] = (0,),
+    alphas: tuple[float, ...] = (12.5,),
+    thicknesses: tuple[float, ...] = (430.25,),
+) -> ThicknessProfile:
+    return ThicknessProfile(
+        form="quadratic",
+        min_thickness=100.0,
+        max_thickness=1000.0,
+        rotation_indices=rotation_indices,
+        alphas=alphas,
+        thicknesses=thicknesses,
+        label=label,
     )
 
+
+def test_summary_reports_the_thickness_profile_when_one_was_trained(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),), profiles=(_profile("q.cif_pets"),))
+
+    assert "Thickness NN -- q.cif_pets" in text
     assert "enabled: yes (quadratic, bounds [100, 1000] A)" in text
     assert "alpha (degrees)" in text
     assert "12.5000" in text and "430.25" in text
 
     pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
-    assert (tmp_path / "thickness_nn_shape.png").is_file()
-    assert "plot: thickness_nn_shape.png" in text
+    assert (tmp_path / "thickness_nn_shape_q.png").is_file()
+    assert "plot: thickness_nn_shape_q.png" in text
+
+
+def test_summary_reports_one_thickness_section_per_dataset(tmp_path: Path) -> None:
+    text = _run(
+        tmp_path,
+        rotations=(_rotation(0),),
+        profiles=(
+            _profile("a.cif_pets"),
+            _profile("sub/b.cif_pets", rotation_indices=(1,), alphas=(-3.5,), thicknesses=(210.0,)),
+        ),
+    )
+
+    assert "Thickness NN -- a.cif_pets" in text
+    assert "Thickness NN -- sub/b.cif_pets" in text
+    assert "430.25" in text and "210.00" in text
+
+    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
+    # Filenames use the dataset checkpoint stem: path separators fold to "__", suffix drops.
+    assert (tmp_path / "thickness_nn_shape_a.png").is_file()
+    assert (tmp_path / "thickness_nn_shape_sub__b.png").is_file()
+
+
+def test_summary_keeps_the_last_thickness_profile_reported_per_dataset(tmp_path: Path) -> None:
+    text = _run(
+        tmp_path,
+        rotations=(_rotation(0),),
+        profiles=(
+            _profile("a.cif_pets"),
+            _profile("a.cif_pets", thicknesses=(555.5,)),
+        ),
+    )
+
+    assert text.count("Thickness NN -- a.cif_pets") == 1
+    assert "555.50" in text
+    assert "430.25" not in text
+
+
+def test_thickness_profile_channel_names_its_dataset() -> None:
+    assert _profile("sub/b.cif_pets").channel == "thickness_profile[sub/b.cif_pets]"
 
 
 def test_summary_degrades_without_the_declaration_events(tmp_path: Path) -> None:
@@ -289,7 +336,10 @@ def test_thickness_profile_rejects_ragged_columns() -> None:
             rotation_indices=(0, 1),
             alphas=(12.5,),
             thicknesses=(430.25,),
+            label="q.cif_pets",
         )
+    with pytest.raises(ValueError, match="label"):
+        _profile("")
 
 
 def test_ascii_table_widens_a_column_to_its_content() -> None:
