@@ -211,7 +211,7 @@ class OrientationPlan:
         ``tilt_reduction`` selects how the engine reduces the tilt sub-solutions over the rocking
         curve: :class:`~diffBloch.core.products.PlainSum` (the default) sums them;
         :class:`~diffBloch.core.products.MosaicSmoothed` applies mosaicity broadening first. It is a
-        rebuild-preserved attribute (geometry-independent), set by the ``mosaicity`` step.
+        rebuild-preserved attribute (geometry-independent), resolved during dataset setup.
 
         ``gather`` may be a precomputed :class:`~diffBloch.core.dynamical.StructureFactorGather` for
         this beam set against the shared grid. The F-gather is basis- and orientation-free, so all N
@@ -343,7 +343,7 @@ class CoupledOrientationPlan:
     reducing over tilts (:meth:`diffBloch.engine.forward.RefinementEngine._solve`), returning an
     ordinary :class:`~diffBloch.core.products.BlochSolution` over that union -- so ``align`` /
     scoring stay identical to the tilt-independent path. Reassembling before the reduction is
-    required: the mosaicity window spans more tilts than any single chunk holds.
+    required: the mosaicity sample span can cover more tilts than any single chunk holds.
 
     ``beam_hkl`` ``(N_union, 3)`` is the union of every segment's beams (deduplicated, sorted, and
     always including 000); ``pattern`` / ``alignment`` bridge that union to the observed

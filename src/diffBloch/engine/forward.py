@@ -645,8 +645,8 @@ class RefinementEngine:
         covered tilts with the batched propagator, and its per-tilt intensities are scattered onto
         the shared ``(N_tilts, T, N_union)`` rocking curve (each tilt belongs to exactly one
         segment; a beam absent from a chunk stays 0 at that chunk's tilts). Only once the whole
-        curve is reassembled is the tilt reduction applied -- the mosaicity window spans more tilts
-        than any single chunk holds -- and the result is returned as an ordinary
+        curve is reassembled is the tilt reduction applied -- the mosaicity sample span can cover
+        more tilts than any single chunk holds -- and the result is returned as an ordinary
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
         """
         device = fgb.device

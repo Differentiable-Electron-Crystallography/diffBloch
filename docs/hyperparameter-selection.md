@@ -56,7 +56,7 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. The legacy `{window: N}` form sets the width directly. |
+| `mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and converts it into an internal moving-average sample span. No additional orientations are simulated. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |

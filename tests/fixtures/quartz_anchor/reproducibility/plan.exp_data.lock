@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "eec438debd359fe0ce6d8b7cf3ae6d6aa222ad6a563d6faf5ae14787f8f14008",
-  "code_version": "0.2.0+ga386ae0.dirty",
+  "config_digest": "a449c747b1906b0e5362e371acaf4f0639a1fff84f1c6079aa1ce6f19d9678df",
+  "code_version": "0.2.0+g21f2fce.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -33,10 +33,7 @@
             "geometry": "continuous_rotation"
           }
         },
-        "mosaicity": {
-          "__type__": "Mosaicity",
-          "window": 5
-        },
+        "mosaicity": null,
         "coupling": {
           "__type__": "UnionCoupling",
           "fixed_n_segments": 12,
@@ -117,8 +114,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.exp_data.npz",
-    "sha256": "72acf49c56cbceddee57a43e10ed20596551e539cb4397c28ba897cf14474baf",
-    "bytes": 584407,
+    "sha256": "1542a9a57da9a19c59ddbe330b3555f420043eb901c498789b3a407ccc1fe10d",
+    "bytes": 584497,
     "media_type": "application/octet-stream"
   }
 }

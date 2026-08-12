@@ -30,7 +30,6 @@ __all__ = [
     "ConvergenceTolerance",
     "FrameSelection",
     "IntegrationGeometry",
-    "Mosaicity",
     "NelderMeadSearch",
     "OrientationSelection",
     "PerTiltCoupling",
@@ -269,28 +268,6 @@ class RockingCurve:
 
 
 @dataclass(frozen=True)
-class Mosaicity:
-    """Mosaicity broadening of the rocking curve: a moving-average window over the tilt axis.
-
-    Crystal mosaic spread smears each reflection's rocking curve; diffBloch models it as a
-    ``window``-wide moving average of the per-tilt intensities before the sum-over-tilts
-    integration. ``window`` is the number of consecutive tilts averaged; it must be ``>= 1`` and, at
-    reduction time, ``<= sampling`` (the tilt count). ``window = 1`` is the identity (no
-    broadening), so composing the ``mosaicity`` step with it is a no-op. This is a modifier on top
-    of the rocking-curve integration (:class:`RockingCurve`) -- it only has meaning once the tilt
-    set exists, so the ``mosaicity`` step is ordered after ``integrate_rocking_curve``.
-
-    ``window`` is a tunable config parameter; its default of 5 is the standard moving-average width.
-    """
-
-    window: int = 5  # tilts averaged per sliding window (standard moving-average width)
-
-    def __post_init__(self) -> None:
-        if self.window < 1:
-            raise ValueError("window must be >= 1")
-
-
-@dataclass(frozen=True)
 class UnionCoupling:
     """Tilt-segment-union beam coupling: per-tilt-chunk beam sets, not one set for the whole curve.
 
@@ -304,7 +281,7 @@ class UnionCoupling:
     genuinely differs across the curve; one tilt-independent set either over-couples (slow) or drops
     beams a later tilt needs. The per-chunk union is the compromise this policy strikes. Each
     reflection's full rocking curve is later reassembled across chunks before the mosaicity
-    reduction (the window spans more tilts than one chunk holds).
+    reduction (the smoothing span can cross chunk boundaries).
 
     ``g_max`` is the coupling radius: a beam couples when ``|g| < g_max``. The cutoff is the
     physical solve radius, with no additional margin.

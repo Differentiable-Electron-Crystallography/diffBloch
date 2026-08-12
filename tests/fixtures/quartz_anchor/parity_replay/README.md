@@ -29,9 +29,9 @@ R-factors to ~1e-6.
 
 Rot 61 was once treated as a "corner-beam outlier" (its lone `(4,0,5)` reflection diverged ~1.6×).
 That was a *tilt-reduction* artifact, not a solve difference: its per-tilt `|psi(4,0,5)|^2` is
-byte-identical to the reference, and the reference's window-5 mosaicity moving-average
+byte-identical to the reference, and the reference's five-sample mosaicity moving-average
 down-weights that sharp peak (it sits near the boundary of its coupled-tilt range, so the
-valid-window edge counts 1..4 instead of 5). The replay reassembles each reflection's full
-rocking curve across segments and applies the same window-5 smoothing, so rot 61 reproduces the
+valid smoothing counts 1..4 instead of 5). The replay reassembles each reflection's full
+rocking curve across segments and applies the same five-sample smoothing, so rot 61 reproduces the
 reference like the others — no cap or corner-beam work was needed (that hypothesis was falsified;
 `(4,0,5)` has mid-range `|g|=1.318`).

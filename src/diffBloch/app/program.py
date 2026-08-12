@@ -59,6 +59,7 @@ from diffBloch.config import (
 )
 from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
+from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import (
     ApparentThicknessNN,
     ModelRefinementResult,
@@ -885,6 +886,7 @@ def _preprocess(
             cfg,
             refinement_setup,
             dataset.integration,
+            dataset.mosaicity,
             logger,
             device=device,
             workers=workers,
@@ -948,6 +950,7 @@ def _recipe_steps(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     integration: IntegrationGeometry,
+    mosaicity: MosaicSmoothed | None,
     logger: Logger,
     *,
     device: Device | None = None,
@@ -1016,7 +1019,7 @@ def _recipe_steps(
     steps.append(
         build_orientation_plans(
             cfg.blochwave.to_rocking_curve(integration),
-            cfg.blochwave.mosaicity,
+            mosaicity,
             coupling=cfg.blochwave.to_policy(),
             scoring_selection=cfg.blochwave.to_beam_selection(integration),
             workers=workers,

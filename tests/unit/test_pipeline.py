@@ -13,12 +13,11 @@ from dataclasses import replace
 import numpy as np
 from tests.unit.synthetic import seed_system
 
+from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import StructureFactorGrid
 from diffBloch.observability import PlanSeeded, PlanStepCompleted, RecordingLogger
 from diffBloch.preprocess import (
     build_orientation_plans,
-    integrate_rocking_curve,
-    mosaicity,
     select_beams,
 )
 from diffBloch.preprocess.pipeline import (
@@ -40,7 +39,6 @@ from diffBloch.preprocess.plan import summarize_plan
 from diffBloch.specs import (
     BeamSelection,
     IntegrationGeometry,
-    Mosaicity,
     RockingCurve,
     TiltIndependent,
     UnionCoupling,
@@ -242,9 +240,7 @@ def test_grid_is_invariant_across_the_grid_shaping_steps() -> None:
     shaped = pipeline(
         [
             select_beams(BeamSelection()),
-            build_orientation_plans(),
-            integrate_rocking_curve(RockingCurve(sampling=3)),
-            mosaicity(Mosaicity(window=2)),
+            build_orientation_plans(RockingCurve(sampling=3), MosaicSmoothed(samples=2)),
         ]
     )(seed)
     assert shaped.structure_factor_grid is seed.structure_factor_grid

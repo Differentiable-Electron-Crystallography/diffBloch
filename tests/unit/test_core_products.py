@@ -124,19 +124,20 @@ def test_integrate_default_reduction_is_the_plain_sum() -> None:
 
 def test_integrate_mosaic_smoothed_is_moving_average_then_sum() -> None:
     sols = _ramp_tilts([1.0, 2.0, 3.0, 4.0, 5.0])
-    # window=3 moving average then sum == sum of window means: mean(1,2,3)+mean(2,3,4)+mean(3,4,5)
+    # Three-sample moving average then sum == sum of sample means:
+    # mean(1,2,3)+mean(2,3,4)+mean(3,4,5)
     # = 2 + 3 + 4 = 9 (zero-padding the smoothed curve does not change the sum).
     mosaic = BlochSolution.integrate(sols, reduction=MosaicSmoothed(3))
     assert torch.allclose(mosaic.intensities, torch.full((1, 2), 9.0, dtype=torch.float64))
-    # window=1 is the identity: each window mean is the tilt itself, so it equals the plain sum.
+    # A one-sample span is the identity: each mean is the tilt itself, so it equals the plain sum.
     identity = BlochSolution.integrate(sols, reduction=MosaicSmoothed(1))
     assert torch.allclose(identity.intensities, torch.full((1, 2), 15.0, dtype=torch.float64))
     assert torch.allclose(mosaic.amplitudes.abs().square(), mosaic.intensities)
 
 
-def test_integrate_mosaic_window_may_not_exceed_the_tilt_count() -> None:
+def test_integrate_mosaic_sample_span_may_not_exceed_the_tilt_count() -> None:
     sols = _ramp_tilts([1.0, 2.0, 3.0])
-    with pytest.raises(ValueError, match="window 4 exceeds the 3 rocking-curve tilts"):
+    with pytest.raises(ValueError, match="sample span 4 exceeds the 3 rocking-curve tilts"):
         BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
 
 

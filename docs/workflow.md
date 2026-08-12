@@ -44,10 +44,10 @@ samples. Suitable values depend on the experiment and should be established by c
 before preprocessing or refinement. 
 
 With `mosaicity: true`, diffBloch reads the apparent mosaicity from `.cif_pets` and converts it to a
-moving-average width using the angular spacing between sampled orientations. The calculated
-rocking curve is smoothed over that width before it is summed. This does not add Bloch-wave solves.
-`mosaicity: false` (the default) applies no smoothing. The legacy `{window: N}` form sets the width
-directly. The output is one calculated diffraction pattern for each experimental rotation.
+moving-average sample span using the angular spacing between sampled orientations. The calculated
+rocking curve is smoothed over that span before it is summed. This does not add Bloch-wave solves.
+`mosaicity: false` (the default) applies no smoothing and ignores any PETS mosaicity value. The
+output is one calculated diffraction pattern for each experimental rotation.
 
 For more information, see [Inputs and outputs](inputs.md).
 

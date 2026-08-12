@@ -62,7 +62,6 @@ class CandidatePlan:
     thickness: NDArray[np.float64]
     beam_hkl: NDArray[np.int64]
     pattern: PatternBatch
-    mosaicity_degrees: float | None = None
 
     @classmethod
     def seed(
@@ -74,7 +73,6 @@ class CandidatePlan:
         thickness: Tensor | NDArray[np.float64] | Sequence[float],
         u0: float = 0.0,
         orientation: Tensor | NDArray[np.float64] | None = None,
-        mosaicity_degrees: float | None = None,
     ) -> CandidatePlan:
         """Assemble a candidate seed for one orientation (plain-numpy source; builds no gather)."""
         rotation = np.eye(3) if orientation is None else np.asarray(orientation, dtype=np.float64)
@@ -85,7 +83,6 @@ class CandidatePlan:
             thickness=np.atleast_1d(np.asarray(thickness, dtype=np.float64)),
             beam_hkl=np.asarray(beam_hkl, dtype=np.int64),
             pattern=pattern,
-            mosaicity_degrees=mosaicity_degrees,
         )
 
 
@@ -113,9 +110,9 @@ class Plan:
 def require_orientation_plans(plan: Plan) -> tuple[OrientationPlan, ...]:
     """Narrow a plan's orientations to plain :class:`OrientationPlan`\\ s (reject segmented ones).
 
-    The tilt-independent-only plan-shaping steps (``select_beams``, ``integrate_rocking_curve``,
-    ``mosaicity``) transform the :class:`OrientationPlan`, which carries one shared beam set.
-    ``couple_beams`` replaces each orientation with a
+    The tilt-independent-only plan-shaping steps (``select_beams``, ``integrate_rocking_curve``)
+    transform the :class:`OrientationPlan`, which carries one shared beam set. ``couple_beams``
+    replaces each orientation with a
     :class:`~diffBloch.engine.plan.CoupledOrientationPlan` (a per-tilt-chunk beam set) that those
     steps cannot consume, so they must all precede ``couple_beams`` in a pipeline. This helper
     enforces that ordering with a clear error and narrows the element type for the caller.

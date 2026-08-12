@@ -44,7 +44,6 @@ from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import (
     BeamSelection,
-    Mosaicity,
     PerTiltCoupling,
     RockingCurve,
     UnionCoupling,
@@ -82,7 +81,7 @@ def select_beams(selection: BeamSelection) -> PlanStep:
 
 def build_orientation_plans(
     rocking: RockingCurve | None = None,
-    mosaicity: bool | Mosaicity | None = None,
+    mosaicity: MosaicSmoothed | None = None,
     *,
     coupling: UnionCoupling | PerTiltCoupling | None = None,
     scoring_selection: BeamSelection | None = None,
@@ -111,7 +110,7 @@ def build_orientation_plans(
     execution-only and therefore intentionally absent from the step's provenance record.
     Omitting ``coupling`` preserves the simple builder used by focused APIs/tests.
     """
-    if mosaicity not in (None, False) and rocking is None:
+    if mosaicity is not None and rocking is None:
         raise ValueError("mosaicity requires rocking-curve geometry")
     if coupling is not None and rocking is None:
         raise ValueError("coupling requires rocking-curve geometry")
@@ -126,25 +125,15 @@ def build_orientation_plans(
             geometry=rocking.integration.geometry,
         )
     )
-    if isinstance(mosaicity, Mosaicity):
+    if mosaicity is not None:
         assert rocking is not None  # narrowed by the construction guard above
-        if mosaicity.window > rocking.sampling:
+        if mosaicity.samples > rocking.sampling:
             raise ValueError(
-                f"mosaicity window {mosaicity.window} exceeds the {rocking.sampling} "
+                f"mosaicity sample span {mosaicity.samples} exceeds the {rocking.sampling} "
                 "rocking-curve tilts"
             )
 
-    def geometry(candidate: CandidatePlan) -> tuple[NDArray[np.float64] | None, TiltReduction]:
-        if mosaicity in (None, False):
-            return plain_tilts, PLAIN_SUM
-        if isinstance(mosaicity, Mosaicity):
-            return plain_tilts, MosaicSmoothed(mosaicity.window)
-        assert rocking is not None
-        if candidate.mosaicity_degrees is None:
-            raise ValueError(
-                "PETS-derived mosaicity requires mosaicity metadata on every candidate"
-            )
-        return plain_tilts, _pets_mosaicity_reduction(rocking, candidate.mosaicity_degrees)
+    reduction: TiltReduction = PLAIN_SUM if mosaicity is None else mosaicity
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)
@@ -152,7 +141,6 @@ def build_orientation_plans(
         if coupling is None:
 
             def build_uncoupled(cp: CandidatePlan) -> OrientationPlan:
-                candidate_tilts, reduction = geometry(cp)
                 return OrientationPlan.build(
                     plan.structure_factor_grid,
                     np.asarray(cp.beam_hkl),
@@ -161,7 +149,7 @@ def build_orientation_plans(
                     thickness=cp.thickness,
                     u0=cp.u0,
                     orientation=cp.orientation,
-                    tilts=candidate_tilts,
+                    tilts=plain_tilts,
                     tilt_reduction=reduction,
                 )
 
@@ -173,14 +161,14 @@ def build_orientation_plans(
             source = grid_source_indices(structure_factor_hkl, grid.gpts)
             gather_cache: dict[bytes, StructureFactorGather] = {}
             gather_cache_lock = Lock()
+            coupled_tilts = plain_tilts
+            assert coupled_tilts is not None
 
             def build_one(candidate: CandidatePlan) -> CoupledOrientationPlan:
-                candidate_tilts, reduction = geometry(candidate)
-                assert candidate_tilts is not None
                 return _build_coupled_candidate(
                     grid,
                     candidate,
-                    candidate_tilts,
+                    coupled_tilts,
                     reduction,
                     coupling,
                     scoring_selection=scoring_selection,
@@ -211,22 +199,6 @@ def build_orientation_plans(
         ),
         run,
     )
-
-
-def _pets_mosaicity_reduction(rocking: RockingCurve, mosaicity_degrees: float) -> TiltReduction:
-    """Convert PETS apparent mosaicity to a sampled-tilt moving-average reduction."""
-    if rocking.sampling == 1:
-        raise ValueError("PETS-derived mosaicity requires at least two rocking-curve samples")
-    degrees_per_sample = 2.0 * rocking.integration.semiangle / (rocking.sampling - 1)
-    window = round(mosaicity_degrees / degrees_per_sample)
-    if window <= 1:
-        return PLAIN_SUM
-    if window > rocking.sampling:
-        raise ValueError(
-            f"PETS-derived mosaicity window {window} exceeds the {rocking.sampling} "
-            "rocking-curve samples"
-        )
-    return MosaicSmoothed(window)
 
 
 def _build_coupled_candidate(

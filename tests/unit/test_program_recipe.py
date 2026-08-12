@@ -36,7 +36,7 @@ def _steps(material: str = "quartz_anchor") -> list:
     structure = read_structure(root / cfg.inputs.structure)
     experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, experimental_data, cfg)
-    return _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
+    return _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER)
 
 
 def _the_fork() -> Fork:
@@ -110,10 +110,37 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     structure = read_structure(root / cfg.inputs.structure)
     experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
     setup = from_experiment(structure, experimental_data, cfg)
-    steps = _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER)
+    steps = _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER)
     records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
     fit = next(r for r in records if r.name == "optimize_orientation")
     assert fit.params["coupling"]["policy"]["fixed_n_segments"] == 4
+
+
+def test_recipe_records_resolved_mosaicity_not_the_config_request() -> None:
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={
+            "blochwave": cfg.blochwave.model_copy(
+                update={"mosaicity": True, "rocking_curve_sampling": 11}
+            )
+        }
+    )
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data).model_copy(
+        update={"mosaicity_degrees": 0.6}
+    )
+    setup = from_experiment(structure, experimental_data, cfg)
+
+    records = step_records(
+        resolve_recipe(
+            _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER),
+            SimpleNamespace(cell_volume=100.0),
+        )
+    )
+
+    build = next(r for r in records if r.name == "build_orientation_plans")
+    assert build.params["mosaicity"] == {"__type__": "MosaicSmoothed", "samples": 3}
 
 
 def test_stage_order_default_runs_thickness_before_orientation() -> None:
@@ -125,7 +152,7 @@ def test_stage_order_default_runs_thickness_before_orientation() -> None:
 
     records = step_records(
         resolve_recipe(
-            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER),
             SimpleNamespace(cell_volume=100.0),
         )
     )
@@ -173,7 +200,7 @@ def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None
 
     records = step_records(
         resolve_recipe(
-            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER),
             SimpleNamespace(cell_volume=100.0),
         )
     )
@@ -240,7 +267,7 @@ def test_fit_stages_can_be_enabled_independently() -> None:
     setup = from_experiment(structure, experimental_data, cfg)
     records = step_records(
         resolve_recipe(
-            _recipe_steps(cfg, setup.refinement, setup.integration, NULL_LOGGER),
+            _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER),
             SimpleNamespace(cell_volume=100.0),
         )
     )

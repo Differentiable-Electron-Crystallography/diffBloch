@@ -50,10 +50,6 @@ mosaicity, convergence/coverage sweeps), then hand the final plan to a terminal 
 ```
 
 ```{eval-rst}
-.. automodule:: diffBloch.preprocess.steps.mosaicity
-```
-
-```{eval-rst}
 .. automodule:: diffBloch.preprocess.steps.convergence
 ```
 
