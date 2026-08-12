@@ -309,6 +309,29 @@ def test_summary_keeps_the_last_thickness_profile_reported_per_dataset(tmp_path:
     assert "430.25" not in text
 
 
+def test_summary_still_writes_when_the_plot_renderer_cannot_be_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """matplotlib is a core dependency, so this is broken-install insurance, not a supported mode.
+
+    The report is written on the run's terminal event, potentially hours in; a rendering import
+    that fails must cost the plot, not the whole report.
+    """
+
+    def unimportable(*args: object, **kwargs: object) -> None:
+        raise ModuleNotFoundError("No module named 'matplotlib'")
+
+    monkeypatch.setattr("diffBloch.app.loggers.plotting.plot_thickness_nn_shape", unimportable)
+
+    text = _run(tmp_path, rotations=(_rotation(0),), profiles=(_profile("q.cif_pets"),))
+
+    assert "plot: skipped (matplotlib is not importable in this environment)" in text
+    assert not (tmp_path / "thickness_nn_shape_q.png").exists()
+    # The section itself survives: the table is rendered from the event, not from the renderer.
+    assert "Thickness NN -- q.cif_pets" in text
+    assert "430.25" in text
+
+
 def test_thickness_profile_channel_names_its_dataset() -> None:
     assert _profile("sub/b.cif_pets").channel == "thickness_profile[sub/b.cif_pets]"
 
