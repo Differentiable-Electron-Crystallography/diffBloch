@@ -41,7 +41,7 @@ sample:
 
 The simulation hyperparameters include the reciprocal-space cutoffs and the number of rocking-curve
 samples. Suitable values depend on the experiment and should be established by convergence testing
-before preprocessing or refinement.
+before preprocessing or refinement. 
 
 For more information, see [Inputs and outputs](inputs.md).
 
@@ -55,13 +55,13 @@ uv run diffbloch convergence-test <experiment_dir>
 
 The command reports settled values for `gmax`, `sgmax`, and `tilt_steps`. These correspond to
 `blochwave.g_max`, `blochwave.sg_max`, and `blochwave.rocking_curve_sampling` in
-`experiment.yaml`.
+`experiment.yaml`. 
 
 For more infromation, see [Convergence testing](convergence-testing.md).
 
 ## Preprocessing
 
-Preprocessing establishes specimen thickness and optimizes the experimental orientations before structural refinement.
+Preprocessing establishes specimen thickness and optimizes the experimental orientations before structural refinement.  
 
 For more information, see [Preprocessing](preprocessing.md).
 
@@ -95,7 +95,7 @@ preprocess:
     plot: true
 ```
 
-With `plot: true`, residual-versus-thickness plots are written to `thickness_optim/`.
+With `plot: true`, residual-versus-thickness plots are written to `thickness_optim/`.  
 
 ## Structural refinement
 
@@ -106,9 +106,9 @@ run with:
 uv run diffbloch refine <experiment_dir>
 ```
 
-The objective and validation metrics are reported throughout the run.
+The objective and validation metrics are reported throughout the run. 
 
-For more information, see [Refinement](refinement.md).
+For more information, see [Refinement](refinement.md). 
 
 ## Outputs
 
@@ -123,6 +123,6 @@ A completed refinement writes the main results beside the inputs and under `repr
 ```
 
 `refined_structure.cif` contains the refined structural model, while `refinement_report.txt`
-summarizes the run. The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware.
+summarizes the run. The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware. 
 
 For more information, see [Reproducibility](reproducibility.md).
