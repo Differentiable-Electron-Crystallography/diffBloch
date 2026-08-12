@@ -23,7 +23,7 @@ The main controls governing simulation convergence are:
 |---|---|
 | `g_max` | Largest reflection {math}`g` vector simulated. Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
 | `sg_max` | A beam is simulated at a sampled orientation when {math}`|S_g| < sg_\mathrm{max}`. |
-| `rocking_curve_sampling` | Number of crystal orientations sampled across each PETS virtual frame and summed to give its integrated intensity. |
+| `rocking_curve_sampling` | Number of crystal orientations sampled across each `.cif_pets` virtual frame and summed to give its integrated intensity. |
 
 Increasing `g_max` or `sg_max` increases the number of beams {math}`N`, with simulation cost scaling
 approximately as {math}`N^3`. Increasing `rocking_curve_sampling` adds more structure-matrix solves,

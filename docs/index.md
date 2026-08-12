@@ -34,6 +34,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 | [Preprocessing](preprocessing.md) | Crystal-orientation and thickness determination before structural refinement. |
 | [Bloch wave simulation](bloch_wave_simulation.md) | Theory and equations used to calculate dynamical diffraction intensities. |
 | [Refinement](refinement.md) | Structural parameter optimization against experimental intensities. |
+| [Devices and scaling](devices-and-scaling.md) | CPU and GPU execution, memory controls, and refinement profiling. |
 | [Reproducibility](reproducibility.md) | Records identifying the inputs and preprocessing used for a refinement. |
 | [Examples](examples.md) | Runnable experiments included with diffBloch. |
 
@@ -54,19 +55,13 @@ uv sync --dev
 ```
 
 Each diffBloch command takes the path to an experiment directory containing `experiment.yaml`, the
-starting CIF, and the PETS data:
+starting CIF, and the `.cif_pets` data:
 
 ```bash
-uv run diffbloch convergence-test <experiment_dir>
-uv run diffbloch preprocess <experiment_dir>
-uv run diffbloch infer <experiment_dir>
 uv run diffbloch refine <experiment_dir>
 ```
 
-`convergence-test` checks the simulation settings. `preprocess` determines orientation and
-thickness. `infer` calculates intensities and residuals without changing the structure. `refine`
-optimizes the selected structural parameters. Add `--refresh` to rebuild preprocessing, or select
-the processor with `--device cpu` or `--device cuda`.
+
 
 ## Citation
 
@@ -93,6 +88,7 @@ convergence-testing.md
 preprocessing.md
 bloch_wave_simulation.md
 refinement.md
+devices-and-scaling.md
 reproducibility.md
 examples.md
 ```

@@ -59,10 +59,6 @@ inputs:
   exp_data:
     - crystal_1.cif_pets
     - crystal_2.cif_pets
-
-refinement:
-  thickness_nn:
-    enabled: false
 ```
 
 The rotations from all files are combined against one structure. Each dataset keeps its own

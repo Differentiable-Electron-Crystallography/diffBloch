@@ -127,6 +127,6 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
 The calculated intensity in reflection {math}`\mathbf{g}` is {math}`I_{\mathbf{g}}(t) =
 |\psi_{\mathbf{g}}(t)|^2`. A continuous-rotation frame sums this over sampled sub-orientations
 across the rocking curve (and, when `blochwave.mosaicity` is enabled, smoothed over a moving-average
-window derived from the PETS apparent mosaicity) rather than evaluating a single static orientation
+window derived from the apparent mosaicity recorded in `.cif_pets`) rather than evaluating a single static orientation
 — see [Preprocessing](preprocessing.md) for how those tilts and beam couplings are assembled around
 this solve.
