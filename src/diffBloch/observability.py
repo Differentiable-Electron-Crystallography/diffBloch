@@ -285,15 +285,22 @@ class OrientationOptimized:
 
 @dataclass(frozen=True)
 class OrientationOptimizationSummary:
-    """Aggregate statistics after every rotation's orientation fit has completed."""
+    """Aggregate statistics after every rotation's orientation fit has completed.
+
+    ``unique_*`` counts are deduplicated distinct ``(h, k, l)`` counts across every rotation's own
+    set (:func:`~diffBloch.preprocess.plan.unique_hkl_count`), not a sum of each rotation's own
+    count -- a reflection re-observed (or matched) in more than one rotation is counted once, not
+    once per rotation. ``unique_strong_hkl`` is "matched *and* I > 3*sigma in at least one rotation"
+    -- the same reflection can be strong in one rotation and weak in another, so this is a
+    lower bound on "genuinely always weak," not a claim every occurrence was strong.
+    """
 
     n_orientations: int
     mean_score: float
     residual: str
-    total_matched_hkl: int
-    total_strong_hkl: int
-    total_weak_hkl: int
-    total_observed_hkl: int
+    unique_matched_hkl: int
+    unique_strong_hkl: int
+    unique_observed_hkl: int
     total_trials: int
     max_passes: int
 
@@ -308,11 +315,11 @@ class OrientationOptimizationSummary:
         return {
             "n_orientations": float(self.n_orientations),
             f"mean_{self.residual}": self.mean_score,
-            "total_matched_hkl": float(self.total_matched_hkl),
-            "total_strong_hkl": float(self.total_strong_hkl),
-            "total_weak_hkl": float(self.total_weak_hkl),
-            "total_observed_hkl": float(self.total_observed_hkl),
-            "total_unmatched_hkl": float(self.total_observed_hkl - self.total_matched_hkl),
+            "unique_matched_hkl": float(self.unique_matched_hkl),
+            "unique_strong_hkl": float(self.unique_strong_hkl),
+            "unique_weak_hkl": float(self.unique_matched_hkl - self.unique_strong_hkl),
+            "unique_observed_hkl": float(self.unique_observed_hkl),
+            "unique_unmatched_hkl": float(self.unique_observed_hkl - self.unique_matched_hkl),
             "total_trials": float(self.total_trials),
             "max_passes": float(self.max_passes),
         }
