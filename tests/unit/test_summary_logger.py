@@ -58,7 +58,7 @@ def _experiment() -> ExperimentDeclared:
         structure="q.cif",
         experimental_data="q.cif_pets",
         optimizer="lbfgs",
-        seed_thicknesses=(820.0,),
+        seed_thicknesses_by_dataset=(("q.cif_pets", (820.0,)),),
         integration_semiangles=(1.0,),
         rocking_curve_sampling=42,
         dsg=0.0015,
@@ -94,6 +94,7 @@ def _step(**overrides: object) -> RefinementStep:
 def _run(
     tmp_path: Path,
     *,
+    experiment: ExperimentDeclared | None = None,
     steps: tuple[RefinementStep, ...] = (),
     rotations: tuple[RefinedRotationMetrics, ...] = (),
     profile: ThicknessProfile | None = None,
@@ -103,7 +104,7 @@ def _run(
     """Drive a SummaryLogger through one run's worth of events and return the written text."""
     structure = _structure(tmp_path)
     logger = SummaryLogger(tmp_path / "refinement_report.txt")
-    logger.report(_experiment())
+    logger.report(experiment if experiment is not None else _experiment())
     logger.report(
         manifest
         if manifest is not None
@@ -167,6 +168,35 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
     assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
     assert "mean wR2   = 0.200000 [1/1]" in text
     assert "HKLs (Observed/total)" in text and "8 / 12" in text
+
+
+def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> None:
+    experiment = _experiment()
+    text = _run(
+        tmp_path,
+        experiment=ExperimentDeclared(
+            name=experiment.name,
+            structure=experiment.structure,
+            experimental_data="dataset_1.cif_pets, dataset_2.cif_pets",
+            optimizer=experiment.optimizer,
+            seed_thicknesses_by_dataset=(
+                ("dataset_1.cif_pets", (400.0,)),
+                ("dataset_2.cif_pets", (800.0,)),
+            ),
+            integration_semiangles=(1.0, 2.0),
+            rocking_curve_sampling=experiment.rocking_curve_sampling,
+            dsg=experiment.dsg,
+            rsg=experiment.rsg,
+            solve_g_max=experiment.solve_g_max,
+            sg_max=experiment.sg_max,
+            absorption=experiment.absorption,
+            steps=experiment.steps,
+            learning_rate=experiment.learning_rate,
+        ),
+    )
+
+    assert "dataset_1.cif_pets: 400" in text
+    assert "dataset_2.cif_pets: 800" in text
 
 
 def test_summary_selects_the_best_epoch_not_the_last(tmp_path: Path) -> None:

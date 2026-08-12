@@ -515,9 +515,9 @@ class ExperimentDeclared:
     the :class:`~diffBloch.config.schema.ExperimentConfig` directly -- which is what keeps such a sink
     an ordinary :class:`Logger` rather than a component wired into the app's orchestration.
 
-    Paths, the optimizer name, and the seed-thickness list ride on the dataclass rather than in
-    ``measurements``, which stays flat-scalar for the generic backends -- the same split
-    :class:`ThicknessOptimized` makes for its candidate grid.
+    Paths, the optimizer name, and the per-dataset seed-thickness declarations ride on the
+    dataclass rather than in ``measurements``, which stays flat-scalar for the generic backends --
+    the same split :class:`ThicknessOptimized` makes for its candidate grid.
     """
 
     channel: ClassVar[str] = "experiment"
@@ -525,7 +525,9 @@ class ExperimentDeclared:
     structure: str
     experimental_data: str
     optimizer: str
-    seed_thicknesses: tuple[float, ...]
+    # One effective seed-thickness tuple per inputs.exp_data entry, preserving the dataset labels
+    # when ``sample.mean_thickness_by_dataset`` overrides the shared default.
+    seed_thicknesses_by_dataset: tuple[tuple[str, tuple[float, ...]], ...]
     # One semiangle per inputs.exp_data entry, in that order -- pooled datasets may differ.
     integration_semiangles: tuple[float, ...]
     rocking_curve_sampling: int

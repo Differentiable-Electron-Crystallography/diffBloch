@@ -45,7 +45,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
-    assert cfg.refinement.optimizer.name == "adam"
+    assert cfg.refinement.optimizer.name == "lbfgs"
     assert cfg.loss_metrics.residual == "wr2"
     assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
     assert cfg.refinement.split.train_test is False
@@ -116,12 +116,54 @@ def test_multi_dataset_mean_thicknesses_are_keyed_by_exp_data() -> None:
     )
     assert cfg.sample.seed_thicknesses_for("a.cif_pets") == (400.0,)
     assert cfg.sample.seed_thicknesses_for("b.cif_pets") == (800.0,)
+    declared = cfg.to_declaration(
+        (IntegrationGeometry(semiangle=1.0), IntegrationGeometry(semiangle=2.0))
+    )
+    assert declared.seed_thicknesses_by_dataset == (
+        ("a.cif_pets", (400.0,)),
+        ("b.cif_pets", (800.0,)),
+    )
 
     with pytest.raises(ValidationError, match="keys must exactly match"):
         ExperimentConfig.model_validate(
             {
                 **base,
                 "sample": {"mean_thickness_by_dataset": {"a.cif_pets": 400.0}},
+            }
+        )
+
+
+def test_sample_thicknesses_must_be_finite() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+
+    with pytest.raises(ValidationError, match="thicknesses must be finite and positive"):
+        ExperimentConfig.model_validate({**base, "sample": {"thicknesses": [float("nan")]}})
+
+    with pytest.raises(ValidationError, match="thicknesses must be finite and positive"):
+        ExperimentConfig.model_validate({**base, "sample": {"thicknesses": [float("inf")]}})
+
+
+def test_multi_dataset_mean_thicknesses_must_be_finite() -> None:
+    base = {
+        "name": "pooled",
+        "inputs": {
+            "structure": "q.cif",
+            "exp_data": ["a.cif_pets", "b.cif_pets"],
+            "multi_dataset": True,
+        },
+        "refinement": {"thickness_nn": {"enabled": False}},
+    }
+
+    with pytest.raises(ValidationError, match="finite and positive"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "sample": {
+                    "mean_thickness_by_dataset": {
+                        "a.cif_pets": 400.0,
+                        "b.cif_pets": float("nan"),
+                    }
+                },
             }
         )
 
