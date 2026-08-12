@@ -732,6 +732,7 @@ source = { editable = "." }
 dependencies = [
     { name = "diffpy-structure" },
     { name = "gemmi" },
+    { name = "matplotlib" },
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -742,9 +743,6 @@ dependencies = [
 [package.optional-dependencies]
 comet = [
     { name = "comet-ml" },
-]
-plot = [
-    { name = "matplotlib" },
 ]
 wandb = [
     { name = "wandb" },
@@ -775,7 +773,7 @@ requires-dist = [
     { name = "comet-ml", marker = "extra == 'comet'", specifier = ">=3.0" },
     { name = "diffpy-structure", specifier = ">=3.2" },
     { name = "gemmi", specifier = ">=0.7.5" },
-    { name = "matplotlib", marker = "extra == 'plot'", specifier = ">=3.7" },
+    { name = "matplotlib", specifier = ">=3.7" },
     { name = "numpy", specifier = ">=2.5" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -783,7 +781,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.13.0" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.16" },
 ]
-provides-extras = ["comet", "plot", "wandb"]
+provides-extras = ["comet", "wandb"]
 
 [package.metadata.requires-dev]
 dev = [

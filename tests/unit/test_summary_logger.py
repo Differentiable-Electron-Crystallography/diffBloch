@@ -271,7 +271,6 @@ def test_summary_reports_the_thickness_profile_when_one_was_trained(tmp_path: Pa
     assert "alpha (degrees)" in text
     assert "12.5000" in text and "430.25" in text
 
-    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
     assert (tmp_path / "thickness_nn_shape_q.png").is_file()
     assert "plot: thickness_nn_shape_q.png" in text
 
@@ -290,7 +289,6 @@ def test_summary_reports_one_thickness_section_per_dataset(tmp_path: Path) -> No
     assert "Thickness NN -- sub/b.cif_pets" in text
     assert "430.25" in text and "210.00" in text
 
-    pytest.importorskip("matplotlib", reason="optional diffBloch[plot] extra")
     # Filenames use the dataset checkpoint stem: path separators fold to "__", suffix drops.
     assert (tmp_path / "thickness_nn_shape_a.png").is_file()
     assert (tmp_path / "thickness_nn_shape_sub__b.png").is_file()

@@ -384,10 +384,10 @@ class SummaryLogger:
                 lines.append("")
                 lines.append(f" plot: {plot_path.name}")
             except ModuleNotFoundError:
+                # matplotlib is a core dependency, so this only fires on a broken install -- the
+                # report still gets written rather than losing the run to a rendering import.
                 lines.append("")
-                lines.append(
-                    " plot: skipped (matplotlib not installed -- see the diffBloch[plot] extra)"
-                )
+                lines.append(" plot: skipped (matplotlib is not importable in this environment)")
 
     def _refined_structure(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path
