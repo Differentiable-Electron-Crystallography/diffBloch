@@ -57,9 +57,8 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 Continuous-rotation data is recorded in the `.cif_pets` file as overlapping **virtual frames**
 ([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
 given reflection can appear in several neighbouring frames, but should only be fully integrated in
-one of them. `rsg` and `dsg` (see [Comparing simulation with experiment](workflow.md#comparing-simulation-with-experiment))
-identify the frames in which a reflection passes sufficiently far through the Bragg condition to be
-treated as fully integrated.
+one of them. `rsg` and `dsg` identify the frames in which a reflection passes sufficiently far
+through the Bragg condition to be treated as fully integrated.
 
 For each reflection, diffBloch calculates its excitation error {math}`|S_g|` at the centre of the
 frame and the excitation-error half-range {math}`\Delta S_g` swept from the centre to the edge of
