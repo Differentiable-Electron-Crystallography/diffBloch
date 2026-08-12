@@ -37,12 +37,13 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 | [Devices and scaling](devices-and-scaling.md) | CPU and GPU execution, memory controls, and refinement profiling. |
 | [Reproducibility](reproducibility.md) | Records identifying the inputs and preprocessing used for a refinement. |
 | [Examples](examples.md) | Runnable experiments included with diffBloch. |
+| [Publications and references](publications-and-references.md) | Publications using diffBloch and the sources the codebase draws on. |
 
 ## Quickstart
 
 ### Command line
 
-The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a complete experiment. 
+The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a complete experiment.
 
 `uv` installs the required Python packages and runs diffBloch inside the
 project environment. Git LFS downloads the larger experimental-data files stored in the repository.
@@ -92,6 +93,7 @@ refinement.md
 devices-and-scaling.md
 reproducibility.md
 examples.md
+publications-and-references.md
 ```
 
 ```{toctree}

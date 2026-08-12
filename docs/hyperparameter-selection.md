@@ -1,25 +1,28 @@
 # Hyperparameter selection
 
-Running an experiment requires the user to select simulation, preprocessing, and refinement settings. These choices are recorded in `experiment.yaml`. diffBloch keeps this file short by supplying
+Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined by structural refinement.
+
+These choices are recorded in `experiment.yaml`. diffBloch keeps this file short by supplying
 defaults for common settings and automatically deriving quantities already defined by the input
 data. Importantly, values specified in the `experiment.yaml` will override defaults.
 
-This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling`, see [Convergence testing](convergence-testing.md).
+This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling` specifically, see [Convergence testing](convergence-testing.md).
 
 ## Values read from `.cif` and `.cif_pets`
 
-Some values are deliberately **not** config fields in diffBloch, they are read from the structure `.cif` or `.cif_pets` file at load time. These include:
+Some values that other refinement packages expose as settings are deliberately **not** config
+fields in diffBloch — they are read from the structure `.cif` or `.cif_pets` file at load time, so
+they cannot silently drift from the data they describe:
 
-| Value | Default | Where it is read | Notes |
-|---|---|---|---|
-| Electron energy / wavelength | None; required | `.cif_pets` `_diffrn_radiation_wavelength` | Specified during data reduction. |
-| Unit cell (`a, b, c, α, β, γ`) | None; required | `.cif_pets` `_cell_*`, checked against the structure `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry. See [Inputs and outputs](inputs.md). |
-| UB orientation matrix | None; required | `.cif_pets` `_diffrn_orient_matrix_UB_*` | The UB matrix and each rotation's goniometer angles supply its starting orientation. |
-| Data-collection geometry | None; required  | `.cif_pets` `_diffrn_measurement_details`, line `data collection geometry:` | PETS values `continuous rotation` and `precession`, respectively. |
-| Integration semiangle | None; required | Per-rotation `.cif_pets` `_diffrn_zone_axis_precession_angle` | Interpreted as the continuous-rotation tilt half-width or the fixed precession-cone angle. I|
-| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.mosaicity: true`; a missing value then raises rather than defaulting silently. |
-
-
+| Value | Source | Notes |
+|---|---|---|
+| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). The wavelength is recorded to limited precision, so this recovers the operator-selected voltage exactly. |
+| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md). |
+| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's UB supplies its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
+| Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
+| Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
+| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by the `.cif_pets` cell override — fractional coordinates are interpreted using the `.cif_pets` cell. |
+| Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
 
 ## `sample`
 
@@ -27,23 +30,7 @@ Fixed sample properties (`diffBloch.config.schema.SampleConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `thicknesses` | `(820.0,)` | Seed thickness candidates in Å, shared by every rotation unless `mean_thickness_by_dataset` is set. |
-| `mean_thickness_by_dataset` | `{}` | Optional starting mean thickness in Å for each pooled dataset, keyed by its exact `inputs.exp_data` path. When set, every dataset must have one entry. |
-
-```yaml
-inputs:
-  multi_dataset: true
-  exp_data: [dataset_1.cif_pets, dataset_2.cif_pets]
-
-sample:
-  mean_thickness_by_dataset:
-    dataset_1.cif_pets: 400.0
-    dataset_2.cif_pets: 800.0
-
-refinement:
-  thickness_nn:
-    enabled: false
-```
+| `thicknesses` | `(820.0,)` | Seed specimen thickness in Å, one shared value for every rotation (and every dataset under `inputs.multi_dataset`); `preprocess.optimize_thickness` then fits each rotation individually, so datasets with genuinely different thickness converge per rotation from the shared seed. |
 
 ## `blochwave`
 
@@ -52,10 +39,10 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | Field | Default | What it does |
 |---|---|---|
 | `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled -- the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix. |
-| `absorption` | `false` | Include absorption as an imaginary structure-factor contribution. |
+| `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
-| `rocking_curve_sampling` | `50` | Tilt samples integrated across the continuous-rotation sweep or around the precession cone. See [Convergence testing](convergence-testing.md). |
+| `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
 | `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. The legacy `{window: N}` form sets the width directly. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
@@ -89,11 +76,11 @@ beams included in the Bloch wave calculation.
 
 ### Union coupling
 
-Each virtual frame covers an angular integration range. For `continuous rotation`, diffBloch
-samples from minus to plus the PETS semiangle about the goniometer x-axis. For `precession`, it
-samples uniformly in azimuth around a cone at the fixed PETS precession angle.
-`rocking_curve_sampling` sets the number of samples in either geometry. The intensities calculated
-at all samples are summed to give the simulated integrated intensity for that frame.
+Each virtual frame covers a small angular range of the crystal's rotation. To simulate its
+integrated intensity, diffBloch samples a rocking curve across that range. `rocking_curve_sampling`
+sets the number of samples. Each sample is a tilt: one crystal orientation within the virtual
+frame. The intensities calculated at all tilts are summed to give the simulated integrated
+intensity for that frame.
 
 Changing the tilt changes every reflection's excitation error {math}`S_g`. At each tilt, beams are
 selected when {math}`|S_g| < sg_\mathrm{max}`. In `per_tilt` mode, diffBloch applies this test and
@@ -154,7 +141,7 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 
 | Field | Default | What it does |
 |---|---|---|
-| `min_thickness` | `5.0` | Lower bound, Å. |
+| `min_thickness` | `5.0` | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
 | `max_thickness` | `2000.0` | Upper bound, Å. |
 | `n_steps` | `100` | Number of evenly-spaced grid candidates. |
 | `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
@@ -224,11 +211,21 @@ Input file references, relative to the experiment directory only (`Inputs`).
 ### Combining multiple datasets
 
 `inputs.multi_dataset: true` pools rotations from several `.cif_pets` files (`inputs.exp_data` as a
-list of 2+ paths) into one experiment, each dataset keeping its own orientation, and
+list of 2+ paths) into one experiment, each dataset keeping its own energy, orientation, and
 thickness. Two situations call for it:
 
-- **Beam damage** — Each
-  dataset is its own `.cif_pets` file  but they refine one shared structure.
+- **Beam damage series** — repeat measurements of the same crystal taken at increasing dose. Each
+  dataset is its own `.cif_pets` file (its own UB, its own apparent thickness), but they refine one shared
+  structure; combining them uses every rotation instead of picking one dataset and discarding the
+  rest.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not
-  cover enough of reciprocal space to constrain the structure well.
+  cover enough of reciprocal space to constrain the structure well when the space group has few
+  symmetry operations to fill in the gaps. Multiple datasets from different crystal
+  orientations/mounts fill in coverage that one series alone would leave thin.
 
+Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
+integration geometry -- precession angles may differ between files), and the settled per-dataset
+plans are pooled in memory just before refinement. See
+[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
+first-file authoritative cell, one-energy rule, rotation-index offsets) and
+[Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
