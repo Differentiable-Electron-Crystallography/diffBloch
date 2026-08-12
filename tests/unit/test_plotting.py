@@ -12,7 +12,10 @@ import pytest
 
 pytest.importorskip("matplotlib")
 
-from diffBloch.app.loggers.plotting import ThicknessPlotLogger  # noqa: E402
+from diffBloch.app.loggers.plotting import (  # noqa: E402
+    ThicknessPlotLogger,
+    plot_thickness_nn_shape,
+)
 from diffBloch.observability import OrientationOptimized, ThicknessOptimized  # noqa: E402
 
 _EVENT = ThicknessOptimized(
@@ -81,3 +84,14 @@ def test_report_writes_a_separate_png_per_rotation(tmp_path: Path) -> None:
     )
 
     assert {p.name for p in output_dir.iterdir()} == {"3.png", "4.png"}
+
+
+def test_thickness_nn_shape_plot_carries_its_dataset_title(tmp_path: Path) -> None:
+    png = tmp_path / "thickness_nn_shape_a.png"
+
+    plot_thickness_nn_shape(
+        [(0.0, 400.0), (10.0, 450.0)], png, title="Thickness NN final shape -- a.cif_pets"
+    )
+
+    assert png.is_file()
+    assert png.stat().st_size > 0
