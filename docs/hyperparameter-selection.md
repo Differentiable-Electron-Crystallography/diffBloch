@@ -55,7 +55,7 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `absorption` | `false` | Include absorption as an imaginary structure-factor contribution. |
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
-| `rocking_curve_sampling` | `50` | Tilt samples integrated across the continuous-rotation sweep or around the precession cone. See [Convergence testing](convergence-testing.md). |
+| `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
 | `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. The legacy `{window: N}` form sets the width directly. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
@@ -89,11 +89,11 @@ beams included in the Bloch wave calculation.
 
 ### Union coupling
 
-Each virtual frame covers an angular integration range. For `continuous rotation`, diffBloch
-samples from minus to plus the PETS semiangle about the goniometer x-axis. For `precession`, it
-samples uniformly in azimuth around a cone at the fixed PETS precession angle.
-`rocking_curve_sampling` sets the number of samples in either geometry. The intensities calculated
-at all samples are summed to give the simulated integrated intensity for that frame.
+Each virtual frame covers a small angular range of the crystal's rotation. To simulate its
+integrated intensity, diffBloch samples a rocking curve across that range. `rocking_curve_sampling`
+sets the number of samples. Each sample is a tilt: one crystal orientation within the virtual
+frame. The intensities calculated at all tilts are summed to give the simulated integrated
+intensity for that frame.
 
 Changing the tilt changes every reflection's excitation error {math}`S_g`. At each tilt, beams are
 selected when {math}`|S_g| < sg_\mathrm{max}`. In `per_tilt` mode, diffBloch applies this test and
@@ -231,4 +231,3 @@ thickness. Two situations call for it:
   dataset is its own `.cif_pets` file  but they refine one shared structure.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not
   cover enough of reciprocal space to constrain the structure well.
-
