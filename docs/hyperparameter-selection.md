@@ -17,7 +17,7 @@ they cannot silently drift from the data they describe:
 | Value | Source | Notes |
 |---|---|---|
 | Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). PETS records wavelength to limited precision, so this recovers the operator-selected voltage exactly. |
-| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif). |
+| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
 | UB orientation matrix | `.cif_pets`, per rotation | Each rotation's own PETS UB seeds its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
 | Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
 | Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
@@ -188,6 +188,6 @@ thickness. Two situations call for it:
 Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
 integration geometry -- precession angles may differ between files), and the settled per-dataset
 plans are pooled in memory just before refinement. See
-[Inputs and outputs](inputs.md#combining-multiple-datasets) for the mechanics (per-dataset checkpoints, the
+[Inputs and outputs](inputs.md#multiple-datasets) for the mechanics (per-dataset checkpoints, the
 first-file authoritative cell, one-energy rule, rotation-index offsets) and
 [Reproducibility](reproducibility.md) for what each per-dataset lock verifies.

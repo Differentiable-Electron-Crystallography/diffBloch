@@ -40,7 +40,7 @@ parameter, both values, and the percentage difference. Fractional atomic coordin
 unchanged; they are simply interpreted against PETS's cell rather than the CIF's own. For a combined
 (`inputs.multi_dataset`) experiment, the first combined `.cif_pets` file is the shared anchor every
 other input — the CIF's and every further combined file's — is checked against, under the same two
-thresholds; see [Inputs and outputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif) for the
+thresholds; see [Inputs and outputs](inputs.md#unit-cell) for the
 full rule and [Preprocessing](preprocessing.md#unit-cell-authority-pets-overrides-the-structure-cif)
 for how each combined file's own orientation matrix still comes from its own UB and cell before
 being composed with that shared anchor.
