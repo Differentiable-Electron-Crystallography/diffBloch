@@ -1,7 +1,7 @@
 # Devices and scaling
 
-`--device`, `--workers`, and `--max-batch` control how a run executes. They do not change the
-experiment settings or invalidate preprocessing checkpoints.
+`--device` controls which device a run executes on. It does not change the experiment settings or
+invalidate preprocessing checkpoints.
 
 ## Device
 
@@ -12,24 +12,6 @@ uv run diffbloch refine <experiment_dir> --device cpu
 
 CUDA is the default. If CUDA is unavailable, diffBloch falls back to the CPU. Both devices perform
 the same calculation, but a GPU is much faster for large structure matrices.
-
-## Workers
-
-`--workers` runs independent orientation-plan builds and orientation searches in parallel. The
-default is one worker:
-
-```bash
-uv run diffbloch preprocess <experiment_dir> --workers 4
-```
-
-When using multiple workers, limit the host thread pools to avoid assigning a full set of CPU
-threads to every worker.
-
-## Maximum batch size
-
-`--max-batch` limits the number of structure matrices passed to one matrix-exponential operation.
-It controls memory use rather than the scientific result. The default selects a batch size from
-the matrix size and available memory.
 
 ## GPU and CPU timings
 
