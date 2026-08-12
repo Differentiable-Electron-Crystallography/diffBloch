@@ -16,6 +16,7 @@ from diffBloch.engine import (
     ForwardContext,
     PerOrientationThickness,
     QuadraticThicknessProfile,
+    RefinementEngine,
     RefinementProblem,
     ThicknessBounds,
     TrainableSpec,
@@ -115,13 +116,19 @@ def test_refinement_model_records_component_params_as_read_only_mapping() -> Non
 def test_apparent_thickness_nn_validates_legacy_settings() -> None:
     with pytest.raises(ValueError, match="num_samples"):
         ApparentThicknessNN(
-            bounds=ThicknessBounds(400.0, 1100.0), normalized_alphas=(0.0,), num_samples=0
+            bounds=ThicknessBounds(400.0, 1100.0),
+            normalized_alphas=(0.0,),
+            num_samples=0,
+            rotation_range=(0, 1),
+            label="a.cif_pets",
         )
     with pytest.raises(ValueError, match="form"):
         ApparentThicknessNN(
             bounds=ThicknessBounds(400.0, 1100.0),
             normalized_alphas=(0.0,),
             form="quadratic",  # type: ignore[arg-type]
+            rotation_range=(0, 1),
+            label="a.cif_pets",
         )
 
 
@@ -153,18 +160,153 @@ def test_apparent_thickness_nn_can_be_scoped_to_one_dataset() -> None:
     )
 
 
+def _orientation_at(engine: RefinementEngine, rotation_index: int) -> OrientationPlanLike:
+    orientation = engine.orientations[0]
+    return dataclasses.replace(
+        orientation, pattern=dataclasses.replace(orientation.pattern, rotation_index=rotation_index)
+    )
+
+
+def test_apparent_thickness_nn_scoped_network_indexes_alphas_locally() -> None:
+    engine = _engine()
+    scoped = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(-1.0, 1.0),
+        rotation_range=(5, 7),
+        label="b.cif_pets",
+    )
+    unscoped = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(-1.0, 1.0),
+        rotation_range=(0, 2),
+        label="a.cif_pets",
+    )
+    params = scoped.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+
+    at_global_6 = scoped.forward_context(
+        params, rotation_index=6, orientation=_orientation_at(engine, 6)
+    ).thickness
+    at_local_1 = unscoped.forward_context(
+        params, rotation_index=1, orientation=_orientation_at(engine, 1)
+    ).thickness
+
+    assert at_global_6 is not None and at_local_1 is not None
+    assert torch.equal(at_global_6, at_local_1)
+
+
+def test_apparent_thickness_nn_scoped_sampling_uses_the_local_epsilon_row() -> None:
+    engine = _engine()
+    scoped = ApparentThicknessNN(
+        bounds=ThicknessBounds(100.0, 3500.0),
+        normalized_alphas=(0.25, 0.75),
+        sample_thickness=True,
+        num_samples=7,
+        init_seed=3,
+        rotation_range=(5, 7),
+        label="b.cif_pets",
+    )
+    unscoped = dataclasses.replace(scoped, rotation_range=(0, 2), label="a.cif_pets")
+    params = scoped.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+
+    first = scoped.forward_context(
+        params, rotation_index=6, orientation=_orientation_at(engine, 6)
+    ).thickness
+    second = scoped.forward_context(
+        params, rotation_index=6, orientation=_orientation_at(engine, 6)
+    ).thickness
+    local = unscoped.forward_context(
+        params, rotation_index=1, orientation=_orientation_at(engine, 1)
+    ).thickness
+
+    assert first is not None and second is not None and local is not None
+    assert first.shape == (7,)
+    assert bool((first > 0.0).all())
+    assert torch.equal(first, second)
+    assert torch.equal(first, local)
+
+
+def test_disjoint_networks_compose_to_exactly_one_thickness_per_rotation() -> None:
+    engine = _engine()  # its single orientation carries rotation_index 0
+    first = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(0.0,),
+        key="apparent_thickness[a.cif_pets]",
+        rotation_range=(0, 1),
+        label="a.cif_pets",
+    )
+    second = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(0.0,),
+        key="apparent_thickness[b.cif_pets]",
+        rotation_range=(1, 2),
+        label="b.cif_pets",
+    )
+    params = _params()
+    component_params = {
+        component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+        for component in (first, second)
+    }
+    model = build_refinement_model(
+        initial=params, components=(first, second), component_params=component_params
+    )
+
+    # Only `first` claims rotation 0; `second` yields no thickness and composition succeeds.
+    objective = engine.objective_value_model(model)
+    assert torch.isfinite(objective.total)
+
+    overlapping = dataclasses.replace(second, rotation_range=(0, 1))
+    clashing = build_refinement_model(
+        initial=params, components=(first, overlapping), component_params=component_params
+    )
+    with pytest.raises(ValueError, match="multiple refinement components provided thickness"):
+        engine.objective_value_model(clashing)
+
+
+def test_apparent_thickness_nn_profile_reports_only_its_own_rotation_range() -> None:
+    engine = _engine()
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(-1.0, 1.0),
+        rotation_range=(1, 3),
+        label="b/c.cif_pets",
+    )
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+    orientations = [_orientation_at(engine, index) for index in (0, 1, 2, 3)]
+    raw_alphas = [10.0, 20.0, 30.0, 40.0]
+
+    profile = component.profile(params, orientations, raw_alphas)
+
+    assert profile.rotation_indices == (1, 2)
+    assert profile.alphas == (20.0, 30.0)
+    assert len(profile.thicknesses) == 2
+    assert profile.label == "b/c.cif_pets"
+
+
 def test_apparent_thickness_nn_rejects_mismatched_dataset_range() -> None:
     with pytest.raises(ValueError, match="rotation_range width"):
         ApparentThicknessNN(
             bounds=ThicknessBounds(200.0, 800.0),
             normalized_alphas=(0.0,),
             rotation_range=(5, 7),
+            label="a.cif_pets",
+        )
+    with pytest.raises(ValueError, match="rotation_range must be"):
+        ApparentThicknessNN(
+            bounds=ThicknessBounds(200.0, 800.0),
+            normalized_alphas=(0.0,),
+            rotation_range=(3, 3),
+            label="a.cif_pets",
         )
 
 
 def test_apparent_thickness_nn_legacy_mean_is_differentiable() -> None:
     engine = _engine()
-    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,))
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(0.0,),
+        rotation_range=(0, 1),
+        label="a.cif_pets",
+    )
     params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),
@@ -192,6 +334,8 @@ def test_apparent_thickness_nn_legacy_gaussian_sampling_is_positive_and_determin
         sample_thickness=True,
         num_samples=7,
         init_seed=3,
+        rotation_range=(0, 1),
+        label="a.cif_pets",
     )
     params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
     leaves = {name: value.detach().clone().requires_grad_(True) for name, value in params.items()}
@@ -215,7 +359,12 @@ def test_apparent_thickness_nn_legacy_gaussian_sampling_is_positive_and_determin
 def test_run_refinement_model_optimizes_apparent_thickness_nn_params() -> None:
     engine = _engine()
     structure_params = _params()
-    component = ApparentThicknessNN(bounds=ThicknessBounds(200.0, 800.0), normalized_alphas=(0.0,))
+    component = ApparentThicknessNN(
+        bounds=ThicknessBounds(200.0, 800.0),
+        normalized_alphas=(0.0,),
+        rotation_range=(0, 1),
+        label="a.cif_pets",
+    )
     component_params = component.initial_params(
         dtype=torch.float64,
         device=torch.device("cpu"),

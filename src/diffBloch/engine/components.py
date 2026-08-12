@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
@@ -168,13 +168,21 @@ def _orientation_angle_fraction(orientation: Tensor) -> Tensor:
 
 @dataclass(frozen=True)
 class ApparentThicknessNN:
-    """Legacy apparent-thickness neural network from checkpoint-preprocess.
+    """Per-dataset apparent-thickness neural network.
 
-    The fixed ``1 -> 64 -> 64 -> 2`` tanh MLP consumes the PETS alpha angle after dataset-wide
+    The fixed ``1 -> 64 -> 64 -> 2`` tanh MLP consumes the PETS alpha angle after per-dataset
     min-max normalization to ``[-1, 1]``. Its first output is mapped affinely from that nominal
     interval into ``bounds``; as in the legacy implementation this is not a hard bound. In sampling
     mode the second output parameterizes a Gaussian width and the reparameterized, positive
     thickness samples are passed to the Bloch solve.
+
+    Each network is scoped to one dataset's half-open ``rotation_range`` in pooled source-rotation
+    indices, with ``normalized_alphas`` holding exactly that range's values. A rotation outside the
+    range yields a context with no thickness: the model composition takes the one component that
+    does claim it, so per-dataset networks partition the pooled index space without any shared
+    routing table. ``label`` is the dataset's ``inputs.exp_data`` ref and names the component in
+    reports. Pooled datasets deliberately share ``init_seed`` -- identical initialization is
+    deterministic, and per-position seeds would make results depend on ``exp_data`` ordering.
 
     Legacy code drew new random samples on every forward call. Here the standard-normal draws are
     fixed by ``init_seed`` and source rotation index, retaining the same sampled model while keeping
@@ -188,8 +196,8 @@ class ApparentThicknessNN:
     sample_thickness: bool = False
     num_samples: int = 40
     init_seed: int = 0
-    rotation_range: tuple[int, int] | None = None
-    label: str | None = None
+    rotation_range: tuple[int, int] = field(kw_only=True)
+    label: str = field(kw_only=True)
 
     def __post_init__(self) -> None:
         if self.form != "min_thickness":
@@ -200,15 +208,14 @@ class ApparentThicknessNN:
             raise ValueError("normalized_alphas must lie in [-1, 1]")
         if self.num_samples < 1:
             raise ValueError("num_samples must be >= 1")
-        if self.rotation_range is not None:
-            start, end = self.rotation_range
-            if start < 0 or end <= start:
-                raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
-            if end - start != len(self.normalized_alphas):
-                raise ValueError(
-                    "rotation_range width must match len(normalized_alphas) "
-                    f"({end - start} != {len(self.normalized_alphas)})"
-                )
+        start, end = self.rotation_range
+        if start < 0 or end <= start:
+            raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+        if end - start != len(self.normalized_alphas):
+            raise ValueError(
+                "rotation_range width must match len(normalized_alphas) "
+                f"({end - start} != {len(self.normalized_alphas)})"
+            )
 
     def initial_params(
         self,
@@ -247,15 +254,23 @@ class ApparentThicknessNN:
         orientations: Sequence[OrientationPlanLike],
         raw_alphas: Sequence[float] | NDArray[np.float64],
     ) -> ThicknessProfile:
-        """Evaluate the trained curve at every orientation's tilt angle, as a reportable value.
+        """Evaluate the trained curve at every in-range orientation's tilt angle, reportably.
 
         The component owns this because it owns the behaviour: sampling its own output is not
         something an orchestrator or a logger should reimplement, and a sink must never run the
-        forward model itself. ``raw_alphas`` is indexed by source PETS rotation index.
+        forward model itself. That ownership includes the scope -- callers pass the full pooled
+        ``orientations`` and each network keeps its own ``rotation_range``. ``raw_alphas`` is
+        indexed by pooled source PETS rotation index, so it too is passed unsliced.
         """
-        indices = [orientation.pattern.rotation_index for orientation in orientations]
+        start, end = self.rotation_range
+        in_range = [
+            orientation
+            for orientation in orientations
+            if start <= orientation.pattern.rotation_index < end
+        ]
+        indices = [orientation.pattern.rotation_index for orientation in in_range]
         thicknesses: list[float] = []
-        for index, orientation in zip(indices, orientations, strict=True):
+        for index, orientation in zip(indices, in_range, strict=True):
             context = self.forward_context(params, rotation_index=index, orientation=orientation)
             if context.thickness is None:
                 raise ValueError("thickness component produced no thickness")
@@ -291,15 +306,11 @@ class ApparentThicknessNN:
             raise ValueError(f"apparent thickness NN params tensors missing {missing!r}")
         w0 = params["layer0.weight"]
         source_index = orientation.pattern.rotation_index
-        if self.rotation_range is not None:
-            start, end = self.rotation_range
-            if source_index < start or source_index >= end:
-                return ForwardContext(thickness=None)
-            local_index = source_index - start
-        else:
-            local_index = source_index
-        if local_index < 0 or local_index >= len(self.normalized_alphas):
-            raise ValueError("source rotation index is outside normalized_alphas")
+        start, end = self.rotation_range
+        if source_index < start or source_index >= end:
+            # Another dataset's rotation: the network that does claim it supplies the thickness.
+            return ForwardContext()
+        local_index = source_index - start
         x = w0.new_tensor(self.normalized_alphas[local_index]).reshape(1, 1)
         x = torch.tanh(F.linear(x, w0, params["layer0.bias"]))
         x = torch.tanh(F.linear(x, params["layer1.weight"], params["layer1.bias"]))
