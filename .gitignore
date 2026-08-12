@@ -19,6 +19,7 @@ pytest.xml
 dist/
 build/
 docs/_build/
+site/
 
 # plan.npz + plan.lock are NOT ignored. A settled Plan and the lock binding it to its inputs, config
 # digest, code release and recipe are the reproducibility record -- committing them is what lets an

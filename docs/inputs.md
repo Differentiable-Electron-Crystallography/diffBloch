@@ -161,11 +161,11 @@ recorded cell are checked against the first file's PETS cell (log a warning past
 difference on any cell parameter -- ordinary damage-series drift stays under this -- raise past
 5%, listing every offending parameter).
 
-Two current limitations, each rejected with a clear error rather than silently mishandled:
+One current limitation, rejected with a clear error rather than silently mishandled:
 `refinement.thickness_nn` (the network keys only on each rotation's tilt angle, so it cannot
 represent per-dataset thickness differences -- it defaults **on**, so a pooled config must set
-`refinement.thickness_nn.enabled: false` explicitly or fail at config load, before any compute)
-and `--orientations-csv` import (its rotation-index column predates pooling). Listing the same
+`refinement.thickness_nn.enabled: false` explicitly or fail at config load, before any compute).
+Listing the same
 file twice -- or two paths that would collide on one checkpoint name -- is rejected at config
 validation, since a duplicated dataset would double-weight its reflections in the refinement.
 `multi_dataset` defaults to `false`, and a single `exp_data` path is simply the one-dataset case
