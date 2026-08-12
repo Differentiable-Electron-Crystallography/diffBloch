@@ -8,7 +8,7 @@ data. Importantly, values specified in the `experiment.yaml` will override defau
 
 This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling` specifically, see [Convergence testing](convergence-testing.md).
 
-## What is *not* config: auto-filled from CIF/PETS
+## Values read from `.cif` and `.cif_pets`
 
 Some values that other refinement packages expose as settings are deliberately **not** config
 fields in diffBloch — they are read from the structure `.cif` or `.cif_pets` file at load time, so
@@ -16,12 +16,12 @@ they cannot silently drift from the data they describe:
 
 | Value | Source | Notes |
 |---|---|---|
-| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). PETS records wavelength to limited precision, so this recovers the operator-selected voltage exactly. |
-| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
-| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's own PETS UB seeds its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
+| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). The wavelength is recorded to limited precision, so this recovers the operator-selected voltage exactly. |
+| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
+| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's UB supplies its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
 | Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
 | Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
-| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by PETS's cell override — fractional coordinates are simply reinterpreted against PETS's metric. |
+| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by the `.cif_pets` cell override — fractional coordinates are interpreted using the `.cif_pets` cell. |
 | Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
 
 ## `sample`
@@ -34,44 +34,77 @@ Fixed sample properties (`diffBloch.config.schema.SampleConfig`).
 
 ## `blochwave`
 
-The beam-selection, coupling, and dynamical-solver settings (`BlochwaveConfig`), ordered here by
-how often you'd actually reach for them.
+Bloch wave simulation hyperparameters.
 
 | Field | Default | What it does |
 |---|---|---|
-| `g_max` | `2.25` | Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch wave matrix. See [Convergence testing](convergence-testing.md). |
-| `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
-| `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
+| `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled. |
 | `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
-| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width from the rocking-curve angular spacing; `false` applies no smoothing. The legacy `{window: N}` form sets the width directly. |
-| `rsg` | `0.66` | Klar beam-selection cutoff: relative excitation-error radius. |
-| `dsg` | `0.0015` | Klar beam-selection cutoff: excitation-error offset. |
-| `coupling_mode` | `"union"` | `"union"`: couple the union of excited beams across each tilt-chunk's boundary tilts. `"per_tilt"`: couple only each tilt's own excited beams (more accurate, more expensive). |
-| `union_adaptive` | `true` | See [Adaptive tilt-chunk coupling](#adaptive-tilt-chunk-coupling) below. |
-| `union_max_new_beams_pct` | `0.01` | Adaptive-chunking split threshold — see below. |
-| `fixed_n_segments` | `12` | Number of tilt-coupling segments when `coupling_mode: "union"` and `union_adaptive: false`. |
-| `solver` | `"matrix_exp"` | Dynamical solver, used for preprocessing search, refinement, and `run infer` alike. Must stay `matrix_exp` if `absorption: true` (the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix). |
-| `ignore_orientations` | `()` | Zero-based PETS rotation indices to exclude from the whole experiment (damaged/empty/diagnostic frames). |
+| `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
+| `dsg` | `0.0015` | Absolute excitation-error margin. |
+| `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
+| `mosaicity` | `false` | Convert the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. |
+| `coupling_mode` | `"union"` | Beam-coupling method. See [Union coupling](#union-coupling). |
+| `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
+| `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
+| `union_max_new_beams_pct` | `0.01` | Threshold for adaptive splitting. See [Union coupling](#union-coupling). |
+| `g_max` | `2.25` | Largest reflection {math}`g` vector simulated (Å⁻¹). Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
+| `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
+| `ignore_orientations` | `()` | Zero-based `.cif_pets` rotation indices to exclude from the experiment. |
 
-### Adaptive tilt-chunk coupling
+### `rsg` and `dsg`
 
-`coupling_mode: "union"` couples, within each tilt chunk, the beam set that is the *union* of the
-excited beams at the chunk's two boundary tilts (see [Preprocessing](preprocessing.md) for what
-"coupling" means here). `union_adaptive` picks how those chunk boundaries are chosen:
+Virtual frames overlap, so the same reflection may be recorded in neighbouring frames. `rsg` and
+`dsg` identify the frames in which a reflection passes sufficiently far through the Bragg condition
+to be treated as fully integrated.
 
-- `true` (default): recursive bisection. Start with one chunk spanning the whole rocking curve;
-  at each step, check the chunk's midpoint tilt against the union already covered by its two
-  endpoints. If the midpoint would add more than `union_max_new_beams_pct` of *new* beams beyond
-  that union, split the chunk in two at the midpoint and recurse into each half; otherwise the
-  chunk is left as one piece. This puts more, smaller chunks where the excited beam set is
-  changing quickly across the rocking curve (e.g. near a strong systematic row) and fewer, larger
-  chunks where it's stable — without needing to know in advance where that is.
-- `false`: `fixed_n_segments` evenly-sized chunks regardless of how much the beam set actually
-  changes across them.
+For each reflection, diffBloch calculates its excitation error {math}`|S_g|` at the centre of the
+frame and the excitation-error half-range {math}`\Delta S_g` swept from the centre to the edge of
+that frame. The reflection is retained when both conditions are satisfied:
 
-Adaptive chunking costs more beam-set unions up front (to evaluate the split predicate) but
-generally solves fewer total beams than a fixed split sized conservatively enough to avoid
-under-coupling; a fixed split is more predictable when you want a fixed, known chunk count instead.
+```{math}
+\frac{|S_g|}{\Delta S_g} < rsg
+```
+
+```{math}
+\Delta S_g-|S_g| > dsg.
+```
+
+`rsg` is dimensionless. It limits the reflection's central excitation error relative to its swept
+range. Increasing `rsg` retains reflections farther from the centre of that range. `dsg` is an
+absolute margin in Å⁻¹. Increasing `dsg` rejects reflections that only just enter the integration
+range. These parameters select the reflections compared with experiment; they do not select the
+beams included in the Bloch wave calculation.
+
+### Union coupling
+
+Each virtual frame covers a small angular range of the crystal's rotation. To simulate its
+integrated intensity, diffBloch samples a rocking curve across that range.
+`rocking_curve_sampling` sets the number of samples. Each sample is a **tilt**: one crystal
+orientation within the virtual frame. The intensities calculated at all tilts are summed to give
+the simulated integrated intensity for that frame.
+
+Changing the tilt changes every reflection's excitation error {math}`S_g`. At each tilt, beams are
+selected when {math}`|S_g| < sg_\mathrm{max}`. In `per_tilt` mode, diffBloch applies this test and
+builds a separate structure matrix at every tilt. This keeps each matrix as small as possible, but
+repeatedly calculates {math}`S_g` for all candidate reflections and prevents the tilts from being
+solved together efficiently.
+
+`union` mode groups neighbouring tilts. Every tilt in a group uses one combined beam set containing
+the beams selected at the group's boundaries. The off-diagonal elements describe coupling between
+these beams through the structure factors and are reused across the group. The diagonal contains
+the excitation error of each beam and is recalculated for every tilt. The matrices are then solved
+as a batch, making better use of GPU parallelization. This is usually faster when the individual
+structure matrices are small or moderate in size.
+
+The combined beam set is larger than the set needed by any one tilt. Union mode therefore solves
+larger matrices and stores several of them on the GPU at once. When the matrices are already large,
+or GPU memory is nearly full, this cost can outweigh the benefit of batching. In that case,
+`coupling_mode: "per_tilt"` is likely to be faster and use less memory.
+
+With `union_adaptive: true`, diffBloch makes shorter groups where the beam set changes rapidly and
+longer groups where it remains stable. `union_max_new_beams_pct` controls when a group is split.
+With adaptive grouping disabled, `fixed_n_segments` sets the number of equal groups.
 
 ## `preprocess`
 
@@ -113,7 +146,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 | Field | Default | What it does |
 |---|---|---|
-| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) — necessary since the Bloch wave solve comes off on an arbitrary structure-factor scale, not PETS's own intensity scale. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
+| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
 
 ## `refinement`
 
@@ -177,7 +210,7 @@ list of 2+ paths) into one experiment, each dataset keeping its own energy, orie
 thickness. Two situations call for it:
 
 - **Beam damage series** — repeat measurements of the same crystal taken at increasing dose. Each
-  dataset is its own PETS file (its own UB, its own apparent thickness), but they refine one shared
+  dataset is its own `.cif_pets` file (its own UB, its own apparent thickness), but they refine one shared
   structure; combining them uses every rotation instead of picking one dataset and discarding the
   rest.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not

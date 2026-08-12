@@ -4,7 +4,7 @@ Refinement holds a settled `Plan` (fitted orientation, tilts, thickness — see
 [Preprocessing](preprocessing.md)) fixed and minimizes the scaling-optimized weighted {math}`wR_2`
 of [Klar *et al.* (2023)](https://doi.org/10.1038/s41557-023-01186-1) over the differentiable
 structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
-dynamical calculation described in [Workflow](workflow.md#refinement). `R_obs`, the Bragg
+dynamical calculation described in [Workflow](workflow.md#structural-refinement). `R_obs`, the Bragg
 {math}`R`-factor restricted to {math}`I_{\mathrm{obs}} > 3\sigma` reflections, is reported alongside
 {math}`wR_2` at every step as the conventional crystallographic residual, but is not itself the
 optimized quantity.
