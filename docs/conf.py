@@ -122,5 +122,10 @@ html_theme = "furo"
 html_title = "diffBloch"
 html_baseurl = "https://differentiable-electron-crystallography.github.io/diffBloch/"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_logo = "_static/logo.png"
 ogp_site_url = html_baseurl
+
+# templates/sidebar/brand.html overrides furo's default to add a GitHub icon link next to the
+# sidebar title.
+templates_path = ["_templates"]
