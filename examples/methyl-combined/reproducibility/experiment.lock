@@ -1,0 +1,19 @@
+{
+  "structure": {
+    "ref": "refined_structure_GT_iso_fixed_adps.cif",
+    "sha256": "1cff134b50eb03c0a83c2caf000d77327a9fe0d7b3a2ee6745308857735a51b5",
+    "bytes": 6586
+  },
+  "experimental_data": [
+    {
+      "ref": "methyl_dose6.cif_pets",
+      "sha256": "a7ca8aab3b11f08499c64a800a4c2e59c6a00e8f58d25eab008c027bb76cc2ce",
+      "bytes": 580866
+    },
+    {
+      "ref": "methyl_dose4.cif_pets",
+      "sha256": "be20cd24da75bf378a85ba1c461861540353ef0ae22521bf14fdfedee644ee62",
+      "bytes": 466784
+    }
+  ]
+}

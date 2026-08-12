@@ -1,28 +1,25 @@
 # Hyperparameter selection
 
-Running an experiment requires the user to select numerical, preprocessing, and refinement settings. Hyperparameters control how diffBloch performs the calculation but are not themselves determined by structural refinement.
-
-These choices are recorded in `experiment.yaml`. diffBloch keeps this file short by supplying
+Running an experiment requires the user to select simulation, preprocessing, and refinement settings. These choices are recorded in `experiment.yaml`. diffBloch keeps this file short by supplying
 defaults for common settings and automatically deriving quantities already defined by the input
 data. Importantly, values specified in the `experiment.yaml` will override defaults.
 
-This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling` specifically, see [Convergence testing](convergence-testing.md).
+This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling`, see [Convergence testing](convergence-testing.md).
 
 ## Values read from `.cif` and `.cif_pets`
 
-Some values that other refinement packages expose as settings are deliberately **not** config
-fields in diffBloch — they are read from the structure `.cif` or `.cif_pets` file at load time, so
-they cannot silently drift from the data they describe:
+Some values are deliberately **not** config fields in diffBloch, they are read from the structure `.cif` or `.cif_pets` file at load time. These include:
 
-| Value | Source | Notes |
-|---|---|---|
-| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). The wavelength is recorded to limited precision, so this recovers the operator-selected voltage exactly. |
-| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
-| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's UB supplies its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
-| Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
-| Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
-| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by the `.cif_pets` cell override — fractional coordinates are interpreted using the `.cif_pets` cell. |
-| Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
+| Value | Default | Where it is read | Notes |
+|---|---|---|---|
+| Electron energy / wavelength | None; required | `.cif_pets` `_diffrn_radiation_wavelength` | Specified during data reduction. |
+| Unit cell (`a, b, c, α, β, γ`) | None; required | `.cif_pets` `_cell_*`, checked against the structure `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry. See [Inputs and outputs](inputs.md). |
+| UB orientation matrix | None; required | `.cif_pets` `_diffrn_orient_matrix_UB_*` | The UB matrix and each rotation's goniometer angles supply its starting orientation. |
+| Data-collection geometry | None; required  | `.cif_pets` `_diffrn_measurement_details`, line `data collection geometry:` | PETS values `continuous rotation` and `precession`, respectively. |
+| Integration semiangle | None; required | Per-rotation `.cif_pets` `_diffrn_zone_axis_precession_angle` | Interpreted as the continuous-rotation tilt half-width or the fixed precession-cone angle. I|
+| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.mosaicity: true`; a missing value then raises rather than defaulting silently. |
+
+
 
 ## `sample`
 
@@ -30,48 +27,104 @@ Fixed sample properties (`diffBloch.config.schema.SampleConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `thicknesses` | `(820.0,)` | Seed specimen thickness in Å, one shared value for every rotation (and every dataset under `inputs.multi_dataset`); `preprocess.optimize_thickness` then fits each rotation individually, so datasets with genuinely different thickness converge per rotation from the shared seed. |
+| `thicknesses` | `(820.0,)` | Seed thickness candidates in Å, shared by every rotation unless `mean_thickness_by_dataset` is set. |
+| `mean_thickness_by_dataset` | `{}` | Optional starting mean thickness in Å for each pooled dataset, keyed by its exact `inputs.exp_data` path. When set, every dataset must have one entry. |
+
+```yaml
+inputs:
+  multi_dataset: true
+  exp_data: [dataset_1.cif_pets, dataset_2.cif_pets]
+
+sample:
+  mean_thickness_by_dataset:
+    dataset_1.cif_pets: 400.0
+    dataset_2.cif_pets: 800.0
+
+refinement:
+  thickness_nn:
+    enabled: false
+```
 
 ## `blochwave`
 
-The beam-selection, coupling, and dynamical-solver settings (`BlochwaveConfig`), ordered here by
-how often you'd actually reach for them.
+Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `g_max` | `2.25` | Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch wave matrix. See [Convergence testing](convergence-testing.md). |
+| `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled -- the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix. |
+| `absorption` | `false` | Include absorption as an imaginary structure-factor contribution. |
+| `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
+| `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
+| `rocking_curve_sampling` | `50` | Tilt samples integrated across the continuous-rotation sweep or around the precession cone. See [Convergence testing](convergence-testing.md). |
+| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width using the spacing between rocking-curve samples. No additional orientations are simulated. The legacy `{window: N}` form sets the width directly. |
+| `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
+| `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
+| `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
+| `union_max_new_beams_pct` | `0.01` | Threshold for adaptive splitting. See [Union coupling](#union-coupling). |
+| `g_max` | `2.25` | Largest reflection {math}`g` vector simulated (Å⁻¹). Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
-| `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
-| `mosaicity` | `false` | `true` converts the apparent mosaicity from `.cif_pets` into a moving-average width from the rocking-curve angular spacing; `false` applies no smoothing. The legacy `{window: N}` form sets the width directly. |
-| `rsg` | `0.66` | Klar beam-selection cutoff: relative excitation-error radius. |
-| `dsg` | `0.0015` | Klar beam-selection cutoff: excitation-error offset. |
-| `coupling_mode` | `"union"` | `"union"`: couple the union of excited beams across each tilt-chunk's boundary tilts. `"per_tilt"`: couple only each tilt's own excited beams (more accurate, more expensive). |
-| `union_adaptive` | `true` | See [Adaptive tilt-chunk coupling](#adaptive-tilt-chunk-coupling) below. |
-| `union_max_new_beams_pct` | `0.01` | Adaptive-chunking split threshold — see below. |
-| `fixed_n_segments` | `12` | Number of tilt-coupling segments when `coupling_mode: "union"` and `union_adaptive: false`. |
-| `solver` | `"matrix_exp"` | Dynamical solver, used for preprocessing search, refinement, and `run infer` alike. Must stay `matrix_exp` if `absorption: true` (the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix). |
 | `ignore_orientations` | `()` | Zero-based `.cif_pets` rotation indices to exclude from the experiment. |
 
-### Adaptive tilt-chunk coupling
+### `rsg` and `dsg`
 
-`coupling_mode: "union"` couples, within each tilt chunk, the beam set that is the *union* of the
-excited beams at the chunk's two boundary tilts (see [Preprocessing](preprocessing.md) for what
-"coupling" means here). `union_adaptive` picks how those chunk boundaries are chosen:
+Continuous-rotation data is recorded in the `.cif_pets` file as overlapping **virtual frames**
+([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
+given reflection can appear in several neighbouring frames, but should only be fully integrated in
+one of them. `rsg` and `dsg` identify the frames in which a reflection passes sufficiently far
+through the Bragg condition to be treated as fully integrated.
 
-- `true` (default): recursive bisection. Start with one chunk spanning the whole rocking curve;
-  at each step, check the chunk's midpoint tilt against the union already covered by its two
-  endpoints. If the midpoint would add more than `union_max_new_beams_pct` of *new* beams beyond
-  that union, split the chunk in two at the midpoint and recurse into each half; otherwise the
-  chunk is left as one piece. This puts more, smaller chunks where the excited beam set is
-  changing quickly across the rocking curve (e.g. near a strong systematic row) and fewer, larger
-  chunks where it's stable — without needing to know in advance where that is.
-- `false`: `fixed_n_segments` evenly-sized chunks regardless of how much the beam set actually
-  changes across them.
+For each reflection, diffBloch calculates its excitation error {math}`|S_g|` at the centre of the
+frame and the excitation-error half-range {math}`\Delta S_g` swept from the centre to the edge of
+that frame. The reflection is retained when both conditions are satisfied:
 
-Adaptive chunking costs more beam-set unions up front (to evaluate the split predicate) but
-generally solves fewer total beams than a fixed split sized conservatively enough to avoid
-under-coupling; a fixed split is more predictable when you want a fixed, known chunk count instead.
+```{math}
+\frac{|S_g|}{\Delta S_g} < rsg, \qquad \Delta S_g - |S_g| > dsg.
+```
+
+`rsg` is dimensionless. It limits the reflection's central excitation error relative to its swept
+range. Increasing `rsg` retains reflections farther from the centre of that range. `dsg` is an
+absolute margin in Å⁻¹. Increasing `dsg` rejects reflections that only just enter the integration
+range. These parameters select the reflections compared with experiment; they do not select the
+beams included in the Bloch wave calculation.
+
+### Union coupling
+
+Each virtual frame covers an angular integration range. For `continuous rotation`, diffBloch
+samples from minus to plus the PETS semiangle about the goniometer x-axis. For `precession`, it
+samples uniformly in azimuth around a cone at the fixed PETS precession angle.
+`rocking_curve_sampling` sets the number of samples in either geometry. The intensities calculated
+at all samples are summed to give the simulated integrated intensity for that frame.
+
+Changing the tilt changes every reflection's excitation error {math}`S_g`. At each tilt, beams are
+selected when {math}`|S_g| < sg_\mathrm{max}`. In `per_tilt` mode, diffBloch applies this test and
+builds a separate structure matrix at every tilt. This keeps each matrix as small as possible, but
+repeatedly calculates {math}`S_g` for all candidate reflections and prevents the tilts from being
+solved together efficiently.
+
+`union` mode groups neighbouring tilts. Every tilt in a group uses one combined beam set containing
+the beams selected at the group's boundaries. The off-diagonal elements describe coupling between
+these beams through the structure factors and are reused across the group. The diagonal contains
+the excitation error of each beam and is recalculated for every tilt. The matrices are then solved
+as a batch, making better use of GPU parallelization. This is usually faster when the individual
+structure matrices are small or moderate in size.
+
+The combined beam set is larger than the set needed by any one tilt. Union mode therefore solves
+larger matrices and stores several of them on the GPU at once. When the matrices are already large,
+or GPU memory is nearly full, this cost can outweigh the benefit of batching. In that case,
+`coupling_mode: "per_tilt"` is likely to be faster and use less memory. See
+[Devices and scaling](devices-and-scaling.md) for measured comparisons.
+
+With `union_adaptive: true`, diffBloch makes shorter groups where the beam set changes rapidly and
+longer groups where it remains stable: starting from one chunk spanning the whole rocking curve,
+each chunk's midpoint tilt is checked against the beam union already covered by its two endpoints,
+and the chunk is split in two and recursed into if the midpoint would add more than
+`union_max_new_beams_pct` of new beams beyond that union. Adaptive chunking costs more beam-set
+unions up front (to evaluate the split predicate) but generally solves fewer total beams than a
+fixed split sized conservatively enough to avoid under-coupling.
+
+With `union_adaptive: false`, `fixed_n_segments` sets the number of equal groups regardless of how
+much the beam set actually changes across them -- more predictable when a fixed, known chunk count
+is wanted instead.
 
 ## `preprocess`
 
@@ -89,11 +142,11 @@ Bounds for the local orientation search (`NelderMeadOptimizationConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `step_size` | scipy default | Initial simplex step size, degrees. |
-| `max_iterations` | scipy default | Maximum Nelder-Mead iterations (`maxiter`). |
-| `x_tolerance` | scipy default | Simplex convergence tolerance on the orientation parameters (`xatol`). |
-| `f_tolerance` | scipy default | Simplex convergence tolerance on the objective (`fatol`). |
-| `penalize_fewer_reflections` | scipy default | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
+| `step_size` | `0.05` | Initial simplex step size, degrees. |
+| `max_iterations` | `60` | Maximum Nelder-Mead iterations (`maxiter`). |
+| `x_tolerance` | `0.001` | Simplex convergence tolerance on the orientation parameters (`xatol`). |
+| `f_tolerance` | `0.001` | Simplex convergence tolerance on the objective (`fatol`). |
+| `penalize_fewer_reflections` | `true` | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
 
 ### `preprocess.thickness`
 
@@ -101,9 +154,9 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 
 | Field | Default | What it does |
 |---|---|---|
-| `min_thickness` | grid default | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
-| `max_thickness` | grid default | Upper bound, Å. |
-| `n_steps` | grid default | Number of evenly-spaced grid candidates. |
+| `min_thickness` | `5.0` | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
+| `max_thickness` | `2000.0` | Upper bound, Å. |
+| `n_steps` | `100` | Number of evenly-spaced grid candidates. |
 | `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
 
 ## `loss_metrics`
@@ -113,11 +166,11 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 | Field | Default | What it does |
 |---|---|---|
-| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
+| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. |
 
 ## `refinement`
 
-Execution knobs for the default single-stage `run refine` (`RefinementConfig`).
+
 
 | Field | Default | What it does |
 |---|---|---|
@@ -127,8 +180,6 @@ Execution knobs for the default single-stage `run refine` (`RefinementConfig`).
 
 ### `refinement.trainable`
 
-Whole-group trainable selections (`TrainableConfig`). Element-filtered selections (e.g. freeze
-hydrogens) are Python/API composition, not config — see `engine.with_hydrogen_riding`.
 
 | Field | Default | What it does |
 |---|---|---|
@@ -151,13 +202,13 @@ Apparent-thickness neural network used by the default refinement path (`Thicknes
 
 | Field | Default | What it does |
 |---|---|---|
-| `enabled` | spec default | Whether a learned thickness model replaces the fixed per-rotation seed during refinement. |
-| `num_samples` | spec default | Number of thickness samples the network's input encoding uses. |
-| `sample_thickness` | spec default | Whether thickness itself is sampled as part of the network's forward pass. |
+| `enabled` | `true` | Whether a learned thickness model replaces the fixed per-rotation seed during refinement. |
+| `num_samples` | `40` | Number of thickness samples the network's input encoding uses. |
+| `sample_thickness` | `false` | Whether thickness itself is sampled as part of the network's forward pass. |
 | `form` | `"min_thickness"` | Functional form of the network's output (currently only one implemented). |
-| `min_thickness` | spec default | Lower bound, Å, for the network's thickness output. |
-| `max_thickness` | spec default | Upper bound, Å, for the network's thickness output. |
-| `init_seed` | spec default | Random seed for the network's initial weights. |
+| `min_thickness` | `100.0` | Lower bound, Å, for the network's thickness output. |
+| `max_thickness` | `2000.0` | Upper bound, Å, for the network's thickness output. |
+| `init_seed` | `0` | Random seed for the network's initial weights. |
 
 ## `inputs`
 
@@ -188,6 +239,6 @@ thickness. Two situations call for it:
 Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
 integration geometry -- precession angles may differ between files), and the settled per-dataset
 plans are pooled in memory just before refinement. See
-[Inputs and outputs](inputs.md#multiple-datasets) for the mechanics (per-dataset checkpoints, the
+[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
 first-file authoritative cell, one-energy rule, rotation-index offsets) and
 [Reproducibility](reproducibility.md) for what each per-dataset lock verifies.

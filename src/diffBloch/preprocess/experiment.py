@@ -265,6 +265,11 @@ def setup_datasets(
 
     u0_by_energy: dict[float, float] = {}
     datasets: list[DatasetSetup] = []
+    dataset_refs = (
+        tuple(config.inputs.exp_data)
+        if isinstance(config.inputs.exp_data, list)
+        else (config.inputs.exp_data,)
+    )
     offset = 0
     for dataset_index, record in enumerate(records):
         count = counts[dataset_index]
@@ -296,6 +301,11 @@ def setup_datasets(
             record.omegas,
         )
         local_ignore_set = set(local_ignored)
+        seed_thicknesses = (
+            config.sample.seed_thicknesses_for(dataset_refs[dataset_index])
+            if config.sample.mean_thickness_by_dataset
+            else config.sample.thicknesses
+        )
         plans = tuple(
             CandidatePlan.seed(
                 beam_hkl,
@@ -305,7 +315,7 @@ def setup_datasets(
                     rotation_index=local_index,
                 ),
                 energy=energy,
-                thickness=config.sample.thicknesses,
+                thickness=seed_thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
                 # Always carry the record's own mosaicity through, regardless of
@@ -321,7 +331,10 @@ def setup_datasets(
         datasets.append(
             DatasetSetup(
                 plan=Plan(structure_factor_grid=grid, orientations=plans),
-                integration=IntegrationGeometry(semiangle=record.integration_semiangle),
+                integration=IntegrationGeometry(
+                    semiangle=record.integration_semiangle,
+                    geometry=record.data_collection_geometry,
+                ),
                 energy=energy,
                 n_rotations=count,
                 ignored_rotations=local_ignored,

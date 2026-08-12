@@ -1,0 +1,54 @@
+# Methyl-something organic molecular crystal, single dataset (dose series frame 6).
+# Structure has hydrogens (C26 O14 H34 in the ASU); cell volume ~1262 A^3.
+#
+# 4 dose-series datasets are present (methyl_dose4/6/7/10.cif_pets, from PETS integration
+# folders 4/6/7/10 in the source repo) -- genuinely independent acquisitions of the same
+# crystal at increasing electron dose, not just different reductions of one acquisition.
+# dose4/7/10 share one wavelength (0.0198 A, ~300 kV); dose6 was collected at a different
+# wavelength (0.0251 A, ~200 kV) -- still poolable under inputs.multi_dataset (each file's
+# own energy is used), all four already share the same integration_semiangle (1.5 deg).
+#
+# refined_structure_GT_iso_fixed_adps.cif: ported from the source repo's
+# refined_structure_GT_iso.cif with 7 atoms' negative (physically invalid) isotropic ADPs
+# replaced by a neutral 0.02 placeholder -- see the comment at the top of that file.
+name: methyl-single
+
+inputs:
+  structure: refined_structure_GT_iso_fixed_adps.cif
+  exp_data: methyl_dose6.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [1400.0]
+
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: false
+
+blochwave:
+  g_max: 1.7
+  sg_max: 0.01
+  rocking_curve_sampling: 80
+  dsg: 0.0
+  rsg: 0.6
+
+loss_metrics:
+  residual: wr2
+
+refinement:
+  steps: 40
+  optimizer:
+    name: adam
+    lr: 0.001
+  trainable:
+    positions: all
+    adp: all
+    occupancy: none
+  split:
+    train_test: false
+  thickness_nn:
+    enabled: true
+    num_samples: 40
+    sample_thickness: false
+    min_thickness: 100.0
+    max_thickness: 2000.0

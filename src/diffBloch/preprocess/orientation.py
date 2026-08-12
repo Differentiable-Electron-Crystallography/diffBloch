@@ -115,20 +115,37 @@ def rocking_curve_tilts(
 ) -> FloatArray:
     """Rocking-curve integration tilts as ``(N, 3, 3)`` rotation matrices, ``N = sampling``.
 
-    ``sampling`` tilts at angles ``linspace(-semiangle, +semiangle, sampling)`` degrees, each a
-    rotation about **x** -- the goniometer axis in the PETS coordinate frame, where these matrices
-    left-multiply the already-PETS-rotated orientation (``R_tilt @ orientation``). ``sampling = 1``
-    is special-cased to a single tilt at angle 0 (the identity), so composing the integration with a
-    unit sampling is a no-op -- ``np.linspace`` would otherwise return the *start* ``-semiangle``
-    for ``num = 1``, off-centre from the nominal orientation.
+    For ``continuous_rotation``, ``sampling`` tilts span
+    ``linspace(-semiangle, +semiangle, sampling)`` degrees about **x**, the goniometer axis in the
+    PETS coordinate frame. ``sampling = 1`` is the identity so that unit-sample rocking integration
+    composes off. For ``precession``, samples lie at the fixed cone semi-angle and uniformly spaced
+    azimuths over ``[0, 360)`` using ``R_z(phi) R_x(semiangle) R_z(-phi)``. This is the convention
+    used by the legacy preprocessing path.
 
-    Continuous-rotation geometry only; ``precession`` (a cone) is a later discriminated mode and
-    raises ``NotImplementedError`` here. Callers unpack a validated
+    In both modes these matrices left-multiply the already-PETS-rotated nominal orientation
+    (``R_tilt @ orientation``). Callers unpack a validated
     :class:`~diffBloch.specs.RockingCurve` into these raw arguments (the value-type owns the
     invariants), matching :func:`hexagonal_tilt`'s raw-float style.
     """
+    if geometry == "precession":
+        azimuths = np.deg2rad(np.linspace(0.0, 360.0, sampling, endpoint=False))
+        polar = np.deg2rad(semiangle)
+        cos_phi, sin_phi = np.cos(azimuths), np.sin(azimuths)
+        cos_polar, sin_polar = np.cos(polar), np.sin(polar)
+        tilts = np.empty((sampling, 3, 3), dtype=np.float64)
+        # Expanded R_z(phi) @ R_x(polar) @ R_z(-phi), vectorized over cone azimuth.
+        tilts[:, 0, 0] = cos_phi**2 + cos_polar * sin_phi**2
+        tilts[:, 0, 1] = (1.0 - cos_polar) * cos_phi * sin_phi
+        tilts[:, 0, 2] = sin_polar * sin_phi
+        tilts[:, 1, 0] = tilts[:, 0, 1]
+        tilts[:, 1, 1] = sin_phi**2 + cos_polar * cos_phi**2
+        tilts[:, 1, 2] = -sin_polar * cos_phi
+        tilts[:, 2, 0] = -sin_polar * sin_phi
+        tilts[:, 2, 1] = sin_polar * cos_phi
+        tilts[:, 2, 2] = cos_polar
+        return tilts
     if geometry != "continuous_rotation":
-        raise NotImplementedError(f"rocking-curve geometry {geometry!r} is not implemented")
+        raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
     if sampling == 1:
         angles = np.zeros(1)  # single sample sits at the nominal orientation -> identity tilt
     else:

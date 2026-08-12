@@ -1,0 +1,17 @@
+{
+  "plan_lock_sha256": "03d65ca102c519688e91d8746037d3534ab9e270c91e87897d7285d303aed4ef",
+  "refinement_config_digest": "caa7bda5643b5127638ce3f45774b2e74e964d00db4cf8877f4da8967b9aefb3",
+  "code_version": "0.2.0+g64e4697.dirty",
+  "refined_structure": {
+    "path": "refined_structure.cif",
+    "sha256": "1abe5ddb2b5920f1a36dfc0928d332b55aeaa63f4ca3eb4a1fb761333b16d0b8",
+    "bytes": 9051,
+    "media_type": "chemical/x-cif"
+  },
+  "refined_parameters": {
+    "path": "reproducibility/refined_parameters.npz",
+    "sha256": "3591ca2bea7814eab27f208f54b7c74e3e40d8b0fe16829e5f118ba038ac69ba",
+    "bytes": 4920,
+    "media_type": "application/octet-stream"
+  }
+}

@@ -69,7 +69,7 @@ class ApparentThicknessNetwork:
 
 @dataclass(frozen=True)
 class Absorption:
-    """Enable the element/B-factor-dependent absorptive Bloch-wave model."""
+    """Enable the element/B-factor-dependent absorptive Bloch wave model."""
 
     enabled: bool = False
 
@@ -257,7 +257,7 @@ class RockingCurve:
     :class:`IntegrationGeometry`) supplies the tilt half-width ``semiangle`` -- the *same* physical
     angular range as the Klar beam-selection window, shared with :class:`BeamSelection` so the two
     cannot disagree -- and the ``geometry`` that selects the sweep (``continuous_rotation``,
-    goniometer x-axis tilts, implemented; or ``precession``, a deferred cone mode).
+    goniometer x-axis tilts; or ``precession``, uniformly sampled around a fixed-angle cone).
     """
 
     sampling: int = 42  # number of tilts across +/- semiangle; 1 = single static solve (identity)

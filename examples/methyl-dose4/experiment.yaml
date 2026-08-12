@@ -1,0 +1,47 @@
+# Methyl-something organic molecular crystal, single dataset (dose series frame 4).
+# Structure has hydrogens (C26 O14 H34 in the ASU); cell volume ~1262 A^3.
+#
+# Same crystal/config as examples/methyl-multi-dataset (dose6), swapped to the dose4 acquisition
+# (0.0198 A wavelength, ~300 kV) -- a genuinely independent acquisition of the same crystal at a
+# different electron dose, not a different reduction of the same data.
+name: methyl-dose4
+
+inputs:
+  structure: refined_structure_GT_iso_fixed_adps.cif
+  exp_data: methyl_dose4.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [1400.0]
+
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: false
+
+blochwave:
+  g_max: 1.7
+  sg_max: 0.01
+  rocking_curve_sampling: 80
+  dsg: 0.0
+  rsg: 0.6
+
+loss_metrics:
+  residual: wr2
+
+refinement:
+  steps: 40
+  optimizer:
+    name: adam
+    lr: 0.001
+  trainable:
+    positions: all
+    adp: all
+    occupancy: none
+  split:
+    train_test: false
+  thickness_nn:
+    enabled: true
+    num_samples: 40
+    sample_thickness: false
+    min_thickness: 100.0
+    max_thickness: 2000.0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Literal
 
 import gemmi
 import numpy as np
@@ -16,6 +17,9 @@ from diffBloch.io.record import ExperimentalRecord
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
 _MOSAICITY = re.compile(
     r"mosaicity:\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?)", re.IGNORECASE
+)
+_DATA_COLLECTION_GEOMETRY = re.compile(
+    r"data\s+collection\s+geometry\s*:\s*([^\r\n;]+)", re.IGNORECASE
 )
 
 
@@ -44,6 +48,7 @@ def parse_experimental_block(
         cell_parameters=cellpar,
         cell_parameters_su=cellpar_su,
         wavelength=required_float(block, "_diffrn_radiation_wavelength"),
+        data_collection_geometry=_data_collection_geometry(block),
         dstar_max=_dstar_max(block),
         mosaicity_degrees=_mosaicity(block),
         ub_matrix=_ub_matrix(block),
@@ -122,6 +127,33 @@ def _mosaicity(block: gemmi.cif.Block) -> float | None:
         return None
     match = _MOSAICITY.search(str(text))
     return float(match.group(1)) if match else None
+
+
+def _data_collection_geometry(
+    block: gemmi.cif.Block,
+) -> Literal["continuous_rotation", "precession"]:
+    """Return PETS2's acquisition geometry in the package's canonical spelling.
+
+    PETS2 writes this value into the informal ``_diffrn_measurement_details`` text block rather
+    than a structured CIF tag. Older files may omit it; those retain diffBloch's historical
+    continuous-rotation default. An explicit unknown value fails at the I/O boundary rather than
+    silently selecting scientifically different integration geometry.
+    """
+    text = block.find_value("_diffrn_measurement_details")
+    if text is None:
+        return "continuous_rotation"
+    match = _DATA_COLLECTION_GEOMETRY.search(str(text))
+    if match is None:
+        return "continuous_rotation"
+    value = re.sub(r"[\s_-]+", "_", match.group(1).strip().lower())
+    if value == "continuous_rotation":
+        return "continuous_rotation"
+    if value == "precession":
+        return "precession"
+    raise ValueError(
+        "PETS data collection geometry must be 'continuous rotation' or 'precession'; "
+        f"got {match.group(1).strip()!r}"
+    )
 
 
 def _ub_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:

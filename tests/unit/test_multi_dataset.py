@@ -94,6 +94,34 @@ def test_setup_datasets_gives_each_dataset_its_own_integration_geometry() -> Non
     assert datasets[1].integration.semiangle == 2.0
 
 
+def test_setup_datasets_preserves_each_dataset_collection_geometry() -> None:
+    structure, record, config = _quartz_inputs()
+    precession = record.model_copy(update={"data_collection_geometry": "precession"})
+    _, datasets = setup_datasets(structure, (record, precession), config)
+    assert datasets[0].integration.geometry == "continuous_rotation"
+    assert datasets[1].integration.geometry == "precession"
+
+
+def test_setup_datasets_seeds_each_dataset_with_its_configured_mean_thickness() -> None:
+    structure, record, config = _quartz_inputs()
+    raw = config.model_dump()
+    raw["inputs"] = {
+        "structure": config.inputs.structure,
+        "exp_data": ["a.cif_pets", "b.cif_pets"],
+        "multi_dataset": True,
+    }
+    raw["sample"]["mean_thickness_by_dataset"] = {
+        "a.cif_pets": 400.0,
+        "b.cif_pets": 800.0,
+    }
+    raw["refinement"]["thickness_nn"]["enabled"] = False
+    pooled = config.__class__.model_validate(raw)
+
+    _, datasets = setup_datasets(structure, (record, record), pooled)
+    assert datasets[0].plan.orientations[0].thickness.tolist() == [400.0]
+    assert datasets[1].plan.orientations[0].thickness.tolist() == [800.0]
+
+
 def test_setup_datasets_translates_global_ignore_to_file_local_slices() -> None:
     structure, record, config = _quartz_inputs()
     n = record.n_rotations

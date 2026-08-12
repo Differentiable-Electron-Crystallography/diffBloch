@@ -46,6 +46,7 @@ def test_read_quartz_pets_fixture() -> None:
     assert record.wavelength == 0.02510
     assert record.dstar_max == pytest.approx(1.800)
     assert record.mosaicity_degrees == pytest.approx(0.050)
+    assert record.data_collection_geometry == "continuous_rotation"
     assert record.cell_parameters.tolist() == pytest.approx([4.9226, 4.9226, 5.4003, 90, 90, 120])
     assert record.cell_parameters_su.shape == (6,)
     assert record.n_rotations == 99
@@ -164,6 +165,10 @@ _diffrn_orient_matrix_UB_23 0
 _diffrn_orient_matrix_UB_31 0
 _diffrn_orient_matrix_UB_32 0
 _diffrn_orient_matrix_UB_33 1
+_diffrn_measurement_details
+;
+data collection geometry: precession
+;
 loop_
 _diffrn_zone_axis_id
 _diffrn_zone_axis_u
@@ -194,4 +199,5 @@ _refln_zone_axis_id
     assert record.zone_axes.tolist() == [[0.0, 0.0, 1.0]]
     assert record.intensities.tolist() == [12.5]
     assert record.sigmas.tolist() == [0.7]
-    assert record.dstar_max is None  # no _diffrn_measurement_details block in this PETS version
+    assert record.data_collection_geometry == "precession"
+    assert record.dstar_max is None
