@@ -3,19 +3,19 @@
 Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
 therefore determines this experimental metadata before refining the structure and stores it in a `Plan`.
 
-Continuous-rotation data is recorded in the `.cif_pets` file as overlapping **virtual frames**
-([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
-given reflection can appear in several neighbouring frames, but should only be fully integrated in
-one of them -- `rsg`/`dsg` (see [`blochwave`](hyperparameter-selection.md#blochwave))
-aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
-intensities: partial reflections are not simulated. It represents each virtual frame by sampled
-tilt sub-orientations and sums their simulated intensities.
+
+## Convergence Testing
+
+Determine suitable `g_max`, `sg_max`, and `rocking_curve_sampling` simulation parameters to be used before optimizing thickness or
+orientation and before refining the structure. 
+
+For more information, see [Convergence testing](convergence-testing.md).
 
 ## Orientation
 
 The `.cif_pets` file supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
-cell and maps integer reflection indices {math}`(h,k,l)` to reciprocal-space vectors. The matrix
-{math}`U` places that reciprocal basis in the laboratory coordinate system. Their product {math}`UB`
+cell and reciprocal lattice. The matrix
+{math}`U` places that reciprocal lattice in the laboratory coordinate system. Their product {math}`UB`
 therefore maps a reflection index directly into the measured laboratory geometry.
 
 diffBloch separates the two matrices using
@@ -58,18 +58,11 @@ cell rather than the CIF's own.
 diffBloch checks the CIF cell against the `.cif_pets` cell on load:
 
 - **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning stating that
-  the `.cif_pets` value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
-  this.
-- **> 5% relative difference** raises `ValueError` and stops, listing every offending parameter, both
-  values, and the percentage difference. A gap this large usually means the two files describe
-  different crystals or settings entirely — continuing would silently derive the whole simulation's
-  geometry from a mismatch that size.
+  the `.cif_pets` value overrides the CIF value. 
+- **> 5% relative difference** raises `ValueError` and stops. A gap this large usually means the two files describe different crystals or settings entirely.
 
-For a combined experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
+For a multi-dataset experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
 structure CIF and every further `.cif_pets` file are checked against it under the same thresholds.
-Each combined dataset's own {math}`U = (UB)B^{-1}` is still derived from *that dataset's own* UB
-matrix and its own `.cif_pets` cell — so `U` stays close to a pure rotation — only the cell it gets
-composed with downstream is the shared authoritative one.
 
 ### Orientation-search method
 
@@ -176,14 +169,6 @@ rather than the network predicting one deterministic thickness per orientation. 
 [Hyperparameter selection](hyperparameter-selection.md) for the full field
 list.
 
-## Numerical convergence
-
-Determine `g_max`, `sg_max`, and `rocking_curve_sampling` before optimizing thickness or
-orientation and before refining the structure. Numerical convergence depends mainly on the
-simulation basis and integration grid, not on whether the starting orientation or atomic structure
-has already been optimized. Thickness is the important exception because it changes the width of
-the rocking curve. See [Convergence testing](convergence-testing.md) for the convergence procedure
-and the thickness-dependent sampling check.
 
 ## The `Plan`
 
@@ -258,5 +243,4 @@ one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solv
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
 Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
-sum their intensities without mosaic broadening. The legacy `{window: N}` form sets the
-moving-average width directly, independent of the value recorded in `.cif_pets`.
+sum their intensities without mosaic broadening.
