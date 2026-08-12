@@ -175,7 +175,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 | Field | Default | What it does |
 |---|---|---|
 | `steps` | `40` | Number of gradient-refinement epochs. |
-| `optimizer.name` | `"adam"` | `"adam"`, `"adamw"`, or `"lbfgs"`. |
+| `optimizer.name` | `"lbfgs"` | `"lbfgs"`, `"adam"`, or `"adamw"`. |
 | `optimizer.lr` | `1e-3` | Learning rate (Adam/AdamW; L-BFGS uses its own internal line search). |
 
 ### `refinement.trainable`

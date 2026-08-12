@@ -200,6 +200,10 @@ class SummaryLogger:
             else "n/a"
         )
         best_epoch = f"{completed.best_step + 1:g}" if completed else "n/a"
+        seed_thickness = "; ".join(
+            f"{dataset}: {', '.join(f'{thickness:g}' for thickness in thicknesses)}"
+            for dataset, thicknesses in experiment.seed_thicknesses_by_dataset
+        )
         rows = [
             [
                 "Integration semiangle (deg)",
@@ -215,7 +219,7 @@ class SummaryLogger:
             ],
             ["sg_max (A^-1)", f"{experiment.sg_max:g}"],
             ["Absorption (T/F)", "T" if experiment.absorption else "F"],
-            ["Seed thickness (A)", ", ".join(f"{t:g}" for t in experiment.seed_thicknesses)],
+            ["Seed thickness (A)", seed_thickness],
             ["Epochs (configured)", f"{experiment.steps:g}"],
             ["Best epoch", best_epoch],
             ["Optimizer", experiment.optimizer],

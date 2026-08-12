@@ -936,7 +936,7 @@ def run_refinement_model(
     *,
     trainable: TrainableSpec,
     steps: int,
-    optimizer: OptimizerName = "adam",
+    optimizer: OptimizerName = "lbfgs",
     lr: float = 1e-3,
     logger: Logger = NULL_LOGGER,
     verbose: bool = False,

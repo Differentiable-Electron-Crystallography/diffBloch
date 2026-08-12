@@ -7,6 +7,7 @@ input references and overrides.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -157,8 +158,8 @@ class SampleConfig(_StrictConfig):
     def _positive_thicknesses(cls, value: tuple[float, ...]) -> tuple[float, ...]:
         if not value:
             raise ValueError("thicknesses must contain at least one value")
-        if any(thickness <= 0.0 for thickness in value):
-            raise ValueError("thicknesses must be positive")
+        if any(not math.isfinite(thickness) or thickness <= 0.0 for thickness in value):
+            raise ValueError("thicknesses must be finite and positive")
         return value
 
     @field_validator("mean_thickness_by_dataset")
@@ -166,8 +167,8 @@ class SampleConfig(_StrictConfig):
     def _positive_dataset_thicknesses(cls, value: dict[str, float]) -> dict[str, float]:
         for ref, thickness in value.items():
             _relative_path_only(ref)
-            if thickness <= 0.0:
-                raise ValueError("per-dataset mean thicknesses must be positive")
+            if not math.isfinite(thickness) or thickness <= 0.0:
+                raise ValueError("per-dataset mean thicknesses must be finite and positive")
         return value
 
     def seed_thicknesses_for(self, exp_data: str) -> tuple[float, ...]:
@@ -236,7 +237,7 @@ class LossMetricsConfig(_StrictConfig):
 class OptimizerConfig(_StrictConfig):
     """Explicit optimizer backend for a refinement stage (matches ``OptimizerName``)."""
 
-    name: Literal["lbfgs", "adam", "adamw"] = "adam"
+    name: Literal["lbfgs", "adam", "adamw"] = "lbfgs"
     lr: float = 1e-3
 
 
@@ -553,20 +554,15 @@ class ExperimentConfig(_StrictConfig):
             if isinstance(self.inputs.exp_data, list)
             else (self.inputs.exp_data,)
         )
-        declared_seed_thicknesses = (
-            tuple(
-                self.sample.mean_thickness_by_dataset[ref]
-                for ref in dataset_refs
-            )
-            if self.sample.mean_thickness_by_dataset
-            else tuple(self.sample.thicknesses)
+        seed_thicknesses_by_dataset = tuple(
+            (ref, self.sample.seed_thicknesses_for(ref)) for ref in dataset_refs
         )
         return ExperimentDeclared(
             name=self.name,
             structure=self.inputs.structure,
             experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
-            seed_thicknesses=declared_seed_thicknesses,
+            seed_thicknesses_by_dataset=seed_thicknesses_by_dataset,
             integration_semiangles=tuple(integration.semiangle for integration in integrations),
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
             dsg=self.blochwave.dsg,
