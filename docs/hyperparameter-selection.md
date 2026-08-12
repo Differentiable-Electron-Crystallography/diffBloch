@@ -129,11 +129,11 @@ Bounds for the local orientation search (`NelderMeadOptimizationConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `step_size` | scipy default | Initial simplex step size, degrees. |
-| `max_iterations` | scipy default | Maximum Nelder-Mead iterations (`maxiter`). |
-| `x_tolerance` | scipy default | Simplex convergence tolerance on the orientation parameters (`xatol`). |
-| `f_tolerance` | scipy default | Simplex convergence tolerance on the objective (`fatol`). |
-| `penalize_fewer_reflections` | scipy default | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
+| `step_size` | `0.05` | Initial simplex step size, degrees. |
+| `max_iterations` | `60` | Maximum Nelder-Mead iterations (`maxiter`). |
+| `x_tolerance` | `0.001` | Simplex convergence tolerance on the orientation parameters (`xatol`). |
+| `f_tolerance` | `0.001` | Simplex convergence tolerance on the objective (`fatol`). |
+| `penalize_fewer_reflections` | `true` | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
 
 ### `preprocess.thickness`
 
@@ -141,9 +141,9 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 
 | Field | Default | What it does |
 |---|---|---|
-| `min_thickness` | grid default | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
-| `max_thickness` | grid default | Upper bound, Å. |
-| `n_steps` | grid default | Number of evenly-spaced grid candidates. |
+| `min_thickness` | `5.0` | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
+| `max_thickness` | `2000.0` | Upper bound, Å. |
+| `n_steps` | `100` | Number of evenly-spaced grid candidates. |
 | `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
 
 ## `loss_metrics`
@@ -153,11 +153,11 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 | Field | Default | What it does |
 |---|---|---|
-| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
+| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. |
 
 ## `refinement`
 
-Execution knobs for the default single-stage `run refine` (`RefinementConfig`).
+
 
 | Field | Default | What it does |
 |---|---|---|
@@ -167,8 +167,6 @@ Execution knobs for the default single-stage `run refine` (`RefinementConfig`).
 
 ### `refinement.trainable`
 
-Whole-group trainable selections (`TrainableConfig`). Element-filtered selections (e.g. freeze
-hydrogens) are Python/API composition, not config — see `engine.with_hydrogen_riding`.
 
 | Field | Default | What it does |
 |---|---|---|
@@ -191,13 +189,13 @@ Apparent-thickness neural network used by the default refinement path (`Thicknes
 
 | Field | Default | What it does |
 |---|---|---|
-| `enabled` | spec default | Whether a learned thickness model replaces the fixed per-rotation seed during refinement. |
-| `num_samples` | spec default | Number of thickness samples the network's input encoding uses. |
-| `sample_thickness` | spec default | Whether thickness itself is sampled as part of the network's forward pass. |
+| `enabled` | `true` | Whether a learned thickness model replaces the fixed per-rotation seed during refinement. |
+| `num_samples` | `40` | Number of thickness samples the network's input encoding uses. |
+| `sample_thickness` | `false` | Whether thickness itself is sampled as part of the network's forward pass. |
 | `form` | `"min_thickness"` | Functional form of the network's output (currently only one implemented). |
-| `min_thickness` | spec default | Lower bound, Å, for the network's thickness output. |
-| `max_thickness` | spec default | Upper bound, Å, for the network's thickness output. |
-| `init_seed` | spec default | Random seed for the network's initial weights. |
+| `min_thickness` | `100.0` | Lower bound, Å, for the network's thickness output. |
+| `max_thickness` | `2000.0` | Upper bound, Å, for the network's thickness output. |
+| `init_seed` | `0` | Random seed for the network's initial weights. |
 
 ## `inputs`
 
