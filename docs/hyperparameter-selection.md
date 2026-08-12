@@ -175,7 +175,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 | Field | Default | What it does |
 |---|---|---|
 | `steps` | `40` | Number of gradient-refinement epochs. |
-| `optimizer.name` | `"lbfgs"` | `"lbfgs"`, `"adam"`, or `"adamw"`. |
+| `optimizer.name` | `"adam"` | `"adam"`, `"adamw"`, or `"lbfgs"`. |
 | `optimizer.lr` | `1e-3` | Learning rate (Adam/AdamW; L-BFGS uses its own internal line search). |
 
 ### `refinement.trainable`
@@ -224,10 +224,37 @@ Input file references, relative to the experiment directory only (`Inputs`).
 ### Combining multiple datasets
 
 `inputs.multi_dataset: true` pools rotations from several `.cif_pets` files (`inputs.exp_data` as a
-list of 2+ paths) into one experiment, each dataset keeping its own orientation, and
-thickness. Two situations call for it:
+list of 2+ paths) into one experiment. Each dataset keeps its own orientation, integration
+geometry, and thickness seed. Two situations call for it:
 
-- **Beam damage** — Each
-  dataset is its own `.cif_pets` file  but they refine one shared structure.
+- **Beam damage series** — repeat measurements of the same crystal taken at increasing dose. Each
+  dataset is its own `.cif_pets` file, but they refine one shared structure.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not
-  cover enough of reciprocal space to constrain the structure well.
+  cover enough of reciprocal space to constrain the structure well when the space group has few
+  symmetry operations to fill in the gaps. Multiple datasets from different crystal
+  orientations/mounts fill in coverage that one series alone would leave thin.
+
+Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
+integration geometry -- precession angles may differ between files), and the settled per-dataset
+plans are pooled in memory just before refinement. See
+[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
+first-file authoritative cell, one-energy rule, rotation-index offsets) and
+[Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
+
+Set a different initial mean thickness for each dataset like this:
+
+```yaml
+inputs:
+  structure: structure.cif
+  multi_dataset: true
+  exp_data:
+    - dataset_1.cif_pets
+    - dataset_2.cif_pets
+
+sample:
+  mean_thickness_by_dataset:
+    dataset_1.cif_pets: 400.0
+    dataset_2.cif_pets: 800.0
+```
+
+Every rotation in each dataset starts from that dataset's assigned value.

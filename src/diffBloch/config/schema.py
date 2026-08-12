@@ -150,6 +150,7 @@ class SampleConfig(_StrictConfig):
     """
 
     thicknesses: tuple[float, ...] = (820.0,)
+    mean_thickness_by_dataset: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("thicknesses")
     @classmethod
@@ -159,6 +160,21 @@ class SampleConfig(_StrictConfig):
         if any(thickness <= 0.0 for thickness in value):
             raise ValueError("thicknesses must be positive")
         return value
+
+    @field_validator("mean_thickness_by_dataset")
+    @classmethod
+    def _positive_dataset_thicknesses(cls, value: dict[str, float]) -> dict[str, float]:
+        for ref, thickness in value.items():
+            _relative_path_only(ref)
+            if thickness <= 0.0:
+                raise ValueError("per-dataset mean thicknesses must be positive")
+        return value
+
+    def seed_thicknesses_for(self, exp_data: str) -> tuple[float, ...]:
+        """Return this dataset's configured seed thickness tuple."""
+        if exp_data in self.mean_thickness_by_dataset:
+            return (self.mean_thickness_by_dataset[exp_data],)
+        return self.thicknesses
 
 
 class DataSplitConfig(_StrictConfig):
@@ -220,7 +236,7 @@ class LossMetricsConfig(_StrictConfig):
 class OptimizerConfig(_StrictConfig):
     """Explicit optimizer backend for a refinement stage (matches ``OptimizerName``)."""
 
-    name: Literal["lbfgs", "adam", "adamw"] = "lbfgs"
+    name: Literal["lbfgs", "adam", "adamw"] = "adam"
     lr: float = 1e-3
 
 
@@ -501,6 +517,20 @@ class ExperimentConfig(_StrictConfig):
                 "cannot represent per-dataset thickness; that is future work) -- set "
                 "refinement.thickness_nn.enabled: false to pool datasets"
             )
+        per_dataset = set(self.sample.mean_thickness_by_dataset)
+        if per_dataset:
+            if not self.inputs.multi_dataset or not isinstance(self.inputs.exp_data, list):
+                raise ValueError(
+                    "sample.mean_thickness_by_dataset requires inputs.multi_dataset=true"
+                )
+            expected = set(self.inputs.exp_data)
+            if per_dataset != expected:
+                missing = sorted(expected - per_dataset)
+                unknown = sorted(per_dataset - expected)
+                raise ValueError(
+                    "sample.mean_thickness_by_dataset keys must exactly match inputs.exp_data; "
+                    f"missing={missing}, unknown={unknown}"
+                )
         return self
 
     def to_declaration(self, integrations: Sequence[IntegrationGeometry]) -> ExperimentDeclared:
@@ -518,12 +548,25 @@ class ExperimentConfig(_StrictConfig):
             if isinstance(self.inputs.exp_data, list)
             else self.inputs.exp_data
         )
+        dataset_refs = (
+            tuple(self.inputs.exp_data)
+            if isinstance(self.inputs.exp_data, list)
+            else (self.inputs.exp_data,)
+        )
+        declared_seed_thicknesses = (
+            tuple(
+                self.sample.mean_thickness_by_dataset[ref]
+                for ref in dataset_refs
+            )
+            if self.sample.mean_thickness_by_dataset
+            else tuple(self.sample.thicknesses)
+        )
         return ExperimentDeclared(
             name=self.name,
             structure=self.inputs.structure,
             experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
-            seed_thicknesses=tuple(self.sample.thicknesses),
+            seed_thicknesses=declared_seed_thicknesses,
             integration_semiangles=tuple(integration.semiangle for integration in integrations),
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
             dsg=self.blochwave.dsg,
