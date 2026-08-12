@@ -34,8 +34,9 @@ admitting a beam into the calculation at a given tilt.
 
 ## Elastic scattering and the structure factor
 
-Electrons interact with the crystal's total electrostatic potential {math}`V(\mathbf{r}). Its Fourier coefficients {math} `V_{\mathbf{g}}` sum
-over the atoms in the unit cell, with each atom each contributing its electron scattering factor
+Electrons interact with the crystal's total electrostatic potential {math}`V(\mathbf{r})`. Its
+Fourier coefficients {math}`V_{\mathbf{g}}` sum over the atoms in the unit cell, with each atom
+contributing its electron scattering factor
 {math}`f^e(s)` damped by thermal motion
 (the Debye–Waller factor) and phased by its fractional position:
 
