@@ -1,135 +1,68 @@
-# Inputs and experiment directories
+# Inputs and outputs
 
-A diffBloch run starts from an experiment directory. The directory contains a small YAML config, a
-starting crystal structure, reduced experimental diffraction data, and lock/checkpoint artifacts when
-available.
+Each experiment has its own directory containing `experiment.yaml`, a starting structure CIF, and
+experimental `.cif_pets` data.
 
 ## Required inputs
 
-| File | Role |
+| File | Contents |
 |---|---|
-| `experiment.yaml` | Experiment config and relative references to the input files. |
-| `structure.cif` | Starting crystal structure. |
-| `exp_data.cif_pets` | Reduced experimental diffraction data. |
-| `reproducibility/experiment.lock` | Content identity for the input CIF/PETS files. |
+| `experiment.yaml` | Input filenames and settings for the experiment. |
+| `.cif` | Starting crystal structure. |
+| `.cif_pets` | Experimental diffraction data reduced by PETS2. |
 
-Checkpointed examples also include:
+Paths written in `experiment.yaml` are measured from the experiment directory:
 
-| File | Role |
-|---|---|
-| `reproducibility/plan.<stem>.npz` | Serialized preprocessed `Plan`, one per `inputs.exp_data` file (`<stem>` is the file's path with separators as `__` and no `.cif_pets` suffix). |
-| `reproducibility/plan.<stem>.lock` | Provenance lock tying that dataset's checkpoint to its input bytes, authoritative PETS cell, dataset-scoped config, recipe, code version, and artifact hash. |
-
-Bundled binary artifacts such as `.cif_pets` experimental data and committed plan checkpoints are
-tracked with Git LFS. After cloning, run `git lfs pull` before validating or running checkpointed
-examples so these files are present as real data rather than LFS pointer files.
-
-## Reading the structure and the experimental data
-
-Reading a CIF gives fractional atomic coordinates, ADPs (isotropic or anisotropic, per atom), site
-occupancies, and the space-group symmetry operations. Reading a `.cif_pets` gives the reduced
-experimental data: the UB matrix, cell parameters, per-rotation goniometer angles, and the observed
-hkl/intensity/sigma triples. Both are parsed into validated records, so a malformed CIF, an unsupported ADP type, or a unit mismatch fails immediately at read time rather than surfacing later as a silently wrong simulation.
-
-PETS2's apparent mosaicity is read from `_diffrn_measurement_details` in degrees. Set
-`blochwave.mosaicity: true` to use it in the simulated rocking-curve geometry, or `false` to disable
-mosaic averaging.
-
-The public records are:
-
-- `StructureRecord`
-- `ObservationRecord`
-- `AdpRecord`
-
-## Unit-cell authority: PETS overrides the structure CIF
-
-The structure CIF and the `.cif_pets` file each carry their own unit cell, and they are not always
-identical. diffBloch uses **PETS's cell, not the CIF's**, for every piece of simulation geometry: the
-structure-factor grid, the reciprocal basis, the cell volume, the ADP `U*`-frame conversion, and the
-beam geometry derived from that grid. The structure CIF still supplies all atomic content —
-fractional positions, atom types, occupancies, ADPs, and symmetry operators — unchanged; those
-fractions are simply interpreted against PETS's cell instead of the CIF's own.
-
-The CIF's cell is checked against PETS's on every load:
-
-- **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning, stating
-  explicitly that the PETS value overrides the CIF value. Ordinary refinement/measurement drift
-  stays well under this.
-- **> 5% relative difference** raises `ValueError` and stops — listing every offending parameter,
-  both values, and the percentage difference — rather than silently deriving the whole simulation's
-  geometry from a mismatch that large.
-
-Under `inputs.multi_dataset`, the first `.cif_pets` file's cell is the shared authoritative cell.
-The CIF is checked against it, and the same two thresholds apply between combined `.cif_pets` files
-too (each further file's cell checked against the first file's); see
-[Combining multiple datasets](#combining-multiple-datasets) below.
-
-## API example
-
-This example is runnable against the bundled quartz checkpoint.
-
-```python
-from pathlib import Path
-
-from diffBloch.config import load_experiment
-from diffBloch.io import read_experimental_data, read_structure
-
-root = Path("examples/Colmey_et_al_2026/data/quartz-no-abs")
-cfg, experiment_lock = load_experiment(root)
-
-structure = read_structure(root / cfg.inputs.structure)
-experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
-
-print(cfg.name)
-print(structure.frac_positions.shape)
-print(experimental_data.hkl.shape)
+```yaml
+inputs:
+  structure: structure.cif
+  exp_data: experiment.cif_pets
 ```
 
-Validate a config from the CLI before launching a longer job:
+The structure CIF supplies the atoms, fractional coordinates, occupancies, atomic displacement
+parameters (ADPs), and space-group symmetry operations.
 
-```bash
-uv run diffbloch validate examples/Colmey_et_al_2026/data/quartz-no-abs/experiment.yaml
-```
+The `.cif_pets` file supplies the observed reflection intensities and uncertainties, crystal
+orientations, goniometer angles, electron wavelength, unit cell, and apparent mosaicity.
+
+## Unit cell
+
+Both input files contain a unit cell. diffBloch uses the `.cif_pets` cell for the simulation and uses the
+structure-CIF cell as a consistency check.
+
+- A difference greater than 1% in any cell parameter produces a warning.
+- A difference greater than 5% stops the calculation.
+
+
 
 ## Excluding rotations
 
-Exclude damaged, empty, or diagnostic-only frames with zero-based indices in the original PETS
-rotation order:
+Individual rotations can be excluded when their diffraction data should not be used, for example
+after beam damage has degraded the crystal or when no usable reflections were recorded. Rotations
+are selected by their zero-based indices:
 
 ```yaml
 blochwave:
   ignore_orientations: [0, 1, 18, 56]
 ```
 
-Excluded rotations never enter beam construction, orientation optimization, thickness optimization,
-inference, or structure refinement. Filtering occurs before the train/validation split, and does
-not renumber later source rotations when deciding split membership. The selection is part of the recorded experiment config and invalidates an incompatible
-preprocess checkpoint.
+Excluded rotations are not used during preprocessing, inference, or refinement.
 
-The two optimization stages in the standard preprocess command can be selected independently:
+## Multiple datasets
 
-```yaml
-preprocess:
-  optimize_orientation: true
-  optimize_thickness: false
-```
-
-## Combining multiple datasets
-
-`inputs.exp_data` is a single path by default. Set `inputs.multi_dataset: true` and give
-`exp_data` a list of two or more distinct paths to combine rotations from several `.cif_pets` files
-into one experiment -- e.g. a damage series, or repeat measurements of the same crystal:
+Several `.cif_pets` files from the same material can be combined in one refinement:
 
 ```yaml
 inputs:
-  structure: enantiomer_1.cif
+  structure: structure.cif
   multi_dataset: true
   exp_data:
-    - undamaged/frame_1.cif_pets
-    - undamaged/frame_2.cif_pets
+    - crystal_1.cif_pets
+    - crystal_2.cif_pets
+
 refinement:
   thickness_nn:
-    enabled: false   # defaults on; unsupported for pooled experiments (see limitations below)
+    enabled: false
 ```
 
 **Each dataset is preprocessed and checkpointed on its own.** Every file runs the recipe with its
@@ -171,31 +104,20 @@ validation, since a duplicated dataset would double-weight its reflections in th
 `multi_dataset` defaults to `false`, and a single `exp_data` path is simply the one-dataset case
 of the same flow.
 
-
 ## Outputs
 
-An experiment directory accumulates generated files as each command runs, alongside the inputs
-above:
+Running preprocessing or refinement adds results to the experiment directory:
 
-```text
-experiment.yaml
-structure.cif
-exp_data.cif_pets
-refined_structure.cif      # written by `run refine`
-refinement_report.txt      # written by `run refine`
-thickness_optim/           # written by preprocess.thickness.plot / --plot-thickness
-reproducibility/
-  experiment.lock
-  plan.<stem>.npz          # written by `run preprocess` / `run refine`, one per exp_data file
-  plan.<stem>.lock         # written by `run preprocess` / `run refine`, one per exp_data file
-  refined_parameters.npz   # written by `run refine`
-  refined_components.npz   # written by `run refine`, only when components are composed
-  refinement.lock          # written by `run refine`
-```
+| Output | Contents |
+|---|---|
+| `refined_structure.cif` | Refined crystal structure. |
+| `refinement_report.txt` | Final residuals, reflection counts, and refinement summary. |
+| `thickness_optim/` | Thickness-search plots when plotting is enabled. |
+| `reproducibility/experiment.lock` | Record of the input files. |
+| `reproducibility/plan.<stem>.npz` | Saved preprocessing for each `.cif_pets` dataset. |
+| `reproducibility/plan.<stem>.lock` | Inputs and settings used for the saved preprocessing. |
+| `reproducibility/refined_parameters.npz` | Refined parameter values. |
+| `reproducibility/refinement.lock` | Inputs and settings used for the refinement. |
 
-`refined_structure.cif` contains the best epoch's constrained structural values; the human-facing
-summary lives in `refinement_report.txt` (best epoch, which objective selected it, HKL counts). The
-raw `.npz` snapshots and every lock live under `reproducibility/`, since nobody reads them directly
--- see [Reproducibility](reproducibility.md) for what each lock verifies. `run refine` prints the
-absolute path of every file it writes. See [Refinement](refinement.md#refinement-outputs) for the
-full breakdown.
+See [Refinement](refinement.md#refinement-outputs) for the refinement report and
+[Reproducibility](reproducibility.md) for the lock files.

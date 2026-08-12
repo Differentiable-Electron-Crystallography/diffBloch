@@ -1,38 +1,49 @@
 # Examples
 
-The repository ships runnable experiment directories under `examples/`. Each holds an
-`experiment.yaml` plus its structure `.cif` and `.cif_pets` data -- see
-[Inputs](inputs.md) for the directory layout.
-
-```bash
-uv run diffbloch run preprocess <experiment_dir>
-uv run diffbloch run refine <experiment_dir>
-```
+Runnable examples are provided in `examples/`. Each experiment directory contains an
+`experiment.yaml`, a starting structure `.cif`, and experimental `.cif_pets` data.
 
 ## Colmey et al. (2026)
 
+The examples in
 [`examples/Colmey_et_al_2026`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026)
-holds six runnable experiment configs reproducing the three-material (CsPbBr₃, alpha-quartz,
-borane), elastic-vs-absorptive refinement comparison from Colmey *et al.* (2026), *The role of
-absorption in three-dimensional electron diffraction dynamical structure refinement*, submitted to
-Acta Crystallographica A ([arXiv:2602.08935](https://arxiv.org/abs/2602.08935)):
+reproduce the refinements from Colmey *et al.* (2026), *The role of absorption in
+three-dimensional electron diffraction dynamical structure refinement*
+([arXiv:2602.08935](https://arxiv.org/abs/2602.08935)).
+
+Six experiments compare refinements with and without absorption:
+
+| Material | Without absorption | With absorption |
+|---|---|---|
+| Alpha-quartz | `quartz-no-abs` | `quartz-absorption` |
+| Borane | `borane-no-abs` | `borane-absorption` |
+| CsPbBr₃ | `cspbbr3-no-abs` | `cspbbr3-absorption` |
+
+The experimental data were originally published by Suresh *et al.* (2024), *Ionisation of atoms
+determined by kappa refinement against 3D electron diffraction data*
+([Nature Communications 15, 9066](https://doi.org/10.1038/s41467-024-53448-2)).
+
+## Running an example
+
+For example, run the absorptive quartz refinement with:
 
 ```bash
-uv run diffbloch run preprocess examples/Colmey_et_al_2026/data/quartz-absorption
-uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-absorption
+uv run diffbloch preprocess examples/Colmey_et_al_2026/data/quartz-absorption
+uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-absorption
 ```
 
-Swap in any of `quartz-no-abs`, `cspbbr3-no-abs`, `cspbbr3-absorption`, `borane-no-abs`,
-`borane-absorption` for the other materials/absorption settings. See that directory's own
-`README.md` for the published-vs-reproduced R-factor table and data provenance; diffBloch has
-changed since the runs behind the paper's own numbers, so this reproduces the same experiments
-rather than bit-for-bit values.
+Replace `quartz-absorption` with any directory listed above. Add `--refresh` to the `refine`
+command to rebuild preprocessing before refinement:
 
-## Python API example
-
-```python
-from diffBloch.app import run_experiment
-
-result = run_experiment("<experiment_dir>")
-print(result.n_evaluated, result.mean_r_obs)
+```bash
+uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-absorption --refresh
 ```
+
+## Results
+
+Each refinement writes a refined CIF, a text report, and a thickness plot in its experiment
+directory. Reproducibility records are written under `reproducibility/`.
+
+The current code has changed since the calculations reported in the paper, so the examples repeat
+the same experiments but are not expected to reproduce the published values exactly. The original
+published values and full data provenance are given in the example directory's `README.md`.

@@ -9,12 +9,12 @@
 ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?logo=ruff&logoColor=black)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0969da?logo=sphinx&logoColor=white)](https://differentiable-electron-crystallography.github.io/diffBloch/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-0969da?logo=sphinx&logoColor=white)](https://diffbloch.com/)
 
 Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
 
-📖 **Documentation:** <https://differentiable-electron-crystallography.github.io/diffBloch/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
+📖 **Documentation:** <https://diffbloch.com/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
 
 ## Quickstart
 

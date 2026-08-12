@@ -3,19 +3,19 @@
 Dynamical diffraction is extremely sensitive to crystal orientation and thickness. diffBloch
 therefore determines this experimental metadata before refining the structure and stores it in a `Plan`.
 
-PETS2 reduces continuous-rotation data into overlapping **virtual frames**
-([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
-given reflection can appear in several neighbouring frames, but should only be fully integrated in
-one of them -- `rsg`/`dsg` (see [Comparing simulation with experiment](workflow.md#comparing-simulation-with-experiment))
-aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
-intensities: partial reflections are not simulated. It represents each virtual frame by sampled
-tilt sub-orientations and sums their simulated intensities.
+
+## Convergence Testing
+
+Determine suitable `g_max`, `sg_max`, and `rocking_curve_sampling` simulation parameters to be used before optimizing thickness or
+orientation and before refining the structure.
+
+For more information, see [Convergence testing](convergence-testing.md).
 
 ## Orientation
 
-PETS2 supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
-cell and maps integer reflection indices {math}`(h,k,l)` to reciprocal-space vectors. The matrix
-{math}`U` places that reciprocal basis in the laboratory coordinate system. Their product {math}`UB`
+The `.cif_pets` file supplies a **UB matrix**. The reciprocal-basis matrix {math}`B` is calculated from the unit
+cell and reciprocal lattice. The matrix
+{math}`U` places that reciprocal lattice in the laboratory coordinate system. Their product {math}`UB`
 therefore maps a reflection index directly into the measured laboratory geometry.
 
 diffBloch separates the two matrices using
@@ -24,7 +24,7 @@ diffBloch separates the two matrices using
 U = (UB)B^{-1}.
 ```
 
-For virtual frame {math}`i`, the PETS goniometer angles are then applied in their recorded order:
+For virtual frame {math}`i`, the goniometer angles recorded in `.cif_pets` are applied in their recorded order:
 
 ```{math}
 M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
@@ -42,34 +42,27 @@ correction to each {math}`M_i`. A trial correction is described by three angles
 M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
 ```
 
-The Bloch-wave intensities are recalculated for each trial and compared with the observed
+The Bloch wave intensities are recalculated for each trial and compared with the observed
 intensities using `loss_metrics.residual`, which defaults to `wr2`.
 
-### Unit-cell authority: PETS overrides the structure CIF
+### Unit-cell authority
 
-The reciprocal-basis matrix {math}`B` above is built from **PETS's own recorded cell**, not the
-structure CIF's. PETS is authoritative for every piece of simulation geometry that needs a unit
+The reciprocal-basis matrix {math}`B` above is built from the cell recorded in `.cif_pets`, not the
+structure CIF's. The `.cif_pets` cell is authoritative for every piece of simulation geometry that needs a unit
 cell — the structure-factor grid, the reciprocal basis, the cell volume, the ADP {math}`U^*`-frame
 conversion, and the beam geometry derived from that grid. The structure CIF still supplies every
 piece of atomic content: positions, atom types, occupancies, ADPs, and symmetry operators.
-Fractional coordinates are read from the CIF unchanged; they are simply interpreted against PETS's
+Fractional coordinates are read from the CIF unchanged; they are interpreted using the `.cif_pets`
 cell rather than the CIF's own.
 
-diffBloch checks the CIF's cell against PETS's on load:
+diffBloch checks the CIF cell against the `.cif_pets` cell on load:
 
 - **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning stating that
-  the PETS value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
-  this.
-- **> 5% relative difference** raises `ValueError` and stops, listing every offending parameter, both
-  values, and the percentage difference. A gap this large usually means the two files describe
-  different crystals or settings entirely — continuing would silently derive the whole simulation's
-  geometry from a mismatch that size.
+  the `.cif_pets` value overrides the CIF value.
+- **> 5% relative difference** raises `ValueError` and stops. A gap this large usually means the two files describe different crystals or settings entirely.
 
-For a combined experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
+For a multi-dataset experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
 structure CIF and every further `.cif_pets` file are checked against it under the same thresholds.
-Each combined dataset's own {math}`U = (UB)B^{-1}` is still derived from *that dataset's own* UB
-matrix and *its own* PETS cell — so `U` stays close to a pure rotation — only the cell it gets
-composed with downstream is the shared authoritative one.
 
 ### Orientation-search method
 
@@ -80,16 +73,16 @@ Nelder--Mead minimizes the orientation residual without requiring its derivative
 correction angles, the search holds four trial points: zero correction and one point displaced by
 `step_size` along each angle. These four points form a simplex.
 
-Each point is evaluated by running the Bloch-wave calculation and comparing its intensities with
+Each point is evaluated by running the Bloch wave calculation and comparing its intensities with
 experiment. Nelder--Mead ranks the four residuals and replaces the worst point by reflecting it
 through the opposite face of the simplex. Depending on the new residual, it may expand farther in
 that direction, contract toward the better points, or shrink the whole simplex around the best
 point. The simplex therefore moves and changes size as it approaches a local minimum. The final
-three coordinates are applied to the PETS orientation as
+three coordinates are applied to the `.cif_pets` orientation as
 {math}`(\Delta\alpha,\Delta\beta,\Delta\omega)`.
 
 This is a local, unconstrained search. `step_size` defines only the initial simplex; it neither
-limits the correction angles nor guarantees that the search finds the global minimum. The PETS UB
+limits the correction angles nor guarantees that the search finds the global minimum. The `.cif_pets` UB
 matrix must already provide a close starting orientation.
 
 | Method | Search | Status |
@@ -150,7 +143,7 @@ changed. A representative value can then be used as the shared thickness if sepa
 required.
 
 The grid search evaluates `n_steps` evenly spaced thicknesses from `min_thickness` to
-`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch-wave
+`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch wave
 calculation and scored against experiment. The lowest-residual thickness is stored for that
 orientation. The search uses the starting unrefined structure, so its purpose is to establish the
 experimental geometry before atomic parameters are changed.
@@ -176,14 +169,6 @@ rather than the network predicting one deterministic thickness per orientation. 
 [Hyperparameter selection](hyperparameter-selection.md) for the full field
 list.
 
-## Numerical convergence
-
-Determine `g_max`, `sg_max`, and `rocking_curve_sampling` before optimizing thickness or
-orientation and before refining the structure. Numerical convergence depends mainly on the
-simulation basis and integration grid, not on whether the starting orientation or atomic structure
-has already been optimized. Thickness is the important exception because it changes the width of
-the rocking curve. See [Convergence testing](convergence-testing.md) for the convergence procedure
-and the thickness-dependent sampling check.
 
 ## The `Plan`
 
@@ -238,26 +223,24 @@ it would be in a single perfectly oriented crystal. Mosaicity therefore broadens
 rocking curve and changes the integrated intensity, especially for reflections whose excitation
 condition varies rapidly with angle.
 
-With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity from the source
-`.cif_pets` as a Gaussian standard deviation {math}`\sigma` in degrees. Every nominal rocking-curve
-tilt is an angular offset about the main PETS {math}`\alpha` rocking
-direction.  Each nominal {math}`\alpha` tilt is replaced by three
-orientations at
-{math}`(-\sqrt{3}\sigma, 0, +\sqrt{3}\sigma)` relative to that tilt. Their Gaussian weights are
-{math}`(1/6, 2/3, 1/6)`.
-
-For a nominal tilt {math}`\theta`, the combined intensity is
+With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
+`.cif_pets` and converts it to a sampled-tilt window using
 
 ```{math}
-I_{\mathrm{mosaic}}(\theta) =
-\frac{1}{6}I(\theta-\sqrt{3}\sigma)
-+\frac{2}{3}I(\theta)
-+\frac{1}{6}I(\theta+\sqrt{3}\sigma).
+\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N-1}, \qquad
+w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
 
-Mosaicity thus triples the number of simulated orientations: {math}`N` nominal rocking-curve tilts
-become {math}`3N` Bloch-wave calculations. Ten nominal tilts therefore require 30 calculations.
-Some setup is reused, but this option can substantially increase preprocessing and refinement time.
+{math}`\theta_{\mathrm{semi}}` is the rocking-curve integration semiangle, the tilt half-width
+around each orientation's nominal angle. {math}`N` is `rocking_curve_sampling`, the number of tilt
+samples spanning that full range. {math}`\Delta\theta` is the resulting angular spacing between
+adjacent tilt samples. {math}`m` is the apparent mosaicity in degrees read from `.cif_pets`.
+{math}`w` is the mosaicity window, the number of adjacent tilt samples averaged together, rounded
+to the nearest integer.
 
-Set `blochwave.mosaicity: false` to evaluate only the nominal tilt orientations and sum their
-intensities without mosaic broadening.
+The calculated rocking curve is averaged over that window before integration. A width of zero or
+one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
+adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
+
+Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
+sum their intensities without mosaic broadening.
