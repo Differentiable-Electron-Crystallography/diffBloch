@@ -7,7 +7,7 @@ therefore determines this experimental metadata before refining the structure an
 ## Convergence Testing
 
 Determine suitable `g_max`, `sg_max`, and `rocking_curve_sampling` simulation parameters to be used before optimizing thickness or
-orientation and before refining the structure.
+orientation and before refining the structure. 
 
 For more information, see [Convergence testing](convergence-testing.md).
 
@@ -58,7 +58,7 @@ cell rather than the CIF's own.
 diffBloch checks the CIF cell against the `.cif_pets` cell on load:
 
 - **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning stating that
-  the `.cif_pets` value overrides the CIF value.
+  the `.cif_pets` value overrides the CIF value. 
 - **> 5% relative difference** raises `ValueError` and stops. A gap this large usually means the two files describe different crystals or settings entirely.
 
 For a multi-dataset experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The

@@ -141,7 +141,7 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 
 | Field | Default | What it does |
 |---|---|---|
-| `min_thickness` | `5.0` | Lower bound, Å (one shared grid; the search itself is per rotation, so pooled datasets fit their own thicknesses within it). |
+| `min_thickness` | `5.0` | Lower bound, Å. |
 | `max_thickness` | `2000.0` | Upper bound, Å. |
 | `n_steps` | `100` | Number of evenly-spaced grid candidates. |
 | `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
@@ -211,21 +211,11 @@ Input file references, relative to the experiment directory only (`Inputs`).
 ### Combining multiple datasets
 
 `inputs.multi_dataset: true` pools rotations from several `.cif_pets` files (`inputs.exp_data` as a
-list of 2+ paths) into one experiment, each dataset keeping its own energy, orientation, and
+list of 2+ paths) into one experiment, each dataset keeping its own orientation, and
 thickness. Two situations call for it:
 
-- **Beam damage series** — repeat measurements of the same crystal taken at increasing dose. Each
-  dataset is its own `.cif_pets` file (its own UB, its own apparent thickness), but they refine one shared
-  structure; combining them uses every rotation instead of picking one dataset and discarding the
-  rest.
+- **Beam damage** — Each
+  dataset is its own `.cif_pets` file  but they refine one shared structure.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not
-  cover enough of reciprocal space to constrain the structure well when the space group has few
-  symmetry operations to fill in the gaps. Multiple datasets from different crystal
-  orientations/mounts fill in coverage that one series alone would leave thin.
+  cover enough of reciprocal space to constrain the structure well.
 
-Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
-integration geometry -- precession angles may differ between files), and the settled per-dataset
-plans are pooled in memory just before refinement. See
-[Inputs and outputs](inputs.md) for the mechanics (per-dataset checkpoints, the
-first-file authoritative cell, one-energy rule, rotation-index offsets) and
-[Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
