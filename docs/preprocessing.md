@@ -24,7 +24,7 @@ diffBloch separates the two matrices using
 U = (UB)B^{-1}.
 ```
 
-For virtual frame {math}`i`, the PETS goniometer angles are then applied in their recorded order:
+For virtual frame {math}`i`, the goniometer angles recorded in `.cif_pets` are applied in their recorded order:
 
 ```{math}
 M_i = R_z(\omega_i)R_x(\alpha_i)R_y(\beta_i)(UB)B^{-1},
@@ -42,23 +42,23 @@ correction to each {math}`M_i`. A trial correction is described by three angles
 M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
 ```
 
-The Bloch-wave intensities are recalculated for each trial and compared with the observed
+The Bloch wave intensities are recalculated for each trial and compared with the observed
 intensities using `loss_metrics.residual`, which defaults to `wr2`.
 
-### Unit-cell authority: PETS overrides the structure CIF
+### Unit-cell authority
 
-The reciprocal-basis matrix {math}`B` above is built from **PETS's own recorded cell**, not the
-structure CIF's. PETS is authoritative for every piece of simulation geometry that needs a unit
+The reciprocal-basis matrix {math}`B` above is built from the cell recorded in `.cif_pets`, not the
+structure CIF's. The `.cif_pets` cell is authoritative for every piece of simulation geometry that needs a unit
 cell — the structure-factor grid, the reciprocal basis, the cell volume, the ADP {math}`U^*`-frame
 conversion, and the beam geometry derived from that grid. The structure CIF still supplies every
 piece of atomic content: positions, atom types, occupancies, ADPs, and symmetry operators.
-Fractional coordinates are read from the CIF unchanged; they are simply interpreted against PETS's
+Fractional coordinates are read from the CIF unchanged; they are interpreted using the `.cif_pets`
 cell rather than the CIF's own.
 
-diffBloch checks the CIF's cell against PETS's on load:
+diffBloch checks the CIF cell against the `.cif_pets` cell on load:
 
 - **> 1% relative difference** on any of `a, b, c, alpha, beta, gamma` logs a warning stating that
-  the PETS value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
+  the `.cif_pets` value overrides the CIF value. Day-to-day refinement/measurement drift stays well under
   this.
 - **> 5% relative difference** raises `ValueError` and stops, listing every offending parameter, both
   values, and the percentage difference. A gap this large usually means the two files describe
@@ -68,7 +68,7 @@ diffBloch checks the CIF's cell against PETS's on load:
 For a combined experiment, the first `.cif_pets` file's cell is the shared authoritative cell. The
 structure CIF and every further `.cif_pets` file are checked against it under the same thresholds.
 Each combined dataset's own {math}`U = (UB)B^{-1}` is still derived from *that dataset's own* UB
-matrix and *its own* PETS cell — so `U` stays close to a pure rotation — only the cell it gets
+matrix and its own `.cif_pets` cell — so `U` stays close to a pure rotation — only the cell it gets
 composed with downstream is the shared authoritative one.
 
 ### Orientation-search method
@@ -80,16 +80,16 @@ Nelder--Mead minimizes the orientation residual without requiring its derivative
 correction angles, the search holds four trial points: zero correction and one point displaced by
 `step_size` along each angle. These four points form a simplex.
 
-Each point is evaluated by running the Bloch-wave calculation and comparing its intensities with
+Each point is evaluated by running the Bloch wave calculation and comparing its intensities with
 experiment. Nelder--Mead ranks the four residuals and replaces the worst point by reflecting it
 through the opposite face of the simplex. Depending on the new residual, it may expand farther in
 that direction, contract toward the better points, or shrink the whole simplex around the best
 point. The simplex therefore moves and changes size as it approaches a local minimum. The final
-three coordinates are applied to the PETS orientation as
+three coordinates are applied to the `.cif_pets` orientation as
 {math}`(\Delta\alpha,\Delta\beta,\Delta\omega)`.
 
 This is a local, unconstrained search. `step_size` defines only the initial simplex; it neither
-limits the correction angles nor guarantees that the search finds the global minimum. The PETS UB
+limits the correction angles nor guarantees that the search finds the global minimum. The `.cif_pets` UB
 matrix must already provide a close starting orientation.
 
 | Method | Search | Status |
@@ -150,7 +150,7 @@ changed. A representative value can then be used as the shared thickness if sepa
 required.
 
 The grid search evaluates `n_steps` evenly spaced thicknesses from `min_thickness` to
-`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch-wave
+`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch wave
 calculation and scored against experiment. The lowest-residual thickness is stored for that
 orientation. The search uses the starting unrefined structure, so its purpose is to establish the
 experimental geometry before atomic parameters are changed.
@@ -247,9 +247,9 @@ w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
 
 The calculated rocking curve is averaged over that window before integration. A width of zero or
-one leaves the curve unchanged. This uses the existing {math}`N` Bloch-wave solves rather than
+one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
 Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
 sum their intensities without mosaic broadening. The legacy `{window: N}` form sets the
-moving-average width directly, independent of any PETS-reported value.
+moving-average width directly, independent of the value recorded in `.cif_pets`.

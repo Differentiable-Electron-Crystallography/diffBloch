@@ -8,7 +8,7 @@ data. Importantly, values specified in the `experiment.yaml` will override defau
 
 This page lists every config, its default, and what it controls. For guidance in selecting appropriate `g_max`, `sg_max`, and `rocking_curve_sampling` specifically, see [Convergence testing](convergence-testing.md).
 
-## What is *not* config: auto-filled from CIF/PETS
+## Values read from `.cif` and `.cif_pets`
 
 Some values that other refinement packages expose as settings are deliberately **not** config
 fields in diffBloch — they are read from the structure `.cif` or `.cif_pets` file at load time, so
@@ -16,12 +16,12 @@ they cannot silently drift from the data they describe:
 
 | Value | Source | Notes |
 |---|---|---|
-| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). PETS records wavelength to limited precision, so this recovers the operator-selected voltage exactly. |
-| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | PETS's cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs](inputs.md#unit-cell-authority-pets-overrides-the-structure-cif). |
-| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's own PETS UB seeds its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
+| Electron energy / wavelength | `.cif_pets` wavelength | Converted to energy and snapped onto the nearest standard TEM voltage when close (`snap_to_standard_energy`). The wavelength is recorded to limited precision, so this recovers the operator-selected voltage exactly. |
+| Unit cell (`a, b, c, α, β, γ`) | `.cif_pets`, checked against `.cif` | The `.cif_pets` cell is authoritative for all simulation geometry; the structure CIF's own cell is only a consistency check (logs a warning past 1%, raises past 5%). See [Inputs and outputs](inputs.md#unit-cell). |
+| UB orientation matrix | `.cif_pets`, per rotation | Each rotation's UB supplies its starting orientation, later refined by `preprocess.orientation` (below) if enabled. |
 | Integration semiangle | `.cif_pets` precession angle | The tilt half-width, read per file; under `inputs.multi_dataset` each dataset's recipe uses its own (precession angles may differ between files). |
 | Apparent mosaicity (degrees) | `.cif_pets` `_diffrn_measurement_details` | Only read when `blochwave.mosaicity: true`; missing from the file then raises rather than defaulting silently. |
-| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by PETS's cell override — fractional coordinates are simply reinterpreted against PETS's metric. |
+| Atomic positions, ADPs, occupancies, symmetry ops | structure `.cif` | Unaffected by the `.cif_pets` cell override — fractional coordinates are interpreted using the `.cif_pets` cell. |
 | Structure-factor support radius | derived, `2 * blochwave.g_max` | Not independently configurable: a beam set bounded by `\|g\| <= g_max` produces `F(g - h)` terms reaching `2 * g_max`, so a separate support setting could silently contradict the solve cutoff. |
 
 ## `sample`
@@ -39,7 +39,7 @@ how often you'd actually reach for them.
 
 | Field | Default | What it does |
 |---|---|---|
-| `g_max` | `2.25` | Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch-wave matrix. See [Convergence testing](convergence-testing.md). |
+| `g_max` | `2.25` | Solve cutoff (Å⁻¹): maximum reciprocal-vector length of beams entering the Bloch wave matrix. See [Convergence testing](convergence-testing.md). |
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
 | `absorption` | `false` | Include anomalous absorption as an imaginary structure-factor contribution. |
@@ -51,7 +51,7 @@ how often you'd actually reach for them.
 | `union_max_new_beams_pct` | `0.01` | Adaptive-chunking split threshold — see below. |
 | `fixed_n_segments` | `12` | Number of tilt-coupling segments when `coupling_mode: "union"` and `union_adaptive: false`. |
 | `solver` | `"matrix_exp"` | Dynamical solver, used for preprocessing search, refinement, and `run infer` alike. Must stay `matrix_exp` if `absorption: true` (the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix). |
-| `ignore_orientations` | `()` | Zero-based PETS rotation indices to exclude from the whole experiment (damaged/empty/diagnostic frames). |
+| `ignore_orientations` | `()` | Zero-based `.cif_pets` rotation indices to exclude from the experiment. |
 
 ### Adaptive tilt-chunk coupling
 
@@ -113,7 +113,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 | Field | Default | What it does |
 |---|---|---|
-| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) — necessary since the Bloch-wave solve comes off on an arbitrary structure-factor scale, not PETS's own intensity scale. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
+| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. Parses into the matching loss (gradient refinement) and per-thickness scores (preprocessing search) function pair — the two stages always agree on one metric. |
 
 ## `refinement`
 
@@ -177,7 +177,7 @@ list of 2+ paths) into one experiment, each dataset keeping its own energy, orie
 thickness. Two situations call for it:
 
 - **Beam damage series** — repeat measurements of the same crystal taken at increasing dose. Each
-  dataset is its own PETS file (its own UB, its own apparent thickness), but they refine one shared
+  dataset is its own `.cif_pets` file (its own UB, its own apparent thickness), but they refine one shared
   structure; combining them uses every rotation instead of picking one dataset and discarding the
   rest.
 - **Low-symmetry structures** — a single tilt series from one crystal orientation range may not
@@ -188,6 +188,6 @@ thickness. Two situations call for it:
 Each dataset is preprocessed and checkpointed on its own (`plan.<stem>.npz` per file, with its own
 integration geometry -- precession angles may differ between files), and the settled per-dataset
 plans are pooled in memory just before refinement. See
-[Inputs](inputs.md#combining-multiple-datasets) for the mechanics (per-dataset checkpoints, the
+[Inputs and outputs](inputs.md#multiple-datasets) for the mechanics (per-dataset checkpoints, the
 first-file authoritative cell, one-energy rule, rotation-index offsets) and
 [Reproducibility](reproducibility.md) for what each per-dataset lock verifies.
