@@ -60,6 +60,17 @@ def test_read_quartz_pets_fixture() -> None:
     assert set(record.reflection_zone_axis_ids.tolist()) == set(range(1, 100))
 
 
+def test_parse_pets_preserves_nonfinite_mosaicity_for_setup_validation() -> None:
+    text = (
+        (FIXTURE_ROOT / "exp_data.cif_pets")
+        .read_text()
+        .replace("mosaicity:  0.050", "mosaicity:  nan")
+    )
+    record = parse_experimental_block(gemmi.cif.read_string(text).sole_block())
+
+    assert np.isnan(record.mosaicity_degrees)
+
+
 @pytest.mark.parametrize(
     ("text", "value", "su"),
     [

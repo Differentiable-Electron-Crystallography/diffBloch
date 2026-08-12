@@ -145,6 +145,6 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
 For each solve beam, the calculated intensity is
 {math}`I_{\mathbf{g}}(t) = |\psi_{\mathbf{g}}(t)|^2`. A continuous-rotation frame sums this over sampled sub-orientations
 across the rocking curve (and, when `blochwave.mosaicity` is enabled, smoothed over a moving-average
-window derived from the apparent mosaicity recorded in `.cif_pets`) rather than evaluating a single static orientation.
+sample span derived from the apparent mosaicity recorded in `.cif_pets`) rather than evaluating a single static orientation.
 
 For more information, see [Preprocessing](preprocessing.md).

@@ -224,24 +224,22 @@ rocking curve and changes the integrated intensity, especially for reflections w
 condition varies rapidly with angle.
 
 With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
-`.cif_pets` and converts it to a sampled-tilt window using
+`.cif_pets` and converts it to an internal sampled-tilt span using
 
 ```{math}
-\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N-1}, \qquad
-w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
+\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N}, \qquad
+s = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
 
 {math}`\theta_{\mathrm{semi}}` is the rocking-curve integration semiangle, the tilt half-width
 around each orientation's nominal angle. {math}`N` is `rocking_curve_sampling`, the number of tilt
 samples spanning that full range. {math}`\Delta\theta` is the resulting angular spacing between
 adjacent tilt samples. {math}`m` is the apparent mosaicity in degrees read from `.cif_pets`.
-{math}`w` is the mosaicity window, the number of adjacent tilt samples averaged together, rounded
-to the nearest integer.
+{math}`s` is the internal sample span, rounded to the nearest integer.
 
-The calculated rocking curve is averaged over that window before integration. A width of zero or
-one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
+The calculated rocking curve is averaged over that span before integration. A span of zero or one
+leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
 Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
-sum their intensities without mosaic broadening. The legacy `{window: N}` form sets the
-moving-average width directly, independent of any PETS-reported value.
+sum their intensities without mosaic broadening. In that mode any PETS mosaicity value is ignored.

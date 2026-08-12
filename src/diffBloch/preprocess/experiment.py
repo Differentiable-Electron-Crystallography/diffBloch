@@ -33,7 +33,7 @@ from diffBloch.core.dynamical import (
     snap_to_standard_energy,
     wavelength2energy,
 )
-from diffBloch.core.products import PatternBatch
+from diffBloch.core.products import MosaicSmoothed, PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan, expand_asu
@@ -43,7 +43,7 @@ from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 from diffBloch.preprocess.orientation import orientation_matrices
 from diffBloch.preprocess.plan import CandidatePlan, Plan
-from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry
+from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry, RockingCurve
 
 __all__ = [
     "DatasetSetup",
@@ -51,6 +51,7 @@ __all__ = [
     "PlanSplit",
     "RefinementSetup",
     "from_experiment",
+    "resolve_dataset_mosaicity",
     "seed_beam_hkl",
     "setup_datasets",
     "validation_mask",
@@ -107,6 +108,7 @@ class ExperimentSetup:
     plans: PlanSplit
     refinement: RefinementSetup
     integration: IntegrationGeometry
+    mosaicity: MosaicSmoothed | None
 
 
 @dataclass(frozen=True)
@@ -199,6 +201,7 @@ class DatasetSetup:
 
     plan: Plan
     integration: IntegrationGeometry
+    mosaicity: MosaicSmoothed | None
     energy: float
     n_rotations: int
     ignored_rotations: tuple[int, ...]
@@ -275,13 +278,12 @@ def setup_datasets(
             raise ValueError(
                 f"ignore_orientations excludes every PETS rotation of dataset {dataset_index}"
             )
-        pets_mosaicity = config.blochwave.mosaicity is True
-        if pets_mosaicity and record.mosaicity_degrees is None:
-            source = record.source_path if record.source_path is not None else "<experimental data>"
-            raise ValueError(
-                f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}; "
-                "add the PETS apparent mosaicity or set blochwave.mosaicity: false"
-            )
+        integration = IntegrationGeometry(semiangle=record.integration_semiangle)
+        mosaicity = resolve_dataset_mosaicity(
+            config.blochwave.mosaicity,
+            record,
+            config.blochwave.to_rocking_curve(integration),
+        )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
             u0_by_energy[energy] = _mean_inner_potential(
@@ -308,12 +310,6 @@ def setup_datasets(
                 thickness=config.sample.thicknesses,
                 orientation=orientations[local_index],
                 u0=u0,
-                # Always carry the record's own mosaicity through, regardless of
-                # blochwave.mosaicity: a CandidatePlan should be as complete as its source PETS
-                # data, not truncated by one default app config choice. build_orientation_plans
-                # decides whether to *use* it (and still raises if PETS mosaicity is requested but
-                # missing -- see steps/beams.py); this is just carrying the metadata.
-                mosaicity_degrees=record.mosaicity_degrees,
             )
             for local_index, zone_id in enumerate(record.zone_axis_ids)
             if local_index not in local_ignore_set
@@ -321,7 +317,8 @@ def setup_datasets(
         datasets.append(
             DatasetSetup(
                 plan=Plan(structure_factor_grid=grid, orientations=plans),
-                integration=IntegrationGeometry(semiangle=record.integration_semiangle),
+                integration=integration,
+                mosaicity=mosaicity,
                 energy=energy,
                 n_rotations=count,
                 ignored_rotations=local_ignored,
@@ -329,6 +326,43 @@ def setup_datasets(
         )
         offset += count
     return refinement_setup, tuple(datasets)
+
+
+def resolve_dataset_mosaicity(
+    enabled: bool,
+    record: ExperimentalRecord,
+    rocking: RockingCurve,
+) -> MosaicSmoothed | None:
+    """Resolve PETS apparent mosaicity to the applied tilt reduction, or ``None`` when disabled."""
+    if not enabled:
+        return None
+    source = record.source_path if record.source_path is not None else "<experimental data>"
+    mosaicity_degrees = record.mosaicity_degrees
+    if mosaicity_degrees is None:
+        raise ValueError(
+            f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}; "
+            "add the PETS apparent mosaicity or set blochwave.mosaicity: false"
+        )
+    if not np.isfinite(mosaicity_degrees) or mosaicity_degrees < 0.0:
+        raise ValueError(
+            f"blochwave.mosaicity=true requires a finite, non-negative PETS mosaicity in "
+            f"{source}; got {mosaicity_degrees!r}"
+        )
+    if mosaicity_degrees == 0.0:
+        return None
+    degrees_per_sample = 2.0 * rocking.integration.semiangle / rocking.sampling
+    samples = round(mosaicity_degrees / degrees_per_sample)
+    if samples <= 1:
+        return None
+    if samples > rocking.sampling:
+        raise ValueError(
+            f"blochwave.mosaicity=true resolves PETS mosaicity {mosaicity_degrees:g} degrees "
+            f"in {source} to a smoothing span of {samples} samples, which exceeds the "
+            f"{rocking.sampling} sampled rocking-curve tilts across +/-"
+            f"{rocking.integration.semiangle:g} degrees. Increase the PETS integration "
+            "coverage or set blochwave.mosaicity: false."
+        )
+    return MosaicSmoothed(samples=samples)
 
 
 def from_experiment(
@@ -362,6 +396,7 @@ def from_experiment(
         ),
         refinement=refinement_setup,
         integration=dataset.integration,
+        mosaicity=dataset.mosaicity,
     )
 
 

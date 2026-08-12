@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from diffBloch.config import load_config
 from diffBloch.config.schema import BlochwaveConfig
-from diffBloch.specs import Mosaicity
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
 
@@ -20,8 +22,8 @@ def test_load_config_reads_yaml_and_applies_defaults() -> None:
     assert cfg.blochwave.mosaicity is False
 
 
-def test_mosaicity_config_accepts_boolean_and_legacy_window_forms() -> None:
+def test_mosaicity_config_accepts_only_booleans() -> None:
     assert BlochwaveConfig.model_validate({"mosaicity": True}).mosaicity is True
     assert BlochwaveConfig.model_validate({"mosaicity": False}).mosaicity is False
-    legacy = BlochwaveConfig.model_validate({"mosaicity": {"window": 3}}).mosaicity
-    assert legacy == Mosaicity(window=3)
+    with pytest.raises(ValidationError):
+        BlochwaveConfig.model_validate({"mosaicity": {"samples": 3}})

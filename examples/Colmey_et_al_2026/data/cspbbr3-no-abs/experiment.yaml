@@ -9,7 +9,6 @@ sample:
   thicknesses: [440.0]
 
 blochwave:
-  mosaicity: true
   solver: matrix_exp
   absorption: false
   coupling_mode: union

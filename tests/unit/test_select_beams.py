@@ -19,9 +19,9 @@ from diffBloch.preprocess import (
     klar_beam_mask,
     select_beams,
 )
+from diffBloch.preprocess.experiment import resolve_dataset_mosaicity
 from diffBloch.preprocess.plan import CandidatePlan
-from diffBloch.preprocess.steps.beams import _pets_mosaicity_reduction
-from diffBloch.specs import IntegrationGeometry, Mosaicity, RockingCurve, UnionCoupling
+from diffBloch.specs import IntegrationGeometry, RockingCurve, UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -32,7 +32,7 @@ def _quartz_train_plan():
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
     config = load_config(QUARTZ / "experiment.yaml")
     setup = from_experiment(structure, experimental_data, config)
-    return setup.plans.train, config, setup.integration
+    return setup.plans.train, config, setup.integration, setup.mosaicity
 
 
 # --- the criterion --------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def test_klar_mask_rejects_non_3_column_g() -> None:
 
 
 def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
-    plan, config, integration = _quartz_train_plan()
+    plan, config, integration, _mosaicity = _quartz_train_plan()
     step = select_beams(config.blochwave.to_beam_selection(integration))
     pruned = step(plan)
 
@@ -105,7 +105,7 @@ def test_select_beams_prunes_each_orientation_keeping_000_and_pattern() -> None:
 
 
 def test_select_beams_preserves_source_and_defers_the_build() -> None:
-    plan, config, integration = _quartz_train_plan()
+    plan, config, integration, _mosaicity = _quartz_train_plan()
     pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
     before = plan.orientations[0]
     after = pruned.orientations[0]
@@ -120,66 +120,62 @@ def test_select_beams_preserves_source_and_defers_the_build() -> None:
 
 
 def test_build_orientation_plans_directly_builds_final_rocking_geometry() -> None:
-    plan, config, integration = _quartz_train_plan()
+    plan, config, integration, mosaicity = _quartz_train_plan()
     pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
 
     built = build_orientation_plans(
         config.blochwave.to_rocking_curve(integration),
-        config.blochwave.mosaicity,
+        mosaicity,
     )(pruned).orientations[0]
 
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling, 3, 3)
     assert len(built.beam_plans) == config.blochwave.rocking_curve_sampling
-    assert isinstance(built.tilt_reduction, MosaicSmoothed)
+    assert isinstance(built.tilt_reduction, PlainSum)
 
 
-def test_pets_mosaicity_sets_window_from_actual_tilt_spacing() -> None:
+def test_enabled_pets_mosaicity_resolves_sample_span_from_actual_tilt_spacing() -> None:
     rocking = RockingCurve(
         integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
     )
-    reduction = _pets_mosaicity_reduction(rocking, 0.6)
-    assert reduction == MosaicSmoothed(3)  # round(0.6 / (2 / (11 - 1)))
+    record = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": 0.6}
+    )
+    reduction = resolve_dataset_mosaicity(True, record, rocking)
+    assert reduction == MosaicSmoothed(samples=3)  # round(0.6 / (2 / 11))
 
 
 def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
     rocking = RockingCurve(
         integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"), sampling=11
     )
-    assert isinstance(_pets_mosaicity_reduction(rocking, 0.05), PlainSum)
-
-
-def test_legacy_mosaic_window_remains_supported() -> None:
-    plan, config, integration = _quartz_train_plan()
-    plan = replace(plan, orientations=plan.orientations[:1])
-    rocking = replace(config.blochwave.to_rocking_curve(integration), sampling=3)
-    built = build_orientation_plans(rocking, Mosaicity(window=3))(plan).orientations[0]
-
-    assert isinstance(built.tilt_reduction, MosaicSmoothed)
-    assert built.tilt_reduction.window == 3
+    record = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": 0.05}
+    )
+    assert resolve_dataset_mosaicity(True, record, rocking) is None
 
 
 def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:
     with pytest.raises(ValueError, match="mosaicity requires"):
-        build_orientation_plans(mosaicity=Mosaicity(window=1))
+        build_orientation_plans(mosaicity=MosaicSmoothed(samples=1))
     with pytest.raises(ValueError, match="coupling requires"):
         build_orientation_plans(coupling=UnionCoupling())
 
 
-def test_build_orientation_plans_rejects_mosaic_window_larger_than_sampling() -> None:
+def test_build_orientation_plans_rejects_mosaic_span_larger_than_sampling() -> None:
     rocking = RockingCurve(
         integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"),
         sampling=2,
     )
     with pytest.raises(ValueError, match="exceeds"):
-        build_orientation_plans(rocking, Mosaicity(window=3))
+        build_orientation_plans(rocking, MosaicSmoothed(samples=3))
 
 
 def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment() -> None:
-    plan, config, integration = _quartz_train_plan()
+    plan, config, integration, mosaicity = _quartz_train_plan()
 
     built = build_orientation_plans(
         config.blochwave.to_rocking_curve(integration),
-        config.blochwave.mosaicity,
+        mosaicity,
         coupling=config.blochwave.to_policy(),
     )(plan).orientations[0]
 
@@ -192,10 +188,9 @@ def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment(
 
 def test_build_orientation_plans_workers_preserve_exact_coupled_geometry() -> None:
     """Parallel rotation construction is an execution choice, not a scientific input."""
-    plan, config, integration = _quartz_train_plan()
+    plan, config, integration, mosaicity = _quartz_train_plan()
     plan = replace(plan, orientations=plan.orientations * 3)
     rocking = config.blochwave.to_rocking_curve(integration)
-    mosaicity = config.blochwave.mosaicity
     coupling = config.blochwave.to_policy()
     sequential = build_orientation_plans(rocking, mosaicity, coupling=coupling, workers=1)(plan)
     threaded = build_orientation_plans(rocking, mosaicity, coupling=coupling, workers=3)(plan)

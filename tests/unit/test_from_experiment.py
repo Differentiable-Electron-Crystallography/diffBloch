@@ -9,6 +9,7 @@ import torch
 
 from diffBloch.config import load_config
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
+from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
@@ -91,7 +92,8 @@ def test_mosaicity_is_disabled_by_default() -> None:
     setup = from_experiment(structure, experimental_data, config)
 
     assert config.blochwave.mosaicity is False
-    assert all(plan.mosaicity_degrees is None for plan in setup.plans.combined.orientations)
+    assert setup.mosaicity is None
+    assert not any(hasattr(plan, "mosaicity_degrees") for plan in setup.plans.combined.orientations)
 
 
 def test_enabled_mosaicity_requires_pets_metadata_and_names_the_remedy() -> None:
@@ -108,21 +110,51 @@ def test_enabled_mosaicity_requires_pets_metadata_and_names_the_remedy() -> None
         from_experiment(structure, experimental_data, config)
 
 
-def test_enabled_mosaicity_is_carried_from_pets_to_every_candidate() -> None:
+def test_enabled_mosaicity_resolves_pets_degrees_to_internal_sample_span() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
-    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": 0.6}
+    )
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={
+            "blochwave": base.blochwave.model_copy(
+                update={"mosaicity": True, "rocking_curve_sampling": 11}
+            )
+        }
+    )
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    assert setup.mosaicity == MosaicSmoothed(samples=3)
+
+
+def test_enabled_mosaicity_rejects_negative_pets_metadata_at_setup_time() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": -0.1}
+    )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
         update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
     )
 
-    setup = from_experiment(structure, experimental_data, config)
+    with pytest.raises(ValueError, match="finite, non-negative"):
+        from_experiment(structure, experimental_data, config)
 
-    assert experimental_data.mosaicity_degrees is not None
-    assert all(
-        plan.mosaicity_degrees == experimental_data.mosaicity_degrees
-        for plan in setup.plans.combined.orientations
+
+def test_enabled_mosaicity_rejects_nonfinite_pets_metadata_at_setup_time() -> None:
+    structure = read_structure(QUARTZ / "enantiomer_1.cif")
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
+        update={"mosaicity_degrees": np.nan}
     )
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
+    )
+
+    with pytest.raises(ValueError, match="finite, non-negative"):
+        from_experiment(structure, experimental_data, config)
 
 
 def test_from_experiment_ignores_original_pets_indices_before_split() -> None:

@@ -61,21 +61,25 @@ class PlainSum:
 
 @dataclass(frozen=True)
 class MosaicSmoothed:
-    """Mosaicity: a width-``window`` moving average over the tilt axis, applied before the sum.
+    """Mosaicity: a sampled moving average over the tilt axis, applied before the sum.
 
-    Models crystal mosaic spread by broadening the rocking curve. ``window`` consecutive tilts are
-    averaged in a sliding window, then the smoothed curve is summed. Equivalently the integrated
-    intensity is the sum of the ``N - window + 1`` window means: padding the smoothed curve back to
-    length ``N`` with zeros before summing does not change the sum. ``window`` must not exceed the
-    tilt count ``N`` (checked at reduction time).
+    Models crystal mosaic spread by broadening the rocking curve. ``samples`` consecutive tilts are
+    averaged, then the smoothed curve is summed. Equivalently the integrated intensity is the sum of
+    the ``N - samples + 1`` local means: padding the smoothed curve back to length ``N`` with zeros
+    before summing does not change the sum. ``samples`` must not exceed the tilt count ``N`` (checked
+    at reduction time).
     """
 
-    window: int
+    samples: int
+
+    def __post_init__(self) -> None:
+        if self.samples < 1:
+            raise ValueError("samples must be >= 1")
 
 
 # The tilt-axis reduction of a rocking curve: a plain incoherent sum, or a mosaicity-broadened sum.
 # Carried per-orientation on ``OrientationPlan`` (default ``PlainSum``) and applied by
-# :meth:`BlochSolution.integrate`; a discriminated union rather than an optional ``window`` field.
+# :meth:`BlochSolution.integrate`; a discriminated union rather than an optional sample-count field.
 TiltReduction = PlainSum | MosaicSmoothed
 
 # Shared immutable default (``PlainSum`` is stateless), so signatures avoid a call-in-default.
@@ -86,8 +90,8 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     """Reduce stacked per-tilt intensities ``(N_tilts, ...)`` over the leading tilt axis.
 
     The rocking-curve rotation-frame integration: :class:`PlainSum` sums the tilts;
-    :class:`MosaicSmoothed` applies a width-``window`` moving average first (the mosaicity
-    broadening). Public because the tilt axis is reduced from two places -- a single shared beam set
+    :class:`MosaicSmoothed` applies a sampled moving average first (the mosaicity broadening). Public
+    because the tilt axis is reduced from two places -- a single shared beam set
     (:meth:`BlochSolution.integrate` / :meth:`BlochSolution.integrate_batched`) and the segmented
     coupling path, which reassembles each reflection's curve across per-chunk beam sets onto a
     shared
@@ -96,14 +100,14 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     match reduction:
         case PlainSum():
             return stacked.sum(dim=0)
-        case MosaicSmoothed(window=window):
+        case MosaicSmoothed(samples=samples):
             n_tilts = stacked.shape[0]
-            if window > n_tilts:
+            if samples > n_tilts:
                 raise ValueError(
-                    f"mosaicity window {window} exceeds the {n_tilts} rocking-curve tilts"
+                    f"mosaicity sample span {samples} exceeds the {n_tilts} rocking-curve tilts"
                 )
-            windows = stacked.unfold(0, window, 1)  # (N - window + 1, T, N_beams, window)
-            return windows.mean(dim=-1).sum(dim=0)
+            samples_view = stacked.unfold(0, samples, 1)  # (N - samples + 1, T, N_beams, samples)
+            return samples_view.mean(dim=-1).sum(dim=0)
 
 
 @dataclass(frozen=True)

@@ -47,7 +47,7 @@ from diffBloch.preprocess.plan import Plan, require_built_plans
 
 __all__ = ["read_plan", "write_plan"]
 
-_FORMAT_VERSION = 4
+_FORMAT_VERSION = 5
 
 
 def write_plan(plan: Plan, path: str | Path) -> None:
@@ -166,13 +166,13 @@ def _numpy(tensor: Tensor) -> np.ndarray:
 
 def _dump_reduction(reduction: TiltReduction) -> dict[str, Any]:
     if isinstance(reduction, MosaicSmoothed):
-        return {"kind": "mosaic", "window": reduction.window}
+        return {"kind": "mosaic", "samples": reduction.samples}
     return {"kind": "plain"}
 
 
 def _load_reduction(payload: dict[str, Any]) -> TiltReduction:
     if payload["kind"] == "mosaic":
-        window = payload["window"]
-        assert isinstance(window, int)
-        return MosaicSmoothed(window=window)
+        samples = payload["samples"]
+        assert isinstance(samples, int)
+        return MosaicSmoothed(samples=samples)
     return PlainSum()

@@ -14,7 +14,6 @@ from diffBloch.specs import (
     ConvergenceTest,
     ConvergenceTolerance,
     IntegrationGeometry,
-    Mosaicity,
     RockingCurve,
     ThicknessGrid,
 )
@@ -119,13 +118,3 @@ def test_rocking_curve_rejects_invalid_geometry_and_bounds() -> None:
         RockingCurve(sampling=0)
     with pytest.raises(ValueError, match="geometry must be"):
         RockingCurve(integration=IntegrationGeometry(geometry="spiral"))  # type: ignore[arg-type]
-
-
-def test_mosaicity_defaults_to_the_faithful_window() -> None:
-    assert Mosaicity().window == 5
-    assert Mosaicity(window=3).window == 3
-
-
-def test_mosaicity_rejects_a_nonpositive_window() -> None:
-    with pytest.raises(ValueError, match="window must be >= 1"):
-        Mosaicity(window=0)

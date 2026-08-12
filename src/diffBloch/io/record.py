@@ -252,10 +252,6 @@ class ExperimentalRecord(BaseModel):
             raise ValueError("cell_parameters_su must be non-negative where present")
         if self.wavelength <= 0.0:
             raise ValueError("wavelength must be positive")
-        if self.mosaicity_degrees is not None and (
-            not np.isfinite(self.mosaicity_degrees) or self.mosaicity_degrees < 0.0
-        ):
-            raise ValueError("PETS mosaicity must be finite and non-negative")
         if self.ub_matrix.shape != (3, 3):
             raise ValueError("ub_matrix must have shape (3, 3)")
         if self.zone_axes.shape != (n_rotations, 3):

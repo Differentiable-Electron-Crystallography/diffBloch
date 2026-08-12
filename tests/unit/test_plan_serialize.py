@@ -105,7 +105,7 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     assert len(reloaded_op.segments) == 2
     assert reloaded_op.alignment.hkl.tolist() == op.alignment.hkl.tolist()  # scored set preserved
     assert isinstance(reloaded_op.tilt_reduction, MosaicSmoothed)
-    assert reloaded_op.tilt_reduction.window == 3
+    assert reloaded_op.tilt_reduction.samples == 3
 
 
 def test_mixed_plan_round_trips(tmp_path) -> None:

@@ -14,9 +14,8 @@ from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_f
 from diffBloch.io.record import ExperimentalRecord
 
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
-_MOSAICITY = re.compile(
-    r"mosaicity:\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?)", re.IGNORECASE
-)
+_FLOAT_TEXT = r"[-+]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?|inf(?:inity)?|nan)"
+_MOSAICITY = re.compile(rf"mosaicity:\s*({_FLOAT_TEXT})", re.IGNORECASE)
 
 
 def read_experimental_data(path: str | Path) -> ExperimentalRecord:
