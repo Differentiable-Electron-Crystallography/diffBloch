@@ -1,9 +1,9 @@
-# Bloch-wave simulation
+# Bloch wave simulation
 
 diffBloch solves the electron wave equation inside the crystal exactly (for a finite beam set)
-using the Bloch-wave formalism, rather than the multislice method. Multislice scales better to very
-large simulations ({math}`N\log_2 N` in the number of Fourier components vs Bloch-wave's
-{math}`N^3`), but the Bloch-wave method gives closed-form intensities that are analytically
+using the Bloch wave formalism, rather than the multislice method. Multislice scales better to very
+large simulations ({math}`N\log_2 N` in the number of Fourier components vs Bloch wave's
+{math}`N^3`), but the Bloch wave method gives closed-form intensities that are analytically
 differentiable with respect to structural parameters and handle arbitrary crystal orientation
 naturally — both essential for gradient-based refinement against a continuous-rotation tilt series.
 This page derives the structure matrix diffBloch actually assembles and solves; for how orientation
@@ -44,7 +44,7 @@ F_{\mathbf{g}} = \frac{1}{\Omega}\sum_j f^e_j(s)\,T_j(\mathbf{h})\,O_j\,
 
 the Born-approximation structure factor `core.scattering.structure_factors` computes, using the
 Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`. {math}`F_{\mathbf{g}}` is a property of
-the crystal's kinematical scattering alone; it is not yet the quantity that enters the Bloch-wave
+the crystal's kinematical scattering alone; it is not yet the quantity that enters the Bloch wave
 equations.
 
 ## From {math}`F_{\mathbf{g}}` to the interaction parameter
@@ -75,7 +75,7 @@ form-factor convention into these potential units; together
 {math}`\sigma / (\kappa\lambda\pi)` is the exact prefactor diffBloch scales every structure factor
 by before it enters the structure matrix (`core.dynamical.structure_matrix_prefactor`).
 
-## The Bloch-wave formalism
+## The Bloch wave formalism
 
 Expanding the electron wavefunction inside the crystal as a sum of Bloch states,
 
@@ -117,7 +117,7 @@ There are two mathematically equivalent ways to evaluate this, and diffBloch imp
 
 - **`bloch_eigen`** diagonalises {math}`A = C\,\mathrm{diag}(\gamma)\,C^{-1}` once and reads off
   {math}`\psi_{\mathbf{g}}(t) = \sum_i C_0^{(i)-1}C_{\mathbf{g}}^{(i)}\exp(2\pi i\gamma^{(i)}t)` —
-  the classical closed-form Bloch-wave solution, cheap once diagonalised.
+  the classical closed-form Bloch wave solution, cheap once diagonalised.
 - **`matrix_exp`** evaluates the matrix exponential directly, without an intermediate
   eigendecomposition. It is the default: eigendecomposition of a **non-Hermitian** matrix (the case
   whenever `absorption: true` adds an imaginary component to {math}`A`) is numerically unstable to

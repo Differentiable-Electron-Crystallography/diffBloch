@@ -14,38 +14,38 @@ title: diffBloch
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-97ca00)
 
-Differentiable Bloch-wave structure refinement for 3D electron diffraction.
+Differentiable Bloch wave structure refinement for 3D electron diffraction.
 
-This codebase is entirely open-source, and we welcome contributions as well as questions.
+This codebase is entirely open-source, and we welcome user contributions as well as questions.
 
 
 ## Overview
 
-diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames collected are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format.
+diffBloch is a crystallographic refinement software for 3D ED. To perform a refinement both an initial structural model and experimental data are required. The initial unrefined atomic structure in the form of a 'cif' (crystallographic information file) can be obtained from previous experiments if the structure is known or via structure solution. Experimental data in the form of diffraction frames are collected while the crystal is tilted/rocked through reciprocal space and reduced upstream by one of PETS2 or DIALS, into the`.cif_pets` data format.
 
-diffBloch performs the refinement as two complementary values: a crystal structure, consisting of atomic coordinates and thermal displacement parameters, and a settled `Plan`, consisting of crystallographic metadata such as thickness or orientation. Together they feed the refinement engine, which runs a repeatable Bloch-wave simulation, compares calculated and observed intensities, and iteratively minimizes the objective by updating selected trainable parameters. The guides below unpack that path from experiment inputs through preprocessing, refinement, reproducibility, observability, and runnable examples.
+diffBloch performs the refinement as two complementary values: a crystal structure, consisting of atomic coordinates, occupancies and thermal displacement parameters, and a settled `Plan`, consisting of crystallographic metadata such as thickness or orientation. Together they feed the refinement engine, which runs a repeatable Bloch wave simulation, compares calculated and observed intensities, and iteratively minimizes the objective by updating selected trainable parameters. The guides below unpack that path from experiment inputs through preprocessing, refinement, reproducibility, observability, and runnable examples.
 
-| Guide | What it covers |
+| Guide | Contents |
 |---|---|
-| [Workflow](workflow.md) | The calculation from experiment setup through convergence, preprocessing, inference, refinement, and outputs. |
-| [Bloch-wave simulation](bloch-wave-simulation.md) | The physics: structure factor, relativistic interaction parameter, structure matrix, and its two solvers. |
-| [Inputs](inputs.md) | The starting structure and rocking-curve data a refinement needs. |
-| [Preprocessing](preprocessing.md) | Fitting crystal orientation and specimen thickness before the structure is touched. |
-| [Convergence testing](convergence-testing.md) | Choosing beam and rocking-curve settings using convergence tests. |
-| [Config reference](hyperparameter-selection.md) | Every `experiment.yaml` switch, its default, and what's auto-filled from CIF/PETS instead. |
-| [Refinement](refinement.md) | The optimization loop: constraints, restraints, and thickness models alongside the structure. |
-| [Reproducibility](reproducibility.md) | How `experiment.lock` and the per-dataset `plan.<stem>.npz`/`.lock` checkpoints pin a fitted `Plan` so a result can be reproduced exactly. |
-| [Observability](observability-guide.md) | Tracking wR2, R_obs, and diffraction loss as a run progresses. |
-| [Examples](examples.md) | Runnable example experiments for small and large compounds, and implementations of papers that demonstrate doing science with diffBloch. |
-
-For day-to-day use, start with the CLI quickstart below. For custom scientific workflows, the same
-pieces are available through the public Python API.
+| [Workflow](workflow.md) | Refinement pipeline from input files to refined structure. |
+| [Inputs and outputs](inputs.md) | Files required for a refinement and files produced by diffBloch. |
+| [Hyperparameter selection](hyperparameter-selection.md) | Simulation, preprocessing, and refinement hyperparameters and their defaults. |
+| [Convergence testing](convergence-testing.md) | Convergence of calculated intensities with respect to `g_max`, `sg_max`, and rocking-curve sampling. |
+| [Preprocessing](preprocessing.md) | Crystal-orientation and thickness determination before structural refinement. |
+| [Bloch wave simulation](bloch_wave_simulation.md) | Theory and equations used to calculate dynamical diffraction intensities. |
+| [Refinement](refinement.md) | Structural parameter optimization against experimental intensities. |
+| [Reproducibility](reproducibility.md) | Records identifying the inputs and preprocessing used for a refinement. |
+| [Examples](examples.md) | Runnable experiments included with diffBloch. |
 
 ## Quickstart
 
-Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint `.npz`
-checkpoints, then sync the project environment from the repository root:
+### Command line
+
+The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a
+complete experiment. `uv` installs the required Python packages and runs diffBloch inside the
+project environment. Git LFS downloads the larger experimental-data files stored in the repository.
+
+From the repository directory:
 
 ```bash
 git lfs install
@@ -53,27 +53,24 @@ git lfs pull
 uv sync --dev
 ```
 
-Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
-on your shell `PATH`. Every command below takes an experiment directory (see
-[Inputs](inputs.md)) -- try one under `examples/`, e.g. `examples/Colmey_et_al_2026/data/quartz-no-abs`.
+Each diffBloch command takes the path to an experiment directory containing `experiment.yaml`, the
+starting CIF, and the PETS data:
 
 ```bash
-uv run diffbloch convergence-test <experiment_dir>   # test numerical convergence
-uv run diffbloch preprocess <experiment_dir>         # settle orientation/thickness, write plan checkpoints
-uv run diffbloch infer <experiment_dir>              # forward-simulate and score a settled Plan
-uv run diffbloch refine <experiment_dir>             # preprocess (or reuse) + gradient-refine
+uv run diffbloch convergence-test <experiment_dir>
+uv run diffbloch preprocess <experiment_dir>
+uv run diffbloch infer <experiment_dir>
+uv run diffbloch refine <experiment_dir>
 ```
 
-Add `--refresh` to any command to force a real recompute instead of reusing a checkpoint, and
-`--device cpu`/`--device cuda` to pick the execution device. `infer` scores without changing
-parameters; `refine` runs the optimization loop, repeatedly simulating, scoring, and updating the
-selected trainable structural parameters -- see [Refinement](refinement.md) for its outputs.
-
-
+`convergence-test` checks the simulation settings. `preprocess` determines orientation and
+thickness. `infer` calculates intensities and residuals without changing the structure. `refine`
+optimizes the selected structural parameters. Add `--refresh` to rebuild preprocessing, or select
+the processor with `--device cpu` or `--device cuda`.
 
 ## Citation
 
-If you use diffBloch in your research, please cite it:
+If diffBloch is used in research, please cite:
 
 ```bibtex
 @misc{diffBloch,
@@ -85,26 +82,24 @@ If you use diffBloch in your research, please cite it:
 }
 ```
 
-
 ```{toctree}
 :hidden:
 :caption: Guides
 
 workflow.md
-bloch-wave-simulation.md
 inputs.md
-preprocessing.md
-convergence-testing.md
 hyperparameter-selection.md
-reproducibility.md
+convergence-testing.md
+preprocessing.md
+bloch_wave_simulation.md
 refinement.md
-observability-guide.md
+reproducibility.md
 examples.md
 ```
 
 ```{toctree}
 :hidden:
-:caption: API
+:caption: Python API
 
 api/config.md
 api/io.md

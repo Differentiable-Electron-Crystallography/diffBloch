@@ -6,7 +6,8 @@ therefore determines this experimental metadata before refining the structure an
 PETS2 reduces continuous-rotation data into overlapping **virtual frames**
 ([Klar *et al.*, 2023](https://doi.org/10.1038/s41557-023-01186-1)). Because the frames overlap, a
 given reflection can appear in several neighbouring frames, but should only be fully integrated in
-one of them -- `rsg`/`dsg` aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
+one of them -- `rsg`/`dsg` (see [Comparing simulation with experiment](workflow.md#comparing-simulation-with-experiment))
+aid in assigning each reflection to the correct frame. diffBloch only looks at fully-integrated
 intensities: partial reflections are not simulated. It represents each virtual frame by sampled
 tilt sub-orientations and sums their simulated intensities.
 
@@ -41,7 +42,7 @@ correction to each {math}`M_i`. A trial correction is described by three angles
 M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
 ```
 
-The Bloch-wave intensities are recalculated for each trial and compared with the observed
+The Bloch wave intensities are recalculated for each trial and compared with the observed
 intensities using `loss_metrics.residual`, which defaults to `wr2`.
 
 ### Unit-cell authority: PETS overrides the structure CIF
@@ -79,7 +80,7 @@ Nelder--Mead minimizes the orientation residual without requiring its derivative
 correction angles, the search holds four trial points: zero correction and one point displaced by
 `step_size` along each angle. These four points form a simplex.
 
-Each point is evaluated by running the Bloch-wave calculation and comparing its intensities with
+Each point is evaluated by running the Bloch wave calculation and comparing its intensities with
 experiment. Nelder--Mead ranks the four residuals and replaces the worst point by reflecting it
 through the opposite face of the simplex. Depending on the new residual, it may expand farther in
 that direction, contract toward the better points, or shrink the whole simplex around the best
@@ -149,7 +150,7 @@ changed. A representative value can then be used as the shared thickness if sepa
 required.
 
 The grid search evaluates `n_steps` evenly spaced thicknesses from `min_thickness` to
-`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch-wave
+`max_thickness`, inclusive, for every orientation. Each candidate is passed through the Bloch wave
 calculation and scored against experiment. The lowest-residual thickness is stored for that
 orientation. The search uses the starting unrefined structure, so its purpose is to establish the
 experimental geometry before atomic parameters are changed.
@@ -246,7 +247,7 @@ w = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
 ```
 
 The calculated rocking curve is averaged over that window before integration. A width of zero or
-one leaves the curve unchanged. This uses the existing {math}`N` Bloch-wave solves rather than
+one leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
 Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
