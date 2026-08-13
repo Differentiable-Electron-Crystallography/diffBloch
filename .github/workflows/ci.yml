@@ -189,7 +189,7 @@ jobs:
 
       # file_pattern keeps the downloaded artifacts out of the commit.
       - name: Commit anchor trend
-        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: Update anchor trend
           file_pattern: anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
