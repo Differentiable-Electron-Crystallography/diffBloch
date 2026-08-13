@@ -9,7 +9,10 @@ sample:
   thicknesses: [1950.0]
 
 blochwave:
-  solver: matrix_exp
+  solver:
+    preprocess: matrix_exp
+    inference: matrix_exp
+    refinement: matrix_exp
   absorption: true
   coupling_mode: union
   g_max: 1.9

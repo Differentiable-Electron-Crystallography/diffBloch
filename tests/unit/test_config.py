@@ -40,7 +40,9 @@ def test_minimal_config_validates_with_defaults() -> None:
     )
     assert cfg.name == "quartz"
     # defaults-as-code: the experiment file only needs inputs + overrides
-    assert cfg.blochwave.solver == "matrix_exp"
+    assert cfg.blochwave.solver.preprocess == "matrix_exp"
+    assert cfg.blochwave.solver.inference == "matrix_exp"
+    assert cfg.blochwave.solver.refinement == "matrix_exp"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
@@ -63,18 +65,26 @@ def test_solver_method_must_be_a_known_method() -> None:
     # config load rather than deep in the forward model.
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="Input should be"):
-        ExperimentConfig.model_validate({**base, "blochwave": {"solver": "nope"}})
+        ExperimentConfig.model_validate({**base, "blochwave": {"solver": {"preprocess": "nope"}}})
 
 
-def test_removed_nested_solver_config_is_rejected() -> None:
-    base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
-    with pytest.raises(ValidationError, match="Input should be|Extra"):
-        ExperimentConfig.model_validate(
-            {
-                **base,
-                "blochwave": {"solver": {"refine": "matrix_exp", "inference": "matrix_exp"}},
-            }
-        )
+def test_solver_methods_are_independent_by_phase() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "split-solvers",
+            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
+            "blochwave": {
+                "solver": {
+                    "preprocess": "bloch_eigen",
+                    "inference": "bloch_eigen",
+                    "refinement": "matrix_exp",
+                }
+            },
+        }
+    )
+    assert cfg.blochwave.solver.preprocess == "bloch_eigen"
+    assert cfg.blochwave.solver.inference == "bloch_eigen"
+    assert cfg.blochwave.solver.refinement == "matrix_exp"
 
 
 def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
@@ -87,7 +97,7 @@ def test_absorption_config_is_typed_and_requires_matrix_exp() -> None:
                 **base,
                 "blochwave": {
                     "absorption": True,
-                    "solver": "bloch_eigen",
+                    "solver": {"preprocess": "bloch_eigen"},
                 },
             }
         )

@@ -193,6 +193,7 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
     """
     dump = config.model_dump(mode="json")
     blochwave = {k: v for k, v in dump["blochwave"].items() if k != "ignore_orientations"}
+    blochwave["solver"] = {"preprocess": dump["blochwave"]["solver"]["preprocess"]}
     preprocess = dict(dump["preprocess"])
     if not preprocess["optimize_orientation"]:
         preprocess.pop("orientation", None)
@@ -232,7 +233,11 @@ def refinement_config_digest(config: ExperimentConfig) -> str:
     solely to :func:`dataset_config_digest`.
     """
     dump = config.model_dump(mode="json")
-    canonical = json.dumps(dump["refinement"], sort_keys=True, separators=(",", ":"))
+    identity = {
+        "refinement": dump["refinement"],
+        "solver": dump["blochwave"]["solver"]["refinement"],
+    }
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

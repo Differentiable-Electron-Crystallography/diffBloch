@@ -27,6 +27,7 @@ from diffBloch.config.schema import (
     LossMetricsConfig,
     OptimizerConfig,
     SampleConfig,
+    SolverConfig,
     load_config,
 )
 
@@ -43,6 +44,7 @@ __all__ = [
     "RecipeStep",
     "RefinementLock",
     "SampleConfig",
+    "SolverConfig",
     "artifact_hash_for",
     "code_version",
     "dataset_config_digest",

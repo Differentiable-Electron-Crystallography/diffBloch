@@ -271,7 +271,7 @@ def converge_experiment(
             simulation,
             refinement,
             ConvergenceTolerance(),
-            method=cfg.blochwave.solver,
+            method=cfg.blochwave.solver.preprocess,
             logger=logger,
         )
         settled_states.append(settled)
@@ -409,7 +409,7 @@ def run_experiment(
     return run_inference(
         prepared,
         refinement,
-        method=cfg.blochwave.solver,
+        method=cfg.blochwave.solver.inference,
         device=device,
         max_batch=max_batch,
         logger=logger,
@@ -495,7 +495,7 @@ def refine_experiment(
         prepared,
         refinement,
         loss=cfg.loss_metrics.to_loss(),
-        method=cfg.blochwave.solver,
+        method=cfg.blochwave.solver.refinement,
         max_batch=max_batch,
         absorption=cfg.blochwave.to_absorption(),
         profile=profile,
@@ -522,7 +522,7 @@ def refine_experiment(
             replace(prepared, orientations=train_only),
             refinement,
             loss=cfg.loss_metrics.to_loss(),
-            method=cfg.blochwave.solver,
+            method=cfg.blochwave.solver.refinement,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
             profile=profile,
@@ -532,7 +532,7 @@ def refine_experiment(
             replace(prepared, orientations=validation_only),
             refinement,
             loss=cfg.loss_metrics.to_loss(),
-            method=cfg.blochwave.solver,
+            method=cfg.blochwave.solver.refinement,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
             profile=profile,
@@ -1016,7 +1016,7 @@ def _recipe_steps(
         return optimize_orientation(
             refinement,
             search,
-            method=cfg.blochwave.solver,
+            method=cfg.blochwave.solver.preprocess,
             coupling=coupling,
             validate=validate,
             device=device,
@@ -1032,7 +1032,7 @@ def _recipe_steps(
         return optimize_thickness(
             refinement,
             thickness_grid,
-            method=cfg.blochwave.solver,
+            method=cfg.blochwave.solver.preprocess,
             device=device,
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)

@@ -64,6 +64,14 @@ class _StrictConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SolverConfig(_StrictConfig):
+    """Dynamical solver selected independently for each application phase."""
+
+    preprocess: SolverMethod = "matrix_exp"
+    inference: SolverMethod = "matrix_exp"
+    refinement: SolverMethod = "matrix_exp"
+
+
 class BlochwaveConfig(_StrictConfig):
     """The beam-selection, coupling, and dynamical-solver settings for the Bloch-wave simulation.
 
@@ -80,10 +88,7 @@ class BlochwaveConfig(_StrictConfig):
     disables it.
     """
 
-    # One solver for every phase (preprocessing search, refinement, and inference/scoring) --
-    # typed as the solver's own SolverMethod literal (the single source of truth), so an unknown
-    # method fails fast at config load rather than deep in the forward model.
-    solver: SolverMethod = "matrix_exp"
+    solver: SolverConfig = Field(default_factory=SolverConfig)
     absorption: bool = False
     rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
     dsg: float = _BEAM_SELECTION_DEFAULTS.dsg
@@ -138,7 +143,11 @@ class BlochwaveConfig(_StrictConfig):
         self.to_policy()
         self.to_orientation_selection()
         self.to_absorption()
-        if self.absorption and self.solver == "bloch_eigen":
+        if self.absorption and "bloch_eigen" in (
+            self.solver.preprocess,
+            self.solver.inference,
+            self.solver.refinement,
+        ):
             raise ValueError("absorption requires the non-Hermitian-safe 'matrix_exp' solver")
         return self
 

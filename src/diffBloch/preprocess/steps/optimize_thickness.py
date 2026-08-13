@@ -129,7 +129,7 @@ def optimize_thickness(
             fitted.append(orientation)
         return replace(plan, orientations=tuple(fitted))
 
-    # method rides in the config digest (cfg.blochwave.solver); the grid is the step's own param.
+    # method rides in the config digest (cfg.blochwave.solver.preprocess); the grid is the step's own param.
     return as_step("optimize_thickness", {"grid": grid, "absorption": absorption}, run)
 
 

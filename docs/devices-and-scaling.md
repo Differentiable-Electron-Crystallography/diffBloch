@@ -9,7 +9,7 @@ uv run diffbloch refine <experiment_dir> --device cpu
 ```
 
 Both devices perform the same calculation to the same accuracy; only speed differs. The fastest
-`coupling_mode` and `solver` are not the same on CPU as on GPU. The config defaults
+`coupling_mode` and the phase-specific `solver` choices are not the same on CPU as on GPU. The config defaults
 (`coupling_mode: union`) are tuned for GPU and are not optimal for CPU.
 
 ## CPU

@@ -173,9 +173,15 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     cfg = load_config(LOCKED / "experiment.yaml")
     base = dataset_config_digest(cfg, exp_data=EXP_REF)
 
-    def with_solver(method: str) -> object:
+    def with_preprocess_solver(method: str) -> object:
         return cfg.model_copy(
-            update={"blochwave": cfg.blochwave.model_copy(update={"solver": method})}
+            update={
+                "blochwave": cfg.blochwave.model_copy(
+                    update={
+                        "solver": cfg.blochwave.solver.model_copy(update={"preprocess": method})
+                    }
+                )
+            }
         )
 
     def with_refinement(**update: object) -> object:
@@ -204,7 +210,10 @@ def test_dataset_config_digest_scopes_to_plan_determining_config() -> None:
     )
     # included -- determine the settled Plan, so a change must restale
     assert (
-        dataset_config_digest(with_solver(_other_method(cfg.blochwave.solver)), exp_data=EXP_REF)
+        dataset_config_digest(
+            with_preprocess_solver(_other_method(cfg.blochwave.solver.preprocess)),
+            exp_data=EXP_REF,
+        )
         != base
     )
     # included -- objective drives optimize_orientation/optimize_thickness's search
@@ -376,6 +385,19 @@ def test_refinement_config_digest_is_the_complement_of_the_dataset_digest() -> N
         }
     )
     assert refinement_config_digest(bumped_split) != base
+
+    bumped_refinement_solver = cfg.model_copy(
+        update={
+            "blochwave": cfg.blochwave.model_copy(
+                update={
+                    "solver": cfg.blochwave.solver.model_copy(
+                        update={"refinement": _other_method(cfg.blochwave.solver.refinement)}
+                    )
+                }
+            )
+        }
+    )
+    assert refinement_config_digest(bumped_refinement_solver) != base
 
     # excluded -- objective is top-level (drives the preprocess search) and covered by
     # dataset_config_digest

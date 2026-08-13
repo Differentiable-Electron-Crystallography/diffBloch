@@ -128,7 +128,8 @@ With boundary conditions {math}`\psi(0)` fixed at the entrance surface, the wave
 ```
 
 There are two mathematically equivalent ways to evaluate this, and diffBloch implements both as
-`blochwave.solver` choices (see [Hyperparameter selection](hyperparameter-selection.md)):
+`blochwave.solver.{preprocess,inference,refinement}` choices (see
+[Hyperparameter selection](hyperparameter-selection.md)):
 
 - **`bloch_eigen`** diagonalises {math}`A = C\,\mathrm{diag}(\gamma)\,C^{-1}` once and reads off
   {math}`\psi_{\mathbf{g}}(t) = \sum_i C_0^{(i)-1}C_{\mathbf{g}}^{(i)}\exp(2\pi i\gamma^{(i)}t)` —
