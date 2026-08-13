@@ -1,0 +1,106 @@
+{
+  "structure": {
+    "ref": "experimental_paper_files/enantiomer_1.cif",
+    "sha256": "4a1ed50ae8eff95b652e49a872979f4dca19bf77b2b34fa14be2ebc06b0bb306",
+    "bytes": 942
+  },
+  "experimental_data": {
+    "ref": "quartz.cif_pets",
+    "sha256": "2183faaa402123297df03b54a0af4b025c61a66a22e18833c73acd3d2f6003be",
+    "bytes": 304176
+  },
+  "authoritative_cell": [
+    4.9226,
+    4.9226,
+    5.4003,
+    90.0,
+    90.0,
+    120.0
+  ],
+  "ignored_rotations": [],
+  "config_digest": "afc484c278753e49f5ceebb7d52876de7e49aa4e814676eb76a065bef253fc7f",
+  "code_version": "0.2.0+g1bfdabc.dirty",
+  "recipe": [
+    {
+      "name": "build_orientation_plans",
+      "params": {
+        "rocking": {
+          "__type__": "RockingCurve",
+          "sampling": 42,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.0,
+            "geometry": "continuous_rotation"
+          }
+        },
+        "mosaicity": null,
+        "coupling": {
+          "__type__": "UnionCoupling",
+          "fixed_n_segments": 12,
+          "g_max": 2.0,
+          "sg_max": 0.01,
+          "union_adaptive": true,
+          "union_max_new_beams_pct": 0.01
+        },
+        "scoring_selection": {
+          "__type__": "BeamSelection",
+          "rsg": 0.9,
+          "dsg": 0.0015,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.0,
+            "geometry": "continuous_rotation"
+          }
+        }
+      }
+    },
+    {
+      "name": "optimize_orientation",
+      "params": {
+        "search": {
+          "__type__": "NelderMeadSearch",
+          "step_size": 1.0,
+          "max_iterations": 60,
+          "x_tolerance": 0.001,
+          "f_tolerance": 0.001,
+          "penalize_fewer_reflections": true
+        },
+        "coupling": {
+          "__type__": "TrialCoupling",
+          "policy": {
+            "__type__": "UnionCoupling",
+            "fixed_n_segments": 12,
+            "g_max": 2.0,
+            "sg_max": 0.01,
+            "union_adaptive": true,
+            "union_max_new_beams_pct": 0.01
+          },
+          "scored": {
+            "__type__": "ScoredHklSelection",
+            "klar": {
+              "__type__": "BeamSelection",
+              "rsg": 0.9,
+              "dsg": 0.0015,
+              "integration": {
+                "__type__": "IntegrationGeometry",
+                "semiangle": 1.0,
+                "geometry": "continuous_rotation"
+              }
+            },
+            "g_max": 2.0
+          }
+        },
+        "absorption": {
+          "__type__": "Absorption",
+          "enabled": true
+        }
+      }
+    }
+  ],
+  "plan": {
+    "path": "reproducibility/plan.quartz.npz",
+    "sha256": "f32dd3f1c0c04e8c10383d4fedd4b784e8faded39d3290c766e38509a89d655c",
+    "bytes": 558697,
+    "media_type": "application/octet-stream"
+  }
+}
