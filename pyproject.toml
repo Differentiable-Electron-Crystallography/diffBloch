@@ -14,7 +14,7 @@ dependencies = [
     # CI (`uv sync --dev` installs no extras). The wandb/comet SDKs below stay opt-in -- those are
     # external services, not part of any default run.
     "matplotlib>=3.7",
-    "numpy>=2.5",
+    "numpy>=2.5.2",
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "scipy>=1.11",  # preprocess.steps.optimize_orientation: Nelder-Mead orientation search
@@ -26,8 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 # Logger backends confine their SDK to one module (diffBloch.app.loggers.*) and import it lazily;
 # install the extra to use that backend. The core never imports these.
-wandb = ["wandb>=0.16"]
-comet = ["comet_ml>=3.0"]
+wandb = ["wandb>=0.28.1"]
+comet = ["comet_ml>=3.58.4"]
 
 [tool.uv]
 # Security floors for packages we do not depend on directly: wandb pulls gitpython, torch and
@@ -54,10 +54,10 @@ packages = ["src/diffBloch"]
 dev = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
-    "ruff>=0.15",
-    "mypy>=1.10",
+    "ruff>=0.16.2",
+    "mypy>=2.3.0",
     "types-pyyaml>=6.0",
-    "pre-commit>=3.7",
+    "pre-commit>=4.6.1",
     # Sphinx docs: furo theme, MyST for the Markdown sources, autodoc+napoleon for the API reference.
     "sphinx>=7.4",
     "furo>=2024.8.6",
@@ -67,7 +67,7 @@ dev = [
     "sphinx-inline-tabs>=2023.4.21",
     "sphinx-autobuild>=2024.10.3",
     "jupyterlab>=4.6.2",
-    "jupytext>=1.19.4",
+    "jupytext>=1.19.5",
     "ipykernel>=7.3.0",
 ]
 
