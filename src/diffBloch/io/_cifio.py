@@ -37,9 +37,22 @@ def _drop_duplicate_scalar_tags(text: str) -> str:
     seen: set[str] = set()
     in_text_field = False
     in_loop_header = False
+    skipping_duplicate_text_field = False
+    skip_duplicate_value = False
     out: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
+        if skipping_duplicate_text_field:
+            if stripped.startswith(";"):
+                skipping_duplicate_text_field = False
+            continue
+        if skip_duplicate_value:
+            if stripped.startswith(";"):
+                skipping_duplicate_text_field = True
+                skip_duplicate_value = False
+            elif stripped and not stripped.startswith("#"):
+                skip_duplicate_value = False
+            continue
         if stripped.startswith(";"):
             in_text_field = not in_text_field
             out.append(line)
@@ -65,6 +78,8 @@ def _drop_duplicate_scalar_tags(text: str) -> str:
         if match:
             tag = match.group(1)
             if tag in seen:
+                if match.group(2) is None:
+                    skip_duplicate_value = True
                 continue
             seen.add(tag)
         out.append(line)
