@@ -79,6 +79,21 @@ If diffBloch is used in research, please cite it as:
 }
 ```
 
+## Subscribe
+
+Subscribe to the diffBloch mailing list for occasional usage guides, release updates, and research
+papers that use diffBloch.
+
+<form
+  action="https://buttondown.com/api/emails/embed-subscribe/diffBloch"
+  method="post"
+  class="embeddable-buttondown-form"
+>
+  <label for="bd-email">Enter your email</label>
+  <input type="email" name="email" id="bd-email" />
+  <input type="submit" value="Subscribe" />
+</form>
+
 ```{toctree}
 :hidden:
 :caption: Guides
