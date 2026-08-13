@@ -69,7 +69,13 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
-from diffBloch.io import ExperimentalRecord, read_experimental_data, read_structure
+from diffBloch.io import (
+    ExperimentalRecord,
+    StructureRecord,
+    read_experimental_data_with_diagnostics,
+    read_structure,
+    read_structure_with_diagnostics,
+)
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
@@ -142,7 +148,19 @@ def _exp_data_refs(cfg: ExperimentConfig) -> tuple[str, ...]:
     return (cfg.inputs.exp_data,)
 
 
-def _read_experimental_data(root: Path, cfg: ExperimentConfig) -> tuple[ExperimentalRecord, ...]:
+def _read_structure(
+    root: Path, cfg: ExperimentConfig, *, logger: Logger = NULL_LOGGER
+) -> StructureRecord:
+    path = root / cfg.inputs.structure
+    parsed = read_structure_with_diagnostics(path, load_hydrogens=cfg.inputs.load_hydrogens)
+    for diagnostic in parsed.diagnostics:
+        logger.report(diagnostic)
+    return parsed.record
+
+
+def _read_experimental_data(
+    root: Path, cfg: ExperimentConfig, *, logger: Logger = NULL_LOGGER
+) -> tuple[ExperimentalRecord, ...]:
     """Read every ``inputs.exp_data`` file, single or pooled alike -- always a tuple.
 
     Order matches ``inputs.exp_data``, which is also the order
@@ -150,7 +168,13 @@ def _read_experimental_data(root: Path, cfg: ExperimentConfig) -> tuple[Experime
     :func:`~diffBloch.preprocess.pool` pools rotation indices in -- callers that need a flat array
     aligned to the pooled ``rotation_index`` space can rely on that order without recomputing it.
     """
-    return tuple(read_experimental_data(root / ref) for ref in _exp_data_refs(cfg))
+    records: list[ExperimentalRecord] = []
+    for ref in _exp_data_refs(cfg):
+        parsed = read_experimental_data_with_diagnostics(root / ref)
+        for diagnostic in parsed.diagnostics:
+            logger.report(diagnostic)
+        records.append(parsed.record)
+    return tuple(records)
 
 
 def _reproducibility_dir(root: Path) -> Path:
@@ -227,10 +251,8 @@ def converge_experiment(
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
 
-    structure = read_structure(
-        root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
-    )
-    records = _read_experimental_data(root, cfg)
+    structure = _read_structure(root, cfg, logger=logger)
+    records = _read_experimental_data(root, cfg, logger=logger)
     refinement_setup, datasets = setup_datasets(structure, records, cfg)
     refinement = replace(refinement_setup, params=refinement_setup.params.to(device))
     if n_orientations < 1:
@@ -879,10 +901,8 @@ def _preprocess(
     only decide whether/where a PNG gets written, never the fitted ``Plan``) -- see
     :func:`~diffBloch.config.manifest.dataset_config_digest`.
     """
-    structure = read_structure(
-        root / cfg.inputs.structure, load_hydrogens=cfg.inputs.load_hydrogens
-    )
-    records = _read_experimental_data(root, cfg)
+    structure = _read_structure(root, cfg, logger=logger)
+    records = _read_experimental_data(root, cfg, logger=logger)
     refs = _exp_data_refs(cfg)
     refinement_setup, datasets = setup_datasets(structure, records, cfg)
     cell = records[0].cell_parameters

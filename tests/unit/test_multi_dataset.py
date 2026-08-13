@@ -14,7 +14,12 @@ import yaml
 from diffBloch.app.program import _read_experimental_data, converge_experiment
 from diffBloch.config import ExperimentConfig, input_lock_for, load_config
 from diffBloch.core.crystal import cell_matrix_from_parameters
-from diffBloch.io import read_experimental_data, read_structure
+from diffBloch.io import (
+    ParsedInput,
+    read_experimental_data,
+    read_experimental_data_with_diagnostics,
+    read_structure,
+)
 from diffBloch.preprocess import setup_datasets
 from diffBloch.preprocess.driver import ConvergenceState
 from diffBloch.preprocess.experiment import _mean_inner_potential
@@ -282,14 +287,20 @@ def test_converge_starting_g_max_falls_back_per_dataset_when_dstar_max_is_missin
     exp = _multi_experiment(tmp_path)
     cfg = load_config(exp / "experiment.yaml")
 
-    real_read = read_experimental_data
+    real_read = read_experimental_data_with_diagnostics
 
     def read_with_mixed_dstar_max(path):
-        record = real_read(path)
+        parsed = real_read(path)
         dstar = 1.4 if Path(path).name == "a.cif_pets" else None
-        return record.model_copy(update={"dstar_max": dstar})
+        return ParsedInput(
+            parsed.record.model_copy(update={"dstar_max": dstar}),
+            parsed.diagnostics,
+        )
 
-    monkeypatch.setattr("diffBloch.app.program.read_experimental_data", read_with_mixed_dstar_max)
+    monkeypatch.setattr(
+        "diffBloch.app.program.read_experimental_data_with_diagnostics",
+        read_with_mixed_dstar_max,
+    )
 
     starting: list[ConvergenceState] = []
 

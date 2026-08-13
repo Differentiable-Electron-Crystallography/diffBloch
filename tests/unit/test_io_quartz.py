@@ -9,10 +9,12 @@ from diffBloch.io import (
     parse_experimental_block,
     parse_structure_block,
     read_experimental_data,
+    read_experimental_data_with_diagnostics,
     read_structure,
+    read_structure_with_diagnostics,
     symmetry_constraints,
 )
-from diffBloch.io._cifio import read_document
+from diffBloch.io._cifio import read_document, read_document_with_diagnostics
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -62,13 +64,23 @@ _atom_site_fract_x
 _atom_site_fract_y
 _atom_site_fract_z
 C1 C 0.10 0.20 0.30
+H1 H 0.40 0.50 0.60
 """
     )
 
-    record = read_structure(source)
+    parsed = read_structure_with_diagnostics(source)
+    record = parsed.record
 
     assert record.labels == ("C1",)
     assert record.cell_parameters.tolist() == pytest.approx([5.0, 6.0, 7.0, 90.0, 100.0, 90.0])
+    diagnostics = {diagnostic.code: diagnostic for diagnostic in parsed.diagnostics}
+    assert diagnostics["cif_block_selected"].message == (
+        "found 2 CIF blocks; using structure block 'structure' "
+        "(the only block with _atom_site_label)"
+    )
+    assert diagnostics["cif_block_selected"].details["block"] == "structure"
+    assert diagnostics["hydrogen_sites_filtered"].details["count"] == 1
+    assert diagnostics["symmetry_from_spacegroup"].details["n_symops"] == 1
 
 
 @pytest.mark.parametrize(
@@ -89,6 +101,23 @@ def test_read_document_drops_duplicate_scalar_tag_with_its_value(
 
     assert expected in str(block.find_value("_tag"))
     assert block.find_value("_other") == "3"
+
+
+def test_read_document_reports_kept_duplicate_scalar_value(tmp_path: Path) -> None:
+    source = tmp_path / "duplicate.cif"
+    source.write_text("data_x\n_tag 1.234\n_tag 2.0\n")
+
+    _document, diagnostics = read_document_with_diagnostics(source, input_kind="experimental_data")
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].message == (
+        "dropped duplicate scalar CIF tag _tag, kept first value '1.234'"
+    )
+    assert diagnostics[0].details == {
+        "tag": "_tag",
+        "count": 1,
+        "kept_value": "1.234",
+    }
 
 
 def test_read_quartz_pets_fixture() -> None:
@@ -266,7 +295,65 @@ _refln_zone_axis_id
 
 
 def test_parse_pets_summary_from_reduction_process_when_measurement_details_lacks_keys() -> None:
-    block = gemmi.cif.read_string(
+    text = """data_pets
+_cell_length_a 5.0
+_cell_length_b 6.0
+_cell_length_c 7.0
+_cell_angle_alpha 90
+_cell_angle_beta 100
+_cell_angle_gamma 90
+_diffrn_radiation_wavelength 0.0251
+_diffrn_orient_matrix_UB_11 1
+_diffrn_orient_matrix_UB_12 0
+_diffrn_orient_matrix_UB_13 0
+_diffrn_orient_matrix_UB_21 0
+_diffrn_orient_matrix_UB_22 1
+_diffrn_orient_matrix_UB_23 0
+_diffrn_orient_matrix_UB_31 0
+_diffrn_orient_matrix_UB_32 0
+_diffrn_orient_matrix_UB_33 1
+_diffrn_measurement_details
+;
+operator note only
+;
+_diffrn_reflns_reduction_process
+;
+data collection geometry: precession
+dstarmax:  1.400
+mosaicity:  0.100
+;
+loop_
+_diffrn_zone_axis_id
+_diffrn_zone_axis_u
+_diffrn_zone_axis_v
+_diffrn_zone_axis_w
+_diffrn_zone_axis_precession_angle
+_diffrn_zone_axis_alpha
+_diffrn_zone_axis_beta
+_diffrn_zone_axis_omega
+_diffrn_zone_axis_scale
+1 0 0 1 0.5 10 20 30 1
+loop_
+_refln_index_h
+_refln_index_k
+_refln_index_l
+_refln_intensity_meas
+_refln_intensity_sigma
+_refln_zone_axis_id
+1 0 0 12.5 0.7 1
+"""
+    block = gemmi.cif.read_string(text).sole_block()
+
+    record = parse_experimental_block(block)
+
+    assert record.data_collection_geometry == "precession"
+    assert record.dstar_max == pytest.approx(1.4)
+    assert record.mosaicity_degrees == pytest.approx(0.1)
+
+
+def test_read_pets_reports_summary_source_diagnostics(tmp_path: Path) -> None:
+    source = tmp_path / "fallback_summary.cif_pets"
+    source.write_text(
         """data_pets
 _cell_length_a 5.0
 _cell_length_b 6.0
@@ -314,13 +401,21 @@ _refln_intensity_sigma
 _refln_zone_axis_id
 1 0 0 12.5 0.7 1
 """
-    ).sole_block()
+    )
 
-    record = parse_experimental_block(block)
+    parsed = read_experimental_data_with_diagnostics(source)
 
-    assert record.data_collection_geometry == "precession"
-    assert record.dstar_max == pytest.approx(1.4)
-    assert record.mosaicity_degrees == pytest.approx(0.1)
+    assert parsed.record.data_collection_geometry == "precession"
+    summary = [
+        diagnostic
+        for diagnostic in parsed.diagnostics
+        if diagnostic.code == "pets_summary_tag_used"
+    ]
+    assert len(summary) == 1
+    assert summary[0].details == {
+        "tag": "_diffrn_reflns_reduction_process",
+        "fields": "data_collection_geometry, dstarmax, mosaicity",
+    }
 
 
 def test_parse_pets_summary_prefers_measurement_details_when_both_tags_have_keys() -> None:

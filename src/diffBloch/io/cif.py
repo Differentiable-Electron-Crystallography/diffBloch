@@ -15,13 +15,14 @@ from diffBloch.io._cifio import (
     loop_rows,
     optional_int,
     parse_cif_number,
-    read_document,
-    select_block,
+    read_document_with_diagnostics,
+    select_block_with_diagnostics,
     unquote,
 )
 from diffBloch.io._cifio import (
     cell_parameters as parse_cell_parameters,
 )
+from diffBloch.io.diagnostics import ParseDiagnostic, ParsedInput
 from diffBloch.io.record import AdpRecord, StructureRecord
 
 ANISO_TAGS = (
@@ -50,6 +51,13 @@ class _AtomSites(NamedTuple):
     occupancies: NDArray[np.float64]
     occupancies_su: NDArray[np.float64]
     adp: AdpRecord
+    n_hydrogens_filtered: int
+
+
+class _Symops(NamedTuple):
+    rotations: NDArray[np.float64]
+    translations: NDArray[np.float64]
+    source: Literal["loop", "spacegroup"]
 
 
 def read_structure(path: str | Path, *, load_hydrogens: bool = False) -> StructureRecord:
@@ -60,9 +68,28 @@ def read_structure(path: str | Path, *, load_hydrogens: bool = False) -> Structu
         load_hydrogens: Include hydrogen atom sites when present. The default mirrors electron
             diffraction refinement practice where H sites are usually excluded from this boundary.
     """
+    return read_structure_with_diagnostics(path, load_hydrogens=load_hydrogens).record
+
+
+def read_structure_with_diagnostics(
+    path: str | Path, *, load_hydrogens: bool = False
+) -> ParsedInput[StructureRecord]:
+    """Read a structure CIF and report non-fatal parser decisions."""
     source = Path(path)
-    block = select_block(read_document(source), required_loop_tag="_atom_site_label")
-    return parse_structure_block(block, source_path=source, load_hydrogens=load_hydrogens)
+    doc, diagnostics = read_document_with_diagnostics(source, input_kind="structure")
+    block, block_diagnostics = select_block_with_diagnostics(
+        doc,
+        required_loop_tag="_atom_site_label",
+        source_path=source,
+        input_kind="structure",
+    )
+    parsed = _parse_structure_block_with_diagnostics(
+        block, source_path=source, load_hydrogens=load_hydrogens
+    )
+    return ParsedInput(
+        parsed.record,
+        diagnostics + block_diagnostics + parsed.diagnostics,
+    )
 
 
 def parse_structure_block(
@@ -79,11 +106,23 @@ def parse_structure_block(
         load_hydrogens: Include hydrogen atom sites when present. The default mirrors electron
             diffraction refinement practice where H sites are usually excluded from this boundary.
     """
+    return _parse_structure_block_with_diagnostics(
+        block, source_path=source_path, load_hydrogens=load_hydrogens
+    ).record
+
+
+def _parse_structure_block_with_diagnostics(
+    block: gemmi.cif.Block,
+    *,
+    source_path: str | Path | None,
+    load_hydrogens: bool,
+) -> ParsedInput[StructureRecord]:
     atom_sites = _read_atom_sites(block, load_hydrogens=load_hydrogens)
-    symops_R, symops_t = _read_symops(block)
+    symops = _read_symops(block)
     cell_parameters, cell_parameters_su = parse_cell_parameters(block)
-    return StructureRecord(
-        source_path=Path(source_path) if source_path is not None else None,
+    source = Path(source_path) if source_path is not None else None
+    record = StructureRecord(
+        source_path=source,
         unit_cell=cell_matrix_from_parameters(cell_parameters),
         cell_parameters=cell_parameters,
         cell_parameters_su=cell_parameters_su,
@@ -96,8 +135,8 @@ def parse_structure_block(
             block.find_value("_symmetry_Int_Tables_number")
             or block.find_value("_space_group_IT_number")
         ),
-        symops_R=symops_R,
-        symops_t=symops_t,
+        symops_R=symops.rotations,
+        symops_t=symops.translations,
         labels=atom_sites.labels,
         numbers=atom_sites.numbers,
         frac_positions=atom_sites.frac_positions,
@@ -106,6 +145,31 @@ def parse_structure_block(
         occupancies_su=atom_sites.occupancies_su,
         adp=atom_sites.adp,
     )
+    diagnostics: list[ParseDiagnostic] = []
+    if atom_sites.n_hydrogens_filtered:
+        diagnostics.append(
+            ParseDiagnostic(
+                code="hydrogen_sites_filtered",
+                input_kind="structure",
+                source_path=source,
+                message=(
+                    f"filtered {atom_sites.n_hydrogens_filtered} hydrogen atom site(s); "
+                    "set load_hydrogens to include them"
+                ),
+                details={"count": atom_sites.n_hydrogens_filtered},
+            )
+        )
+    if symops.source == "spacegroup":
+        diagnostics.append(
+            ParseDiagnostic(
+                code="symmetry_from_spacegroup",
+                input_kind="structure",
+                source_path=source,
+                message="derived symmetry operations from space-group symbol or number",
+                details={"n_symops": record.n_symops},
+            )
+        )
+    return ParsedInput(record, tuple(diagnostics))
 
 
 def _read_atom_sites(block: gemmi.cif.Block, *, load_hydrogens: bool) -> _AtomSites:
@@ -126,10 +190,12 @@ def _read_atom_sites(block: gemmi.cif.Block, *, load_hydrogens: bool) -> _AtomSi
     u_iso_su: list[float] = []
     uij_cif: list[NDArray[np.float64]] = []
     uij_cif_su: list[NDArray[np.float64]] = []
+    n_hydrogens_filtered = 0
 
     for row in atom_rows:
         element = gemmi.Element(str(row["_atom_site_type_symbol"]))
         if not load_hydrogens and element.atomic_number == 1:
+            n_hydrogens_filtered += 1
             continue
         label = str(row["_atom_site_label"])
         labels.append(label)
@@ -172,10 +238,11 @@ def _read_atom_sites(block: gemmi.cif.Block, *, load_hydrogens: bool) -> _AtomSi
             uij_cif=np.asarray(uij_cif, dtype=np.float64),
             uij_cif_su=np.asarray(uij_cif_su, dtype=np.float64),
         ),
+        n_hydrogens_filtered=n_hydrogens_filtered,
     )
 
 
-def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+def _read_symops(block: gemmi.cif.Block) -> _Symops:
     rows = loop_rows(block, "_symmetry_equiv_pos_as_xyz") or loop_rows(
         block, "_space_group_symop_operation_xyz"
     )
@@ -185,11 +252,13 @@ def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[n
         )
         for row in rows
     ]
+    source: Literal["loop", "spacegroup"] = "loop"
     if not symops:
         spacegroup = _spacegroup_for_block(block)
         if spacegroup is None:
             raise ValueError("CIF must provide symmetry operations or a space-group symbol/number")
         symops = [op.triplet() for op in spacegroup.operations()]
+        source = "spacegroup"
 
     rotations: list[list[list[float]]] = []
     translations: list[list[float]] = []
@@ -197,7 +266,11 @@ def _read_symops(block: gemmi.cif.Block) -> tuple[NDArray[np.float64], NDArray[n
         op = gemmi.Op(operation)
         rotations.append([[float(op.rot[i][j]) / op.DEN for j in range(3)] for i in range(3)])
         translations.append([float(op.tran[i]) / op.DEN for i in range(3)])
-    return np.asarray(rotations, dtype=np.float64), np.asarray(translations, dtype=np.float64)
+    return _Symops(
+        rotations=np.asarray(rotations, dtype=np.float64),
+        translations=np.asarray(translations, dtype=np.float64),
+        source=source,
+    )
 
 
 def _spacegroup_for_block(block: gemmi.cif.Block) -> gemmi.SpaceGroup | None:
