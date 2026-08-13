@@ -12,6 +12,7 @@ from diffBloch.io import (
     read_structure,
     symmetry_constraints,
 )
+from diffBloch.io._cifio import read_document
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -38,6 +39,56 @@ def test_read_quartz_structure_fixture() -> None:
     constraints = symmetry_constraints(record)
     assert constraints.n_asymmetric_sites == 2
     assert constraints.n_symops == 6
+
+
+def test_read_structure_selects_atom_site_block_from_multiblock_cif(tmp_path: Path) -> None:
+    source = tmp_path / "jana2020_multiblock.cif"
+    source.write_text(
+        """data_global
+_journal_name_full .
+
+data_structure
+_cell_length_a 5.0
+_cell_length_b 6.0
+_cell_length_c 7.0
+_cell_angle_alpha 90
+_cell_angle_beta 100
+_cell_angle_gamma 90
+_symmetry_space_group_name_H-M 'P 1'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+C1 C 0.10 0.20 0.30
+"""
+    )
+
+    record = read_structure(source)
+
+    assert record.labels == ("C1",)
+    assert record.cell_parameters.tolist() == pytest.approx([5.0, 6.0, 7.0, 90.0, 100.0, 90.0])
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("data_x\n_tag 1\n_tag 2\n_other 3\n", "1"),
+        ("data_x\n_tag\n1\n_tag\n2\n_other 3\n", "1"),
+        ("data_x\n_tag\n;\nfirst\n;\n_tag\n;\nsecond\n;\n_other 3\n", "first"),
+    ],
+)
+def test_read_document_drops_duplicate_scalar_tag_with_its_value(
+    tmp_path: Path, text: str, expected: str
+) -> None:
+    source = tmp_path / "duplicate.cif"
+    source.write_text(text)
+
+    block = read_document(source).sole_block()
+
+    assert expected in str(block.find_value("_tag"))
+    assert block.find_value("_other") == "3"
 
 
 def test_read_quartz_pets_fixture() -> None:
@@ -212,3 +263,121 @@ _refln_zone_axis_id
     assert record.sigmas.tolist() == [0.7]
     assert record.data_collection_geometry == "precession"
     assert record.dstar_max is None
+
+
+def test_parse_pets_summary_from_reduction_process_when_measurement_details_lacks_keys() -> None:
+    block = gemmi.cif.read_string(
+        """data_pets
+_cell_length_a 5.0
+_cell_length_b 6.0
+_cell_length_c 7.0
+_cell_angle_alpha 90
+_cell_angle_beta 100
+_cell_angle_gamma 90
+_diffrn_radiation_wavelength 0.0251
+_diffrn_orient_matrix_UB_11 1
+_diffrn_orient_matrix_UB_12 0
+_diffrn_orient_matrix_UB_13 0
+_diffrn_orient_matrix_UB_21 0
+_diffrn_orient_matrix_UB_22 1
+_diffrn_orient_matrix_UB_23 0
+_diffrn_orient_matrix_UB_31 0
+_diffrn_orient_matrix_UB_32 0
+_diffrn_orient_matrix_UB_33 1
+_diffrn_measurement_details
+;
+operator note only
+;
+_diffrn_reflns_reduction_process
+;
+data collection geometry: precession
+dstarmax:  1.400
+mosaicity:  0.100
+;
+loop_
+_diffrn_zone_axis_id
+_diffrn_zone_axis_u
+_diffrn_zone_axis_v
+_diffrn_zone_axis_w
+_diffrn_zone_axis_precession_angle
+_diffrn_zone_axis_alpha
+_diffrn_zone_axis_beta
+_diffrn_zone_axis_omega
+_diffrn_zone_axis_scale
+1 0 0 1 0.5 10 20 30 1
+loop_
+_refln_index_h
+_refln_index_k
+_refln_index_l
+_refln_intensity_meas
+_refln_intensity_sigma
+_refln_zone_axis_id
+1 0 0 12.5 0.7 1
+"""
+    ).sole_block()
+
+    record = parse_experimental_block(block)
+
+    assert record.data_collection_geometry == "precession"
+    assert record.dstar_max == pytest.approx(1.4)
+    assert record.mosaicity_degrees == pytest.approx(0.1)
+
+
+def test_parse_pets_summary_prefers_measurement_details_when_both_tags_have_keys() -> None:
+    block = gemmi.cif.read_string(
+        """data_pets
+_cell_length_a 5.0
+_cell_length_b 6.0
+_cell_length_c 7.0
+_cell_angle_alpha 90
+_cell_angle_beta 100
+_cell_angle_gamma 90
+_diffrn_radiation_wavelength 0.0251
+_diffrn_orient_matrix_UB_11 1
+_diffrn_orient_matrix_UB_12 0
+_diffrn_orient_matrix_UB_13 0
+_diffrn_orient_matrix_UB_21 0
+_diffrn_orient_matrix_UB_22 1
+_diffrn_orient_matrix_UB_23 0
+_diffrn_orient_matrix_UB_31 0
+_diffrn_orient_matrix_UB_32 0
+_diffrn_orient_matrix_UB_33 1
+_diffrn_measurement_details
+;
+data collection geometry: continuous rotation
+dstarmax:  1.800
+mosaicity:  0.050
+;
+_diffrn_reflns_reduction_process
+;
+data collection geometry: precession
+dstarmax:  1.400
+mosaicity:  0.100
+;
+loop_
+_diffrn_zone_axis_id
+_diffrn_zone_axis_u
+_diffrn_zone_axis_v
+_diffrn_zone_axis_w
+_diffrn_zone_axis_precession_angle
+_diffrn_zone_axis_alpha
+_diffrn_zone_axis_beta
+_diffrn_zone_axis_omega
+_diffrn_zone_axis_scale
+1 0 0 1 0.5 10 20 30 1
+loop_
+_refln_index_h
+_refln_index_k
+_refln_index_l
+_refln_intensity_meas
+_refln_intensity_sigma
+_refln_zone_axis_id
+1 0 0 12.5 0.7 1
+"""
+    ).sole_block()
+
+    record = parse_experimental_block(block)
+
+    assert record.data_collection_geometry == "continuous_rotation"
+    assert record.dstar_max == pytest.approx(1.8)
+    assert record.mosaicity_degrees == pytest.approx(0.05)

@@ -22,7 +22,7 @@ _DATA_COLLECTION_GEOMETRY = re.compile(
 )
 # PETS2 writes its informal `key: value` processing summary (data collection geometry, dstarmax,
 # mosaicity, ...) as a semicolon-delimited text field, but different builds attach it to different
-# CIF tags -- try each in order and use the first one present.
+# CIF tags. For each key, try the tags in order and use the first text field containing that key.
 _MEASUREMENT_DETAILS_TAGS = ("_diffrn_measurement_details", "_diffrn_reflns_reduction_process")
 
 
@@ -108,11 +108,11 @@ def parse_experimental_block(
     )
 
 
-def _measurement_details(block: gemmi.cif.Block) -> str | None:
-    """Return PETS2's informal ``key: value`` processing summary text, wherever it was written."""
+def _measurement_details(block: gemmi.cif.Block, pattern: re.Pattern[str]) -> str | None:
+    """Return the PETS2 summary text field containing ``pattern``, wherever it was written."""
     for tag in _MEASUREMENT_DETAILS_TAGS:
         text = block.find_value(tag)
-        if text is not None:
+        if text is not None and pattern.search(str(text)):
             return str(text)
     return None
 
@@ -125,7 +125,7 @@ def _dstar_max(block: gemmi.cif.Block) -> float | None:
     Returns ``None`` when the tag is absent or a PETS version that doesn't record ``dstarmax``
     wrote the file.
     """
-    text = _measurement_details(block)
+    text = _measurement_details(block, _DSTAR_MAX)
     if text is None:
         return None
     match = _DSTAR_MAX.search(text)
@@ -134,7 +134,7 @@ def _dstar_max(block: gemmi.cif.Block) -> float | None:
 
 def _mosaicity(block: gemmi.cif.Block) -> float | None:
     """PETS2 apparent mosaicity in degrees from measurement details."""
-    text = _measurement_details(block)
+    text = _measurement_details(block, _MOSAICITY)
     if text is None:
         return None
     match = _MOSAICITY.search(text)
@@ -151,7 +151,7 @@ def _data_collection_geometry(
     continuous-rotation default. An explicit unknown value fails at the I/O boundary rather than
     silently selecting scientifically different integration geometry.
     """
-    text = _measurement_details(block)
+    text = _measurement_details(block, _DATA_COLLECTION_GEOMETRY)
     if text is None:
         return "continuous_rotation"
     match = _DATA_COLLECTION_GEOMETRY.search(text)
