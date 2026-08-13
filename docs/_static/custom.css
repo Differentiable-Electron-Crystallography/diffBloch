@@ -1,30 +1,73 @@
-/* Splits the sidebar brand title and a GitHub icon link onto one row, below the logo.
-   Pairs with the sidebar/brand.html template override. */
-.sidebar-brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0 var(--sidebar-item-spacing-horizontal) var(--sidebar-item-spacing-vertical);
-}
-
-.sidebar-brand-title-link {
-  color: var(--color-sidebar-brand-text);
+.sidebar-brand-github-text {
+  display: block;
+  margin: -0.4rem var(--sidebar-item-spacing-horizontal) var(--sidebar-item-spacing-vertical);
+  color: var(--color-sidebar-link-text);
+  font-size: 0.875rem;
+  text-align: left;
   text-decoration: none;
 }
 
-.sidebar-brand-title-link .sidebar-brand-text {
-  font-size: 1.5rem;
-  overflow-wrap: break-word;
+.sidebar-brand-github-text:hover {
+  color: var(--color-sidebar-link-text--top-level);
+  text-decoration: underline;
 }
 
-.sidebar-brand-github-link {
-  display: inline-flex;
-  color: var(--color-sidebar-link-text);
-  opacity: 0.75;
-  transition: opacity 0.1s ease-in-out;
+.embeddable-buttondown-form {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin: 1rem 0 2rem;
+  padding: 1rem;
+  border: 1px solid var(--color-background-border);
+  border-radius: 0.5rem;
+  background: var(--color-background-secondary);
 }
 
-.sidebar-brand-github-link:hover {
-  opacity: 1;
+.embeddable-buttondown-form label {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-foreground-muted);
+  font-weight: 600;
+}
+
+.embeddable-buttondown-form input[type="email"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-background-border);
+  border-radius: 0.25rem;
+  background: var(--color-background-primary);
+  color: var(--color-foreground-primary);
+  font: inherit;
+}
+
+.embeddable-buttondown-form input[type="email"]:focus {
+  border-color: var(--color-brand-primary);
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+.embeddable-buttondown-form input[type="submit"] {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--color-brand-primary);
+  border-radius: 0.25rem;
+  background: var(--color-brand-primary);
+  color: var(--color-background-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.embeddable-buttondown-form input[type="submit"]:hover {
+  background: var(--color-brand-content);
+  border-color: var(--color-brand-content);
+}
+
+@media (max-width: 40rem) {
+  .embeddable-buttondown-form {
+    grid-template-columns: 1fr;
+  }
 }
