@@ -1,0 +1,36 @@
+# Dependabot version updates. Security updates are a separate repo setting ("Dependabot security
+# updates") and do not need an entry here -- they fire on any advisory regardless of the schedule
+# below. This file exists so routine bumps land continuously instead of accumulating into another
+# 20-alert backlog, and so the lockfile never drifts far enough that a security bump has to carry a
+# major upgrade with it.
+#
+# Grouping is deliberate: one PR per ecosystem for minor/patch versions keeps CI cost proportionate
+# (this repo runs unit tests, mypy, a strict docs build, and ~5-minute physics anchors on every PR),
+# while majors still arrive alone -- a torch or numpy major is a review, not a rubber stamp.
+version: 2
+
+updates:
+  - package-ecosystem: "uv" # reads pyproject.toml + uv.lock, including dependency-groups and extras
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "github-actions" # the pinned action versions in .github/workflows/
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

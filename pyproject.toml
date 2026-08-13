@@ -1,0 +1,111 @@
+[project]
+name = "diffBloch"
+dynamic = ["version"]  # single-sourced from src/diffBloch/__init__.py (see [tool.hatch.version])
+description = "Differentiable Bloch-wave electron-diffraction structure refinement"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
+    "gemmi>=0.7.5",
+    # Report plots are on by default (SummaryLogger.plot), so the renderer is not optional in
+    # practice: as an extra it left the default output silently degraded and its code untested in
+    # CI (`uv sync --dev` installs no extras). The wandb/comet SDKs below stay opt-in -- those are
+    # external services, not part of any default run.
+    "matplotlib>=3.7",
+    "numpy>=2.5",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "scipy>=1.11",  # preprocess.steps.optimize_orientation: Nelder-Mead orientation search
+    "torch>=2.13.0",  # >=2.13.0: GHSA-rrmf-rvhw-rf47 (torch.jit.script memory corruption)
+    # Scientific deps are added as their modules land:
+    #   abtem -> core/scattering (electron form factors), wrapped behind a seam
+]
+
+[project.optional-dependencies]
+# Logger backends confine their SDK to one module (diffBloch.app.loggers.*) and import it lazily;
+# install the extra to use that backend. The core never imports these.
+wandb = ["wandb>=0.16"]
+comet = ["comet_ml>=3.0"]
+
+[tool.uv]
+# Security floors for packages we do not depend on directly: wandb pulls gitpython, torch and
+# comet-ml pull setuptools. Pinned here so a future re-lock cannot drift back below the fix.
+constraint-dependencies = [
+    "gitpython>=3.1.58",  # 18 advisories through 3.1.57 (git option-injection / config-injection RCE)
+    "setuptools>=83.0.0",  # GHSA-h35f-9h28-mq5c (sdist MANIFEST.in exclusion bypass)
+]
+
+[project.scripts]
+diffbloch = "diffBloch.app.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/diffBloch/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diffBloch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.15",
+    "mypy>=1.10",
+    "types-pyyaml>=6.0",
+    "pre-commit>=3.7",
+    # Sphinx docs: furo theme, MyST for the Markdown sources, autodoc+napoleon for the API reference.
+    "sphinx>=7.4",
+    "furo>=2024.8.6",
+    "myst-parser>=4.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinxext-opengraph>=0.9.1",
+    "sphinx-inline-tabs>=2023.4.21",
+    "sphinx-autobuild>=2024.10.3",
+    "jupyterlab>=4.6.2",
+    "jupytext>=1.19.4",
+    "ipykernel>=7.3.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not e2e' --strict-markers"
+testpaths = ["tests"]
+# Cross-test-module imports (tests.unit.test_convergence helpers) need the repo root on sys.path.
+# `python -m pytest` adds it implicitly; the plain `pytest` entrypoint (CI) does not.
+pythonpath = ["."]
+markers = [
+    "e2e: end-to-end characterization tests (require data fixtures; opt-in via `just test-e2e`)",
+    "slow: long-running tests",
+]
+filterwarnings = [
+    # diffpy.structure 3.4 calls its own deprecated helpers inside SymmetryConstraints; not ours.
+    "ignore:'diffpy.structure.*' is deprecated:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+# NOTE: no include-list. Unlike the research repo's incremental-lint crutch, the 2.0 rewrite is
+# clean by construction, so the whole tree is linted from the first commit.
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+# E501 (line length) temporarily ignored during the vocab-refactor: the renames lengthened many
+# docstring/comment lines. Reflow and re-enable in the final docs/cleanup pass.
+ignore = ["E501"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
+strict = true
+ignore_missing_imports = true

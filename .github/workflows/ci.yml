@@ -1,0 +1,230 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_XML: coverage.xml
+      COVERAGE_JSON: coverage.json
+      PATCH_MIN_THRESHOLD: 80
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          # Full history so the patch-coverage gate can diff against origin/<base>.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy src/diffBloch
+
+      - name: Unit tests (with coverage)
+        run: uv run pytest --cov=diffBloch --cov-report=term-missing --cov-report=xml:${COVERAGE_XML} --cov-report=json:${COVERAGE_JSON}
+
+      # Fails a PR whose changed lines are under-covered; total coverage is unconstrained.
+      - name: Patch coverage gate
+        if: github.event_name == 'pull_request'
+        run: uv run --with diff-cover diff-cover ${COVERAGE_XML} --compare-branch=origin/${{ github.base_ref }} --fail-under=${PATCH_MIN_THRESHOLD}
+
+      # Hand-off to publish: the JSON report carries the total percentage. No run_id suffix --
+      # v4+ artifacts are already run-scoped, and a suffix only makes job re-runs collide.
+      - name: Upload coverage JSON for badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-json
+          path: ${{ env.COVERAGE_JSON }}
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Build docs
+        run: uv run sphinx-build -W -b html docs docs/_build/html
+
+      - name: Build package (wheel + sdist)
+        run: uv build
+
+  # Publish the docsite to GitHub Pages on every green main push (repo Pages source must be
+  # "GitHub Actions"). PRs still validate the build via the check job's strict `sphinx-build -W`.
+  docs-deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # job-level permissions REPLACE defaults; checkout still needs repo read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      - name: Build docs
+        run: uv run sphinx-build -W -b html docs docs/_build/html
+
+      # The docsite is the PUBLIC host for badge data while the repo is private: shields.io
+      # (coverage badge) and camo (README trend embed) can fetch Pages but not the private
+      # `badges` branch. The trend SVGs come from `badges` as of the previous publish -- this
+      # job runs before the current merge's row lands there (one-merge lag, invisible on a
+      # flatline).
+      - name: Download coverage JSON
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-json
+
+      - name: Add coverage endpoint + anchor trend to the docsite
+        run: |
+          pct=$(jq '.totals.percent_covered_display | tonumber | floor' coverage.json)
+          color=$([ "$pct" -ge 90 ] && echo green || ([ "$pct" -ge 80 ] && echo yellow || echo red))
+          jq -n --arg msg "${pct}%" --arg color "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $msg, color: $color}' \
+            > docs/_build/html/coverage-endpoint.json
+          git fetch --depth 1 origin badges
+          for svg in anchor-trend.svg anchor-trend-dark.svg; do
+            git show FETCH_HEAD:"$svg" > "docs/_build/html/$svg" \
+              || echo "::warning::$svg not on badges yet; docsite copy skipped"
+          done
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/_build/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  # Publish the anchor R_obs trend to the orphan `badges` branch: CSV + SVGs, rendered by
+  # plot_anchor_trend.py, which lives ON `badges`. Gated on check success but runs even when
+  # e2e is red -- the anchor row becomes a gap. The docsite (docs-deploy) is what serves the
+  # badge data publicly; this branch is the durable store the docsite copies from.
+  publish:
+    needs: [check, e2e]
+    if: >-
+      always() && needs.check.result == 'success' &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Serialize publishes: two quick merges must not race the badges push.
+    concurrency:
+      group: publish-badges
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: badges
+
+      # Concurrency serializes runs, but the checkout may still predate a just-finished publish.
+      - name: Sync to latest badges
+        run: git pull --rebase origin badges
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: false  # no lockfile on badges; nothing worth caching
+
+      - name: Download anchor metrics
+        uses: actions/download-artifact@v8
+        continue-on-error: true  # e2e red or drifted upload -> gap row, not a publish failure
+        with:
+          name: anchor-metrics
+
+      - name: Append anchor history row
+        run: |
+          # Keys are written by tests/e2e/inference/test_inference.py::_write_anchor_metrics as
+          # {material}_mean_{metric}. They were `quartz_coupled_mean_r_obs` here against a producer
+          # that no longer exists, and jq's `// empty` turned the mismatch into a blank rather than
+          # an error -- so the trend silently recorded 48 empty rows before anyone noticed.
+          r_obs=""
+          wr2=""
+          if [ -f anchor-metrics.json ]; then
+            r_obs=$(jq -r '.quartz_mean_r_obs // empty' anchor-metrics.json)
+            wr2=$(jq -r '.quartz_mean_wr2 // empty' anchor-metrics.json)
+          fi
+          if [ -z "$r_obs" ]; then
+            echo "::warning::no quartz_mean_r_obs in anchor-metrics.json; recording a gap"
+          fi
+          # Older histories have three columns; widen in place so existing rows keep parsing.
+          [ -f anchor-history.csv ] || echo "date,sha,mean_r_obs,mean_wr2" > anchor-history.csv
+          if head -1 anchor-history.csv | grep -qv mean_wr2; then
+            sed -i '1s/$/,mean_wr2/' anchor-history.csv
+          fi
+          if grep -q "$GITHUB_SHA" anchor-history.csv; then
+            echo "row for $GITHUB_SHA already present (re-run); leaving history unchanged"
+          else
+            echo "$(date -u +%FT%TZ),${GITHUB_SHA},${r_obs},${wr2}" >> anchor-history.csv
+          fi
+
+      - name: Render anchor trend
+        run: MPLBACKEND=Agg uv run --python 3.12 --with 'matplotlib==3.*' python plot_anchor_trend.py
+
+      # file_pattern keeps the downloaded artifacts out of the commit.
+      - name: Commit anchor trend
+        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        with:
+          commit_message: Update anchor trend
+          file_pattern: anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
+
+  # The physics anchors: opt-in locally (`just anchor`), a separate job here so the fast checks
+  # report first. Full 99-rotation static + integrated (CLI-driven) quartz pins, ~5-6 min on CPU.
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      # Anchor tests deposit their measured values here (tests/e2e/conftest.py recorder);
+      # main pushes upload it for the trend plot on `badges`. Harmless on PRs (gitignored).
+      DIFFBLOCH_ANCHOR_METRICS: anchor-metrics.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      - name: Physics anchors (e2e)
+        run: uv run pytest -m e2e -q
+
+      # if: always() -- a drifted anchor value (test red, measurement recorded) must still
+      # reach the trend plot; a missing file is a warn, and publish appends a gap row.
+      - name: Upload anchor metrics
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: anchor-metrics
+          path: ${{ env.DIFFBLOCH_ANCHOR_METRICS }}
+          retention-days: 7
+          if-no-files-found: warn

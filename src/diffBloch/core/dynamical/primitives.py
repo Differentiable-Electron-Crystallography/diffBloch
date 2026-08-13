@@ -1,0 +1,162 @@
+"""Relativistic electron-optics primitives for the dynamical-diffraction path.
+
+Native implementations of the electron-optics helpers the dynamical path needs -- relativistic
+wavelength, interaction parameter ``sigma``, and the interaction constant ``kappa`` -- plus the
+Spence & Zuo (1992) excitation-error convention. The physical constants are CODATA-2018 (SI), kept
+local so ``core/`` carries no physical-constants dependency.
+
+These are setup constants on the geometry/numerics plan — beam energy is an experimental constant
+and ``g`` is fixed geometry, neither is refined — so they live on the NumPy planning path like
+``core.reciprocal``. The differentiable structure-factor path stays in ``core.scattering``; the
+differentiable structure-matrix assembly built on these primitives lives in the sibling
+``core.dynamical.assembly`` (torch). The numpy/torch split mirrors ``reciprocal`` vs ``scattering``.
+"""
+
+from __future__ import annotations
+
+from typing import Final
+
+import numpy as np
+from numpy.typing import NDArray
+
+type FloatArray = NDArray[np.float64]
+
+# CODATA 2018 (SI). Kept local so core/ carries no physical-constants dependency.
+_PLANCK = 6.62607015e-34  # J s
+_ELECTRON_MASS = 9.1093837015e-31  # kg
+_ELEMENTARY_CHARGE = 1.602176634e-19  # C
+_SPEED_OF_LIGHT = 299792458.0  # m s^-1
+_VACUUM_PERMITTIVITY = 8.8541878128e-12  # F m^-1
+_BOHR_RADIUS = 0.529177210903e-10  # m
+
+# Conversion from the unitless (Lobato) potential parametrization to potential units, used in the
+# structure-matrix prefactor. Dimensionless in this convention (Å/eV potential units), ~0.0209.
+# The interaction constant kappa = 4 pi eps0 / (2 pi a0 e), here the equivalent CODATA-2018 closed
+# form 2 eps0 / (a0 e) * 1e-20 ≈ 0.02089.
+# Final: a fixed physical constant, not a tunable — immutability is part of the public contract.
+kappa: Final[float] = 2.0 * _VACUUM_PERMITTIVITY / (_BOHR_RADIUS * _ELEMENTARY_CHARGE) * 1e-20
+
+
+def energy2wavelength(energy: float) -> float:
+    """Relativistic electron wavelength in angstrom for a beam ``energy`` in eV.
+
+    ``lambda = h c / sqrt(E e (2 m_e c^2 + E e))``, the relativistic de Broglie wavelength. It
+    reproduces the textbook values 0.03701 / 0.02508 / 0.01969 Å at 100 / 200 / 300 keV.
+    """
+    if energy <= 0.0:
+        raise ValueError("energy must be positive")
+    charge_energy = energy * _ELEMENTARY_CHARGE
+    rest = 2.0 * _ELECTRON_MASS * _SPEED_OF_LIGHT**2
+    metres = _PLANCK * _SPEED_OF_LIGHT / np.sqrt(charge_energy * (rest + charge_energy))
+    return float(metres * 1e10)
+
+
+def wavelength2energy(wavelength: float) -> float:
+    """Beam energy in eV for a relativistic electron ``wavelength`` in angstrom.
+
+    Exact algebraic inverse of :func:`energy2wavelength`: solving
+    ``lambda = h c / sqrt(E e (2 m_e c^2 + E e))`` for ``E e`` gives
+    ``E e = sqrt((m_e c^2)^2 + (h c / lambda)^2) - m_e c^2``. Lets the boundary derive the beam
+    energy the dynamical path needs from the wavelength a PETS file records.
+    """
+    if wavelength <= 0.0:
+        raise ValueError("wavelength must be positive")
+    rest = _ELECTRON_MASS * _SPEED_OF_LIGHT**2
+    hc_over_lambda = _PLANCK * _SPEED_OF_LIGHT / (wavelength * 1e-10)
+    charge_energy = np.sqrt(rest**2 + hc_over_lambda**2) - rest
+    return float(charge_energy / _ELEMENTARY_CHARGE)
+
+
+# Common TEM accelerating voltages. PETS records wavelength to 4-5 significant figures
+# (e.g. 0.02510 A), so inverting it exactly recovers an energy a few hundred eV off the
+# microscope's actual nominal voltage rather than landing on it.
+STANDARD_MICROSCOPE_ENERGIES_EV: Final[tuple[float, ...]] = (100_000.0, 200_000.0, 300_000.0)
+# 0.5% relative: comfortably covers PETS's wavelength rounding (observed up to ~0.1% at 300 kV)
+# while staying well clear of other real voltages (80/120/150/400 kV are all >20% away).
+_STANDARD_ENERGY_RELATIVE_TOLERANCE = 0.005
+
+
+def snap_to_standard_energy(energy: float) -> float:
+    """Snap ``energy`` (eV) onto the nearest standard TEM voltage if it's close enough.
+
+    Returns ``energy`` unchanged when it is not within
+    :data:`_STANDARD_ENERGY_RELATIVE_TOLERANCE` of any :data:`STANDARD_MICROSCOPE_ENERGIES_EV`
+    entry (a genuinely non-standard voltage), so this only removes PETS's wavelength-rounding
+    noise, never silently reassigns a real, different accelerating voltage.
+    """
+    nearest = min(STANDARD_MICROSCOPE_ENERGIES_EV, key=lambda candidate: abs(candidate - energy))
+    if abs(nearest - energy) <= _STANDARD_ENERGY_RELATIVE_TOLERANCE * nearest:
+        return nearest
+    return energy
+
+
+def energy2sigma(energy: float) -> float:
+    """Electron interaction parameter ``sigma`` in 1/(angstrom*eV) for a beam ``energy`` in eV.
+
+    ``sigma = 2 pi m e lambda / h^2`` with the relativistic mass ``m = (1 + E e / (m_e c^2)) m_e``
+    (Spence & Zuo 1992). It reproduces the standard values 9.2440e-4 / 7.2884e-4 / 6.5262e-4 at
+    100 / 200 / 300 keV.
+    """
+    if energy <= 0.0:
+        raise ValueError("energy must be positive")
+    relativistic_mass = (
+        1.0 + _ELEMENTARY_CHARGE * energy / (_ELECTRON_MASS * _SPEED_OF_LIGHT**2)
+    ) * (_ELECTRON_MASS)
+    wavelength_metres = energy2wavelength(energy) * 1e-10
+    sigma_si = 2.0 * np.pi * relativistic_mass * _ELEMENTARY_CHARGE * wavelength_metres / _PLANCK**2
+    return float(sigma_si * 1e-10)
+
+
+def structure_matrix_prefactor(energy: float) -> float:
+    """Off-diagonal structure-matrix prefactor ``sigma / (kappa * lambda * pi)``.
+
+    Scales structure factors into the Bloch structure matrix ``A``. It is
+    ``energy2sigma(energy) / (kappa * energy2wavelength(energy) * pi)``.
+    """
+    return energy2sigma(energy) / (kappa * energy2wavelength(energy) * np.pi)
+
+
+def wavevector_magnitude(energy: float, *, u0: float = 0.0) -> float:
+    """Corrected wavevector magnitude ``K_n = sqrt(1/lambda^2 + U0)`` in Å^-1.
+
+    ``u0`` is the mean-inner-potential correction term (added to ``1/lambda^2`` in Å^-2);
+    ``u0=0`` gives the vacuum wavevector ``1/lambda``.
+    """
+    k0 = 1.0 / energy2wavelength(energy)
+    radicand = k0**2 + u0
+    if radicand <= 0.0:
+        raise ValueError("u0 must keep 1/lambda^2 + u0 positive")
+    return float(np.sqrt(radicand))
+
+
+def excitation_errors(g: FloatArray, energy: float, *, u0: float = 0.0) -> FloatArray:
+    """Excitation errors ``Sg`` (Å^-1) for reciprocal vectors ``g`` (Spence & Zuo method).
+
+    ``Sg = (|K|^2 - |K + g|^2) / (2 |K|)`` with the beam ``K`` along ``-z`` and magnitude
+    ``wavevector_magnitude(energy, u0=u0)``. Measures each reflection's distance from the Ewald
+    sphere; ``Sg = 0`` exactly at ``g = 0``. ``g`` is ``(N, 3)`` in Å^-1; returns ``(N,)``.
+    """
+    g_array = np.asarray(g, dtype=np.float64)
+    if g_array.ndim != 2 or g_array.shape[1] != 3:
+        raise ValueError("g must have shape (N, 3)")
+    k_mag = wavevector_magnitude(energy, u0=u0)
+    k_vector = np.array([0.0, 0.0, -k_mag], dtype=np.float64)
+    return (k_mag**2 - np.linalg.norm(k_vector + g_array, axis=1) ** 2) / (2.0 * k_mag)
+
+
+def mii_factors(g: FloatArray, energy: float, *, u0: float = 0.0) -> FloatArray:
+    """Diagonal ``Mii`` factors that symmetrise the Bloch structure matrix.
+
+    ``Mii = 1 / sqrt(1 - g_z / K_n)`` with ``K_n = wavevector_magnitude(energy, u0=u0)``. The
+    structure matrix uses them on both axes off-diagonal (``Mii_i Mii_j``) and once on the diagonal.
+    ``Mii = 1`` at ``g = 0``;
+    ``g`` is ``(N, 3)`` in Å^-1, returns ``(N,)``.
+    """
+    g_array = np.asarray(g, dtype=np.float64)
+    if g_array.ndim != 2 or g_array.shape[1] != 3:
+        raise ValueError("g must have shape (N, 3)")
+    k_n = wavevector_magnitude(energy, u0=u0)
+    radicand = 1.0 - g_array[:, 2] / k_n
+    if np.any(radicand <= 0.0):
+        raise ValueError("g_z must satisfy g_z < K_n for every reflection (1 - g_z/K_n > 0)")
+    return 1.0 / np.sqrt(radicand)

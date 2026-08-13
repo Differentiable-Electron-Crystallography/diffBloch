@@ -1,0 +1,2 @@
+*.npz filter=lfs diff=lfs merge=lfs -text
+*.cif_pets filter=lfs diff=lfs merge=lfs -text

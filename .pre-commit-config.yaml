@@ -1,0 +1,39 @@
+# Fast, deterministic hooks. Heavier checks (mypy, tests) run via `just check` / CI.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Skip verbatim external data: the structure/experimental inputs (cif / cif_pets) are
+      # hash-locked by experiment.lock -- normalizing whitespace would silently break the lock (it
+      # did, on the LTA exp_data.cif_pets). Exclude the test-fixture tree AND the .cif/.cif_pets
+      # extensions wherever they live (e.g. examples/*/data/*), so a committed example dataset
+      # is protected too. Python is unaffected: ruff-format (below) owns Python whitespace/EOF and
+      # runs on fixture *.py too. check-yaml / check-added-large-files deliberately still run
+      # everywhere (validate yaml, catch oversized dumps).
+      - id: trailing-whitespace
+        exclude: '(^tests/fixtures/|\.cif$|\.cif_pets$)'
+      - id: end-of-file-fixer
+        exclude: '(^tests/fixtures/|\.cif$|\.cif_pets$)'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        # 2 MB: the committed frozen preprocess checkpoints (plan.npz, ~1 MB for the coupled quartz
+        # plan) are deliberate; still catches accidental multi-MB data dumps.
+        args: [--maxkb=2048]
+
+  - repo: local
+    hooks:
+      # Use the project's uv-managed ruff (single source of truth with `just check` / CI), not a
+      # separately-pinned mirror -- the two drifted (v0.5.7 vs 0.15.x) and disagreed on formatting.
+      - id: ruff
+        name: ruff (uv)
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff-format (uv)
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

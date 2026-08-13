@@ -1,0 +1,8 @@
+# CONFIG-ONLY fixture for the boundary tests (load_config + `diffbloch validate`).
+# It exercises schema validation + relative-path conventions only; the referenced input files are
+# intentionally NOT present yet. A full experiment-as-directory artifact (with real/placeholder
+# inputs that path validation checks for existence) lands in Stage 1.
+name: quartz-min
+inputs:
+  structure: enantiomer_1.cif
+  exp_data: exp_data.cif_pets

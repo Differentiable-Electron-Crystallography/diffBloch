@@ -1,0 +1,8 @@
+structure:
+  ref: cspbbr3.cif
+  sha256: cd51ff36567cfb3a51c03f8a365c581cb7f8f23228c64fb1852fc679fc2a595c
+  bytes: 2409
+experimental_data:
+  ref: CsPbBr_P67-crot-050_dyn.cif_pets
+  sha256: 324043aa22ebf0dad00ca0d7a7f50ade8f0a5058c7bcd58cc48401a2211ca022
+  bytes: 1444882

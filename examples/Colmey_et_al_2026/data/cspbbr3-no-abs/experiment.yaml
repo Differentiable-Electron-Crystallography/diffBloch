@@ -1,0 +1,54 @@
+name: colmey-et-al-2026-cspbbr3-no-abs
+
+inputs:
+  structure: cspbbr3.cif
+  exp_data: CsPbBr_P67-crot-050_dyn.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [440.0]
+
+blochwave:
+  solver: matrix_exp
+  absorption: false
+  coupling_mode: union
+  g_max: 2.3
+  sg_max: 0.02
+  rocking_curve_sampling: 60
+  dsg: 0.0015
+  rsg: 0.66
+  ignore_orientations: [] #[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58] # isolate rotation 28 only
+
+
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: false
+  orientation:
+    nelder_mead:
+      step_size: 0.3
+  thickness:
+    min_thickness: 100.0
+    max_thickness: 700.0
+    n_steps: 100
+    plot: false
+
+loss_metrics:
+  residual: wr2
+
+refinement:
+  steps: 40
+  thickness_nn:
+    enabled: true
+    sample_thickness: false
+    min_thickness: 100.0
+    max_thickness: 700.0
+  optimizer:
+    name: adam
+    lr: 0.001
+  trainable:
+    positions: all
+    adp: all
+    occupancy: none
+  split:
+    train_test: false
+    val_frac: 0.1

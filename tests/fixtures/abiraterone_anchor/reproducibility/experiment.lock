@@ -1,0 +1,8 @@
+structure:
+  ref: abiraterone.cif
+  sha256: fb7ea6bcd6c2375cc945aefcf402f08eedb5de754f091a5c7e1b48351f1d6377
+  bytes: 4917
+experimental_data:
+  ref: abiraterone_exp_data.cif_pets
+  sha256: 11c722c0d56aa712e6484e4ca30ecc5e0a513df72be531990c27e0391703045f
+  bytes: 475730

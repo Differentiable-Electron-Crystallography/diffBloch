@@ -1,0 +1,29 @@
+{
+  "fixture": "orientation_oracle.npz",
+  "purpose": "Real-orientation excitation-error (Sg) golden: pins the native per-orientation reciprocal-basis geometry (reciprocal_cell(cell @ M.T) -> g -> Sg) against an independent implementation on real quartz orientation matrices. M is non-orthonormal (folds the measured-vs-ideal cell correction, ~1% anisotropic), so g0 @ M^-1 is faithful while g0 @ M.T is wrong by ~0.008 A^-1.",
+  "oracle_functions": {
+    "reciprocal_cell": "utils.py:35-58 (pinv(cell).T)",
+    "excitation_errors": "utils.py:261-300 (K along -z, Spence & Zuo)"
+  },
+  "input": {
+    "material": "alpha-quartz (enantiomer_1.cif)",
+    "cellpar": [
+      4.9226,
+      4.9226,
+      5.4003,
+      90.0,
+      90.0,
+      120.0
+    ],
+    "energy_eV": 200000.0,
+    "g_max_refine": 1.6,
+    "rotation_idx": [
+      10,
+      52,
+      78
+    ],
+    "orientation_source": "optim_orientation.csv (orientation = R_goni . UB . B^-1)",
+    "cell_convention": "ASE cellpar_to_cell == native cell_matrix_from_parameters"
+  },
+  "date": "2026-06-29"
+}
