@@ -15,6 +15,8 @@ from diffBloch.io._cifio import (
     loop_rows,
     optional_int,
     parse_cif_number,
+    read_document,
+    select_block,
     unquote,
 )
 from diffBloch.io._cifio import (
@@ -59,7 +61,7 @@ def read_structure(path: str | Path, *, load_hydrogens: bool = False) -> Structu
             diffraction refinement practice where H sites are usually excluded from this boundary.
     """
     source = Path(path)
-    block = gemmi.cif.read_file(str(source)).sole_block()
+    block = select_block(read_document(source), required_loop_tag="_atom_site_label")
     return parse_structure_block(block, source_path=source, load_hydrogens=load_hydrogens)
 
 

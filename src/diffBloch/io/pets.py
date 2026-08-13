@@ -11,7 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from diffBloch.core.crystal import cell_matrix_from_parameters
-from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, required_float
+from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, read_document, required_float
 from diffBloch.io.record import ExperimentalRecord
 
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
@@ -20,12 +20,16 @@ _MOSAICITY = re.compile(rf"mosaicity:\s*({_FLOAT_TEXT})", re.IGNORECASE)
 _DATA_COLLECTION_GEOMETRY = re.compile(
     r"data\s+collection\s+geometry\s*:\s*([^\r\n;]+)", re.IGNORECASE
 )
+# PETS2 writes its informal `key: value` processing summary (data collection geometry, dstarmax,
+# mosaicity, ...) as a semicolon-delimited text field, but different builds attach it to different
+# CIF tags -- try each in order and use the first one present.
+_MEASUREMENT_DETAILS_TAGS = ("_diffrn_measurement_details", "_diffrn_reflns_reduction_process")
 
 
 def read_experimental_data(path: str | Path) -> ExperimentalRecord:
     """Read a PETS ``.cif_pets`` file into a validated :class:`ExperimentalRecord`."""
     source = Path(path)
-    block = gemmi.cif.read_file(str(source)).sole_block()
+    block = read_document(source).sole_block()
     return parse_experimental_block(block, source_path=source)
 
 
@@ -104,27 +108,36 @@ def parse_experimental_block(
     )
 
 
-def _dstar_max(block: gemmi.cif.Block) -> float | None:
-    """PETS2's processing-resolution cutoff (Å⁻¹) from the free-text ``_diffrn_measurement_details``.
+def _measurement_details(block: gemmi.cif.Block) -> str | None:
+    """Return PETS2's informal ``key: value`` processing summary text, wherever it was written."""
+    for tag in _MEASUREMENT_DETAILS_TAGS:
+        text = block.find_value(tag)
+        if text is not None:
+            return str(text)
+    return None
 
-    That tag is PETS2's own semicolon-delimited text block (``dstarmax:  1.800`` among other
-    informal ``key: value`` lines), not a structured CIF field, so this greps rather than parses it
-    as CIF. Returns ``None`` when the tag is absent or a PETS version that doesn't record
-    ``dstarmax`` wrote the file.
+
+def _dstar_max(block: gemmi.cif.Block) -> float | None:
+    """PETS2's processing-resolution cutoff (Å⁻¹) from the free-text measurement-details block.
+
+    That text is PETS2's own semicolon-delimited block (``dstarmax:  1.800`` among other informal
+    ``key: value`` lines), not a structured CIF field, so this greps rather than parses it as CIF.
+    Returns ``None`` when the tag is absent or a PETS version that doesn't record ``dstarmax``
+    wrote the file.
     """
-    text = block.find_value("_diffrn_measurement_details")
+    text = _measurement_details(block)
     if text is None:
         return None
-    match = _DSTAR_MAX.search(str(text))
+    match = _DSTAR_MAX.search(text)
     return float(match.group(1)) if match else None
 
 
 def _mosaicity(block: gemmi.cif.Block) -> float | None:
     """PETS2 apparent mosaicity in degrees from measurement details."""
-    text = block.find_value("_diffrn_measurement_details")
+    text = _measurement_details(block)
     if text is None:
         return None
-    match = _MOSAICITY.search(str(text))
+    match = _MOSAICITY.search(text)
     return float(match.group(1)) if match else None
 
 
@@ -133,15 +146,15 @@ def _data_collection_geometry(
 ) -> Literal["continuous_rotation", "precession"]:
     """Return PETS2's acquisition geometry in the package's canonical spelling.
 
-    PETS2 writes this value into the informal ``_diffrn_measurement_details`` text block rather
-    than a structured CIF tag. Older files may omit it; those retain diffBloch's historical
+    PETS2 writes this value into an informal measurement-details text block rather than a
+    structured CIF tag. Older files may omit it; those retain diffBloch's historical
     continuous-rotation default. An explicit unknown value fails at the I/O boundary rather than
     silently selecting scientifically different integration geometry.
     """
-    text = block.find_value("_diffrn_measurement_details")
+    text = _measurement_details(block)
     if text is None:
         return "continuous_rotation"
-    match = _DATA_COLLECTION_GEOMETRY.search(str(text))
+    match = _DATA_COLLECTION_GEOMETRY.search(text)
     if match is None:
         return "continuous_rotation"
     value = re.sub(r"[\s_-]+", "_", match.group(1).strip().lower())
