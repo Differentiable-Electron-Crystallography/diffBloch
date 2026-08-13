@@ -76,14 +76,15 @@ CsPbBr3, alpha-quartz, and borane data:
 
 |                          | CsPbBr3  | alpha-quartz | Borane   |
 | ------------------------ | :------: | :----------: | :------: |
-| **R_obs (%), elastic**   |   6.52   |     5.17     |   10.41  |
-| **wR2 (%), elastic**     |   6.54   |     4.00     |   7.74   |
-| **R_obs (%), absorptive**|   5.40   |     4.79     |   10.11  |
-| **wR2 (%), absorptive**  |   5.06   |     3.67     |   7.75   |
+| **R_obs (%), elastic**   |   6.54   |     5.06     |   9.99   |
+| **wR2 (%), elastic**     |   6.72   |     3.90     |   7.73   |
+| **R_obs (%), absorptive**|   5.37   |     4.77     |   9.93   |
+| **wR2 (%), absorptive**  |   5.07   |     3.70     |   7.60   |
 
 All six runs completed (`train_test: false` -- trained on every rotation, matching the published
-setup). Taken from each directory's `refinement_summary.json` (`best_epoch` 32-40/40 depending on
-the run); see the per-rotation breakdown in each `refinement_report.txt`.
+setup). Taken from each directory's `refinement_report.txt` (`best_epoch` 35-40/40 depending on the
+run); see the per-rotation breakdown in each report. Re-running these refinements reproduces this
+table to within ~0.1-0.4 points (Adam + GPU nondeterminism), not bit-for-bit.
 
 ## Reproducing these numbers
 
