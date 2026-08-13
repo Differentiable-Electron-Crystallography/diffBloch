@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from diffBloch.io import ParseDiagnostic
 from diffBloch.observability import (
     NULL_LOGGER,
     ConvergencePassStarted,
@@ -197,6 +198,15 @@ class ConsoleLogger:
     def report(self, event: Event) -> None:
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
+            return
+        if isinstance(event, ParseDiagnostic):
+            _log.log(
+                self.level,
+                "Input │ %s │ %s │ %s",
+                event.input_kind.replace("_", " "),
+                "" if event.source_path is None else str(event.source_path),
+                event.message,
+            )
             return
         if isinstance(event, ExperimentDeclared):
             _log.log(

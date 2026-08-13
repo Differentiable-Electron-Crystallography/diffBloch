@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -11,6 +13,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from diffBloch.core.crystal import cell_matrix_from_parameters
+from diffBloch.io.diagnostics import InputKind, ParseDetail, ParseDiagnostic
 
 _TOP_LEVEL_TAG = re.compile(r"^(_\S+)(\s+\S.*)?$")
 
@@ -33,8 +36,48 @@ def read_document(path: str | Path) -> gemmi.cif.Document:
     return gemmi.cif.read_string(_drop_duplicate_scalar_tags(text))
 
 
+def read_document_with_diagnostics(
+    path: str | Path, *, input_kind: InputKind
+) -> tuple[gemmi.cif.Document, tuple[ParseDiagnostic, ...]]:
+    """Read a CIF-like file and report non-fatal tolerance decisions made before parsing."""
+    source = Path(path)
+    text, dropped, kept_values = _drop_duplicate_scalar_tags_with_counts(source.read_text())
+    diagnostics: list[ParseDiagnostic] = []
+    for tag, count in sorted(dropped.items()):
+        kept_value = kept_values.get(tag)
+        if kept_value:
+            message = f"dropped duplicate scalar CIF tag {tag}, kept first value {kept_value!r}"
+            details: Mapping[str, ParseDetail] = {
+                "tag": tag,
+                "count": count,
+                "kept_value": kept_value,
+            }
+        else:
+            message = f"dropped duplicate scalar CIF tag {tag}, kept first value"
+            details = {"tag": tag, "count": count}
+        diagnostics.append(
+            ParseDiagnostic(
+                code="duplicate_scalar_tag_dropped",
+                input_kind=input_kind,
+                source_path=source,
+                message=message,
+                details=details,
+            )
+        )
+    return gemmi.cif.read_string(text), tuple(diagnostics)
+
+
 def _drop_duplicate_scalar_tags(text: str) -> str:
+    return _drop_duplicate_scalar_tags_with_counts(text)[0]
+
+
+def _drop_duplicate_scalar_tags_with_counts(
+    text: str,
+) -> tuple[str, Counter[str], dict[str, str]]:
     seen: set[str] = set()
+    dropped: Counter[str] = Counter()
+    kept_values: dict[str, str] = {}
+    pending_kept_value_tag: str | None = None
     in_text_field = False
     in_loop_header = False
     skipping_duplicate_text_field = False
@@ -53,6 +96,13 @@ def _drop_duplicate_scalar_tags(text: str) -> str:
             elif stripped and not stripped.startswith("#"):
                 skip_duplicate_value = False
             continue
+        if pending_kept_value_tag is not None:
+            if stripped.startswith(";"):
+                kept_values.setdefault(pending_kept_value_tag, "<text field>")
+                pending_kept_value_tag = None
+            elif stripped and not stripped.startswith("#"):
+                kept_values.setdefault(pending_kept_value_tag, stripped)
+                pending_kept_value_tag = None
         if stripped.startswith(";"):
             in_text_field = not in_text_field
             out.append(line)
@@ -62,6 +112,7 @@ def _drop_duplicate_scalar_tags(text: str) -> str:
             continue
         if stripped.startswith("data_"):
             seen = set()
+            pending_kept_value_tag = None
             in_loop_header = False
             out.append(line)
             continue
@@ -78,12 +129,17 @@ def _drop_duplicate_scalar_tags(text: str) -> str:
         if match:
             tag = match.group(1)
             if tag in seen:
+                dropped[tag] += 1
                 if match.group(2) is None:
                     skip_duplicate_value = True
                 continue
             seen.add(tag)
+            if match.group(2) is not None:
+                kept_values.setdefault(tag, match.group(2).strip())
+            else:
+                pending_kept_value_tag = tag
         out.append(line)
-    return "\n".join(out)
+    return "\n".join(out), dropped, kept_values
 
 
 def select_block(doc: gemmi.cif.Document, *, required_loop_tag: str) -> gemmi.cif.Block:
@@ -103,6 +159,35 @@ def select_block(doc: gemmi.cif.Document, *, required_loop_tag: str) -> gemmi.ci
     raise ValueError(
         f"expected exactly one CIF block containing {required_loop_tag}, found "
         f"{len(candidates)} among {len(doc)} blocks ({names})"
+    )
+
+
+def select_block_with_diagnostics(
+    doc: gemmi.cif.Document,
+    *,
+    required_loop_tag: str,
+    source_path: str | Path | None,
+    input_kind: InputKind,
+) -> tuple[gemmi.cif.Block, tuple[ParseDiagnostic, ...]]:
+    """Select a block and report when a data-bearing block is chosen from a multi-block CIF."""
+    block = select_block(doc, required_loop_tag=required_loop_tag)
+    if len(doc) == 1:
+        return block, ()
+    return block, (
+        ParseDiagnostic(
+            code="cif_block_selected",
+            input_kind=input_kind,
+            source_path=None if source_path is None else Path(source_path),
+            message=(
+                f"found {len(doc)} CIF blocks; using structure block {block.name!r} "
+                f"(the only block with {required_loop_tag})"
+            ),
+            details={
+                "block": block.name,
+                "required_loop_tag": required_loop_tag,
+                "n_blocks": len(doc),
+            },
+        ),
     )
 
 

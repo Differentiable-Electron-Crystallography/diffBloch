@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import gemmi
 import numpy as np
 from numpy.typing import NDArray
 
 from diffBloch.core.crystal import cell_matrix_from_parameters
-from diffBloch.io._cifio import as_float, cell_parameters, loop_rows, read_document, required_float
+from diffBloch.io._cifio import (
+    as_float,
+    cell_parameters,
+    loop_rows,
+    read_document_with_diagnostics,
+    required_float,
+)
+from diffBloch.io.diagnostics import ParseDiagnostic, ParsedInput
 from diffBloch.io.record import ExperimentalRecord
 
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
@@ -26,11 +33,26 @@ _DATA_COLLECTION_GEOMETRY = re.compile(
 _MEASUREMENT_DETAILS_TAGS = ("_diffrn_measurement_details", "_diffrn_reflns_reduction_process")
 
 
+class _MeasurementDetails(NamedTuple):
+    text: str
+    tag: str
+
+
 def read_experimental_data(path: str | Path) -> ExperimentalRecord:
     """Read a PETS ``.cif_pets`` file into a validated :class:`ExperimentalRecord`."""
+    return read_experimental_data_with_diagnostics(path).record
+
+
+def read_experimental_data_with_diagnostics(path: str | Path) -> ParsedInput[ExperimentalRecord]:
+    """Read a PETS ``.cif_pets`` file and report non-fatal parser decisions."""
     source = Path(path)
-    block = read_document(source).sole_block()
-    return parse_experimental_block(block, source_path=source)
+    doc, diagnostics = read_document_with_diagnostics(source, input_kind="experimental_data")
+    block = doc.sole_block()
+    record = parse_experimental_block(block, source_path=source)
+    return ParsedInput(
+        record,
+        diagnostics + _experimental_parse_diagnostics(block, source_path=source),
+    )
 
 
 def parse_experimental_block(
@@ -108,12 +130,14 @@ def parse_experimental_block(
     )
 
 
-def _measurement_details(block: gemmi.cif.Block, pattern: re.Pattern[str]) -> str | None:
+def _measurement_details(
+    block: gemmi.cif.Block, pattern: re.Pattern[str]
+) -> _MeasurementDetails | None:
     """Return the PETS2 summary text field containing ``pattern``, wherever it was written."""
     for tag in _MEASUREMENT_DETAILS_TAGS:
         text = block.find_value(tag)
         if text is not None and pattern.search(str(text)):
-            return str(text)
+            return _MeasurementDetails(str(text), tag)
     return None
 
 
@@ -125,19 +149,19 @@ def _dstar_max(block: gemmi.cif.Block) -> float | None:
     Returns ``None`` when the tag is absent or a PETS version that doesn't record ``dstarmax``
     wrote the file.
     """
-    text = _measurement_details(block, _DSTAR_MAX)
-    if text is None:
+    details = _measurement_details(block, _DSTAR_MAX)
+    if details is None:
         return None
-    match = _DSTAR_MAX.search(text)
+    match = _DSTAR_MAX.search(details.text)
     return float(match.group(1)) if match else None
 
 
 def _mosaicity(block: gemmi.cif.Block) -> float | None:
     """PETS2 apparent mosaicity in degrees from measurement details."""
-    text = _measurement_details(block, _MOSAICITY)
-    if text is None:
+    details = _measurement_details(block, _MOSAICITY)
+    if details is None:
         return None
-    match = _MOSAICITY.search(text)
+    match = _MOSAICITY.search(details.text)
     return float(match.group(1)) if match else None
 
 
@@ -151,10 +175,10 @@ def _data_collection_geometry(
     continuous-rotation default. An explicit unknown value fails at the I/O boundary rather than
     silently selecting scientifically different integration geometry.
     """
-    text = _measurement_details(block, _DATA_COLLECTION_GEOMETRY)
-    if text is None:
+    details = _measurement_details(block, _DATA_COLLECTION_GEOMETRY)
+    if details is None:
         return "continuous_rotation"
-    match = _DATA_COLLECTION_GEOMETRY.search(text)
+    match = _DATA_COLLECTION_GEOMETRY.search(details.text)
     if match is None:
         return "continuous_rotation"
     value = re.sub(r"[\s_-]+", "_", match.group(1).strip().lower())
@@ -166,6 +190,60 @@ def _data_collection_geometry(
         "PETS data collection geometry must be 'continuous rotation' or 'precession'; "
         f"got {match.group(1).strip()!r}"
     )
+
+
+def _experimental_parse_diagnostics(
+    block: gemmi.cif.Block, *, source_path: Path
+) -> tuple[ParseDiagnostic, ...]:
+    diagnostics: list[ParseDiagnostic] = []
+    summary_fields = (
+        ("data_collection_geometry", _DATA_COLLECTION_GEOMETRY),
+        ("dstarmax", _DSTAR_MAX),
+        ("mosaicity", _MOSAICITY),
+    )
+    used_by_tag: dict[str, list[str]] = {}
+    absent_optional: list[str] = []
+    for field, pattern in summary_fields:
+        details = _measurement_details(block, pattern)
+        if details is None:
+            if field == "data_collection_geometry":
+                diagnostics.append(
+                    ParseDiagnostic(
+                        code="pets_geometry_defaulted",
+                        input_kind="experimental_data",
+                        source_path=source_path,
+                        message=(
+                            "PETS data collection geometry absent; defaulted to continuous_rotation"
+                        ),
+                        details={"field": field, "default": "continuous_rotation"},
+                    )
+                )
+            else:
+                absent_optional.append(field)
+            continue
+        used_by_tag.setdefault(details.tag, []).append(field)
+
+    for tag, fields in sorted(used_by_tag.items()):
+        diagnostics.append(
+            ParseDiagnostic(
+                code="pets_summary_tag_used",
+                input_kind="experimental_data",
+                source_path=source_path,
+                message=f"read PETS summary field(s) {', '.join(fields)} from {tag}",
+                details={"tag": tag, "fields": ", ".join(fields)},
+            )
+        )
+    if absent_optional:
+        diagnostics.append(
+            ParseDiagnostic(
+                code="pets_optional_metadata_absent",
+                input_kind="experimental_data",
+                source_path=source_path,
+                message=f"PETS optional metadata absent: {', '.join(absent_optional)}",
+                details={"fields": ", ".join(absent_optional)},
+            )
+        )
+    return tuple(diagnostics)
 
 
 def _ub_matrix(block: gemmi.cif.Block) -> NDArray[np.float64]:

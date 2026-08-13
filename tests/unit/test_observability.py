@@ -25,6 +25,7 @@ from diffBloch.app.loggers import (
 )
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
+from diffBloch.io import ParseDiagnostic
 from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceTrial,
@@ -276,6 +277,26 @@ def test_console_logger_formats_device_selection(caplog: pytest.LogCaptureFixtur
 
     assert caplog.records[-1].getMessage() == (
         "No CUDA detected, using CPU, diffBloch is optimized for CUDA"
+    )
+
+
+def test_console_logger_formats_input_parse_diagnostic(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            ParseDiagnostic(
+                input_kind="experimental_data",
+                source_path=Path("exp_data.cif_pets"),
+                code="pets_summary_tag_used",
+                message="read PETS summary field(s) dstarmax from _diffrn_measurement_details",
+            )
+        )
+
+    assert caplog.records[-1].getMessage() == (
+        "Input │ experimental data │ exp_data.cif_pets │ "
+        "read PETS summary field(s) dstarmax from _diffrn_measurement_details"
     )
 
 
