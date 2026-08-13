@@ -14,7 +14,7 @@
 Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
 
-📖 **Documentation:** <https://diffbloch.com/> — API reference (Sphinx + furo), rendered from the source on every green `main`.
+📖 **Documentation:** <https://diffbloch.com/> — Usage guide and API reference.
 
 ## Quickstart
 
