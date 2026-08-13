@@ -1,7 +1,0 @@
-channel,step,metric,value
-build_orientation_plans,0,n_orientations,99.0
-build_orientation_plans,0,n_grid_hkl,58225.0
-orientation,0,wr2,0.031361792786922915
-orientation,0,n_matched_hkl,23.0
-orientation,1,wr2,0.032488050284518885
-orientation,1,n_matched_hkl,26.0
