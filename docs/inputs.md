@@ -80,11 +80,14 @@ Running preprocessing or refinement adds results to the experiment directory:
 | `refinement_report.txt` | Final residuals, reflection counts, and refinement summary. |
 | `thickness_optim/` | Thickness-search plots when plotting is enabled. |
 | `thickness_nn_shape_<stem>.png` | Learned thickness curve per `.cif_pets` dataset, when the thickness network and plotting are enabled. |
-| `reproducibility/experiment.lock` | Record of the input files. |
 | `reproducibility/plan.<stem>.npz` | Saved preprocessing for each `.cif_pets` dataset. |
 | `reproducibility/plan.<stem>.lock` | Inputs and settings used for the saved preprocessing. |
 | `reproducibility/refined_parameters.npz` | Refined parameter values. |
 | `reproducibility/refinement.lock` | Inputs and settings used for the refinement. |
+
+`reproducibility/experiment.lock` is not one of these -- it identifies the input files, not a
+calculation result. It is created automatically the first time any command runs against the
+experiment directory; see [Reproducibility](reproducibility.md#input-files).
 
 See [Refinement](refinement.md#refinement-outputs) for the refinement report and
 [Reproducibility](reproducibility.md) for the lock files.

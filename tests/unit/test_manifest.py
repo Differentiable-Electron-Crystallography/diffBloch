@@ -21,6 +21,7 @@ from diffBloch.config import (
     read_refinement_lock,
     refinement_config_digest,
     sha256_file,
+    write_experiment_lock,
     write_preprocess_lock,
     write_refinement_lock,
 )
@@ -80,6 +81,76 @@ def test_load_experiment_detects_input_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="input drift"):
         load_experiment(experiment)
+
+
+def test_load_experiment_creates_the_lock_on_first_run(tmp_path: Path) -> None:
+    """A brand-new experiment directory has nothing to verify against, so the first call to
+    ``load_experiment`` creates ``experiment.lock`` from the current input bytes rather than
+    failing."""
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    lock_path = experiment / "reproducibility" / "experiment.lock"
+    assert not lock_path.exists()
+
+    cfg, lock = load_experiment(experiment)
+
+    assert cfg.name == "locked-min"
+    assert lock_path.exists()
+    assert lock.structure.ref == "enantiomer_1.cif"
+    assert lock.structure.sha256 == sha256_file(experiment / "enantiomer_1.cif")
+    assert isinstance(lock.experimental_data, InputLock)
+    assert lock.experimental_data.ref == "exp_data.cif_pets"
+    # A second call reads back the now-existing lock rather than recreating it, and agrees.
+    _cfg, reloaded = load_experiment(experiment)
+    assert reloaded == lock
+
+
+def test_load_experiment_does_not_silently_rewrite_a_mismatched_lock(tmp_path: Path) -> None:
+    """Auto-creation only covers a missing lock; a lock that exists but no longer matches the
+    input bytes must still raise (see test_load_experiment_detects_input_drift), never be
+    silently regenerated -- that mismatch is the drift this file exists to catch."""
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    (experiment / "reproducibility").mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    (experiment / "reproducibility" / "experiment.lock").write_bytes(
+        (LOCKED / "reproducibility" / "experiment.lock").read_bytes()
+    )
+    (experiment / "enantiomer_1.cif").write_text("changed\n")
+
+    with pytest.raises(ValueError, match="input drift"):
+        load_experiment(experiment)
+
+
+def test_write_experiment_lock_creates_a_lock_load_experiment_then_accepts(tmp_path: Path) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+
+    lock = write_experiment_lock(experiment)
+
+    assert lock.structure.ref == "enantiomer_1.cif"
+    assert lock.structure.sha256 == sha256_file(experiment / "enantiomer_1.cif")
+    assert isinstance(lock.experimental_data, InputLock)
+    assert lock.experimental_data.ref == "exp_data.cif_pets"
+    cfg, loaded = load_experiment(experiment)
+    assert loaded == lock
+    assert cfg.name == "locked-min"
+
+
+def test_write_experiment_lock_is_reproducible(tmp_path: Path) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+
+    first = write_experiment_lock(experiment)
+    second = write_experiment_lock(experiment)
+    assert first == second
 
 
 def test_experiment_lock_accepts_a_list_of_input_locks_for_pooled_datasets() -> None:

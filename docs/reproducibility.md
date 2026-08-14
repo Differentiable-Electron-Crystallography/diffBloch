@@ -16,6 +16,16 @@ are stored in the experiment directory under `reproducibility/`.
 file change. This prevents a calculation from using input files that differ from those recorded for
 the experiment.
 
+`experiment.lock` is created automatically, from the current input files, the first time any command
+(`converge`, `preprocess`, `infer`, `refine`) runs against an experiment directory that doesn't have
+one yet. After that, if an input file's contents change, the lock is *not* rewritten automatically --
+the mismatch is exactly the drift this file exists to catch, so the command fails instead. Rewrite it
+explicitly once the change is intentional:
+
+```bash
+uv run diffbloch lock <experiment_dir>
+```
+
 ## Preprocessing
 
 Preprocessing results are saved under `reproducibility/` so they can be reused. Combined experiments

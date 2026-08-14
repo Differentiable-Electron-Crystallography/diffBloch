@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import mimetypes
 import subprocess
 from pathlib import Path
@@ -21,6 +22,8 @@ from diffBloch import __version__
 from diffBloch.config.schema import ExperimentConfig, load_config
 
 type CellParameters = tuple[float, float, float, float, float, float]
+
+_log = logging.getLogger(__name__)
 
 
 class InputLock(BaseModel):
@@ -147,15 +150,62 @@ def artifact_hash_for(path: str | Path, *, root: str | Path) -> ArtifactHash:
 
 
 def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, ExperimentLock]:
-    """Load ``experiment.yaml`` and verify ``experiment.lock`` (in ``reproducibility/``) against
-    input bytes."""
+    """Load ``experiment.yaml``, verifying ``experiment.lock`` (in ``reproducibility/``) against
+    input bytes -- creating that lock first, from the current input bytes, if it doesn't exist yet.
+
+    First-run convenience: a brand-new experiment directory has no lock to verify against, so there
+    is nothing to protect by refusing to proceed -- the lock is created here instead, exactly as
+    :func:`write_experiment_lock` would. An *existing* lock that no longer matches the input bytes
+    still raises (see :func:`_verify_input`): that mismatch is the drift this file exists to catch,
+    and silently rewriting it on every run would defeat the purpose. Rerun ``diffbloch lock`` (or
+    :func:`write_experiment_lock`) to update the lock after an intentional input change.
+    """
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
     lock_path = root / "reproducibility" / "experiment.lock"
+    if not lock_path.exists():
+        lock = _build_experiment_lock(root, cfg)
+        _write_experiment_lock_file(lock_path, lock)
+        _log.info("created %s (no existing lock found)", lock_path)
+        return cfg, lock
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
     _verify_experimental_data(root, cfg.inputs.exp_data, lock.experimental_data)
     return cfg, lock
+
+
+def write_experiment_lock(directory: str | Path) -> ExperimentLock:
+    """Hash ``inputs.structure`` and every ``inputs.exp_data`` file and write
+    ``reproducibility/experiment.lock`` (creating that directory if needed).
+
+    The ``diffbloch lock`` CLI command's implementation, for explicitly (re)creating the lock --
+    :func:`load_experiment` also creates one automatically on first run, but only when none exists
+    yet; use this to refresh an *existing* lock after an intentional input change (an existing lock
+    that merely mismatches is deliberately treated as drift there, not silently rewritten). Safe to
+    rerun: it always reflects the current input bytes, so rerunning with unchanged inputs reproduces
+    the lock byte-for-byte.
+    """
+    root = Path(directory)
+    cfg = load_config(root / "experiment.yaml")
+    lock = _build_experiment_lock(root, cfg)
+    _write_experiment_lock_file(root / "reproducibility" / "experiment.lock", lock)
+    return lock
+
+
+def _build_experiment_lock(root: Path, cfg: ExperimentConfig) -> ExperimentLock:
+    """Hash ``cfg.inputs.structure`` and every ``cfg.inputs.exp_data`` file under ``root``."""
+    structure = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
+    experimental_data: InputLock | list[InputLock]
+    if isinstance(cfg.inputs.exp_data, list):
+        experimental_data = [input_lock_for(root / ref, ref=ref) for ref in cfg.inputs.exp_data]
+    else:
+        experimental_data = input_lock_for(root / cfg.inputs.exp_data, ref=cfg.inputs.exp_data)
+    return ExperimentLock(structure=structure, experimental_data=experimental_data)
+
+
+def _write_experiment_lock_file(lock_path: Path, lock: ExperimentLock) -> None:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(lock.model_dump_json(indent=2) + "\n")
 
 
 def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
