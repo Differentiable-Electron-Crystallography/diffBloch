@@ -51,6 +51,16 @@ output is one calculated diffraction pattern for each experimental rotation.
 
 For more information, see [Inputs and outputs](inputs.md).
 
+Every command below verifies the structure CIF and `.cif_pets` file(s) against a checksum recorded in
+`reproducibility/experiment.lock`, creating that lock automatically the first time it runs. If those
+input files intentionally change afterward, refresh the lock explicitly:
+
+```bash
+uv run diffbloch lock <experiment_dir>
+```
+
+See [Reproducibility](reproducibility.md#input-files).
+
 ## Convergence testing
 
 The convergence test determines suitable values for the main simulation hyperparameters:
