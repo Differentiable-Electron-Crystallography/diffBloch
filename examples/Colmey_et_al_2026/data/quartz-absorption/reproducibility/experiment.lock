@@ -1,0 +1,8 @@
+structure:
+  ref: experimental_paper_files/enantiomer_1.cif
+  sha256: 4a1ed50ae8eff95b652e49a872979f4dca19bf77b2b34fa14be2ebc06b0bb306
+  bytes: 942
+experimental_data:
+  ref: quartz.cif_pets
+  sha256: 2183faaa402123297df03b54a0af4b025c61a66a22e18833c73acd3d2f6003be
+  bytes: 304176

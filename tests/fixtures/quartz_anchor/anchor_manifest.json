@@ -1,0 +1,41 @@
+{
+  "reference_results": {
+    "path": "reference_results.json",
+    "sha256": "c6c6b868f81ce57564acfae595ac8f326aba907fe81c61a269fb94b1c49248b9",
+    "primary_metric": "R_obs",
+    "summary": {
+      "R_obs": 0.043765721207653936,
+      "wR_all": 0.041960738237119384,
+      "total_loss": 0.04194964136401511,
+      "diff_loss": 0.04194964136401511
+    },
+    "n_rotations": 99,
+    "N_int_all": 1740,
+    "N_int_obs": 958
+  },
+  "execution": {
+    "seed": 42,
+    "device": "cpu",
+    "dtype": "float64",
+    "solver": "bloch_eigen",
+    "thicknesses": [820.0]
+  },
+  "intermediate_tensors": {
+    "Fgb": {
+      "status": "pending",
+      "unblocks_at_stage": 7
+    },
+    "A": {
+      "status": "pending",
+      "unblocks_at_stage": 8
+    },
+    "psi": {
+      "status": "pending",
+      "unblocks_at_stage": 8
+    },
+    "I_sim": {
+      "status": "pending",
+      "unblocks_at_stage": 8
+    }
+  }
+}

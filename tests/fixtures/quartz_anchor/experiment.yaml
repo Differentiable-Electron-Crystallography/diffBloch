@@ -1,0 +1,26 @@
+# Real quartz characterization-anchor fixture (the published quartz PED dataset).
+# This directory is the public experiment-directory seed; subsequent stages evolve this layout in
+# place (rather than a parallel anchor fixture) as IO/core/run artifacts land.
+name: quartz-anchor
+inputs:
+  structure: enantiomer_1.cif
+  exp_data: exp_data.cif_pets
+sample:
+  thicknesses: [820.0]
+blochwave:
+  rocking_curve_sampling: 42
+  dsg: 0.0015
+  rsg: 0.9
+  # The faithful SOLVE-union coupling (UnionCoupling defaults); declared explicitly because
+  # coupling has no config default -- it determines the fit's physics.
+  g_max: 2.25
+  sg_max: 0.01
+preprocess:
+  # The committed reference artifacts (reference_results.json, optim_orientation.json, the
+  # reproducibility/ checkpoint) were fitted orientation-first; pinned like rsg above so config
+  # defaults can move without silently re-ordering the anchor's fit.
+  stage_order: orientation_first
+refinement:
+  split:
+    train_test: true
+    val_frac: 0.1

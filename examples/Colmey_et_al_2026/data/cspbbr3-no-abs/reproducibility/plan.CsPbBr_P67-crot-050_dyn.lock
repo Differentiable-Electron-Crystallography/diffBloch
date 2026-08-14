@@ -1,0 +1,106 @@
+{
+  "structure": {
+    "ref": "cspbbr3.cif",
+    "sha256": "cd51ff36567cfb3a51c03f8a365c581cb7f8f23228c64fb1852fc679fc2a595c",
+    "bytes": 2409
+  },
+  "experimental_data": {
+    "ref": "CsPbBr_P67-crot-050_dyn.cif_pets",
+    "sha256": "324043aa22ebf0dad00ca0d7a7f50ade8f0a5058c7bcd58cc48401a2211ca022",
+    "bytes": 1444882
+  },
+  "authoritative_cell": [
+    8.11889,
+    8.35903,
+    11.75935,
+    90.0,
+    90.00002,
+    90.00002
+  ],
+  "ignored_rotations": [],
+  "config_digest": "e0cef01d14af0ee816b69d2a87a2cb0f36b6ea76c69b39d39ba1df4fa66e111f",
+  "code_version": "0.2.0+g1bfdabc.dirty",
+  "recipe": [
+    {
+      "name": "build_orientation_plans",
+      "params": {
+        "rocking": {
+          "__type__": "RockingCurve",
+          "sampling": 60,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.5,
+            "geometry": "continuous_rotation"
+          }
+        },
+        "mosaicity": null,
+        "coupling": {
+          "__type__": "UnionCoupling",
+          "fixed_n_segments": 12,
+          "g_max": 2.3,
+          "sg_max": 0.02,
+          "union_adaptive": true,
+          "union_max_new_beams_pct": 0.01
+        },
+        "scoring_selection": {
+          "__type__": "BeamSelection",
+          "rsg": 0.66,
+          "dsg": 0.0015,
+          "integration": {
+            "__type__": "IntegrationGeometry",
+            "semiangle": 1.5,
+            "geometry": "continuous_rotation"
+          }
+        }
+      }
+    },
+    {
+      "name": "optimize_orientation",
+      "params": {
+        "search": {
+          "__type__": "NelderMeadSearch",
+          "step_size": 0.3,
+          "max_iterations": 60,
+          "x_tolerance": 0.001,
+          "f_tolerance": 0.001,
+          "penalize_fewer_reflections": true
+        },
+        "coupling": {
+          "__type__": "TrialCoupling",
+          "policy": {
+            "__type__": "UnionCoupling",
+            "fixed_n_segments": 12,
+            "g_max": 2.3,
+            "sg_max": 0.02,
+            "union_adaptive": true,
+            "union_max_new_beams_pct": 0.01
+          },
+          "scored": {
+            "__type__": "ScoredHklSelection",
+            "klar": {
+              "__type__": "BeamSelection",
+              "rsg": 0.66,
+              "dsg": 0.0015,
+              "integration": {
+                "__type__": "IntegrationGeometry",
+                "semiangle": 1.5,
+                "geometry": "continuous_rotation"
+              }
+            },
+            "g_max": 2.3
+          }
+        },
+        "absorption": {
+          "__type__": "Absorption",
+          "enabled": false
+        }
+      }
+    }
+  ],
+  "plan": {
+    "path": "reproducibility/plan.CsPbBr_P67-crot-050_dyn.npz",
+    "sha256": "cf05b2377e9e5b068412b8ede54162b362345f1a8d2086f8739dcd2ac2975ce1",
+    "bytes": 1140895,
+    "media_type": "application/octet-stream"
+  }
+}
