@@ -129,9 +129,10 @@ def _refinement_result_for(
     tmp_path: Path,
     *,
     cell_parameters: np.ndarray | None = None,
+    cif_text: str = _MINIMAL_CIF,
 ) -> tuple[ExperimentConfig, RefinementSetup, ModelRefinementResult]:
     source = tmp_path / "q.cif"
-    source.write_text(_MINIMAL_CIF)
+    source.write_text(cif_text)
     cfg = ExperimentConfig.model_validate(
         {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
@@ -202,6 +203,20 @@ def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -
         assert params_file["asu_positions"].shape == (2, 3)
         assert params_file["occupancy_raw"].shape == (2,)
     assert not (tmp_path / "refinement_summary.json").exists()  # superseded by the .txt report
+
+
+def test_write_refinement_outputs_selects_structure_block_from_multiblock_cif(
+    tmp_path: Path,
+) -> None:
+    cfg, refinement, result = _refinement_result_for(
+        tmp_path,
+        cif_text="data_global\n_audit_creation_method diffBloch-test\n\n" + _MINIMAL_CIF,
+    )
+
+    _write_refinement_outputs(tmp_path, cfg, refinement, result, plan_lock_sha256s=("ab" * 32,))
+
+    refined = read_structure(tmp_path / "refined_structure.cif")
+    assert np.allclose(refined.frac_positions, [[0.11, 0.2, 0.3], [0.4, 0.51, 0.6]])
 
 
 def test_write_refinement_outputs_rewrites_the_refined_cif_cell_header(tmp_path: Path) -> None:

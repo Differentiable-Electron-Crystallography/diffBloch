@@ -52,6 +52,12 @@ def _structure(tmp_path: Path) -> Path:
     return path
 
 
+def _multiblock_structure(tmp_path: Path) -> Path:
+    path = tmp_path / "refined_structure.cif"
+    path.write_text("data_global\n_audit_creation_method diffBloch-test\n\n" + _CIF)
+    return path
+
+
 def _experiment() -> ExperimentDeclared:
     return ExperimentDeclared(
         name="q",
@@ -168,6 +174,31 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
     assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
     assert "mean wR2   = 0.200000 [1/1]" in text
     assert "HKLs (Observed/total)" in text and "8 / 12" in text
+
+
+def test_summary_selects_structure_block_from_multiblock_refined_cif(tmp_path: Path) -> None:
+    logger = SummaryLogger(tmp_path / "refinement_report.txt")
+    structure = _multiblock_structure(tmp_path)
+    logger.report(_experiment())
+    logger.report(ObjectiveManifest())
+    logger.report(_step())
+    logger.report(_rotation(0))
+    logger.report(
+        RefinementCompleted(
+            n_steps=1,
+            best_step=0,
+            best_loss=0.2,
+            reflection_counts={"matched": 12, "matched_i_gt_3sigma": 8},
+        )
+    )
+    logger.report(
+        RefinementOutputsWritten(
+            structure=str(structure), artifacts={"refined_structure": str(structure)}
+        )
+    )
+
+    text = (tmp_path / "refinement_report.txt").read_text()
+    assert "C1" in text and "O1" in text
 
 
 def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> None:

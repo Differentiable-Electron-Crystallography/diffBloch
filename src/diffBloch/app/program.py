@@ -76,6 +76,7 @@ from diffBloch.io import (
     read_structure,
     read_structure_with_diagnostics,
 )
+from diffBloch.io._cifio import select_block
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
@@ -729,7 +730,7 @@ def _write_refinement_outputs(
     state = constrain(result.best_params, refinement.spec)
     source_path = root / cfg.inputs.structure
     document = gemmi.cif.read_file(str(source_path))
-    block = document.sole_block()
+    block = select_block(document, required_loop_tag="_atom_site_label")
     structure = read_structure(source_path, load_hydrogens=cfg.inputs.load_hydrogens)
     positions = state.positions.detach().cpu().numpy()
     occupancies = state.occupancies.detach().cpu().numpy()

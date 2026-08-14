@@ -37,6 +37,7 @@ import gemmi
 from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.core.crystal import cell_volume
 from diffBloch.io import read_structure
+from diffBloch.io._cifio import select_block
 from diffBloch.observability import (
     Event,
     ExperimentDeclared,
@@ -393,7 +394,9 @@ class SummaryLogger:
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path
     ) -> None:
         rule("Refined structure -- atom_site")
-        block = gemmi.cif.read_file(str(structure_path)).sole_block()
+        block = select_block(
+            gemmi.cif.read_file(str(structure_path)), required_loop_tag="_atom_site_label"
+        )
         atom_table = _cif_loop_as_table(block, "_atom_site_label")
         if atom_table is not None:
             lines.append(atom_table)
