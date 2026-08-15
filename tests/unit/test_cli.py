@@ -63,7 +63,7 @@ def test_debug_flag_reraises(tmp_path: Path) -> None:
         main(["--debug", "validate", str(bad)])
 
 
-def test_lock_writes_the_experiment_lock(
+def test_lock_experiment_writes_the_experiment_lock(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     experiment = tmp_path / "experiment"
@@ -71,7 +71,7 @@ def test_lock_writes_the_experiment_lock(
     for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
         (experiment / name).write_bytes((LOCKED / name).read_bytes())
 
-    rc = main(["lock", str(experiment)])
+    rc = main(["lock-experiment", str(experiment)])
 
     assert rc == 0
     lock_path = experiment / "reproducibility" / "experiment.lock"
@@ -82,10 +82,48 @@ def test_lock_writes_the_experiment_lock(
     assert "exp_data.cif_pets" in out
 
 
-def test_lock_missing_experiment_reports_concise_error(
+def test_lock_experiment_refuses_to_overwrite_an_existing_lock(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    assert main(["lock-experiment", str(experiment)]) == 0
+    capsys.readouterr()
+
+    rc = main(["lock-experiment", str(experiment)])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "already exists" in err
+
+
+def test_lock_experiment_force_rewrites_the_experiment_lock(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    assert main(["lock-experiment", str(experiment)]) == 0
+    (experiment / "enantiomer_1.cif").write_text("changed\n")
+    capsys.readouterr()
+
+    rc = main(["lock-experiment", "--force", str(experiment)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "rewrote" in out
+    assert "warning:" in out
+    assert "plan and refinement locks" in out
+
+
+def test_lock_experiment_missing_experiment_reports_concise_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rc = main(["lock", "/no/such/experiment"])
+    rc = main(["lock-experiment", "/no/such/experiment"])
     assert rc == 1
     err = capsys.readouterr().err
     assert err.startswith("error:")

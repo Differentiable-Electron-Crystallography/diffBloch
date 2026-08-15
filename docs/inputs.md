@@ -85,9 +85,11 @@ Running preprocessing or refinement adds results to the experiment directory:
 | `reproducibility/refined_parameters.npz` | Refined parameter values. |
 | `reproducibility/refinement.lock` | Inputs and settings used for the refinement. |
 
-`reproducibility/experiment.lock` is not one of these -- it identifies the input files, not a
-calculation result. It is created automatically the first time any command runs against the
-experiment directory; see [Reproducibility](reproducibility.md#input-files).
+`reproducibility/experiment.lock` is not one of these calculation outputs. It identifies the raw
+input files accepted for the experiment and is created automatically the first time any command runs
+against the experiment directory. See [Reproducibility](reproducibility.md#input-files) for the
+create-only `lock-experiment` command and the warning about invalidating plan and refinement locks
+after input changes.
 
 See [Refinement](refinement.md#refinement-outputs) for the refinement report and
 [Reproducibility](reproducibility.md) for the lock files.
