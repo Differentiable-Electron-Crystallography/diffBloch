@@ -142,14 +142,46 @@ def test_write_experiment_lock_creates_a_lock_load_experiment_then_accepts(tmp_p
     assert cfg.name == "locked-min"
 
 
-def test_write_experiment_lock_is_reproducible(tmp_path: Path) -> None:
+def test_write_experiment_lock_refuses_to_replace_an_existing_lock_by_default(
+    tmp_path: Path,
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+
+    write_experiment_lock(experiment)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        write_experiment_lock(experiment)
+
+
+def test_write_experiment_lock_force_rewrites_after_intentional_input_change(
+    tmp_path: Path,
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    first = write_experiment_lock(experiment)
+    (experiment / "enantiomer_1.cif").write_text("changed\n")
+
+    second = write_experiment_lock(experiment, force=True)
+
+    assert first != second
+    assert second.structure.sha256 == sha256_file(experiment / "enantiomer_1.cif")
+    _cfg, loaded = load_experiment(experiment)
+    assert loaded == second
+
+
+def test_write_experiment_lock_force_is_reproducible_for_unchanged_inputs(tmp_path: Path) -> None:
     experiment = tmp_path / "experiment"
     experiment.mkdir()
     for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
         (experiment / name).write_bytes((LOCKED / name).read_bytes())
 
     first = write_experiment_lock(experiment)
-    second = write_experiment_lock(experiment)
+    second = write_experiment_lock(experiment, force=True)
     assert first == second
 
 

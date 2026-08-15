@@ -151,14 +151,15 @@ def artifact_hash_for(path: str | Path, *, root: str | Path) -> ArtifactHash:
 
 def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, ExperimentLock]:
     """Load ``experiment.yaml``, verifying ``experiment.lock`` (in ``reproducibility/``) against
-    input bytes -- creating that lock first, from the current input bytes, if it doesn't exist yet.
+    input bytes, creating that lock first from the current input bytes if it doesn't exist yet.
 
     First-run convenience: a brand-new experiment directory has no lock to verify against, so there
-    is nothing to protect by refusing to proceed -- the lock is created here instead, exactly as
+    is nothing to protect by refusing to proceed. The lock is created here instead, exactly as
     :func:`write_experiment_lock` would. An *existing* lock that no longer matches the input bytes
     still raises (see :func:`_verify_input`): that mismatch is the drift this file exists to catch,
-    and silently rewriting it on every run would defeat the purpose. Rerun ``diffbloch lock`` (or
-    :func:`write_experiment_lock`) to update the lock after an intentional input change.
+    and silently rewriting it on every run would defeat the purpose. Delete the lock and rerun, or
+    use ``diffbloch lock-experiment --force`` (or
+    ``write_experiment_lock(..., force=True)``), to update it after an intentional input change.
     """
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
@@ -174,21 +175,26 @@ def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, Experiment
     return cfg, lock
 
 
-def write_experiment_lock(directory: str | Path) -> ExperimentLock:
+def write_experiment_lock(directory: str | Path, *, force: bool = False) -> ExperimentLock:
     """Hash ``inputs.structure`` and every ``inputs.exp_data`` file and write
     ``reproducibility/experiment.lock`` (creating that directory if needed).
 
-    The ``diffbloch lock`` CLI command's implementation, for explicitly (re)creating the lock --
-    :func:`load_experiment` also creates one automatically on first run, but only when none exists
-    yet; use this to refresh an *existing* lock after an intentional input change (an existing lock
-    that merely mismatches is deliberately treated as drift there, not silently rewritten). Safe to
-    rerun: it always reflects the current input bytes, so rerunning with unchanged inputs reproduces
-    the lock byte-for-byte.
+    The ``diffbloch lock-experiment`` CLI command's implementation. By default this creates a lock
+    only when none exists yet: an existing lock is the experiment's accepted input baseline, so
+    replacing it requires ``force=True``. Use ``force=True`` only after an intentional input change.
+    With unchanged inputs, a forced rewrite reproduces the lock byte-for-byte. If the input bytes
+    changed, replacing the experiment lock invalidates existing plan and refinement locks.
     """
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
+    lock_path = root / "reproducibility" / "experiment.lock"
+    if lock_path.exists() and not force:
+        raise FileExistsError(
+            f"{lock_path} already exists; remove it or rerun with --force to replace it "
+            "(replacing it after input changes invalidates existing plan and refinement locks)"
+        )
     lock = _build_experiment_lock(root, cfg)
-    _write_experiment_lock_file(root / "reproducibility" / "experiment.lock", lock)
+    _write_experiment_lock_file(lock_path, lock)
     return lock
 
 
