@@ -24,7 +24,7 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from diffBloch.config.schema import DataSplitConfig, ExperimentConfig
-from diffBloch.core.adp import cholesky_raw_from_adp
+from diffBloch.core.adp import cholesky_raw_from_adp, ueq_from_cif_uij
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.core.dynamical import (
     energy2sigma,
@@ -137,6 +137,7 @@ class RefinementSetup:
         structure: StructureRecord,
         *,
         cell_parameters: NDArray[np.float64] | None = None,
+        isotropic_displacements_only: bool = False,
     ) -> RefinementSetup:
         """Assemble the structure-side refinement inputs from a parsed :class:`StructureRecord`.
 
@@ -152,21 +153,35 @@ class RefinementSetup:
         natively from the structure's symmetry operators (:func:`symmetry_constraints`): an atom
         special position is held on its site under refinement, so it is neither over-parameterized
         nor free to drift off. A general-position atom gets the identity projector (unconstrained).
+
+        ``isotropic_displacements_only`` (``inputs.isotropic_displacements_only``) forces every atom
+        onto Uiso via a derived ADP record (:func:`_force_isotropic_adp`), never by mutating
+        ``structure`` itself.
         """
         positions = torch.tensor(structure.frac_positions, dtype=torch.float64)
-        uij_raw, u_iso_raw = _initial_adp_params(structure.adp)
-        constraints = symmetry_constraints(structure)
         resolved_cell_parameters = (
             structure.cell_parameters if cell_parameters is None else np.asarray(cell_parameters)
         )
         unit_cell = cell_matrix_from_parameters(resolved_cell_parameters)
+        reciprocal_basis = reciprocal_cell(unit_cell)
+        adp = structure.adp
+        if isotropic_displacements_only:
+            adp = _force_isotropic_adp(
+                adp,
+                reciprocal_lengths=torch.tensor(
+                    np.linalg.norm(reciprocal_basis, axis=1), dtype=torch.float64
+                ),
+                metric_tensor=torch.tensor(unit_cell @ unit_cell.T, dtype=torch.float64),
+            )
+        uij_raw, u_iso_raw = _initial_adp_params(adp)
+        constraints = symmetry_constraints(structure)
         spec = ConstraintSpec(
             position_projection=torch.tensor(constraints.position_projection, dtype=torch.float64),
             position_offset=torch.tensor(constraints.position_offset, dtype=torch.float64),
             occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
-            adp_kind=structure.adp.kind,
+            adp_kind=adp.kind,
             adp_constraints=constraints.adp_constraints,
-            reciprocal_basis=torch.tensor(reciprocal_cell(unit_cell), dtype=torch.float64),
+            reciprocal_basis=torch.tensor(reciprocal_basis, dtype=torch.float64),
         )
         return cls(
             asu_plan=build_asu_expansion_plan(
@@ -252,7 +267,9 @@ def setup_datasets(
     grid = StructureFactorGrid.from_cell_for_beam_cutoff(authoritative_unit_cell, solve_cutoff)
     beam_hkl = seed_beam_hkl(grid, g_max=solve_cutoff)
     refinement_setup = RefinementSetup.from_structure(
-        structure, cell_parameters=authoritative_cell_parameters
+        structure,
+        cell_parameters=authoritative_cell_parameters,
+        isotropic_displacements_only=config.inputs.isotropic_displacements_only,
     )
     absorption = config.blochwave.to_absorption()
 
@@ -555,6 +572,34 @@ def validation_mask(n_rotations: int, split: DataSplitConfig) -> NDArray[np.bool
     step = round(1.0 / split.val_frac)
     mask: NDArray[np.bool_] = (np.arange(n_rotations) + 1) % step == 0
     return mask
+
+
+def _force_isotropic_adp(
+    adp: AdpRecord, *, reciprocal_lengths: Tensor, metric_tensor: Tensor
+) -> AdpRecord:
+    """Force every ADP to Uiso (``inputs.isotropic_displacements_only``), never mutating ``adp``.
+
+    Every ``kind`` becomes ``"Uiso"``. An atom that was ``Uani`` in the CIF is re-seeded with its
+    crystallographic equivalent isotropic value (Ueq, :func:`diffBloch.core.adp.ueq_from_cif_uij`)
+    computed from its own CIF ``Uij`` tensor -- not whatever the CIF's own (often absent, and
+    sometimes merely a rounded courtesy figure) ``_atom_site_U_iso_or_equiv`` column already held for
+    that row, and not a naive ``trace(Uij) / 3``, which only equals Ueq in an orthonormal frame.
+    """
+    if "missing" in adp.kind:
+        raise ValueError("missing ADPs require an explicit initialization policy")
+    was_uani = np.array([kind == "Uani" for kind in adp.kind], dtype=np.bool_)
+    u_iso = np.array(adp.u_iso, dtype=np.float64, copy=True)
+    if was_uani.any():
+        uij_cif = torch.tensor(adp.uij_cif[was_uani], dtype=torch.float64)
+        ueq = ueq_from_cif_uij(uij_cif, reciprocal_lengths, metric_tensor)
+        u_iso[was_uani] = ueq.numpy()
+    return AdpRecord(
+        kind=tuple("Uiso" for _ in adp.kind),
+        u_iso=u_iso,
+        u_iso_su=adp.u_iso_su,
+        uij_cif=adp.uij_cif,
+        uij_cif_su=adp.uij_cif_su,
+    )
 
 
 def _initial_adp_params(adp: AdpRecord) -> tuple[Tensor | None, Tensor | None]:

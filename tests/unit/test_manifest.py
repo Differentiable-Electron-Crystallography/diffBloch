@@ -146,6 +146,19 @@ def test_dataset_config_digest_is_stable_and_value_sensitive() -> None:
     )
 
 
+def test_dataset_config_digest_is_sensitive_to_isotropic_displacements_only() -> None:
+    """Toggling inputs.isotropic_displacements_only changes the initial refinable ADP parameters
+    (RefinementSetup.from_structure), so it must restale a committed per-dataset checkpoint --
+    exactly as inputs.load_hydrogens already does."""
+    cfg = load_config(LOCKED / "experiment.yaml")
+    forced = cfg.model_copy(
+        update={"inputs": cfg.inputs.model_copy(update={"isotropic_displacements_only": True})}
+    )
+    assert dataset_config_digest(forced, exp_data=EXP_REF) != dataset_config_digest(
+        cfg, exp_data=EXP_REF
+    )
+
+
 def test_dataset_config_digest_scopes_per_dataset_mean_thickness() -> None:
     cfg = load_config(LOCKED / "experiment.yaml")
     raw = cfg.model_dump()

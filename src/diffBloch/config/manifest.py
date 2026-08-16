@@ -206,6 +206,7 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
             "structure": dump["inputs"]["structure"],
             "exp_data": exp_data,
             "load_hydrogens": dump["inputs"]["load_hydrogens"],
+            "isotropic_displacements_only": dump["inputs"]["isotropic_displacements_only"],
         },
         # Resolve the optional per-dataset mapping to this Plan's effective seed. This keeps a
         # change for dataset B from invalidating dataset A's checkpoint.

@@ -756,6 +756,13 @@ def _write_refinement_outputs(
         if block.find_pair("_cell_volume") is not None:
             authoritative_unit_cell = cell_matrix_from_parameters(refinement.cell_parameters)
             block.set_pair("_cell_volume", f"{cell_volume(authoritative_unit_cell):.5f}")
+    # The *effective* ADP kind (post inputs.isotropic_displacements_only override), not
+    # structure.adp.kind (the raw CIF classification): an atom the override force-converted to
+    # Uiso must be written back as Uiso, with its stale _atom_site_aniso_* row stripped below --
+    # otherwise re-reading this file classifies it back to Uani by the aniso row's mere presence
+    # (see io.cif._adp_for_site) and silently loses the override.
+    effective_kind = refinement.spec.adp_kind
+    assert effective_kind is not None
     atom_loop = block.find_loop("_atom_site_label").get_loop()
     tags = list(atom_loop.tags)
     label_column = tags.index("_atom_site_label")
@@ -771,7 +778,7 @@ def _write_refinement_outputs(
             "_atom_site_fract_z": positions[index, 2],
             "_atom_site_occupancy": occupancies[index],
         }
-        if structure.adp.kind[index] == "Uiso":
+        if effective_kind[index] == "Uiso":
             updates["_atom_site_U_iso_or_equiv"] = np.sum(
                 uij_star[index] * reciprocal_metric
             ) / np.sum(reciprocal_metric * reciprocal_metric)
@@ -798,8 +805,14 @@ def _write_refinement_outputs(
             "_atom_site_aniso_U_23": (1, 2),
         }
         scale = reciprocal_lengths[:, None] * reciprocal_lengths[None, :]
+        stale_aniso_labels: list[str] = []
         for index, label in enumerate(structure.labels):
-            if structure.adp.kind[index] != "Uani" or label not in aniso_rows:
+            if label not in aniso_rows:
+                continue
+            if effective_kind[index] != "Uani":
+                # Was Uani in the CIF but the override forces it to Uiso: strip the row rather than
+                # leaving it untouched (stale) or refreshing it with new anisotropic-looking values.
+                stale_aniso_labels.append(label)
                 continue
             row = aniso_rows[label]
             uij_cif = uij_star[index] / scale
@@ -807,6 +820,10 @@ def _write_refinement_outputs(
                 if tag in aniso_tags:
                     column = aniso_tags.index(tag)
                     aniso_loop[row, column] = f"{float(uij_cif[i, j]):.10g}"
+        if stale_aniso_labels:
+            aniso_table = block.find(list(aniso_loop.tags))
+            for label in stale_aniso_labels:
+                aniso_table.remove_row(aniso_table.find_row(label).row_index)
     document.write_file(str(structure_path))
 
     params = result.best_params
