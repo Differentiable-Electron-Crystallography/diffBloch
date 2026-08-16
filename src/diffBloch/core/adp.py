@@ -74,6 +74,20 @@ def equivalent_isotropic_adp(uij: Tensor) -> Tensor:
     return torch.diagonal(uij, dim1=-2, dim2=-1).sum(dim=-1) / 3.0
 
 
+def ueq_from_cif_uij(uij_cif: Tensor, reciprocal_lengths: Tensor, metric_tensor: Tensor) -> Tensor:
+    """Return the crystallographic equivalent isotropic displacement ``Ueq`` for CIF-frame ``Uij``.
+
+    ``Ueq = (1/3) sum_ij Uij_cif d*_i d*_j (a_i . a_j)`` (Fischer & Tillmanns 1988): the reciprocal
+    ``U*`` tensor (:func:`cif_adp_to_star`) contracted with the direct-cell metric tensor
+    ``metric_tensor = cell @ cell.T``. Not ``trace(uij_cif) / 3`` -- that shortcut only equals Ueq in
+    an orthonormal frame, and is wrong whenever the cell has non-90-degree angles or unequal axes.
+    """
+    star = cif_adp_to_star(uij_cif, reciprocal_lengths)
+    if metric_tensor.shape != (3, 3):
+        raise ValueError("metric_tensor must have shape (3, 3)")
+    return torch.einsum("...ij,ij->...", star, metric_tensor) / 3.0
+
+
 def _require_trailing_matrix(value: Tensor, *, name: str) -> None:
     if value.ndim < 2 or tuple(value.shape[-2:]) != (3, 3):
         raise ValueError(f"{name} must have trailing shape (3, 3)")

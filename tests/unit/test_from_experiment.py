@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
+from diffBloch.core.adp import ueq_from_cif_uij
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
@@ -457,3 +458,85 @@ def test_refinement_setup_mixed_uani_uiso_constrains_each_atom_by_kind() -> None
 def _setup_state(structure: StructureRecord) -> tuple:
     setup = RefinementSetup.from_structure(structure)
     return setup.params, setup.spec
+
+
+# --- inputs.isotropic_displacements_only override --------------------------------------------
+
+
+def _oblique_structure(kinds: tuple[str, ...]) -> StructureRecord:
+    """A P1 monoclinic (beta = 100 degrees) variant of :func:`_ortho_structure`.
+
+    An orthorhombic cell's off-diagonal direct-metric terms vanish, so Ueq degenerates to
+    ``trace(Uij) / 3`` there and cannot distinguish the correct metric-tensor contraction from the
+    naive shortcut. The non-90-degree ``beta`` here keeps the metric tensor's off-diagonal term
+    non-zero, so the two routes give observably different answers.
+    """
+    n = len(kinds)
+    uij_cif = np.stack([_UANI if k == "Uani" else np.full((3, 3), np.nan) for k in kinds])
+    u_iso = np.array([_UISO if k == "Uiso" else np.nan for k in kinds])
+    cell_parameters = np.array([5.0, 6.0, 7.0, 90.0, 100.0, 90.0])
+    return StructureRecord(
+        unit_cell=cell_matrix_from_parameters(cell_parameters),
+        cell_parameters=cell_parameters,
+        cell_parameters_su=np.full((6,), np.nan),
+        spacegroup_hm="P1",
+        symops_R=np.eye(3)[None, :, :],
+        symops_t=np.zeros((1, 3)),
+        labels=tuple(f"A{i}" for i in range(n)),
+        numbers=np.array([14] * n),
+        frac_positions=np.linspace(0.1, 0.6, n * 3).reshape(n, 3),
+        frac_positions_su=np.full((n, 3), np.nan),
+        occupancies=np.ones(n),
+        occupancies_su=np.full((n,), np.nan),
+        adp=AdpRecord(
+            kind=kinds,
+            u_iso=u_iso,
+            u_iso_su=np.full((n,), np.nan),
+            uij_cif=uij_cif,
+            uij_cif_su=np.full((n, 3, 3), np.nan),
+        ),
+    )
+
+
+def test_isotropic_displacements_only_forces_uani_to_uiso_seeded_from_cif_ueq() -> None:
+    structure = _oblique_structure(("Uani", "Uiso"))
+
+    setup = RefinementSetup.from_structure(structure, isotropic_displacements_only=True)
+
+    # Every atom refines as Uiso now, including the one that was Uani in the CIF -- and the
+    # override never touched the CIF-parsed record itself.
+    assert setup.spec.adp_kind == ("Uiso", "Uiso")
+    assert structure.adp.kind == ("Uani", "Uiso")
+    assert setup.params.uij_raw is None
+    assert setup.params.u_iso_raw is not None and setup.params.u_iso_raw.shape == (2,)
+
+    unit_cell = cell_matrix_from_parameters(structure.cell_parameters)
+    reciprocal_basis = reciprocal_cell(unit_cell)
+    reciprocal_lengths = torch.tensor(np.linalg.norm(reciprocal_basis, axis=1))
+    metric_tensor = torch.tensor(unit_cell @ unit_cell.T)
+    expected_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64), reciprocal_lengths, metric_tensor
+    ).item()
+    # The naive trace(Uij)/3 shortcut disagrees on this non-cubic (5, 6, 7) cell -- confirming the
+    # seed genuinely comes from the metric-tensor contraction, not the wrong shortcut.
+    assert expected_ueq != pytest.approx(float(np.trace(_UANI) / 3.0), rel=1e-3)
+
+    state = constrain(setup.params, setup.spec)
+    reciprocal_metric = reciprocal_basis @ reciprocal_basis.T
+    # Both atoms are now genuinely isotropic: uij_star = Uiso * G* exactly, so Uiso is recoverable.
+    seeded_uiso = [
+        float(torch.sum(state.uij_star[i] * torch.tensor(reciprocal_metric)))
+        / float(np.sum(reciprocal_metric * reciprocal_metric))
+        for i in range(2)
+    ]
+    assert seeded_uiso[0] == pytest.approx(expected_ueq)
+    # The atom that was already Uiso in the CIF keeps its own CIF value, untouched by the override.
+    assert seeded_uiso[1] == pytest.approx(_UISO)
+
+
+def test_isotropic_displacements_only_defaults_to_off() -> None:
+    structure = _ortho_structure(("Uani", "Uiso"))
+
+    setup = RefinementSetup.from_structure(structure)
+
+    assert setup.spec.adp_kind == structure.adp.kind
