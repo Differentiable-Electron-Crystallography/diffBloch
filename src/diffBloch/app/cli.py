@@ -11,13 +11,17 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import cast
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
+from diffBloch.app.loggers import (
+    ConsoleLogger,
+    CSVLogger,
+    PreprocessSummaryLogger,
+    print_summary_box,
+)
 from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
@@ -26,31 +30,7 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config
-from diffBloch.engine.plan import OrientationPlanLike
-from diffBloch.observability import (
-    NULL_LOGGER,
-    Logger,
-    MultiLogger,
-    OrientationOptimized,
-    RecordingLogger,
-)
-
-
-def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
-    """Print a consistently aligned 62-column completion summary.
-
-    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
-    not truncate, so a longer label silently pushes its value past the box border and misaligns that
-    row against every other.
-    """
-    width = 62
-    label_width = 26
-    value_width = width - label_width - 3
-    heading = f" {title} "
-    print(f"╭{heading:─^{width}}╮")
-    for label, value in rows:
-        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
-    print(f"╰{'─' * width}╯")
+from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
 
 
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
@@ -220,7 +200,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=MultiLogger(
+                    (_build_logger(console=not args.quiet, csv=args.csv), PreprocessSummaryLogger())
+                ),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -243,16 +225,11 @@ def main(argv: list[str] | None = None) -> int:
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
-            summary_logger = RecordingLogger()
-            logger: Logger = (
-                summary_logger
-                if progress_logger is NULL_LOGGER
-                else MultiLogger((progress_logger, summary_logger))
-            )
             plan = preprocess_experiment(
                 args.experiment_directory,
-                logger=logger,
+                logger=MultiLogger(
+                    (_build_logger(console=not args.quiet, csv=args.csv), PreprocessSummaryLogger())
+                ),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -266,30 +243,9 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print()
-        built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
-        total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
-        matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
-        fitted = [
-            event for event in summary_logger.events if isinstance(event, OrientationOptimized)
-        ]
-        mean_loss = (
-            f"{sum(event.score for event in fitted) / len(fitted):.6g}"
-            if fitted
-            else "n/a (checkpoint reused)"
-        )
-        mean_label = f"Mean {residual_label(fitted[0].residual)}" if fitted else "Mean score"
-        _print_summary_box(
-            "PREPROCESS COMPLETE",
-            (
-                ("Rotations", str(len(plan.orientations))),
-                ("Stages", str(len(plan.provenance))),
-                ("Total HKLs", str(total_hkl)),
-                ("Matched HKLs", str(matched_hkl)),
-                ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
-                (mean_label, mean_loss),
-            ),
-        )
+        # PreprocessSummaryLogger (above) already printed "PREPROCESS COMPLETE" the moment
+        # preprocessing settled -- the same box a refine/infer run now gets too, not just a
+        # standalone preprocess.
         print()
         print("Pipeline")
         for index, record in enumerate(plan.provenance, start=1):
@@ -322,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             refine_sinks: tuple[Logger, ...] = (
                 _build_logger(console=not args.quiet, csv=args.csv),
                 SummaryLogger(report_path),
+                PreprocessSummaryLogger(),
             )
             refined = refine_experiment(
                 args.experiment_directory,
@@ -348,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         diff_loss = "n/a" if best.diff_loss is None else f"{best.diff_loss:.6g}"
         counts = refined.reflection_counts
         print()
-        _print_summary_box(
+        print_summary_box(
             "REFINEMENT COMPLETE",
             (
                 ("Best epoch", str(refined.best_step + 1)),

@@ -60,6 +60,7 @@ def optimize_thickness(
     absorption: Absorption = NO_ABSORPTION,
     scores: ScoresFn = wr2_scores,
     residual: str = "wr2",
+    dataset_label: str = "",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step optimizing each rotation's thickness by grid search.
 
@@ -94,6 +95,11 @@ def optimize_thickness(
     ``logger`` (default the null sink) receives a :class:`~diffBloch.observability.ThicknessOptimized`
     per rotation as its grid search completes -- the progress stream for this phase (mirroring
     ``optimize_orientation``); the memory-heavy thickness search is otherwise silent under a console logger.
+
+    ``dataset_label`` (default ``""``) stamps :class:`~diffBloch.observability.
+    ThicknessOptimizationStarted`'s ``dataset`` field -- pass the ``inputs.exp_data`` ref this call
+    is fitting, mirroring :func:`optimize_orientation`'s own ``dataset_label``. Execution-only: it
+    never enters the recipe/checkpoint identity.
     """
 
     def run(plan: Plan) -> Plan:
@@ -112,7 +118,9 @@ def optimize_thickness(
         )
         candidate_thicknesses = tuple(float(value) for value in candidates.tolist())
         built = require_built_plans(plan)
-        logger.report(ThicknessOptimizationStarted(total_rotations=len(built)))
+        logger.report(
+            ThicknessOptimizationStarted(total_rotations=len(built), dataset=dataset_label)
+        )
         fitted = []
         for op in built:
             orientation, score, thickness, candidate_scores = _fit_one(engine, fgb, op, candidates)

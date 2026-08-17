@@ -154,6 +154,24 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
 
 
+def test_fit_orientation_stamps_the_dataset_label_onto_the_started_event() -> None:
+    """dataset_label reaches OrientationOptimizationStarted, so a pooled multi-dataset console log
+    can tell which dataset a "N rotation(s)" announcement belongs to."""
+    from diffBloch.observability import OrientationOptimizationStarted, RecordingLogger
+
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    refinement = _refinement(asu_plan, spec, numbers)
+    recorder = RecordingLogger()
+
+    optimize_orientation(
+        refinement, NelderMeadSearch(), logger=recorder, dataset_label="a.cif_pets"
+    )(Plan(structure_factor_grid=grid, orientations=(matched,)))
+
+    (started,) = [e for e in recorder.events if isinstance(e, OrientationOptimizationStarted)]
+    assert started.dataset == "a.cif_pets"
+
+
 def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() -> None:
     # A Plan carrying a rocking-curve tilt set must be scored *under integration* at every trial --
     # the fit/eval consistency invariant. The trial builds thread op.tilts through unchanged, so an
@@ -279,7 +297,16 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     ):
         calls.append(1)
         time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return op, 0.5, 1, 1
+        return fo._FitResult(
+            plan=op,
+            score=0.5,
+            n_trials=1,
+            n_passes=1,
+            alpha=0.0,
+            beta=0.0,
+            omega=0.0,
+            seed_score=0.5,
+        )
 
     monkeypatch.setattr(fo, "_refine_one", stub)
     grid, asu_plan, spec, numbers = _silicon()

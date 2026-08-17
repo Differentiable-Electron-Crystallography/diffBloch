@@ -10,7 +10,12 @@ from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimized
+from diffBloch.observability import (
+    MultiLogger,
+    NullLogger,
+    OrientationOptimized,
+    PreprocessCompleted,
+)
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -91,7 +96,12 @@ def test_infer_delegates_to_run_experiment_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
+    logger = captured["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == [
+        "ConsoleLogger",  # on by default (no --quiet)
+        "PreprocessSummaryLogger",  # PREPROCESS COMPLETE box, unconditional like --quiet elsewhere
+    ]
     assert captured["checkpoint"] is True  # checkpoint on by default
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
@@ -155,7 +165,8 @@ def test_infer_builds_console_and_csv_sinks(
 
 
 def test_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``--quiet`` opts out of the default console stream -> the null sink (no experimental_data)."""
+    """``--quiet`` opts the console stream out to the null sink, but the PREPROCESS COMPLETE box
+    stays wired -- it is a run summary line, not part of the per-event stream ``--quiet`` mutes."""
     seen: dict[str, object] = {}
 
     def fake_run_experiment(
@@ -174,7 +185,9 @@ def test_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
     assert main(["infer", "x", "--quiet"]) == 0
-    assert isinstance(seen["logger"], NullLogger)
+    logger = seen["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["NullLogger", "PreprocessSummaryLogger"]
 
 
 def test_infer_missing_experiment_reports_concise_error(
@@ -265,24 +278,37 @@ def test_preprocess_delegates_and_reports_without_scoring(
             OrientationOptimized(
                 rotation_index=3,
                 score=0.25,
+                seed_score=0.4,
+                alpha=0.1,
+                beta=0.0,
+                omega=-0.1,
                 residual="wr2",
                 n_matched_hkl=2,
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
         logger.report(
             OrientationOptimized(
                 rotation_index=8,
                 score=0.5,
+                seed_score=0.6,
+                alpha=0.05,
+                beta=-0.05,
+                omega=0.0,
                 residual="wr2",
                 n_matched_hkl=3,
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
+        # _preprocess() itself emits this once preprocessing settles; PreprocessSummaryLogger is
+        # what turns it into the PREPROCESS COMPLETE box, so the fake must emit it too.
+        logger.report(PreprocessCompleted(n_rotations=2, total_hkl=7, matched_hkl=5))
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
@@ -409,11 +435,16 @@ def test_refine_delegates_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    # The refine path fans out to the console and to the summary sink that writes
-    # refinement_report.txt -- composed here, not inside refine_experiment.
+    # The refine path fans out to the console, the summary sink that writes
+    # refinement_report.txt, and the PREPROCESS COMPLETE box -- composed here, not inside
+    # refine_experiment.
     logger = captured["logger"]
     assert isinstance(logger, MultiLogger)
-    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "SummaryLogger"]
+    assert [type(s).__name__ for s in logger.loggers] == [
+        "ConsoleLogger",
+        "SummaryLogger",
+        "PreprocessSummaryLogger",
+    ]
     out = capsys.readouterr().out
     assert "REFINEMENT COMPLETE" in out
     assert _summary_row(out, "Best epoch", "2")
