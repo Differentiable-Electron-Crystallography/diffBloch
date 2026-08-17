@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
@@ -80,7 +80,7 @@ jobs:
           lfs: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
@@ -148,7 +148,7 @@ jobs:
         run: git pull --rebase origin badges
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: false  # no lockfile on badges; nothing worth caching
 
@@ -189,7 +189,7 @@ jobs:
 
       # file_pattern keeps the downloaded artifacts out of the commit.
       - name: Commit anchor trend
-        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: Update anchor trend
           file_pattern: anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
@@ -208,7 +208,7 @@ jobs:
           lfs: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
