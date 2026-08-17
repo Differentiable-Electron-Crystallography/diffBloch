@@ -629,6 +629,39 @@ def test_console_logger_renders_a_thickness_progress_bar_on_a_tty(
     assert out.endswith("\n")
 
 
+def test_console_logger_names_the_dataset_on_orientation_and_thickness_started(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression for #140-adjacent multi-dataset log readability: previously these two lines
+    carried only a rotation count, with no way to tell which dataset a pooled run's announcement
+    belonged to."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            OrientationOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets")
+        )
+        logger.report(ThicknessOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets"))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+    assert "Thickness optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+
+
+def test_console_logger_omits_the_dataset_segment_when_unlabeled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A direct API caller outside the multi-dataset preprocess loop passes no dataset_label -- the
+    line must fall back to its original plain form, not print an empty "│  │" segment."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(OrientationOptimizationStarted(total_rotations=52))
+        logger.report(ThicknessOptimizationStarted(total_rotations=52))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 52 rotation(s)" in messages
+    assert "Thickness optimization │ 52 rotation(s)" in messages
+
+
 def test_console_logger_falls_back_to_plain_lines_off_a_tty(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

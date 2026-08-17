@@ -1090,9 +1090,12 @@ def _recipe_steps(
     ``max_batch`` (also execution-only) is threaded to both fits: it caps the ``matrix_exp``
     propagator block so a wide coupled segment x the thickness grid can't materialize the whole
     propagator at once; ``None`` picks a memory-safe block.
-    ``dataset_label`` (also execution-only) is this call's ``inputs.exp_data`` ref, stamped onto
-    every :class:`~diffBloch.observability.OrientationOptimized` the orientation fit emits -- see
-    :func:`~diffBloch.preprocess.optimize_orientation`.
+    ``dataset_label`` (also execution-only) is this call's ``inputs.exp_data`` ref, threaded to both
+    fits and stamped onto every :class:`~diffBloch.observability.OrientationOptimized` /
+    :class:`~diffBloch.observability.OrientationOptimizationStarted` /
+    :class:`~diffBloch.observability.ThicknessOptimizationStarted` they emit -- see
+    :func:`~diffBloch.preprocess.optimize_orientation` /
+    :func:`~diffBloch.preprocess.optimize_thickness`.
     """
     search = cfg.preprocess.orientation.to_search()
     thickness_grid = cfg.preprocess.thickness.to_grid()
@@ -1126,6 +1129,7 @@ def _recipe_steps(
             absorption=cfg.blochwave.to_absorption(),
             scores=cfg.loss_metrics.to_scores(),
             residual=cfg.loss_metrics.residual,
+            dataset_label=dataset_label,
         )
 
     steps: list[PlanStep] = []

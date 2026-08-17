@@ -232,11 +232,15 @@ class OrientationOptimizationStarted:
     only assembled deep inside the step itself. Deliberately a distinct channel from
     ``OrientationOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    search is fitting (empty when the caller does not pass ``dataset_label``, e.g. direct API use
+    outside the multi-dataset preprocess loop) -- without it, a pooled multi-dataset run's console
+    log cannot tell which dataset a "N rotation(s)" announcement belongs to.
     """
 
     channel: ClassVar[str] = "orientation_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -356,11 +360,13 @@ class ThicknessOptimizationStarted:
     :class:`OrientationOptimizationStarted`. Deliberately a distinct channel from
     ``ThicknessOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    grid search is fitting, mirroring :attr:`OrientationOptimizationStarted.dataset`.
     """
 
     channel: ClassVar[str] = "thickness_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:

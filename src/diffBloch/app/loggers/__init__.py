@@ -330,7 +330,17 @@ class ConsoleLogger:
             self._refinement_started_at = time.perf_counter()
             return
         if isinstance(event, OrientationOptimizationStarted):
-            _log.log(self.level, "Orientation optimization │ %d rotation(s)", event.total_rotations)
+            if event.dataset:
+                _log.log(
+                    self.level,
+                    "Orientation optimization │ %s │ %d rotation(s)",
+                    event.dataset,
+                    event.total_rotations,
+                )
+            else:
+                _log.log(
+                    self.level, "Orientation optimization │ %d rotation(s)", event.total_rotations
+                )
             self._orientation_total = event.total_rotations
             self._orientation_seen = 0
             self._orientation_started_at = time.perf_counter()
@@ -350,7 +360,17 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, ThicknessOptimizationStarted):
-            _log.log(self.level, "Thickness optimization │ %d rotation(s)", event.total_rotations)
+            if event.dataset:
+                _log.log(
+                    self.level,
+                    "Thickness optimization │ %s │ %d rotation(s)",
+                    event.dataset,
+                    event.total_rotations,
+                )
+            else:
+                _log.log(
+                    self.level, "Thickness optimization │ %d rotation(s)", event.total_rotations
+                )
             self._thickness_total = event.total_rotations
             self._thickness_seen = 0
             self._thickness_started_at = time.perf_counter()

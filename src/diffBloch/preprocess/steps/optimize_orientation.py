@@ -237,7 +237,9 @@ def optimize_orientation(
             )
 
         built = require_built_plans(plan)
-        logger.report(OrientationOptimizationStarted(total_rotations=len(built)))
+        logger.report(
+            OrientationOptimizationStarted(total_rotations=len(built), dataset=dataset_label)
+        )
         results_by_index: dict[int, _FitResult] = {}
         cap = search.max_iterations
 

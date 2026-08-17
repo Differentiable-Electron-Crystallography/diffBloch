@@ -17,7 +17,11 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
-from diffBloch.observability import RecordingLogger, ThicknessOptimized
+from diffBloch.observability import (
+    RecordingLogger,
+    ThicknessOptimizationStarted,
+    ThicknessOptimized,
+)
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, optimize_thickness
 from diffBloch.preprocess.plan import Plan
@@ -166,6 +170,26 @@ def test_fit_thickness_emits_one_thicknessfitted_per_rotation() -> None:
     # each event's thickness is the value baked onto the matching returned orientation
     for index, event in enumerate(events):
         assert event.thickness == float(fitted.orientations[index].thickness[0])
+
+
+def test_fit_thickness_stamps_the_dataset_label_onto_the_started_event() -> None:
+    """dataset_label reaches ThicknessOptimizationStarted, so a pooled multi-dataset console log
+    can tell which dataset a "N rotation(s)" announcement belongs to."""
+    grid, asu_plan, spec, numbers = _silicon()
+    observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    op = OrientationPlan.build(grid, _BEAM_HKL, observed, energy=_ENERGY, thickness=(900.0,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
+
+    log = RecordingLogger()
+    optimize_thickness(
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
+        logger=log,
+        dataset_label="a.cif_pets",
+    )(plan)
+
+    (started,) = [event for event in log.events if isinstance(event, ThicknessOptimizationStarted)]
+    assert started.dataset == "a.cif_pets"
 
 
 # --- device knob (the grid search runs on the accelerator; params.device is authoritative) --------
