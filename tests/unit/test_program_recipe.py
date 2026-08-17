@@ -75,9 +75,9 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
 
     def fake_preprocess(
         *args: object, **kwargs: object
-    ) -> tuple[object, object, object, object, object]:
+    ) -> tuple[object, object, object, object, object, object]:
         seen["device"] = kwargs["device"]
-        return object(), object(), plan, object(), None
+        return object(), object(), plan, object(), None, ()
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
@@ -229,7 +229,14 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
     )
     plot_dir = tmp_path / "thickness_optim"
 
-    refinement, _integrations, plan, _validation_rotation_indices, _plan_lock_sha256s = _preprocess(
+    (
+        refinement,
+        _integrations,
+        plan,
+        _validation_rotation_indices,
+        _plan_lock_sha256s,
+        _dataset_ranges,
+    ) = _preprocess(
         root,
         cfg,
         logger=NULL_LOGGER,

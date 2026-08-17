@@ -41,6 +41,7 @@ from diffBloch.observability import (
     OrientationOptimized,
     PlanSeeded,
     PlanStepCompleted,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementOrientationStep,
     RefinementStarted,
@@ -54,8 +55,10 @@ __all__ = [
     "ConsoleLogger",
     "EarlyAbortLogger",
     "FitAbortedError",
+    "PreprocessSummaryLogger",
     "format_measurements",
     "namespaced_measurements",
+    "print_summary_box",
     "residual_label",
 ]
 
@@ -159,6 +162,70 @@ def _render_progress_bar(current: int, total: int, elapsed: float, suffix: str) 
     sys.stdout.flush()
     if current >= total:
         sys.stdout.write("\n")
+
+
+def print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
+    """Print a consistently aligned 62-column completion summary.
+
+    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
+    not truncate, so a longer label silently pushes its value past the box border and misaligns that
+    row against every other. Shared by the CLI's own end-of-run boxes and by
+    :class:`PreprocessSummaryLogger`, so every "... COMPLETE" box in a run looks the same regardless
+    of which command or which phase printed it.
+    """
+    width = 62
+    label_width = 26
+    value_width = width - label_width - 3
+    heading = f" {title} "
+    print(f"╭{heading:─^{width}}╮")
+    for label, value in rows:
+        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
+    print(f"╰{'─' * width}╯")
+
+
+@dataclass
+class PreprocessSummaryLogger:
+    """Print the "PREPROCESS COMPLETE" box the moment preprocessing settles, on any entry point.
+
+    Accumulates the mean orientation-search score from the :class:`~diffBloch.observability.
+    OrientationOptimized` stream (exactly what ``preprocess_experiment``'s own CLI handler used to
+    compute ad hoc, only for itself) and prints the box on
+    :class:`~diffBloch.observability.PreprocessCompleted` -- the shared ``_preprocess`` spine's
+    terminal event, emitted the same way regardless of whether the caller is
+    ``preprocess_experiment``, ``run_experiment``, or ``refine_experiment``. Before this existed,
+    only a standalone ``preprocess`` run could show this box: ``refine``/``infer`` swallow
+    preprocessing internally and go straight into their own next phase, with nothing marking that
+    preprocessing (and any orientation search it ran) had actually finished.
+    """
+
+    _scores: list[float] = field(default_factory=list, init=False, repr=False)
+    _residual: str | None = field(default=None, init=False, repr=False)
+
+    def report(self, event: Event) -> None:
+        if isinstance(event, OrientationOptimized):
+            self._scores.append(event.score)
+            self._residual = event.residual
+        elif isinstance(event, PreprocessCompleted):
+            mean_label = (
+                f"Mean {residual_label(self._residual)}" if self._residual else "Mean score"
+            )
+            mean_value = (
+                f"{sum(self._scores) / len(self._scores):.6g}"
+                if self._scores
+                else "n/a (checkpoint reused)"
+            )
+            print()
+            print_summary_box(
+                "PREPROCESS COMPLETE",
+                (
+                    ("Rotations", str(event.n_rotations)),
+                    ("Total HKLs", str(event.total_hkl)),
+                    ("Matched HKLs", str(event.matched_hkl)),
+                    (mean_label, mean_value),
+                ),
+            )
+            self._scores = []
+            self._residual = None
 
 
 @dataclass
@@ -306,6 +373,14 @@ class ConsoleLogger:
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                suffix += f" │ val wR2 {val_wr2} │ val R_obs {val_r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
             for term, values in _penalty_components(event):
@@ -373,6 +448,19 @@ class ConsoleLogger:
                 r_obs,
                 diff_loss,
             )
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                _log.log(
+                    self.level,
+                    "  validation      │ wR2 %s │ R_obs %s",
+                    val_wr2,
+                    val_r_obs,
+                )
             for term, values in _penalty_components(event):
                 _log.log(
                     self.level,
