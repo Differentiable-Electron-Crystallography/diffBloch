@@ -188,13 +188,13 @@ Plan(
     ),
     orientations=(
         OrientationPlan(
-            orientation=...,      # one rotation/orientation
-            tilts=...,            # rocking-curve sub-orientations
-            thickness=...,        # fitted value
+            orientation=...,  # one rotation/orientation
+            tilts=...,  # rocking-curve sub-orientations
+            thickness=...,  # fitted value
         ),
         # ...more rotations...
     ),
-    provenance=(...),             # ordered preprocessing recipe
+    provenance=(...),  # ordered preprocessing recipe
 )
 ```
 
