@@ -220,6 +220,7 @@ Input file references, relative to the experiment directory only (`Inputs`).
 | `exp_data` | required | Relative path to a `.cif_pets`, or (with `multi_dataset: true`) a list of 2+ paths. |
 | `multi_dataset` | `false` | See [Combining multiple datasets](#combining-multiple-datasets) below. |
 | `load_hydrogens` | `false` | Include hydrogen atom sites from the structure CIF (molecular crystals). |
+| `isotropic_displacements_only` | `false` | Force every atom to refine with isotropic ADPs. CIF `Uani` sites are seeded from their crystallographic `Ueq`; see [ADP parameterization](inputs.md#adp-parameterization). |
 
 ### Combining multiple datasets
 
