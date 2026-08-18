@@ -554,9 +554,9 @@ def test_isotropic_displacements_only_uses_pets_authoritative_cell_for_ueq() -> 
     pets_unit_cell = cell_matrix_from_parameters(pets_cell)
     pets_reciprocal_basis = reciprocal_cell(pets_unit_cell)
     pets_reciprocal_metric = pets_reciprocal_basis @ pets_reciprocal_basis.T
-    seeded_uiso = float(torch.sum(state.uij_star[0] * torch.tensor(pets_reciprocal_metric))) / float(
-        np.sum(pets_reciprocal_metric * pets_reciprocal_metric)
-    )
+    seeded_uiso = float(
+        torch.sum(state.uij_star[0] * torch.tensor(pets_reciprocal_metric))
+    ) / float(np.sum(pets_reciprocal_metric * pets_reciprocal_metric))
     expected_pets_ueq = ueq_from_cif_uij(
         torch.tensor(_UANI, dtype=torch.float64),
         torch.tensor(np.linalg.norm(pets_reciprocal_basis, axis=1), dtype=torch.float64),
