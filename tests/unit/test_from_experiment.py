@@ -534,6 +534,50 @@ def test_isotropic_displacements_only_forces_uani_to_uiso_seeded_from_cif_ueq() 
     assert seeded_uiso[1] == pytest.approx(_UISO)
 
 
+def test_isotropic_displacements_only_uses_pets_authoritative_cell_for_ueq() -> None:
+    structure = _oblique_structure(("Uani",))
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    pets_cell = structure.cell_parameters.copy()
+    pets_cell[4] = 104.0  # below the 5% mismatch guard, but enough to change oblique-cell Ueq
+    experimental_data = experimental_data.model_copy(update={"cell_parameters": pets_cell})
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={
+            "inputs": base.inputs.model_copy(update={"isotropic_displacements_only": True}),
+            "blochwave": base.blochwave.model_copy(update={"mosaicity": False}),
+        }
+    )
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    state = constrain(setup.refinement.params, setup.refinement.spec)
+    pets_unit_cell = cell_matrix_from_parameters(pets_cell)
+    pets_reciprocal_basis = reciprocal_cell(pets_unit_cell)
+    pets_reciprocal_metric = pets_reciprocal_basis @ pets_reciprocal_basis.T
+    seeded_uiso = float(torch.sum(state.uij_star[0] * torch.tensor(pets_reciprocal_metric))) / float(
+        np.sum(pets_reciprocal_metric * pets_reciprocal_metric)
+    )
+    expected_pets_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64),
+        torch.tensor(np.linalg.norm(pets_reciprocal_basis, axis=1), dtype=torch.float64),
+        torch.tensor(pets_unit_cell @ pets_unit_cell.T, dtype=torch.float64),
+    ).item()
+
+    cif_unit_cell = cell_matrix_from_parameters(structure.cell_parameters)
+    cif_reciprocal_basis = reciprocal_cell(cif_unit_cell)
+    cif_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64),
+        torch.tensor(np.linalg.norm(cif_reciprocal_basis, axis=1), dtype=torch.float64),
+        torch.tensor(cif_unit_cell @ cif_unit_cell.T, dtype=torch.float64),
+    ).item()
+
+    assert setup.refinement.spec.adp_kind == ("Uiso",)
+    assert setup.refinement.cell_parameters is not None
+    np.testing.assert_allclose(setup.refinement.cell_parameters, pets_cell)
+    assert seeded_uiso == pytest.approx(expected_pets_ueq)
+    assert seeded_uiso != pytest.approx(cif_ueq, rel=1e-4)
+
+
 def test_isotropic_displacements_only_defaults_to_off() -> None:
     structure = _ortho_structure(("Uani", "Uiso"))
 
