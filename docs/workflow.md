@@ -132,16 +132,15 @@ run with:
 uv run diffbloch refine <experiment_dir>
 ```
 
-The objective and validation metrics are reported throughout the run, and a successful `refine`
-writes a durable structured report at
-`<experiment_dir>/reproducibility/reports/report-YYYYMMDDTHHMMSSZ.jsonl` by default. Failed CLI runs keep
-their in-flight observations on the console and do not promote a canonical JSONL report.
+The objective and validation metrics are reported throughout the run, and `refine` writes a durable
+structured report at `<experiment_dir>/reproducibility/reports/report-YYYYMMDDTHHMMSSZ.jsonl` by
+default. A failed run's partial report is kept too, under the `-failed.jsonl` name — its stage
+events are how you see where the run stopped.
 
-The top-level `tools/event_report/` visualizer consumes that JSONL file. Its HTML renderer produces
-explicit converge/preprocess/infer/refine sections from the report's declared start/stop events,
-then fills those sections with the preprocess summary, epoch curve table, orientation-optimization
-table, and multi-dataset summary. Its notebook renders matplotlib figures from the same event
-stream and is the only place that exports visualization images.
+The top-level `tools/event_report/` visualizer consumes that JSONL file: `reader.py` loads and
+slices a report, `figures.py` renders it — convergence sweeps, orientation search, thickness grids
+and profiles, coupling geometry, epoch curves, and per-rotation scores — and `event_report.ipynb`
+drives the two. That is the only place visualization images are produced.
 
 For more information, see [Refinement](refinement.md). 
 
@@ -158,8 +157,9 @@ A completed refinement writes the main results beside the inputs and under `repr
 ```
 
 `refined_structure.cif` contains the refined structural model, while `report-*.jsonl` is the
-canonical report artifact for a completed command. Text or HTML summaries are generated from that
-report by external tooling.
+canonical report artifact for a completed command. Any summary view is generated from that report
+by whatever consumes it. Reports are per-execution logs rather than part of the reproducibility
+record, so `reproducibility/reports/` is git-ignored; the checkpoints and locks beside it are not.
 The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware. 
 
 For more information, see [Reproducibility](reproducibility.md).
