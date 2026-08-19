@@ -1,8 +1,8 @@
 # diffBloch event report
 
 This top-level tool is a visualizer consumer, not part of the diffBloch core library. It reads the
-JSONL reports produced by CLI commands like `diffbloch refine` and renders a lightweight HTML
-report. 
+canonical JSONL reports produced by CLI commands like `diffbloch refine` and renders a lightweight
+HTML report.
 
 ## Example workflow
 
@@ -51,7 +51,10 @@ notebook shows an upload control that accepts a picked or dragged `.jsonl` file;
 field / `DIFFBLOCH_EVENT_LOG` workflow is the supported route.
 
 The notebook imports matplotlib, renders figures from the event payloads, and includes an explicit
-`export_figures(...)` helper guarded by `EXPORT_FIGURES = False`.
+`export_figures(...)` helper guarded by `EXPORT_FIGURES = False`. Figures are rendered when the
+JSONL contains the matching events: epoch curves, orientation before/after, orientation search
+traces, final per-rotation scores, per-dataset summaries, thickness grids, thickness profiles,
+coupling geometry, and coupling segment heatmaps.
 
 The JSONL report is the durable contract. Runtime diffBloch code emits structured events and app
 loggers persist only their declared output; report tools decide how to render them. Visualization
