@@ -14,16 +14,17 @@ from types import SimpleNamespace
 
 import pytest
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.app.program import (
     _LARGE_CELL_THRESHOLD_A3,
-    _preprocess,
     _recipe_steps,
     _select_device,
     preprocess_experiment,
+    run_experiment,
 )
 from diffBloch.config import load_experiment
 from diffBloch.io import read_experimental_data, read_structure
-from diffBloch.observability import NULL_LOGGER, DeviceSelected, RecordingLogger
+from diffBloch.observability import NULL_LOGGER, EventRecord
 from diffBloch.preprocess import from_experiment, resolve_recipe, step_records
 from diffBloch.preprocess.pipeline import Fork
 
@@ -45,26 +46,36 @@ def _the_fork() -> Fork:
     return forks[0]
 
 
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
+
+
 def test_select_device_falls_back_from_cuda_to_cpu(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    logger = RecordingLogger()
+    path = tmp_path / "report.jsonl"
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
 
-    selected = _select_device("cuda", logger=logger)
+    selected = _select_device("cuda", logger=ReportLogger(path))
 
     assert selected == "cpu"
-    assert logger.events == [DeviceSelected(requested="cuda", selected="cpu", cuda_available=False)]
+    [event] = _records(path)
+    assert event.event_type == "DeviceSelected"
+    assert event.payload == {"requested": "cuda", "selected": "cpu", "cuda_available": False}
 
 
-def test_select_device_keeps_cuda_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    logger = RecordingLogger()
+def test_select_device_keeps_cuda_when_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "report.jsonl"
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: True)
 
-    selected = _select_device("cuda", logger=logger)
+    selected = _select_device("cuda", logger=ReportLogger(path))
 
     assert selected == "cuda"
-    assert logger.events == [DeviceSelected(requested="cuda", selected="cuda", cuda_available=True)]
+    [event] = _records(path)
+    assert event.event_type == "DeviceSelected"
+    assert event.payload == {"requested": "cuda", "selected": "cuda", "cuda_available": True}
 
 
 def test_preprocess_experiment_default_device_falls_back_to_cpu(
@@ -75,9 +86,9 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
 
     def fake_preprocess(
         *args: object, **kwargs: object
-    ) -> tuple[object, object, object, object, object]:
+    ) -> tuple[object, object, object, object, object, object]:
         seen["device"] = kwargs["device"]
-        return object(), object(), plan, object(), None
+        return object(), object(), plan, object(), object(), None
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
@@ -85,6 +96,64 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
 
     assert preprocess_experiment("experiment-dir") is plan
     assert seen["device"] == "cpu"
+
+
+def test_run_experiment_declares_infer_stage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "report.jsonl"
+    plan = object()
+    refinement = object()
+    fake_cfg = SimpleNamespace(
+        blochwave=SimpleNamespace(solver="matrix_exp", to_absorption=lambda: None)
+    )
+    result = SimpleNamespace()
+
+    monkeypatch.setattr("diffBloch.app.program._select_device", lambda device, *, logger: "cpu")
+    monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (fake_cfg, object()))
+    monkeypatch.setattr(
+        "diffBloch.app.program._preprocess",
+        lambda *args, **kwargs: (refinement, object(), plan, frozenset(), (), None),
+    )
+    monkeypatch.setattr("diffBloch.app.program.run_inference", lambda *args, **kwargs: result)
+
+    assert run_experiment(tmp_path, logger=ReportLogger(path)) is result
+
+    records = _records(path)
+    assert records[0].event_type == "RunStageStarted"
+    assert records[0].payload["stage"] == "infer"
+    assert records[-1].event_type == "RunStageStopped"
+    assert records[-1].payload["stage"] == "infer"
+    assert records[-1].payload["status"] == "completed"
+
+
+def test_preprocess_stage_declares_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    path = tmp_path / "report.jsonl"
+
+    def fail_read_structure(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("diffBloch.app.program._read_structure", fail_read_structure)
+
+    from diffBloch.app import program
+
+    with pytest.raises(RuntimeError, match="boom"):
+        program._preprocess(  # noqa: SLF001
+            tmp_path,
+            object(),
+            logger=ReportLogger(path),
+            checkpoint=False,
+            refresh=False,
+            device="cpu",
+            workers=1,
+            max_batch=None,
+        )
+
+    records = _records(path)
+    assert [record.event_type for record in records] == ["RunStageStarted", "RunStageStopped"]
+    assert records[0].payload["stage"] == "preprocess"
+    assert records[1].payload["status"] == "failed"
+    assert records[1].payload["error_type"] == "RuntimeError"
 
 
 def test_fork_predicate_routes_at_the_threshold() -> None:
@@ -210,43 +279,6 @@ def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None
         "optimize_thickness",
         "optimize_orientation",
     ]
-
-
-def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path) -> None:
-    """``plot_thickness`` (API/CLI) composes a ``ThicknessPlotLogger`` into the recipe's logger.
-
-    Both fitting stages are disabled so only the unconditional ``build_orientation_plans`` geometry
-    build runs -- fast, and enough to exercise the composition branch without paying for a search.
-    """
-    root = FIXTURES / "quartz_anchor"
-    cfg, _ = load_experiment(root)
-    cfg = cfg.model_copy(
-        update={
-            "preprocess": cfg.preprocess.model_copy(
-                update={"optimize_orientation": False, "optimize_thickness": False}
-            )
-        }
-    )
-    plot_dir = tmp_path / "thickness_optim"
-
-    refinement, _integrations, plan, _validation_rotation_indices, _plan_lock_sha256s = _preprocess(
-        root,
-        cfg,
-        logger=NULL_LOGGER,
-        checkpoint=False,
-        refresh=False,
-        device=None,
-        workers=1,
-        max_batch=None,
-        plot_thickness=True,
-        plot_thickness_dir=plot_dir,
-    )
-
-    assert plan.orientations  # the geometry build actually ran
-    assert refinement is not None
-    # no thickness fit ran, so no PNG was written -- but the branch itself (directory resolution +
-    # MultiLogger composition) executed without error, which is what this test pins.
-    assert plot_dir.is_dir()
 
 
 def test_fit_stages_can_be_enabled_independently() -> None:

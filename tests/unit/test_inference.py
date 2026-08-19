@@ -10,14 +10,17 @@ in the e2e anchor (fit orientations), where the number is meaningful.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
+from diffBloch.observability import EventRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, run_inference
 from diffBloch.preprocess.plan import Plan
@@ -26,6 +29,10 @@ _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _METHOD = "matrix_exp"  # observed patterns below use this; keep run_inference matched to it
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 def _silicon() -> tuple[StructureFactorGrid, object, ConstraintSpec, torch.Tensor]:
@@ -152,27 +159,27 @@ def test_inference_result_aggregates_only_finite_rotations() -> None:
     assert result.mean_r_obs == result.per_rotation[0].r_obs
 
 
-def test_run_inference_emits_events_to_the_logger() -> None:
-    from diffBloch.observability import InferenceCompleted, RecordingLogger, RotationScored
-
+def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
     grid, asu_plan, spec, numbers = _silicon()
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     plan = Plan(
         structure_factor_grid=grid,
         orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
     )
-    logger = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path)
 
     result = run_inference(
         plan, _refinement(asu_plan, spec, numbers), method=_METHOD, logger=logger
     )
 
     # One RotationScored per rotation (in order), then one InferenceCompleted aggregate.
-    rotations = [e for e in logger.events if isinstance(e, RotationScored)]
-    completed = [e for e in logger.events if isinstance(e, InferenceCompleted)]
-    assert [e.index for e in rotations] == [0, 1]
-    assert rotations[0].r_obs == result.per_rotation[0].r_obs
+    events = _records(path)
+    rotations = [e for e in events if e.event_type == "RotationScored"]
+    completed = [e for e in events if e.event_type == "InferenceCompleted"]
+    assert [e.payload["index"] for e in rotations] == [0, 1]
+    assert rotations[0].measurements["r_obs"] == result.per_rotation[0].r_obs
     assert len(completed) == 1
-    assert completed[0].n_rotations == 2
-    assert completed[0].mean_r_obs == result.mean_r_obs
-    assert isinstance(logger.events[-1], InferenceCompleted)  # aggregate emitted last
+    assert completed[0].payload["n_rotations"] == 2
+    assert completed[0].payload["mean_r_obs"] == result.mean_r_obs
+    assert events[-1].event_type == "InferenceCompleted"  # aggregate emitted last

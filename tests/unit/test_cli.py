@@ -8,9 +8,9 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from diffBloch.app.cli import main
-from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimized
+from diffBloch.app.cli import _default_report_path, main
+from diffBloch.app.loggers import ReportLogger
+from diffBloch.observability import MultiLogger, OrientationOptimized
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -34,6 +34,17 @@ def test_validate_returns_zero(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_no_command_prints_help_returns_zero() -> None:
     assert main([]) == 0
+
+
+def test_default_report_path_uses_reports_subdirectory(tmp_path: Path) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+
+    path = _default_report_path(experiment)
+
+    assert path.parent == experiment / "reproducibility" / "reports"
+    assert path.name.startswith("report-")
+    assert path.suffix == ".jsonl"
 
 
 def test_missing_file_reports_concise_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -131,9 +142,11 @@ def test_lock_experiment_missing_experiment_reports_concise_error(
 
 
 def test_infer_delegates_to_run_experiment_and_reports(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     captured: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_run_experiment(
         experiment_dir: str,
@@ -155,21 +168,29 @@ def test_infer_delegates_to_run_experiment_and_reports(
         return InferenceResult(per_rotation=(rotation,))
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    rc = main(["infer", "/some/experiment"])
+    rc = main(["infer", str(experiment_dir)])
 
     assert rc == 0
-    assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
+    assert captured["dir"] == str(experiment_dir)
+    logger = captured["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
     assert captured["checkpoint"] is True  # checkpoint on by default
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
     out = capsys.readouterr().out
     assert "evaluated 1 rotations" in out
     assert "mean R_obs = 0.0500" in out
+    assert "report:" in out
+    assert len(list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
-def test_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_infer_checkpoint_flags_thread_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     seen: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_run_experiment(
         experiment_dir: str,
@@ -188,14 +209,18 @@ def test_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPatch) 
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["infer", "x", "--no-checkpoint", "--refresh", "--workers", "4"]) == 0
+    assert (
+        main(["infer", str(experiment_dir), "--no-checkpoint", "--refresh", "--workers", "4"]) == 0
+    )
     assert seen == {"checkpoint": False, "refresh": True, "workers": 4}
 
 
-def test_infer_builds_console_and_csv_sinks(
+def test_infer_builds_event_sink_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     seen: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_run_experiment(
         experiment_dir: str,
@@ -212,19 +237,21 @@ def test_infer_builds_console_and_csv_sinks(
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    csv_path = tmp_path / "experimental_data.csv"
-    rc = main(["infer", "x", "--csv", str(csv_path)])
 
-    assert rc == 0
+    assert main(["infer", str(experiment_dir), "--quiet"]) == 0
+
     logger = seen["logger"]
-    assert isinstance(logger, MultiLogger)
-    assert len(logger.loggers) == 2  # console + csv fanned out
-    assert csv_path.is_file()  # CSVLogger writes its header at construction
+    assert isinstance(logger, ReportLogger)
+    assert len(list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
-def test_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``--quiet`` opts out of the default console stream -> the null sink (no experimental_data)."""
+def test_infer_quiet_silences_only_the_console(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``--quiet`` opts out of console logging, but the JSONL report remains on."""
     seen: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_run_experiment(
         experiment_dir: str,
@@ -241,8 +268,8 @@ def test_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> No
         return InferenceResult(per_rotation=())
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["infer", "x", "--quiet"]) == 0
-    assert isinstance(seen["logger"], NullLogger)
+    assert main(["infer", str(experiment_dir), "--quiet"]) == 0
+    assert isinstance(seen["logger"], ReportLogger)
 
 
 def test_infer_missing_experiment_reports_concise_error(
@@ -255,9 +282,29 @@ def test_infer_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_delegates_and_reports(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_infer_failure_discards_the_canonical_report(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
+
+    def fail_run_experiment(*args: object, **kwargs: object) -> InferenceResult:
+        raise ValueError("bad input")
+
+    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fail_run_experiment)
+
+    assert main(["infer", str(experiment_dir), "--quiet"]) == 1
+
+    assert capsys.readouterr().err.startswith("error: bad input")
+    assert not list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))
+
+
+def test_converge_delegates_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
+
     def fake_converge_experiment(
         experiment_dir: str,
         *,
@@ -265,16 +312,18 @@ def test_converge_delegates_and_reports(
         device: object,
         n_orientations: int,
     ) -> SimpleNamespace:
-        assert experiment_dir == "/some/experiment"
-        assert isinstance(logger, ConsoleLogger)
+        assert experiment_dir == str(exp_dir)
+        assert isinstance(logger, MultiLogger)
+        assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
         assert device == "cuda"
         assert n_orientations == 1
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
 
-    assert main(["converge", "/some/experiment"]) == 0
-    assert capsys.readouterr().out == (
+    assert main(["converge", str(exp_dir)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(
         "========================================\n"
         "HYPERPARAMETER OPTIMIZATION RESULT\n"
         "gmax: 2.5\n"
@@ -283,6 +332,8 @@ def test_converge_delegates_and_reports(
         "========================================\n"
         "optimized_hyperparams gmax=2.5 sgmax=0.02 tilt_steps=46\n"
     )
+    assert "report:" in out
+    assert len(list((exp_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
 class _FakePlan:
@@ -308,9 +359,11 @@ class _FakePlan:
 
 
 def test_preprocess_delegates_and_reports_without_scoring(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     captured: dict[str, object] = {}
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
 
     def fake_preprocess_experiment(
         experiment_dir: str,
@@ -354,11 +407,13 @@ def test_preprocess_delegates_and_reports_without_scoring(
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
-    rc = main(["preprocess", "/some/experiment"])
+    rc = main(["preprocess", str(exp_dir)])
 
     assert rc == 0
-    assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], MultiLogger)
+    assert captured["dir"] == str(exp_dir)
+    logger = captured["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
     assert captured["checkpoint"] is True and captured["refresh"] is False
     assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
@@ -366,14 +421,17 @@ def test_preprocess_delegates_and_reports_without_scoring(
     assert _summary_row(out, "Rotations", "2")
     assert _summary_row(out, "Total HKLs", "7")
     assert _summary_row(out, "Matched HKLs", "5")
-    assert _summary_row(out, "Mean wR2", "0.375")
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
     assert "R_obs" not in out
+    assert "Report" in out
+    assert len(list((exp_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
-def test_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seen: dict[str, object] = {}
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
 
     def fake_preprocess_experiment(
         experiment_dir: str,
@@ -395,7 +453,7 @@ def test_preprocess_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
     rc = main(
-        ["preprocess", "x"]
+        ["preprocess", str(exp_dir)]
         + [
             "--no-checkpoint",
             "--refresh",
@@ -449,9 +507,11 @@ def _fake_refinement_result() -> SimpleNamespace:
 
 
 def test_refine_delegates_and_reports(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     captured: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_refine_experiment(
         experiment_dir: str,
@@ -473,15 +533,17 @@ def test_refine_delegates_and_reports(
         return _fake_refinement_result()
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
-    rc = main(["refine", "/some/experiment"])
+    rc = main(["refine", str(experiment_dir)])
 
     assert rc == 0
-    assert captured["dir"] == "/some/experiment"
-    # The refine path fans out to the console and to the summary sink that writes
-    # refinement_report.txt -- composed here, not inside refine_experiment.
+    assert captured["dir"] == str(experiment_dir)
+    # The refine path fans out to the console and a timestamped canonical JSONL report sink,
+    # composed here rather than inside refine_experiment.
     logger = captured["logger"]
     assert isinstance(logger, MultiLogger)
-    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "SummaryLogger"]
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
+    reports = sorted((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))
+    assert len(reports) == 1
     out = capsys.readouterr().out
     assert "REFINEMENT COMPLETE" in out
     assert _summary_row(out, "Best epoch", "2")
@@ -491,10 +553,14 @@ def test_refine_delegates_and_reports(
     assert _summary_row(out, "HKLs (Observed/total)", "8 / 12")
     assert "Refined Structure" in out
     assert "/tmp/refined_structure.cif" in out
+    assert "Report" in out
+    assert reports[0].name in out
 
 
-def test_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seen: dict[str, object] = {}
+    experiment_dir = tmp_path / "experiment"
+    experiment_dir.mkdir()
 
     def fake_refine_experiment(
         experiment_dir: str,
@@ -521,7 +587,7 @@ def test_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
     rc = main(
-        ["refine", "x"]
+        ["refine", str(experiment_dir)]
         + ["--no-checkpoint", "--refresh", "--device", "cuda", "--workers", "4"]
         + ["--verbose-refinement", "--profile", "--no-checkpoint-activations"]
     )
@@ -547,9 +613,13 @@ def test_refine_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    """converge emits the sweep stream, so it takes the same sinks as every other subcommand."""
+def test_converge_quiet_silences_only_the_console(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """converge emits JSONL reports by default even when console output is quiet."""
     seen: dict[str, object] = {}
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
 
     def fake_converge_experiment(
         experiment_dir: str, *, logger: object, device: object, n_orientations: int
@@ -558,5 +628,5 @@ def test_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> Non
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["converge", "/some/experiment", "--quiet"]) == 0
-    assert isinstance(seen["logger"], NullLogger)  # --quiet reaches it, not a hardcoded console
+    assert main(["converge", str(exp_dir), "--quiet"]) == 0
+    assert isinstance(seen["logger"], ReportLogger)

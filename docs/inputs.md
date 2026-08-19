@@ -86,8 +86,8 @@ energy. The first `.cif_pets` file supplies the unit cell used for the combined 
 
 When the learned thickness model is enabled (`refinement.thickness_nn`, the default), each dataset
 trains its own network over its own tilt range — pooled datasets with overlapping tilt ranges are
-never forced onto one shared thickness-vs-alpha curve. The refinement report carries one
-`Thickness NN -- <ref>` section and one `thickness_nn_shape_<stem>.png` plot per dataset.
+never forced onto one shared thickness-vs-alpha curve. The canonical JSONL report carries one
+`ThicknessProfile` event per dataset, which visualizers can render as thickness-vs-alpha curves.
 
 ## Outputs
 
@@ -96,9 +96,7 @@ Running preprocessing or refinement adds results to the experiment directory:
 | Output | Contents |
 |---|---|
 | `refined_structure.cif` | Refined crystal structure. |
-| `refinement_report.txt` | Final residuals, reflection counts, and refinement summary. |
-| `thickness_optim/` | Thickness-search plots when plotting is enabled. |
-| `thickness_nn_shape_<stem>.png` | Learned thickness curve per `.cif_pets` dataset, when the thickness network and plotting are enabled. |
+| `reproducibility/reports/report-*.jsonl` | Canonical versioned structured event report for completed commands, consumed by post-run notebooks and visualizers. |
 | `reproducibility/plan.<stem>.npz` | Saved preprocessing for each `.cif_pets` dataset. |
 | `reproducibility/plan.<stem>.lock` | Inputs and settings used for the saved preprocessing. |
 | `reproducibility/refined_parameters.npz` | Refined parameter values. |

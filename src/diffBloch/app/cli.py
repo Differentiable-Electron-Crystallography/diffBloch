@@ -17,8 +17,7 @@ import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
-from diffBloch.app.loggers.summary import SummaryLogger
+from diffBloch.app.loggers import ConsoleLogger, ReportLogger
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -31,8 +30,6 @@ from diffBloch.observability import (
     NULL_LOGGER,
     Logger,
     MultiLogger,
-    OrientationOptimized,
-    RecordingLogger,
 )
 
 
@@ -61,9 +58,6 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="silence the per-step / per-rotation observation stream (console logging is on by "
         "default; the run summary line still prints)",
-    )
-    parser.add_argument(
-        "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
     )
     parser.add_argument(
         "--refresh",
@@ -99,21 +93,6 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
-    )
-    parser.add_argument(
-        "--plot-thickness",
-        action="store_true",
-        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search; ORs with "
-        "preprocess.thickness.plot in experiment.yaml, so "
-        "either turns it on. Defaults to '<inputs.structure's directory>/thickness_optim', "
-        "override with --plot-thickness-dir",
-    )
-    parser.add_argument(
-        "--plot-thickness-dir",
-        metavar="PATH",
-        default=None,
-        help="override the output directory for thickness plots; only takes effect when plotting "
-        "is on (--plot-thickness or preprocess.thickness.plot)",
     )
 
 
@@ -178,9 +157,6 @@ def main(argv: list[str] | None = None) -> int:
         "--quiet",
         action="store_true",
         help="silence the per-trial observation stream (the settled result still prints)",
-    )
-    p_converge.add_argument(
-        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
     )
     p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
@@ -261,24 +237,31 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
+        progress_logger: Logger | None = None
         try:
+            report_path = _default_report_path(args.experiment_directory)
+            progress_logger = _build_logger(
+                console=not args.quiet, report=report_path, completed_only=True
+            )
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=progress_logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if progress_logger is not None:
+                _discard_reports(progress_logger)
             if args.debug:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        _finalize_reports(progress_logger)
         print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
+        print(f"report: {report_path}")
         return 0
 
     if args.command == "preprocess":
@@ -286,43 +269,33 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
+        progress_logger = None
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
-            summary_logger = RecordingLogger()
-            logger: Logger = (
-                summary_logger
-                if progress_logger is NULL_LOGGER
-                else MultiLogger((progress_logger, summary_logger))
+            report_path = _default_report_path(args.experiment_directory)
+            progress_logger = _build_logger(
+                console=not args.quiet, report=report_path, completed_only=True
             )
             plan = preprocess_experiment(
                 args.experiment_directory,
-                logger=logger,
+                logger=progress_logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
                 workers=args.workers,
                 max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if progress_logger is not None:
+                _discard_reports(progress_logger)
             if args.debug:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        _finalize_reports(progress_logger)
         print()
         built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
         total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
         matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
-        fitted = [
-            event for event in summary_logger.events if isinstance(event, OrientationOptimized)
-        ]
-        mean_loss = (
-            f"{sum(event.score for event in fitted) / len(fitted):.6g}"
-            if fitted
-            else "n/a (checkpoint reused)"
-        )
-        mean_label = f"Mean {residual_label(fitted[0].residual)}" if fitted else "Mean score"
         _print_summary_box(
             "PREPROCESS COMPLETE",
             (
@@ -331,7 +304,6 @@ def main(argv: list[str] | None = None) -> int:
                 ("Total HKLs", str(total_hkl)),
                 ("Matched HKLs", str(matched_hkl)),
                 ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
-                (mean_label, mean_loss),
             ),
         )
         print()
@@ -351,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
                 lock = npz.with_suffix(".lock")
                 if lock.exists():
                     print(f"  • {'Plan Lock':<20} {lock.resolve()}")
+        else:
+            print("Output files")
+        print(f"  • {'Report':<20} {report_path}")
         return 0
 
     if args.command == "refine":
@@ -358,18 +333,18 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
+        progress_logger = None
         try:
-            # The written summary is one more sink on the run's event stream, chosen here beside
-            # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
-            # not) for themselves instead of having a file appear as a side effect of refining.
-            report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
-            refine_sinks: tuple[Logger, ...] = (
-                _build_logger(console=not args.quiet, csv=args.csv),
-                SummaryLogger(report_path),
+            experiment_root = Path(args.experiment_directory)
+            if not experiment_root.exists():
+                raise FileNotFoundError(experiment_root)
+            report_path = _default_report_path(experiment_root)
+            progress_logger = _build_logger(
+                console=not args.quiet, report=report_path, completed_only=True
             )
             refined = refine_experiment(
                 args.experiment_directory,
-                logger=MultiLogger(refine_sinks),
+                logger=progress_logger,
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -378,14 +353,15 @@ def main(argv: list[str] | None = None) -> int:
                 verbose=args.verbose_refinement,
                 profile=args.profile,
                 checkpoint_activations=not args.no_checkpoint_activations,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if progress_logger is not None:
+                _discard_reports(progress_logger)
             if args.debug:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        _finalize_reports(progress_logger)
         best = refined.history[refined.best_step]
         wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
         r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
@@ -410,25 +386,33 @@ def main(argv: list[str] | None = None) -> int:
         print("Output files")
         for name, path in refined.artifacts.items():
             print(f"  • {name.replace('_', ' ').title():<20} {path}")
-        print(f"  • {'Refinement Report':<20} {report_path}")
+        print(f"  • {'Report':<20} {report_path}")
         return 0
 
     if args.command == "converge":
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
+        progress_logger = None
         try:
+            report_path = _default_report_path(args.experiment_directory)
+            progress_logger = _build_logger(
+                console=not args.quiet, report=report_path, completed_only=True
+            )
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=progress_logger,
                 device=args.device,
                 n_orientations=args.orientations,
             )
         except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if progress_logger is not None:
+                _discard_reports(progress_logger)
             if args.debug:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
+        _finalize_reports(progress_logger)
         print("========================================")
         print("HYPERPARAMETER OPTIMIZATION RESULT")
         print(f"gmax: {settled.g_max:g}")
@@ -439,13 +423,27 @@ def main(argv: list[str] | None = None) -> int:
             f"optimized_hyperparams gmax={settled.g_max:g} "
             f"sgmax={settled.sg_max:g} tilt_steps={settled.tilt_steps}"
         )
+        print(f"report: {report_path}")
         return 0
 
     parser.print_help()
     return 0
 
 
-def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) -> Logger:
+def _default_report_path(experiment_directory: str | Path) -> Path:
+    experiment_root = Path(experiment_directory)
+    if not experiment_root.exists():
+        raise FileNotFoundError(experiment_root)
+    return ReportLogger.timestamped_path(experiment_root / "reproducibility" / "reports").resolve()
+
+
+def _build_logger(
+    *,
+    console: bool,
+    report: str | Path | None = None,
+    per_rotation: bool = True,
+    completed_only: bool = False,
+) -> Logger:
     """Combine the requested observation sinks (none => the null logger that discards events).
 
     ``per_rotation`` opts the console into the settled per-rotation stream.
@@ -453,13 +451,31 @@ def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) 
     sinks: list[Logger] = []
     if console:
         sinks.append(ConsoleLogger(per_rotation=per_rotation))
-    if csv is not None:
-        sinks.append(CSVLogger(Path(csv)))
+    if report is not None:
+        sinks.append(ReportLogger(Path(report), completed_only=completed_only))
     if not sinks:
         return NULL_LOGGER
     if len(sinks) == 1:
         return sinks[0]
     return MultiLogger(tuple(sinks))
+
+
+def _report_loggers(logger: Logger) -> tuple[ReportLogger, ...]:
+    if isinstance(logger, ReportLogger):
+        return (logger,)
+    if isinstance(logger, MultiLogger):
+        return tuple(sink for sink in logger.loggers if isinstance(sink, ReportLogger))
+    return ()
+
+
+def _finalize_reports(logger: Logger) -> None:
+    for report_logger in _report_loggers(logger):
+        report_logger.finalize()
+
+
+def _discard_reports(logger: Logger) -> None:
+    for report_logger in _report_loggers(logger):
+        report_logger.discard()
 
 
 if __name__ == "__main__":

@@ -7,18 +7,25 @@ solve geometry across all three plan phases (segmented, tilt-independent, pre-bu
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import torch
 from tests.unit.test_inference import _BEAM_HKL, _ENERGY, _silicon
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine import CoupledOrientationPlan, OrientationPlan
-from diffBloch.observability import CouplingSummary, RecordingLogger, RotationCoupling
+from diffBloch.observability import EventRecord
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import CandidatePlan, Plan, coupling_stats, summarize_plan
 from diffBloch.preprocess.steps.report_coupling import report_coupling
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 def _pattern() -> PatternBatch:
@@ -75,7 +82,7 @@ def test_coupling_stats_reads_each_plan_phase() -> None:
     }
 
 
-def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> None:
+def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary(tmp_path: Path) -> None:
     grid, *_ = _silicon()
     segmented = _segmented(grid)
     tilt_independent = OrientationPlan.build(
@@ -83,17 +90,20 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary() -> 
     )
     plan = Plan(structure_factor_grid=grid, orientations=(segmented, tilt_independent))
 
-    log = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    log = ReportLogger(path)
     out = report_coupling(log)(plan)
 
     assert out is plan  # identity: a boundary observation, not a transform
-    rotations = [event for event in log.events if isinstance(event, RotationCoupling)]
-    summaries = [event for event in log.events if isinstance(event, CouplingSummary)]
-    assert [event.index for event in rotations] == [0, 1]
+    records = _records(path)
+    rotations = [event for event in records if event.event_type == "RotationCoupling"]
+    summaries = [event for event in records if event.event_type == "CouplingSummary"]
+    assert [event.payload["index"] for event in rotations] == [0, 1]
     assert (
-        rotations[0].n_coupling_segments == 2 and rotations[0].max_beams_per_segment == 2
+        rotations[0].payload["n_coupling_segments"] == 2
+        and rotations[0].payload["max_beams_per_segment"] == 2
     )  # the segmented rotation
-    assert rotations[1].n_coupling_segments == 1  # the tilt-independent rotation
+    assert rotations[1].payload["n_coupling_segments"] == 1  # the tilt-independent rotation
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
     assert summaries[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])

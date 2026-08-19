@@ -1,4 +1,4 @@
-"""The domain-observation channel: typed events and pluggable logger sinks.
+"""The domain-observation channel: typed report and pluggable logger sinks.
 
 Unit-level (no engine): the event surface (``channel`` + ``measurements``), the null/fan-out
 loggers, and the two boundary backends. ``run_inference`` emission is covered in
@@ -7,8 +7,8 @@ loggers, and the two boundary backends. ``run_inference`` emission is covered in
 
 from __future__ import annotations
 
-import csv
 import logging
+import re
 import sys
 import types
 from pathlib import Path
@@ -17,9 +17,7 @@ import pytest
 
 from diffBloch.app.loggers import (
     ConsoleLogger,
-    CSVLogger,
-    EarlyAbortLogger,
-    FitAbortedError,
+    ReportLogger,
     _format_eta,
     _mean_over,
 )
@@ -32,6 +30,7 @@ from diffBloch.observability import (
     CouplingSummary,
     DeviceSelected,
     Event,
+    EventRecord,
     InferenceCompleted,
     Logger,
     MultiLogger,
@@ -42,16 +41,23 @@ from diffBloch.observability import (
     OrientationOptimizationSummary,
     OrientationOptimized,
     PlanStepCompleted,
-    RecordingLogger,
+    PreprocessCompleted,
     RefinementCompleted,
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
     RotationScored,
+    RunStageStarted,
+    RunStageStopped,
     ThicknessOptimizationStarted,
     ThicknessOptimized,
+    event_record_from_event,
 )
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptimized:
@@ -72,6 +78,21 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert device.channel == "device"
     assert device.step is None
     assert device.measurements == {"cuda_available": 0.0, "selected_cuda": 0.0}
+
+    stage_started = RunStageStarted(stage="preprocess", experiment_directory="/tmp/experiment")
+    assert stage_started.channel == "run_stage"
+    assert stage_started.step is None
+    assert stage_started.measurements == {}
+
+    stage_stopped = RunStageStopped(
+        stage="preprocess",
+        status="completed",
+        elapsed_seconds=1.25,
+        experiment_directory="/tmp/experiment",
+    )
+    assert stage_stopped.channel == "run_stage"
+    assert stage_stopped.step is None
+    assert stage_stopped.measurements == {"elapsed_seconds": 1.25, "failed": 0.0}
 
     rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
     assert rotation.channel == "rotation"
@@ -148,6 +169,15 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert orientation_started.step is None
     assert orientation_started.measurements == {"total_rotations": 52.0}
     assert orientation_started.channel != _fitted(index=0, score=0.0).channel
+
+    preprocess_completed = PreprocessCompleted(n_rotations=52, total_hkl=1200, matched_hkl=800)
+    assert preprocess_completed.channel == "preprocess"
+    assert preprocess_completed.step is None
+    assert preprocess_completed.measurements == {
+        "n_rotations": 52.0,
+        "total_hkl": 1200.0,
+        "matched_hkl": 800.0,
+    }
 
     coupled = RotationCoupling(
         index=2,
@@ -234,10 +264,10 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert "best_training_loss" not in validation_done.measurements
 
 
-def test_events_and_loggers_satisfy_the_protocols_structurally() -> None:
+def test_events_and_loggers_satisfy_the_protocols_structurally(tmp_path: Path) -> None:
     assert isinstance(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2), Event)
     assert isinstance(NullLogger(), Logger)
-    assert isinstance(RecordingLogger(), Logger)
+    assert isinstance(ReportLogger(tmp_path / "report.jsonl"), Logger)
 
 
 def test_null_logger_discards_events() -> None:
@@ -245,15 +275,21 @@ def test_null_logger_discards_events() -> None:
     assert logger.report(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2)) is None
 
 
-def test_multi_logger_fans_each_event_out_to_every_logger() -> None:
-    a, b = RecordingLogger(), RecordingLogger()
+def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> None:
+    a_path = tmp_path / "a.jsonl"
+    b_path = tmp_path / "b.jsonl"
+    a, b = ReportLogger(a_path), ReportLogger(b_path)
     fanout = MultiLogger(loggers=(a, b))
     event = RotationScored(index=1, r_obs=0.2, n_observed=3, n_beams=5)
 
     fanout.report(event)
 
-    assert a.events == [event]
-    assert b.events == [event]
+    assert [_record.payload for _record in _records(a_path)] == [
+        {"index": 1, "r_obs": 0.2, "n_observed": 3, "n_beams": 5}
+    ]
+    assert [_record.payload for _record in _records(b_path)] == [
+        {"index": 1, "r_obs": 0.2, "n_observed": 3, "n_beams": 5}
+    ]
 
 
 def test_console_logger_logs_channel_step_and_measurements(
@@ -278,6 +314,20 @@ def test_console_logger_formats_device_selection(caplog: pytest.LogCaptureFixtur
     assert caplog.records[-1].getMessage() == (
         "No CUDA detected, using CPU, diffBloch is optimized for CUDA"
     )
+
+
+def test_console_logger_formats_stage_lifecycle_events(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(RunStageStarted(stage="infer"))
+        logger.report(RunStageStopped(stage="infer", status="completed", elapsed_seconds=0.125))
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "Stage │ infer started",
+        "Stage │ infer stopped │ completed │ 0.125s",
+    ]
 
 
 def test_console_logger_formats_input_parse_diagnostic(
@@ -347,7 +397,7 @@ def test_console_logger_states_an_empty_objective_as_none(
 
 
 def test_refinement_step_reports_each_mean_with_its_own_denominator() -> None:
-    """wR2 and R_obs are NaN-filtered independently, so they carry separate counts."""
+    """Training and validation means carry the denominators they were actually averaged over."""
     step = RefinementStep(
         iteration=0,
         loss=1.0,
@@ -356,10 +406,20 @@ def test_refinement_step_reports_each_mean_with_its_own_denominator() -> None:
         n_rotations=99,
         n_wr2_evaluated=97,
         n_r_obs_evaluated=95,
+        val_wr2=0.09,
+        val_r_obs=0.11,
+        val_n_rotations=12,
+        val_n_wr2_evaluated=11,
+        val_n_r_obs_evaluated=10,
     )
     assert step.measurements["n_rotations"] == 99.0
     assert step.measurements["n_wr2_evaluated"] == 97.0
     assert step.measurements["n_r_obs_evaluated"] == 95.0
+    assert step.measurements["val_wr2"] == 0.09
+    assert step.measurements["val_r_obs"] == 0.11
+    assert step.measurements["val_n_rotations"] == 12.0
+    assert step.measurements["val_n_wr2_evaluated"] == 11.0
+    assert step.measurements["val_n_r_obs_evaluated"] == 10.0
 
 
 def test_console_logger_prints_the_epoch_mean_denominators(
@@ -376,11 +436,17 @@ def test_console_logger_prints_the_epoch_mean_denominators(
                 n_rotations=99,
                 n_wr2_evaluated=97,
                 n_r_obs_evaluated=95,
+                val_wr2=0.08,
+                val_r_obs=0.09,
+                val_n_rotations=8,
+                val_n_wr2_evaluated=7,
+                val_n_r_obs_evaluated=6,
             )
         )
 
     assert caplog.records[-1].getMessage() == (
         "Refinement epoch   1 │ wR2 0.050000 [97/99] │ R_obs 0.070000 [95/99] │ "
+        "val wR2 0.080000 [7/8] │ val R_obs 0.090000 [6/8] │ "
         "diffraction loss n/a"
     )
 
@@ -599,28 +665,83 @@ def test_console_logger_falls_back_to_plain_lines_off_a_tty(
     assert caplog.records[-1].getMessage().startswith("Refinement epoch   1")
 
 
-def test_early_abort_logger_ignores_the_started_events(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Regression: OrientationOptimizationStarted shares no channel with OrientationOptimized, so
-    a channel-filtering consumer like EarlyAbortLogger must not try to read its (absent) wr2."""
-    logger = EarlyAbortLogger(wr2_ceiling=0.6, patience=5)
-    logger.report(OrientationOptimizationStarted(total_rotations=52))  # must not raise
-    logger.report(RefinementStarted(total_steps=40))  # must not raise
-    logger.report(ThicknessOptimizationStarted(total_rotations=52))  # must not raise
+def test_event_record_is_one_maximal_schema_for_structured_events() -> None:
+    event = ThicknessOptimized(
+        rotation_index=7,
+        score=0.25,
+        residual="wr2",
+        thickness=42.0,
+        candidate_thicknesses=(20.0, 40.0, 60.0),
+        candidate_score=(0.8, 0.25, 0.4),
+    )
+
+    record = event_record_from_event(event, run_id="run-1", sequence=3)
+
+    assert record.schema_version == 1
+    assert record.run_id == "run-1"
+    assert record.sequence == 3
+    assert record.event_type == "ThicknessOptimized"
+    assert record.channel == "optimize_thickness"
+    assert record.step == 7
+    assert record.rotation_index == 7
+    assert record.dataset is None
+    assert record.measurements == {"wr2": 0.25, "thickness": 42.0}
+    assert record.series == {
+        "candidate_thicknesses": [20.0, 40.0, 60.0],
+        "candidate_score": [0.8, 0.25, 0.4],
+    }
+    assert record.artifacts == {}
+    assert record.payload["candidate_thicknesses"] == [20.0, 40.0, 60.0]
 
 
-def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:
-    path = tmp_path / "run.csv"
-    logger = CSVLogger(path=path)
+def test_report_logger_writes_versioned_jsonl_payloads(tmp_path: Path) -> None:
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path=path, run_id="fixed")
     logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
-    logger.report(InferenceCompleted(n_rotations=1, n_evaluated=1, mean_r_obs=0.5))
+    logger.report(
+        ThicknessOptimized(
+            rotation_index=1,
+            score=0.2,
+            residual="wr2",
+            thickness=30.0,
+            candidate_thicknesses=(20.0, 30.0),
+            candidate_score=(0.5, 0.2),
+        )
+    )
 
-    with path.open() as handle:
-        rows = list(csv.reader(handle))
-    assert rows[0] == ["channel", "step", "metric", "value"]  # header written once
-    assert ["rotation", "0", "r_obs", "0.5"] in rows  # step = the rotation index
-    assert ["inference", "", "mean_r_obs", "0.5"] in rows  # step None -> empty cell
+    rows = _records(path)
+    assert [row.sequence for row in rows] == [0, 1]
+    assert all(row.run_id == "fixed" for row in rows)
+    assert rows[0].measurements["r_obs"] == 0.5
+    assert rows[1].series["candidate_thicknesses"] == [20.0, 30.0]
+
+
+def test_report_logger_can_defer_the_declared_artifact_until_finalize(tmp_path: Path) -> None:
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path=path, run_id="fixed", completed_only=True)
+
+    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+
+    assert not path.exists()
+    logger.finalize()
+    assert _records(path)[0].event_type == "RotationScored"
+
+
+def test_deferred_report_logger_discard_drops_the_declared_artifact(tmp_path: Path) -> None:
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path=path, completed_only=True)
+
+    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.discard()
+
+    assert not path.exists()
+
+
+def test_report_logger_builds_timestamped_report_paths() -> None:
+    path = ReportLogger.timestamped_path(Path("reproducibility"))
+
+    assert path.parent == Path("reproducibility")
+    assert re.fullmatch(r"report-\d{8}T\d{6}Z\.jsonl", path.name)
 
 
 def test_wandb_logger_maps_measurements_to_a_namespaced_payload(
@@ -652,61 +773,6 @@ def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
     assert logged == [
         ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
     ]
-
-
-# --- EarlyAbortLogger: abort a from-scratch fit that is not tracking the data --------------------
-
-
-def test_early_abort_fires_when_no_rotation_clears_the_ceiling() -> None:
-    """patience rotations all above the ceiling -> FitAbortedError at the patience-th event."""
-    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=3)
-    guard.report(_fitted(0, 0.9))
-    guard.report(_fitted(1, 0.8))  # still only 2 seen, no decision yet
-    with pytest.raises(FitAbortedError, match=r"best wr2 is 0.8.*above the 0.6 ceiling"):
-        guard.report(_fitted(2, 0.85))
-
-
-def test_early_abort_does_not_fire_once_a_rotation_clears_the_ceiling() -> None:
-    """One good rotation within patience -> promising; never aborts, even on later high wr2."""
-    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=3)
-    guard.report(_fitted(0, 0.9))
-    guard.report(_fitted(1, 0.05))  # clears the ceiling -> promising
-    for i in range(2, 10):
-        guard.report(_fitted(i, 0.95))  # later poor rotations do not resurrect the abort
-
-
-def test_early_abort_waits_for_patience_before_deciding() -> None:
-    """Below patience, a high wr2 never aborts -- the guard needs patience rotations of evidence."""
-    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=5)
-    for i in range(4):  # 4 < patience 5
-        guard.report(_fitted(i, 0.99))  # no raise
-    with pytest.raises(FitAbortedError):
-        guard.report(_fitted(4, 0.99))  # the 5th tips it over
-
-
-def test_early_abort_forwards_every_event_to_inner_including_the_aborting_one() -> None:
-    """The guard is also a pass-through: inner sees all events, including the one that aborts."""
-    inner = RecordingLogger()
-    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2, inner=inner)
-    guard.report(RotationScored(index=0, r_obs=0.3, n_observed=1, n_beams=2))  # non-fit, forwarded
-    guard.report(_fitted(0, 0.9))
-    with pytest.raises(FitAbortedError):
-        guard.report(_fitted(1, 0.9))
-    # all three forwarded (the aborting event was reported to inner before the raise)
-    assert len(inner.events) == 3
-    assert isinstance(inner.events[0], RotationScored)
-
-
-def test_early_abort_ignores_non_fit_events_for_the_decision() -> None:
-    """Only the fit stream counts toward patience -- a flood of rotation events never aborts."""
-    guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2)
-    for i in range(20):
-        guard.report(RotationScored(index=i, r_obs=0.99, n_observed=1, n_beams=2))  # never aborts
-
-
-def test_early_abort_rejects_nonpositive_patience() -> None:
-    with pytest.raises(ValueError, match="patience must be >= 1"):
-        EarlyAbortLogger(patience=0)
 
 
 def test_console_logger_marks_the_trial_that_cleared_the_threshold(

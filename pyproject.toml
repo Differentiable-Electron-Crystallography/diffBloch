@@ -9,11 +9,6 @@ license-files = ["LICENSE"]
 dependencies = [
     "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
     "gemmi>=0.7.5",
-    # Report plots are on by default (SummaryLogger.plot), so the renderer is not optional in
-    # practice: as an extra it left the default output silently degraded and its code untested in
-    # CI (`uv sync --dev` installs no extras). The wandb/comet SDKs below stay opt-in -- those are
-    # external services, not part of any default run.
-    "matplotlib>=3.7",
     "numpy>=2.5.2",
     "pydantic>=2.7",
     "pyyaml>=6.0",
@@ -69,6 +64,8 @@ dev = [
     "jupyterlab>=4.6.3",
     "jupytext>=1.19.5",
     "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
+    "ipywidgets>=8.1.9",
 ]
 
 [tool.pytest.ini_options]

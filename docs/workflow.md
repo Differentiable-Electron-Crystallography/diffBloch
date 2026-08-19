@@ -119,10 +119,9 @@ preprocess:
     min_thickness: 100.0
     max_thickness: 2000.0
     n_steps: 100
-    plot: true
 ```
 
-With `plot: true`, residual-versus-thickness plots are written to `thickness_optim/`.  
+The default JSONL report preserves the thickness-search grid for post-run visualizers.
 
 ## Structural refinement
 
@@ -133,7 +132,16 @@ run with:
 uv run diffbloch refine <experiment_dir>
 ```
 
-The objective and validation metrics are reported throughout the run. 
+The objective and validation metrics are reported throughout the run, and a successful `refine`
+writes a durable structured report at
+`<experiment_dir>/reproducibility/reports/report-YYYYMMDDTHHMMSSZ.jsonl` by default. Failed CLI runs keep
+their in-flight observations on the console and do not promote a canonical JSONL report.
+
+The top-level `tools/event_report/` visualizer consumes that JSONL file. Its HTML renderer produces
+explicit converge/preprocess/infer/refine sections from the report's declared start/stop events,
+then fills those sections with the preprocess summary, epoch curve table, orientation-optimization
+table, and multi-dataset summary. Its notebook renders matplotlib figures from the same event
+stream and is the only place that exports visualization images.
 
 For more information, see [Refinement](refinement.md). 
 
@@ -144,12 +152,14 @@ A completed refinement writes the main results beside the inputs and under `repr
 ```text
 <experiment_dir>/
   refined_structure.cif
-  refinement_report.txt
-  thickness_optim/                 # when thickness plots are enabled
   reproducibility/
+    reports/
+      report-YYYYMMDDTHHMMSSZ.jsonl
 ```
 
-`refined_structure.cif` contains the refined structural model, while `refinement_report.txt`
-summarizes the run. The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware. 
+`refined_structure.cif` contains the refined structural model, while `report-*.jsonl` is the
+canonical report artifact for a completed command. Text or HTML summaries are generated from that
+report by external tooling.
+The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware. 
 
 For more information, see [Reproducibility](reproducibility.md).
