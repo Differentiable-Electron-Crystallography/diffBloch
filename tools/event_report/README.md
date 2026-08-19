@@ -1,11 +1,8 @@
 # diffBloch event report
 
 This top-level tool is a visualizer consumer, not part of the diffBloch core library. It reads the
-canonical versioned JSONL report produced by `diffbloch refine` and renders a lightweight HTML
-report. The runnable CLI subcommands promote timestamped JSONL reports by default only after the
-requested command completes successfully.
-The report stream declares app-stage boundaries with `RunStageStarted` / `RunStageStopped`, so
-renderers can create converge/preprocess/infer/refine sections without guessing from result events.
+JSONL reports produced by CLI commands like `diffbloch refine` and renders a lightweight HTML
+report. 
 
 ## Example workflow
 
@@ -47,13 +44,6 @@ Open the interactive notebook with that same JSONL preselected:
 ```bash
 DIFFBLOCH_EVENT_LOG="$REPORT" \
   uv run jupyter lab tools/event_report/event_report.ipynb
-```
-
-If you prefer the classic Notebook UI and it is installed in your environment:
-
-```bash
-DIFFBLOCH_EVENT_LOG="$REPORT" \
-  uv run jupyter notebook tools/event_report/event_report.ipynb
 ```
 
 Inside the notebook you can also edit the JSONL path text field. When `ipywidgets` is available, the
