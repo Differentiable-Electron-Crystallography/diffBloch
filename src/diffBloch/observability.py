@@ -117,8 +117,13 @@ class EventRecord(BaseModel):
     scalar ``measurements`` are enough for console, W&B, and Comet sinks. Post-run
     visualizers need the richer concrete event data too, such as
     :class:`ThicknessOptimized`'s full thickness grid or :class:`ThicknessProfile`'s curve. This
-    envelope preserves both: generic scalar measurements for easy pivoting, and a JSON payload made
-    from the event dataclass fields for type-aware renderers.
+    envelope preserves both: generic scalar measurements for easy pivoting, and the event
+    dataclass's fields for type-aware renderers.
+
+    Those fields are split across two keys rather than repeated in both: every numeric array lands
+    in ``series`` (plot-ready, no type-awareness needed) and ``payload`` carries the remaining
+    fields. ``series | payload`` is therefore exactly the dataclass, with no key in both -- writing
+    the arrays twice doubled the artifact for nothing (they were ~half of every report's bytes).
 
     This is a data contract only. File writing, WebSocket broadcasting, notebooks, and plotting live
     outside the functional core.
@@ -155,7 +160,8 @@ def event_record_from_event(
     callers normally let it default to the current UTC time.
     """
     emitted = datetime.now(UTC) if timestamp is None else timestamp.astimezone(UTC)
-    payload = _event_payload(event)
+    fields_ = _event_payload(event)
+    series = _numeric_series(fields_)
     return EventRecord(
         run_id=run_id,
         sequence=sequence,
@@ -163,12 +169,14 @@ def event_record_from_event(
         event_type=type(event).__name__,
         channel=event.channel,
         step=event.step,
-        dataset=_optional_str(_first_present(payload, "dataset", "label")),
-        rotation_index=_optional_int(_first_present(payload, "rotation_index", "index")),
+        dataset=_optional_str(_first_present(fields_, "dataset", "label")),
+        rotation_index=_optional_int(_first_present(fields_, "rotation_index", "index")),
         measurements=dict(event.measurements),
-        series=_numeric_series(payload),
-        artifacts=_artifact_paths(payload),
-        payload=payload,
+        series=series,
+        artifacts=_artifact_paths(fields_),
+        # The arrays live in `series` alone: a key promoted there is dropped here rather than
+        # written a second time. `series | payload` reconstructs the whole dataclass.
+        payload={name: value for name, value in fields_.items() if name not in series},
     )
 
 
@@ -536,12 +544,14 @@ class OrientationSearchTrace:
     contract: a compact numeric table of the seed, every scipy objective evaluation, and the final
     best point. The event is emitted once per rotation, after the search completes, to avoid calling
     logger backends inside the objective's hot loop.
+
+    The columns are parallel and in evaluation order, so row position *is* the trial index; an
+    explicit index column would be ``range(n)`` stored verbatim in the largest event in the report.
     """
 
     channel: ClassVar[str] = "orientation trace"
     rotation_index: int
     residual: str
-    trial_index: tuple[int, ...]
     alpha: tuple[float, ...]
     beta: tuple[float, ...]
     omega: tuple[float, ...]
@@ -554,7 +564,6 @@ class OrientationSearchTrace:
 
     def __post_init__(self) -> None:
         lengths = {
-            len(self.trial_index),
             len(self.alpha),
             len(self.beta),
             len(self.omega),
@@ -574,7 +583,7 @@ class OrientationSearchTrace:
     @property
     def measurements(self) -> Mapping[str, float]:
         values = {
-            "n_trials": float(len(self.trial_index)),
+            "n_trials": float(len(self.score)),
             f"best_{self.residual}": min(self.score) if self.score else float("nan"),
         }
         final_scores = [
@@ -757,11 +766,14 @@ class RotationCoupling:
 
 @dataclass(frozen=True)
 class RotationCouplingSegments:
-    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers."""
+    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers.
+
+    The columns are parallel and in segment order, so row position *is* the segment index -- the
+    same convention as :class:`OrientationSearchTrace`.
+    """
 
     channel: ClassVar[str] = "coupling segments"
     rotation_index: int
-    segment_index: tuple[int, ...]
     first_tilt_index: tuple[int, ...]
     last_tilt_index: tuple[int, ...]
     n_tilts: tuple[int, ...]
@@ -772,7 +784,6 @@ class RotationCouplingSegments:
 
     def __post_init__(self) -> None:
         lengths = {
-            len(self.segment_index),
             len(self.first_tilt_index),
             len(self.last_tilt_index),
             len(self.n_tilts),
@@ -788,7 +799,7 @@ class RotationCouplingSegments:
     @property
     def measurements(self) -> Mapping[str, float]:
         return {
-            "n_segments": float(len(self.segment_index)),
+            "n_segments": float(len(self.n_segment_beams)),
             "n_union_beams": float(self.n_union_beams),
             "n_total_tilts": float(self.n_total_tilts),
             "max_segment_beams": float(max(self.n_segment_beams, default=0)),

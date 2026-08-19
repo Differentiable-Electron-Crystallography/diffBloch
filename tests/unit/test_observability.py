@@ -163,7 +163,6 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     orientation_trace = OrientationSearchTrace(
         rotation_index=5,
         residual="wr2",
-        trial_index=(0, 1, 2),
         alpha=(0.0, 0.1, 0.08),
         beta=(0.0, 0.0, 0.02),
         omega=(0.0, 0.0, 0.0),
@@ -223,7 +222,6 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
 
     coupling_segments = RotationCouplingSegments(
         rotation_index=2,
-        segment_index=(0, 1),
         first_tilt_index=(0, 3),
         last_tilt_index=(2, 5),
         n_tilts=(3, 3),
@@ -679,7 +677,6 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
             OrientationSearchTrace(
                 rotation_index=5,
                 residual="wr2",
-                trial_index=(0, 1),
                 alpha=(0.0, 0.1),
                 beta=(0.0, 0.0),
                 omega=(0.0, 0.0),
@@ -703,7 +700,6 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
         logger.report(
             RotationCouplingSegments(
                 rotation_index=5,
-                segment_index=(0,),
                 first_tilt_index=(0,),
                 last_tilt_index=(2,),
                 n_tilts=(3,),
@@ -795,7 +791,19 @@ def test_event_record_is_one_maximal_schema_for_structured_events() -> None:
         "candidate_score": [0.8, 0.25, 0.4],
     }
     assert record.artifacts == {}
-    assert record.payload["candidate_thicknesses"] == [20.0, 40.0, 60.0]
+    # The arrays live in `series` alone -- writing them into `payload` too was half of every
+    # report's bytes. `series | payload` is still the whole dataclass.
+    assert "candidate_thicknesses" not in record.payload
+    assert record.payload["thickness"] == 42.0
+    assert record.series.keys() | record.payload.keys() == {
+        "rotation_index",
+        "score",
+        "residual",
+        "thickness",
+        "candidate_thicknesses",
+        "candidate_score",
+        "dataset",
+    }
 
 
 def test_report_logger_writes_versioned_jsonl_payloads(tmp_path: Path) -> None:
@@ -831,14 +839,44 @@ def test_report_logger_can_defer_the_declared_artifact_until_finalize(tmp_path: 
     assert _records(path)[0].event_type == "RotationScored"
 
 
-def test_deferred_report_logger_discard_drops_the_declared_artifact(tmp_path: Path) -> None:
+def test_deferred_report_logger_promotes_a_failed_run_under_the_failed_name(
+    tmp_path: Path,
+) -> None:
+    """A failed run keeps its report, beside the successful name rather than under it."""
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path=path, completed_only=True)
+    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+
+    landed = logger.finalize(failed=True)
+
+    assert landed == tmp_path / "report-failed.jsonl"
+    assert not path.exists()
+    assert _records(landed)[0].event_type == "RotationScored"
+
+
+def test_report_logger_as_a_context_manager_promotes_on_the_way_out(tmp_path: Path) -> None:
+    """An exception the caller never catches still promotes the partial report and cleans up."""
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, completed_only=True)
 
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
-    logger.discard()
+    with pytest.raises(KeyboardInterrupt), logger:
+        logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+        raise KeyboardInterrupt
 
     assert not path.exists()
+    assert _records(logger.failed_path)[0].event_type == "RotationScored"
+    assert logger._temporary_dir is not None and not logger._temporary_dir.exists()  # noqa: SLF001
+
+
+def test_report_logger_finalize_is_idempotent(tmp_path: Path) -> None:
+    """A ``finally`` block and an explicit call must not fight over the artifact."""
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path=path, completed_only=True)
+    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+
+    assert logger.finalize() == path
+    assert logger.finalize(failed=True) == path  # the first call settled where it landed
+    assert not logger.failed_path.exists()
 
 
 def test_report_logger_builds_timestamped_report_paths() -> None:

@@ -63,21 +63,18 @@ def _segment_event(
 ) -> RotationCouplingSegments:
     rotation_index = int(op.pattern.rotation_index)
     if isinstance(op, CoupledOrientationPlan):
-        segment_index = tuple(range(len(op.segments)))
         first_tilt_index = tuple(int(segment.cover.min()) for segment in op.segments)
         last_tilt_index = tuple(int(segment.cover.max()) for segment in op.segments)
         n_tilts = tuple(int(segment.cover.shape[0]) for segment in op.segments)
         n_segment_beams = tuple(int(segment.plan.beam_hkl.shape[0]) for segment in op.segments)
     else:
         n_total_tilts = int(op.tilts.shape[0])
-        segment_index = (0,)
         first_tilt_index = (0,)
         last_tilt_index = (max(0, n_total_tilts - 1),)
         n_tilts = (n_total_tilts,)
         n_segment_beams = (int(op.beam_hkl.shape[0]),)
     return RotationCouplingSegments(
         rotation_index=rotation_index,
-        segment_index=segment_index,
         first_tilt_index=first_tilt_index,
         last_tilt_index=last_tilt_index,
         n_tilts=n_tilts,

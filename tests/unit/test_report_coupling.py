@@ -110,10 +110,11 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary(tmp_p
     )  # the segmented rotation
     assert rotations[1].payload["n_coupling_segments"] == 1  # the tilt-independent rotation
     assert len(segments) == 2
-    assert segments[0].series["segment_index"] == [0.0, 1.0]
+    # Row position is the segment index; the event stores no `range(n)` column for it.
     assert segments[0].series["n_segment_beams"] == [2.0, 2.0]
+    assert segments[0].series["first_tilt_index"] == [0.0, 2.0]
     assert segments[0].measurements["n_segments"] == 2.0
-    assert segments[1].series["segment_index"] == [0.0]
+    assert segments[1].series["n_segment_beams"] == [3.0]  # tilt-independent: one whole-plan row
     assert segments[1].measurements["n_segments"] == 1.0
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
