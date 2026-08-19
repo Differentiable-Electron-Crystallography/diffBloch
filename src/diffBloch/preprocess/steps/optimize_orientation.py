@@ -262,7 +262,6 @@ def optimize_orientation(
                 OrientationSearchTrace(
                     rotation_index=result.plan.pattern.rotation_index,
                     residual=residual,
-                    trial_index=result.trial_index,
                     alpha=result.trial_alpha,
                     beta=result.trial_beta,
                     omega=result.trial_omega,
@@ -354,7 +353,6 @@ class _FitResult(NamedTuple):
     beta: float
     omega: float
     seed_score: float
-    trial_index: tuple[int, ...]
     trial_alpha: tuple[float, ...]
     trial_beta: tuple[float, ...]
     trial_omega: tuple[float, ...]
@@ -390,14 +388,12 @@ def _refine_one(
     # beam set across this rotation's trials.
     gather_cache: dict[bytes, StructureFactorGather] = {}
     seed_orientation = np.asarray(op.orientation, dtype=np.float64)
-    trial_index: list[int] = []
     trial_alpha: list[float] = []
     trial_beta: list[float] = []
     trial_omega: list[float] = []
     trial_score: list[float] = []
     trial_comparable_score: list[float] = []
     trial_n_matched_hkl: list[int] = []
-    trial_is_seed: list[int] = []
     trial_is_final: list[int] = []
 
     def record_trial(
@@ -406,36 +402,21 @@ def _refine_one(
         score: float,
         comparable_score: float,
         trial: OrientationPlanLike,
-        is_seed: bool = False,
         is_final: bool = False,
     ) -> None:
         alpha, beta, omega = params
-        trial_index.append(len(trial_index))
         trial_alpha.append(float(alpha))
         trial_beta.append(float(beta))
         trial_omega.append(float(omega))
         trial_score.append(score)
         trial_comparable_score.append(comparable_score)
         trial_n_matched_hkl.append(int(trial.alignment.pattern_index.shape[0]))
-        trial_is_seed.append(int(is_seed))
         trial_is_final.append(int(is_final))
 
     def build_trial(orientation: NDArray[np.float64]) -> OrientationPlanLike:
         if coupling is None:
             return op.with_orientation(grid, orientation)
         return _coupled_trial(grid, op, orientation, coupling, gather_cache, validate=validate)
-
-    seed_trial = build_trial(seed_orientation)
-    n_trials += 1
-    seed_trial_fgb = fgb(seed_trial) if callable(fgb) else fgb
-    seed_score = float(engine.score_orientation(seed_trial, seed_trial_fgb))
-    record_trial(
-        np.zeros(3),
-        score=seed_score,
-        comparable_score=_comparable_score(seed_score, seed_trial, search),
-        trial=seed_trial,
-        is_seed=True,
-    )
 
     def objective(params: NDArray[np.float64]) -> float:
         nonlocal n_trials
@@ -452,6 +433,9 @@ def _refine_one(
         return comparable
 
     step = search.step_size
+    # The origin leads the simplex, so scipy scores the *seed* geometry as its first objective
+    # call: `record_trial`'s first row is the seed, for free. Solving it separately up front to
+    # report `seed_score` would be one extra eigensolve per rotation for a number already here.
     initial_simplex = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -494,15 +478,15 @@ def _refine_one(
         alpha=float(alpha),
         beta=float(beta),
         omega=float(omega),
-        seed_score=seed_score,
-        trial_index=tuple(trial_index),
+        # The seed is the simplex's leading vertex, hence the first scored trial.
+        seed_score=trial_score[0],
         trial_alpha=tuple(trial_alpha),
         trial_beta=tuple(trial_beta),
         trial_omega=tuple(trial_omega),
         trial_score=tuple(trial_score),
         trial_comparable_score=tuple(trial_comparable_score),
         trial_n_matched_hkl=tuple(trial_n_matched_hkl),
-        trial_is_seed=tuple(trial_is_seed),
+        trial_is_seed=(1,) + (0,) * (len(trial_score) - 1),
         trial_is_final=tuple(trial_is_final),
     )
 
