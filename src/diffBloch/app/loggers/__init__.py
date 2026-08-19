@@ -31,6 +31,7 @@ from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceSweepStarted,
     ConvergenceTrial,
+    CouplingSummary,
     DeviceSelected,
     Event,
     ExperimentDeclared,
@@ -45,6 +46,7 @@ from diffBloch.observability import (
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
+    RotationCoupling,
     RotationCouplingSegments,
     RunStageStarted,
     RunStageStopped,
@@ -196,7 +198,10 @@ class ConsoleLogger:
     _thickness_started_at: float = field(default=0.0, init=False, repr=False)
 
     def report(self, event: Event) -> None:
-        if isinstance(event, OrientationSearchTrace | RotationCouplingSegments):
+        if isinstance(
+            event,
+            OrientationSearchTrace | RotationCoupling | RotationCouplingSegments | CouplingSummary,
+        ):
             # High-cardinality payload for JSONL/notebook consumers. Logging it to the live console
             # breaks the in-place progress bars without adding human-readable progress.
             return

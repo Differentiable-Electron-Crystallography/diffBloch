@@ -691,6 +691,16 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
             )
         )
         logger.report(
+            RotationCoupling(
+                index=5,
+                n_coupling_segments=1,
+                n_tilts=3,
+                max_tilts_per_segment=3,
+                n_union_beams=20,
+                max_beams_per_segment=20,
+            )
+        )
+        logger.report(
             RotationCouplingSegments(
                 rotation_index=5,
                 segment_index=(0,),
@@ -702,6 +712,7 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
                 n_total_tilts=3,
             )
         )
+        logger.report(CouplingSummary(measurements={"n_orientations": 2.0}))
         logger.report(_fitted(index=9, score=0.02))
 
     out = capsys.readouterr().out
@@ -709,6 +720,7 @@ def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
     assert out.count("\r") == 2
     assert out.endswith("\n")
     assert not any("orientation trace" in record.getMessage() for record in caplog.records)
+    assert not any("coupling" in record.getMessage() for record in caplog.records)
     assert not any("coupling segments" in record.getMessage() for record in caplog.records)
 
 
