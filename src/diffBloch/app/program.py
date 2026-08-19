@@ -31,12 +31,10 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from functools import wraps
 from pathlib import Path
-from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import gemmi
 import numpy as np
@@ -138,9 +136,6 @@ _log = logging.getLogger(__name__)
 
 _REFINEMENT_LOCK = "refinement.lock"
 _REPRODUCIBILITY_DIRNAME = "reproducibility"
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-_Root = TypeVar("_Root", bound=str | Path)
 
 
 @contextmanager
@@ -172,28 +167,6 @@ def _reported_stage(logger: Logger, stage: RunStage, root: str | Path) -> Iterat
                 experiment_directory=experiment_directory,
             )
         )
-
-
-def _stage_logged(
-    stage: RunStage,
-) -> Callable[
-    [Callable[Concatenate[_Root, _P], _R]],
-    Callable[Concatenate[_Root, _P], _R],
-]:
-    """Decorate app entry points with declarative start/stop events."""
-
-    def decorate(
-        func: Callable[Concatenate[_Root, _P], _R],
-    ) -> Callable[Concatenate[_Root, _P], _R]:
-        @wraps(func)
-        def wrapper(experiment_dir: _Root, *args: _P.args, **kwargs: _P.kwargs) -> _R:
-            logger = cast(Logger, kwargs.get("logger", NULL_LOGGER))
-            with _reported_stage(logger, stage, experiment_dir):
-                return func(experiment_dir, *args, **kwargs)
-
-        return cast(Callable[Concatenate[_Root, _P], _R], wrapper)
-
-    return decorate
 
 
 def _plan_npz_name(dataset_ref: str) -> str:
@@ -288,7 +261,6 @@ def _select_device(device: Device | None, *, logger: Logger = NULL_LOGGER) -> De
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
-@_stage_logged("converge")
 def converge_experiment(
     experiment_dir: str | Path,
     *,
@@ -312,67 +284,68 @@ def converge_experiment(
     per-dataset settled states: the tightest single setting adequate for every pooled file. The
     per-dataset settled values remain visible through the convergence logger events.
     """
-    root = Path(experiment_dir)
-    device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
+    with _reported_stage(logger, "converge", experiment_dir):
+        root = Path(experiment_dir)
+        device = _select_device(device, logger=logger)
+        cfg, _lock = load_experiment(root)
 
-    structure = _read_structure(root, cfg, logger=logger)
-    records = _read_experimental_data(root, cfg, logger=logger)
-    refinement_setup, datasets = setup_datasets(structure, records, cfg)
-    logger.report(
-        cfg.to_declaration(
-            tuple(dataset.integration for dataset in datasets),
-            experiment_directory=str(root.resolve()),
-        )
-    )
-    refinement = replace(refinement_setup, params=refinement_setup.params.to(device))
-    if n_orientations < 1:
-        raise ValueError("n_orientations must be >= 1")
-
-    simulation = cfg.blochwave.to_policy()
-    settled_states: list[ConvergenceState] = []
-    for dataset_index, (record, dataset) in enumerate(zip(records, datasets, strict=True)):
-        if n_orientations > len(dataset.plan.orientations):
-            raise ValueError(
-                f"n_orientations={n_orientations} exceeds dataset {dataset_index}'s "
-                f"{len(dataset.plan.orientations)} orientations"
+        structure = _read_structure(root, cfg, logger=logger)
+        records = _read_experimental_data(root, cfg, logger=logger)
+        refinement_setup, datasets = setup_datasets(structure, records, cfg)
+        logger.report(
+            cfg.to_declaration(
+                tuple(dataset.integration for dataset in datasets),
+                experiment_directory=str(root.resolve()),
             )
-        selected = replace(
-            dataset.plan,
-            orientations=dataset.plan.orientations[:n_orientations],
         )
-        rocking = cfg.blochwave.to_rocking_curve(dataset.integration)
-        # Per dataset: a file without a dstar_max tag anchors at the configured g_max rather than
-        # inheriting another file's processing resolution.
-        starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
-        plan = pipeline(
-            [
-                select_beams(cfg.blochwave.to_beam_selection(dataset.integration)),
-                build_orientation_plans(),
-            ]
-        )(selected)
+        refinement = replace(refinement_setup, params=refinement_setup.params.to(device))
+        if n_orientations < 1:
+            raise ValueError("n_orientations must be >= 1")
 
-        _plan, settled = run_convergence(
-            plan,
-            ConvergenceState(
-                g_max=starting_g_max,
-                sg_max=simulation.sg_max,
-                tilt_steps=rocking.sampling,
-            ),
-            ConvergenceTest(),
-            rocking,
-            simulation,
-            refinement,
-            ConvergenceTolerance(),
-            method=cfg.blochwave.solver,
-            logger=logger,
+        simulation = cfg.blochwave.to_policy()
+        settled_states: list[ConvergenceState] = []
+        for dataset_index, (record, dataset) in enumerate(zip(records, datasets, strict=True)):
+            if n_orientations > len(dataset.plan.orientations):
+                raise ValueError(
+                    f"n_orientations={n_orientations} exceeds dataset {dataset_index}'s "
+                    f"{len(dataset.plan.orientations)} orientations"
+                )
+            selected = replace(
+                dataset.plan,
+                orientations=dataset.plan.orientations[:n_orientations],
+            )
+            rocking = cfg.blochwave.to_rocking_curve(dataset.integration)
+            # Per dataset: a file without a dstar_max tag anchors at the configured g_max rather than
+            # inheriting another file's processing resolution.
+            starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
+            plan = pipeline(
+                [
+                    select_beams(cfg.blochwave.to_beam_selection(dataset.integration)),
+                    build_orientation_plans(),
+                ]
+            )(selected)
+
+            _plan, settled = run_convergence(
+                plan,
+                ConvergenceState(
+                    g_max=starting_g_max,
+                    sg_max=simulation.sg_max,
+                    tilt_steps=rocking.sampling,
+                ),
+                ConvergenceTest(),
+                rocking,
+                simulation,
+                refinement,
+                ConvergenceTolerance(),
+                method=cfg.blochwave.solver,
+                logger=logger,
+            )
+            settled_states.append(settled)
+        return ConvergenceState(
+            g_max=max(state.g_max for state in settled_states),
+            sg_max=max(state.sg_max for state in settled_states),
+            tilt_steps=max(state.tilt_steps for state in settled_states),
         )
-        settled_states.append(settled)
-    return ConvergenceState(
-        g_max=max(state.g_max for state in settled_states),
-        sg_max=max(state.sg_max for state in settled_states),
-        tilt_steps=max(state.tilt_steps for state in settled_states),
-    )
 
 
 def preprocess_experiment(
@@ -455,7 +428,6 @@ def preprocess_experiment(
     return prepared
 
 
-@_stage_logged("infer")
 def run_experiment(
     experiment_dir: str | Path,
     *,
@@ -475,41 +447,41 @@ def run_experiment(
     :class:`~diffBloch.preprocess.inference.InferenceResult` (per-rotation ``R_obs`` + aggregate).
     ``device`` also runs the terminal eigensolve on the accelerator.
     """
-    root = Path(experiment_dir)
-    device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
-    (
-        refinement,
-        _integrations,
-        prepared,
-        _validation_rotation_indices,
-        _dataset_ranges,
-        _plan_lock_sha256s,
-    ) = _preprocess(
-        root,
-        cfg,
-        logger=logger,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-    )
-    return run_inference(
-        prepared,
-        refinement,
-        method=cfg.blochwave.solver,
-        device=device,
-        max_batch=max_batch,
-        logger=logger,
-        absorption=cfg.blochwave.to_absorption(),
-        dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
-            _dataset_ranges, rotation_index
-        ),
-    )
+    with _reported_stage(logger, "infer", experiment_dir):
+        root = Path(experiment_dir)
+        device = _select_device(device, logger=logger)
+        cfg, _lock = load_experiment(root)
+        (
+            refinement,
+            _integrations,
+            prepared,
+            _validation_rotation_indices,
+            _dataset_ranges,
+            _plan_lock_sha256s,
+        ) = _preprocess(
+            root,
+            cfg,
+            logger=logger,
+            checkpoint=checkpoint,
+            refresh=refresh,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
+        )
+        return run_inference(
+            prepared,
+            refinement,
+            method=cfg.blochwave.solver,
+            device=device,
+            max_batch=max_batch,
+            logger=logger,
+            absorption=cfg.blochwave.to_absorption(),
+            dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
+                _dataset_ranges, rotation_index
+            ),
+        )
 
 
-@_stage_logged("refine")
 def refine_experiment(
     experiment_dir: str | Path,
     *,
@@ -560,59 +532,33 @@ def refine_experiment(
     solve intermediates until backward. Execution-only -- gradients are unaffected. See
     :class:`~diffBloch.engine.RefinementEngine`.
     """
-    root = Path(experiment_dir)
-    device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root)
-    (
-        refinement,
-        integrations,
-        prepared,
-        validation_rotation_indices,
-        dataset_ranges,
-        plan_lock_sha256s,
-    ) = _preprocess(
-        root,
-        cfg,
-        logger=logger,
-        checkpoint=checkpoint,
-        refresh=refresh,
-        device=device,
-        workers=workers,
-        max_batch=max_batch,
-    )
-    # `engine` covers every rotation (train + validation) -- reporting always scores the whole
-    # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
-    # validation angles it never saw, which is the point. Only the *training* engine, built
-    # separately, excludes validation_rotation_indices from the gradient objective.
-    engine = build_engine(
-        prepared,
-        refinement,
-        loss=cfg.loss_metrics.to_loss(),
-        method=cfg.blochwave.solver,
-        max_batch=max_batch,
-        absorption=cfg.blochwave.to_absorption(),
-        profile=profile,
-        checkpoint_activations=checkpoint_activations,
-    )
-    # Pre-existing inconsistency, recorded not fixed: PerOrientationThickness keys its per-rotation
-    # lookup on the *positional* enumerate index the engine passes to forward_context, while
-    # ApparentThicknessNN keys on pattern.rotation_index -- the two disagree whenever an engine is
-    # built over a subset like the train/validation partitions below.
-    train_engine = engine
-    selection_engine = None
-    if validation_rotation_indices:
-        train_only = tuple(
-            op
-            for op in prepared.orientations
-            if op.pattern.rotation_index not in validation_rotation_indices
+    with _reported_stage(logger, "refine", experiment_dir):
+        root = Path(experiment_dir)
+        device = _select_device(device, logger=logger)
+        cfg, _lock = load_experiment(root)
+        (
+            refinement,
+            integrations,
+            prepared,
+            validation_rotation_indices,
+            dataset_ranges,
+            plan_lock_sha256s,
+        ) = _preprocess(
+            root,
+            cfg,
+            logger=logger,
+            checkpoint=checkpoint,
+            refresh=refresh,
+            device=device,
+            workers=workers,
+            max_batch=max_batch,
         )
-        validation_only = tuple(
-            op
-            for op in prepared.orientations
-            if op.pattern.rotation_index in validation_rotation_indices
-        )
-        train_engine = build_engine(
-            replace(prepared, orientations=train_only),
+        # `engine` covers every rotation (train + validation) -- reporting always scores the whole
+        # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
+        # validation angles it never saw, which is the point. Only the *training* engine, built
+        # separately, excludes validation_rotation_indices from the gradient objective.
+        engine = build_engine(
+            prepared,
             refinement,
             loss=cfg.loss_metrics.to_loss(),
             method=cfg.blochwave.solver,
@@ -621,65 +567,92 @@ def refine_experiment(
             profile=profile,
             checkpoint_activations=checkpoint_activations,
         )
-        selection_engine = build_engine(
-            replace(prepared, orientations=validation_only),
-            refinement,
-            loss=cfg.loss_metrics.to_loss(),
-            method=cfg.blochwave.solver,
-            max_batch=max_batch,
-            absorption=cfg.blochwave.to_absorption(),
+        # Pre-existing inconsistency, recorded not fixed: PerOrientationThickness keys its per-rotation
+        # lookup on the *positional* enumerate index the engine passes to forward_context, while
+        # ApparentThicknessNN keys on pattern.rotation_index -- the two disagree whenever an engine is
+        # built over a subset like the train/validation partitions below.
+        train_engine = engine
+        selection_engine = None
+        if validation_rotation_indices:
+            train_only = tuple(
+                op
+                for op in prepared.orientations
+                if op.pattern.rotation_index not in validation_rotation_indices
+            )
+            validation_only = tuple(
+                op
+                for op in prepared.orientations
+                if op.pattern.rotation_index in validation_rotation_indices
+            )
+            train_engine = build_engine(
+                replace(prepared, orientations=train_only),
+                refinement,
+                loss=cfg.loss_metrics.to_loss(),
+                method=cfg.blochwave.solver,
+                max_batch=max_batch,
+                absorption=cfg.blochwave.to_absorption(),
+                profile=profile,
+                checkpoint_activations=checkpoint_activations,
+            )
+            selection_engine = build_engine(
+                replace(prepared, orientations=validation_only),
+                refinement,
+                loss=cfg.loss_metrics.to_loss(),
+                method=cfg.blochwave.solver,
+                max_batch=max_batch,
+                absorption=cfg.blochwave.to_absorption(),
+                profile=profile,
+                checkpoint_activations=checkpoint_activations,
+            )
+        initial = refinement.params if device is None else refinement.params.to(device)
+        thickness_spec = cfg.refinement.thickness_nn.to_spec()
+        thickness_nns: tuple[ApparentThicknessNN, ...] = ()
+        raw_alphas: np.ndarray | None = None
+        if thickness_spec.enabled:
+            records = _read_experimental_data(root, cfg)
+            raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
+            thickness_nns = _thickness_networks(cfg, records, thickness_spec)
+            model = build_refinement_model(
+                initial=initial,
+                components=thickness_nns,
+                component_params={
+                    thickness_nn.key: thickness_nn.initial_params(
+                        dtype=initial.asu_positions.dtype,
+                        device=initial.asu_positions.device,
+                    )
+                    for thickness_nn in thickness_nns
+                },
+            )
+        else:
+            model = build_refinement_model(initial=initial)
+        problem = build_refinement_problem()
+        result = run_refinement_model(
+            train_engine,
+            model,
+            problem,
+            trainable=cfg.refinement.trainable.to_spec(),
+            steps=cfg.refinement.steps,
+            optimizer=cfg.refinement.optimizer.name,
+            lr=cfg.refinement.optimizer.lr,
+            logger=logger,
+            verbose=verbose,
             profile=profile,
-            checkpoint_activations=checkpoint_activations,
+            selection_engine=selection_engine,
         )
-    initial = refinement.params if device is None else refinement.params.to(device)
-    thickness_spec = cfg.refinement.thickness_nn.to_spec()
-    thickness_nns: tuple[ApparentThicknessNN, ...] = ()
-    raw_alphas: np.ndarray | None = None
-    if thickness_spec.enabled:
-        records = _read_experimental_data(root, cfg)
-        raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
-        thickness_nns = _thickness_networks(cfg, records, thickness_spec)
-        model = build_refinement_model(
-            initial=initial,
-            components=thickness_nns,
-            component_params={
-                thickness_nn.key: thickness_nn.initial_params(
-                    dtype=initial.asu_positions.dtype,
-                    device=initial.asu_positions.device,
-                )
-                for thickness_nn in thickness_nns
-            },
+        result = _write_refinement_outputs(
+            root, cfg, refinement, result, plan_lock_sha256s=plan_lock_sha256s
         )
-    else:
-        model = build_refinement_model(initial=initial)
-    problem = build_refinement_problem()
-    result = run_refinement_model(
-        train_engine,
-        model,
-        problem,
-        trainable=cfg.refinement.trainable.to_spec(),
-        steps=cfg.refinement.steps,
-        optimizer=cfg.refinement.optimizer.name,
-        lr=cfg.refinement.optimizer.lr,
-        logger=logger,
-        verbose=verbose,
-        profile=profile,
-        selection_engine=selection_engine,
-    )
-    result = _write_refinement_outputs(
-        root, cfg, refinement, result, plan_lock_sha256s=plan_lock_sha256s
-    )
-    # The settled-result events, then the terminal artifact manifest for report sinks.
-    _report_refinement_outcome(
-        logger,
-        engine,
-        result,
-        validation_rotation_indices=validation_rotation_indices,
-        dataset_ranges=dataset_ranges,
-        thickness_nns=thickness_nns,
-        raw_alphas=raw_alphas,
-    )
-    return result
+        # The settled-result events, then the terminal artifact manifest for report sinks.
+        _report_refinement_outcome(
+            logger,
+            engine,
+            result,
+            validation_rotation_indices=validation_rotation_indices,
+            dataset_ranges=dataset_ranges,
+            thickness_nns=thickness_nns,
+            raw_alphas=raw_alphas,
+        )
+        return result
 
 
 def _report_refinement_outcome(
@@ -947,7 +920,6 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
-@_stage_logged("preprocess")
 def _preprocess(
     root: Path,
     cfg: ExperimentConfig,
@@ -986,96 +958,99 @@ def _preprocess(
     Progress and diagnostic data are emitted as events; callers attach loggers explicitly for any
     desired persistence.
     """
-    structure = _read_structure(root, cfg, logger=logger)
-    records = _read_experimental_data(root, cfg, logger=logger)
-    refs = _exp_data_refs(cfg)
-    refinement_setup, datasets = setup_datasets(structure, records, cfg)
-    integrations = tuple(dataset.integration for dataset in datasets)
-    logger.report(cfg.to_declaration(integrations, experiment_directory=str(root.resolve())))
-    cell = records[0].cell_parameters
-    authoritative_cell: CellParameters = (
-        float(cell[0]),
-        float(cell[1]),
-        float(cell[2]),
-        float(cell[3]),
-        float(cell[4]),
-        float(cell[5]),
-    )
-    structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
-    prepared_plans: list[Plan] = []
-    lock_sha256s: list[str | None] = []
-    for ref, dataset in zip(refs, datasets, strict=True):
-        steps = _recipe_steps(
-            cfg,
-            refinement_setup,
-            dataset.integration,
-            dataset.mosaicity,
-            logger,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            dataset_label=ref,
+    with _reported_stage(logger, "preprocess", root):
+        structure = _read_structure(root, cfg, logger=logger)
+        records = _read_experimental_data(root, cfg, logger=logger)
+        refs = _exp_data_refs(cfg)
+        refinement_setup, datasets = setup_datasets(structure, records, cfg)
+        integrations = tuple(dataset.integration for dataset in datasets)
+        logger.report(cfg.to_declaration(integrations, experiment_directory=str(root.resolve())))
+        cell = records[0].cell_parameters
+        authoritative_cell: CellParameters = (
+            float(cell[0]),
+            float(cell[1]),
+            float(cell[2]),
+            float(cell[3]),
+            float(cell[4]),
+            float(cell[5]),
         )
-        prepared, lock_sha256 = _prepare(
-            dataset.plan,
-            steps,
-            root=root,
-            cfg=cfg,
-            dataset_ref=ref,
-            ignored_rotations=dataset.ignored_rotations,
-            authoritative_cell=authoritative_cell,
-            structure_lock=structure_lock,
-            dataset_lock=input_lock_for(root / ref, ref=ref),
-            checkpoint=checkpoint,
-            refresh=refresh,
-            logger=logger,
-        )
-        prepared_plans.append(prepared)
-        lock_sha256s.append(lock_sha256)
-    if checkpoint:
-        _prune_stale_dataset_checkpoints(_reproducibility_dir(root), refs)
+        structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
+        prepared_plans: list[Plan] = []
+        lock_sha256s: list[str | None] = []
+        for ref, dataset in zip(refs, datasets, strict=True):
+            steps = _recipe_steps(
+                cfg,
+                refinement_setup,
+                dataset.integration,
+                dataset.mosaicity,
+                logger,
+                device=device,
+                workers=workers,
+                max_batch=max_batch,
+                dataset_label=ref,
+            )
+            prepared, lock_sha256 = _prepare(
+                dataset.plan,
+                steps,
+                root=root,
+                cfg=cfg,
+                dataset_ref=ref,
+                ignored_rotations=dataset.ignored_rotations,
+                authoritative_cell=authoritative_cell,
+                structure_lock=structure_lock,
+                dataset_lock=input_lock_for(root / ref, ref=ref),
+                checkpoint=checkpoint,
+                refresh=refresh,
+                logger=logger,
+            )
+            prepared_plans.append(prepared)
+            lock_sha256s.append(lock_sha256)
+        if checkpoint:
+            _prune_stale_dataset_checkpoints(_reproducibility_dir(root), refs)
 
-    offsets: list[int] = []
-    offset = 0
-    for dataset in datasets:
-        offsets.append(offset)
-        offset += dataset.n_rotations
-    pooled = pool(prepared_plans, offsets=offsets)
-    dataset_ranges = tuple(
-        (ref, range(dataset_offset, dataset_offset + dataset.n_rotations))
-        for ref, dataset, dataset_offset in zip(refs, datasets, offsets, strict=True)
-    )
-    mask = validation_mask(offset, cfg.refinement.split)
-    validation_rotation_indices = frozenset(
-        op.pattern.rotation_index for op in pooled.orientations if mask[op.pattern.rotation_index]
-    )
-    built_pooled = require_built_plans(pooled)
-    plan_lock_sha256s = (
-        None
-        if any(sha is None for sha in lock_sha256s)
-        else tuple(sha for sha in lock_sha256s if sha is not None)
-    )
-    report_coupling(
-        logger,
-        dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
-            dataset_ranges, rotation_index
-        ),
-    )(pooled)
-    logger.report(
-        PreprocessCompleted(
-            n_rotations=len(built_pooled),
-            total_hkl=sum(len(op.pattern.hkl) for op in built_pooled),
-            matched_hkl=sum(len(op.alignment.pattern_index) for op in built_pooled),
+        offsets: list[int] = []
+        offset = 0
+        for dataset in datasets:
+            offsets.append(offset)
+            offset += dataset.n_rotations
+        pooled = pool(prepared_plans, offsets=offsets)
+        dataset_ranges = tuple(
+            (ref, range(dataset_offset, dataset_offset + dataset.n_rotations))
+            for ref, dataset, dataset_offset in zip(refs, datasets, offsets, strict=True)
         )
-    )
-    return (
-        refinement_setup,
-        integrations,
-        pooled,
-        validation_rotation_indices,
-        dataset_ranges,
-        plan_lock_sha256s,
-    )
+        mask = validation_mask(offset, cfg.refinement.split)
+        validation_rotation_indices = frozenset(
+            op.pattern.rotation_index
+            for op in pooled.orientations
+            if mask[op.pattern.rotation_index]
+        )
+        built_pooled = require_built_plans(pooled)
+        plan_lock_sha256s = (
+            None
+            if any(sha is None for sha in lock_sha256s)
+            else tuple(sha for sha in lock_sha256s if sha is not None)
+        )
+        report_coupling(
+            logger,
+            dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
+                dataset_ranges, rotation_index
+            ),
+        )(pooled)
+        logger.report(
+            PreprocessCompleted(
+                n_rotations=len(built_pooled),
+                total_hkl=sum(len(op.pattern.hkl) for op in built_pooled),
+                matched_hkl=sum(len(op.alignment.pattern_index) for op in built_pooled),
+            )
+        )
+        return (
+            refinement_setup,
+            integrations,
+            pooled,
+            validation_rotation_indices,
+            dataset_ranges,
+            plan_lock_sha256s,
+        )
 
 
 def _dataset_for_rotation(
