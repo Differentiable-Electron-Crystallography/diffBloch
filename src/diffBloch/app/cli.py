@@ -10,6 +10,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -27,10 +30,14 @@ from diffBloch.app.program import (
 from diffBloch.config import load_config, write_experiment_lock
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
-    NULL_LOGGER,
     Logger,
     MultiLogger,
 )
+
+# The input/config failures a command reports as a one-line `error:` instead of a traceback.
+# Anything else is a bug or an interrupt and propagates -- `_reported_run` still promotes the
+# partial report on the way out.
+_COMMAND_ERRORS = (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError)
 
 
 def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
@@ -237,31 +244,23 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        progress_logger: Logger | None = None
         try:
-            report_path = _default_report_path(args.experiment_directory)
-            progress_logger = _build_logger(
-                console=not args.quiet, report=report_path, completed_only=True
-            )
-            result = run_experiment(
-                args.experiment_directory,
-                logger=progress_logger,
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
-            if progress_logger is not None:
-                _discard_reports(progress_logger)
+            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+                result = run_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-        _finalize_reports(progress_logger)
+            return _error(exc)
         print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
-        print(f"report: {report_path}")
+        print(f"report: {run.report_path}")
         return 0
 
     if args.command == "preprocess":
@@ -269,29 +268,21 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        progress_logger = None
         try:
-            report_path = _default_report_path(args.experiment_directory)
-            progress_logger = _build_logger(
-                console=not args.quiet, report=report_path, completed_only=True
-            )
-            plan = preprocess_experiment(
-                args.experiment_directory,
-                logger=progress_logger,
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
-            if progress_logger is not None:
-                _discard_reports(progress_logger)
+            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+                plan = preprocess_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-        _finalize_reports(progress_logger)
+            return _error(exc)
         print()
         built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
         total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
@@ -325,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  • {'Plan Lock':<20} {lock.resolve()}")
         else:
             print("Output files")
-        print(f"  • {'Report':<20} {report_path}")
+        print(f"  • {'Report':<20} {run.report_path}")
         return 0
 
     if args.command == "refine":
@@ -333,35 +324,24 @@ def main(argv: list[str] | None = None) -> int:
             logging.basicConfig(
                 level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
             )
-        progress_logger = None
         try:
-            experiment_root = Path(args.experiment_directory)
-            if not experiment_root.exists():
-                raise FileNotFoundError(experiment_root)
-            report_path = _default_report_path(experiment_root)
-            progress_logger = _build_logger(
-                console=not args.quiet, report=report_path, completed_only=True
-            )
-            refined = refine_experiment(
-                args.experiment_directory,
-                logger=progress_logger,
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                verbose=args.verbose_refinement,
-                profile=args.profile,
-                checkpoint_activations=not args.no_checkpoint_activations,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
-            if progress_logger is not None:
-                _discard_reports(progress_logger)
+            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+                refined = refine_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                    verbose=args.verbose_refinement,
+                    profile=args.profile,
+                    checkpoint_activations=not args.no_checkpoint_activations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-        _finalize_reports(progress_logger)
+            return _error(exc)
         best = refined.history[refined.best_step]
         wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
         r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
@@ -386,33 +366,25 @@ def main(argv: list[str] | None = None) -> int:
         print("Output files")
         for name, path in refined.artifacts.items():
             print(f"  • {name.replace('_', ' ').title():<20} {path}")
-        print(f"  • {'Report':<20} {report_path}")
+        print(f"  • {'Report':<20} {run.report_path}")
         return 0
 
     if args.command == "converge":
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
-        progress_logger = None
         try:
-            report_path = _default_report_path(args.experiment_directory)
-            progress_logger = _build_logger(
-                console=not args.quiet, report=report_path, completed_only=True
-            )
-            settled = converge_experiment(
-                args.experiment_directory,
-                logger=progress_logger,
-                device=args.device,
-                n_orientations=args.orientations,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
-            if progress_logger is not None:
-                _discard_reports(progress_logger)
+            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+                settled = converge_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    device=args.device,
+                    n_orientations=args.orientations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-        _finalize_reports(progress_logger)
+            return _error(exc)
         print("========================================")
         print("HYPERPARAMETER OPTIMIZATION RESULT")
         print(f"gmax: {settled.g_max:g}")
@@ -423,59 +395,52 @@ def main(argv: list[str] | None = None) -> int:
             f"optimized_hyperparams gmax={settled.g_max:g} "
             f"sgmax={settled.sg_max:g} tilt_steps={settled.tilt_steps}"
         )
-        print(f"report: {report_path}")
+        print(f"report: {run.report_path}")
         return 0
 
     parser.print_help()
     return 0
 
 
-def _default_report_path(experiment_directory: str | Path) -> Path:
-    experiment_root = Path(experiment_directory)
-    if not experiment_root.exists():
-        raise FileNotFoundError(experiment_root)
-    return ReportLogger.timestamped_path(experiment_root / "reproducibility" / "reports").resolve()
+@dataclass(frozen=True)
+class _ReportedRun:
+    """The sinks one command runs against, plus where its report will land."""
+
+    logger: Logger
+    report_path: Path
 
 
-def _build_logger(
-    *,
-    console: bool,
-    report: str | Path | None = None,
-    per_rotation: bool = True,
-    completed_only: bool = False,
-) -> Logger:
-    """Combine the requested observation sinks (none => the null logger that discards events).
+@contextmanager
+def _reported_run(experiment_directory: str | Path, *, console: bool) -> Iterator[_ReportedRun]:
+    """Attach the console and canonical-report sinks for one command.
 
-    ``per_rotation`` opts the console into the settled per-rotation stream.
+    The report is promoted on the way out whatever happened -- under its declared name on a clean
+    exit, under the ``-failed`` name on any exception, *including* the ones :func:`main` does not
+    catch. The ``ReportLogger`` is held directly rather than recovered from the composed sink, so
+    finalizing needs no ``isinstance`` walk back through the logger tree.
     """
-    sinks: list[Logger] = []
-    if console:
-        sinks.append(ConsoleLogger(per_rotation=per_rotation))
-    if report is not None:
-        sinks.append(ReportLogger(Path(report), completed_only=completed_only))
-    if not sinks:
-        return NULL_LOGGER
-    if len(sinks) == 1:
-        return sinks[0]
-    return MultiLogger(tuple(sinks))
+    root = Path(experiment_directory)
+    if not root.exists():
+        raise FileNotFoundError(root)
+    report = ReportLogger(
+        ReportLogger.timestamped_path(root / "reproducibility" / "reports").resolve(),
+        completed_only=True,
+    )
+    sinks: tuple[Logger, ...] = ((ConsoleLogger(),) if console else ()) + (report,)
+    logger: Logger = sinks[0] if len(sinks) == 1 else MultiLogger(sinks)
+    try:
+        with report:
+            yield _ReportedRun(logger=logger, report_path=report.path)
+    except BaseException:
+        # The failed report is the run's only structured record of what went wrong, so say where
+        # it is -- the success paths print their own path beside the rest of the output files.
+        print(f"report: {report.failed_path}", file=sys.stderr)
+        raise
 
 
-def _report_loggers(logger: Logger) -> tuple[ReportLogger, ...]:
-    if isinstance(logger, ReportLogger):
-        return (logger,)
-    if isinstance(logger, MultiLogger):
-        return tuple(sink for sink in logger.loggers if isinstance(sink, ReportLogger))
-    return ()
-
-
-def _finalize_reports(logger: Logger) -> None:
-    for report_logger in _report_loggers(logger):
-        report_logger.finalize()
-
-
-def _discard_reports(logger: Logger) -> None:
-    for report_logger in _report_loggers(logger):
-        report_logger.discard()
+def _error(exc: Exception) -> int:
+    print(f"error: {exc}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

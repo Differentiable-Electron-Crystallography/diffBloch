@@ -493,6 +493,17 @@ class ReportLogger:
     structured fields that are intentionally absent from the flat scalar ``measurements`` surface. It
     is still an ordinary app-boundary logger: producers emit typed event values, and this sink alone
     performs filesystem I/O.
+
+    ``completed_only`` streams to a temporary file and promotes it on :meth:`finalize`, so a report
+    only appears at its declared path once the run reached an end. A run that *failed* still gets
+    its artifact -- promoted beside the successful name with a ``-failed`` suffix. Deleting it would
+    throw away the one structured record of the failure, including the
+    :class:`~diffBloch.observability.RunStageStopped` event that reports it, at exactly the moment
+    a reader most needs the event stream.
+
+    Use it as a context manager (or ``try``/``finally``) so an exception that escapes the caught set
+    -- ``KeyboardInterrupt``, an allocator error -- still promotes the partial report and removes
+    the temporary directory.
     """
 
     path: Path
@@ -501,7 +512,7 @@ class ReportLogger:
     _active_path: Path = field(default=Path(), init=False, repr=False)
     _temporary_dir: Path | None = field(default=None, init=False, repr=False)
     _sequence: int = field(default=0, init=False, repr=False)
-    _closed: bool = field(default=False, init=False, repr=False)
+    _final_path: Path | None = field(default=None, init=False, repr=False)
 
     @staticmethod
     def timestamped_path(directory: Path, *, prefix: str = "report") -> Path:
@@ -521,28 +532,37 @@ class ReportLogger:
         self._active_path.write_text("")
 
     def report(self, event: Event) -> None:
-        if self._closed:
-            raise RuntimeError("cannot write to a closed ReportLogger")
+        if self._final_path is not None:
+            raise RuntimeError("cannot write to a finalized ReportLogger")
         record = event_record_from_event(event, run_id=self.run_id, sequence=self._sequence)
         self._sequence += 1
         with self._active_path.open("a") as handle:
             handle.write(record.model_dump_json() + "\n")
 
-    def finalize(self) -> None:
-        """Promote the streamed report to its declared output path."""
-        if self._closed:
-            return
-        if self.completed_only:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(self._active_path), self.path)
-            if self._temporary_dir is not None:
-                shutil.rmtree(self._temporary_dir, ignore_errors=True)
-        self._closed = True
+    def finalize(self, *, failed: bool = False) -> Path:
+        """Promote the streamed report and return the path it landed at.
 
-    def discard(self) -> None:
-        """Drop a streamed report that did not complete successfully."""
-        if self._closed:
-            return
-        if self.completed_only and self._temporary_dir is not None:
+        Idempotent: a second call returns the same path without touching the filesystem, so a
+        ``finally`` block and an explicit call cannot fight each other.
+        """
+        if self._final_path is not None:
+            return self._final_path
+        target = self.failed_path if failed else self.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if self._active_path != target:
+            shutil.move(str(self._active_path), target)
+        if self._temporary_dir is not None:
             shutil.rmtree(self._temporary_dir, ignore_errors=True)
-        self._closed = True
+        self._final_path = target
+        return target
+
+    @property
+    def failed_path(self) -> Path:
+        """Where a failed run's report lands: ``report-....jsonl`` -> ``report-...-failed.jsonl``."""
+        return self.path.with_name(f"{self.path.stem}-failed{self.path.suffix}")
+
+    def __enter__(self) -> ReportLogger:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.finalize(failed=exc_type is not None)

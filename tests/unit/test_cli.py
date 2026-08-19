@@ -8,9 +8,9 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from diffBloch.app.cli import _default_report_path, main
+from diffBloch.app.cli import _reported_run, main
 from diffBloch.app.loggers import ReportLogger
-from diffBloch.observability import MultiLogger, OrientationOptimized
+from diffBloch.observability import MultiLogger, OrientationOptimized, RotationScored
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -36,15 +36,39 @@ def test_no_command_prints_help_returns_zero() -> None:
     assert main([]) == 0
 
 
-def test_default_report_path_uses_reports_subdirectory(tmp_path: Path) -> None:
+def test_reported_run_promotes_into_the_reports_subdirectory(tmp_path: Path) -> None:
     experiment = tmp_path / "experiment"
     experiment.mkdir()
 
-    path = _default_report_path(experiment)
+    with _reported_run(experiment, console=False) as run:
+        path = run.report_path
+        assert path.parent == experiment / "reproducibility" / "reports"
+        assert path.name.startswith("report-")
+        assert path.suffix == ".jsonl"
+        assert not path.exists()  # streamed to a temporary file until the command completes
 
-    assert path.parent == experiment / "reproducibility" / "reports"
-    assert path.name.startswith("report-")
-    assert path.suffix == ".jsonl"
+    assert path.exists()
+
+
+def test_reported_run_keeps_the_report_when_the_command_raises(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A failed run's report is the only structured record of the failure -- keep it, renamed.
+
+    Including for an exception the command layer does not catch: the promotion is a context
+    manager, so an interrupt or an allocator error cannot leak the temporary file either.
+    """
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+
+    with pytest.raises(KeyboardInterrupt), _reported_run(experiment, console=False) as run:
+        run.logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+        raise KeyboardInterrupt
+
+    reports = sorted((experiment / "reproducibility" / "reports").glob("*.jsonl"))
+    assert [path.name.endswith("-failed.jsonl") for path in reports] == [True]
+    assert "RotationScored" in reports[0].read_text()
+    assert reports[0].name in capsys.readouterr().err
 
 
 def test_missing_file_reports_concise_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -282,9 +306,15 @@ def test_infer_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_infer_failure_discards_the_canonical_report(
+def test_infer_failure_keeps_the_report_under_the_failed_name(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
+    """A failed command reports the error *and* leaves its partial report behind.
+
+    The successful name is reserved for a completed run, so a reader never mistakes one for the
+    other -- but throwing the artifact away would delete the run's only structured account of the
+    failure at the moment it is most wanted.
+    """
     experiment_dir = tmp_path / "experiment"
     experiment_dir.mkdir()
 
@@ -295,8 +325,10 @@ def test_infer_failure_discards_the_canonical_report(
 
     assert main(["infer", str(experiment_dir), "--quiet"]) == 1
 
-    assert capsys.readouterr().err.startswith("error: bad input")
-    assert not list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))
+    err = capsys.readouterr().err
+    assert "error: bad input" in err
+    reports = sorted((experiment_dir / "reproducibility" / "reports").glob("*.jsonl"))
+    assert [path.name.endswith("-failed.jsonl") for path in reports] == [True]
 
 
 def test_converge_delegates_and_reports(
