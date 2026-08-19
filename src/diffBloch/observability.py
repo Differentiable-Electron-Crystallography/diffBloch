@@ -49,6 +49,7 @@ __all__ = [
     "OrientationOptimized",
     "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
+    "OrientationSearchTrace",
     "PlanSeeded",
     "PlanStepCompleted",
     "PreprocessCompleted",
@@ -58,6 +59,7 @@ __all__ = [
     "RefinementOutputsWritten",
     "RefinementStarted",
     "RefinementStep",
+    "RotationCouplingSegments",
     "RotationCoupling",
     "RotationScored",
     "RunStage",
@@ -196,7 +198,7 @@ def _optional_int(value: Any) -> int | None:
 
 def _first_present(payload: Mapping[str, Any], *keys: str) -> Any:
     for key in keys:
-        if key in payload:
+        if key in payload and payload[key] is not None:
             return payload[key]
     return None
 
@@ -393,10 +395,12 @@ class RotationScored:
     r_obs: float
     n_observed: int
     n_beams: int
+    dataset: str = ""
+    rotation_index: int | None = None
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index if self.rotation_index is not None else self.index
 
     @property
     def measurements(self) -> Mapping[str, float]:
@@ -522,6 +526,63 @@ class OrientationOptimizationSummary:
             "total_trials": float(self.total_trials),
             "max_passes": float(self.max_passes),
         }
+
+
+@dataclass(frozen=True)
+class OrientationSearchTrace:
+    """The scored orientation-search path for one rotation, batched for post-run visualization.
+
+    ``OrientationOptimized`` is the progress/result event. This trace is the richer notebook
+    contract: a compact numeric table of the seed, every scipy objective evaluation, and the final
+    best point. The event is emitted once per rotation, after the search completes, to avoid calling
+    logger backends inside the objective's hot loop.
+    """
+
+    channel: ClassVar[str] = "orientation trace"
+    rotation_index: int
+    residual: str
+    trial_index: tuple[int, ...]
+    alpha: tuple[float, ...]
+    beta: tuple[float, ...]
+    omega: tuple[float, ...]
+    score: tuple[float, ...]
+    comparable_score: tuple[float, ...]
+    n_matched_hkl: tuple[int, ...]
+    is_seed: tuple[int, ...]
+    is_final: tuple[int, ...]
+    dataset: str = ""
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.trial_index),
+            len(self.alpha),
+            len(self.beta),
+            len(self.omega),
+            len(self.score),
+            len(self.comparable_score),
+            len(self.n_matched_hkl),
+            len(self.is_seed),
+            len(self.is_final),
+        }
+        if len(lengths) != 1:
+            raise ValueError("orientation trace columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        values = {
+            "n_trials": float(len(self.trial_index)),
+            f"best_{self.residual}": min(self.score) if self.score else float("nan"),
+        }
+        final_scores = [
+            value for value, is_final in zip(self.score, self.is_final, strict=True) if is_final
+        ]
+        if final_scores:
+            values[f"final_{self.residual}"] = final_scores[-1]
+        return values
 
 
 @dataclass(frozen=True)
@@ -676,10 +737,12 @@ class RotationCoupling:
     max_tilts_per_segment: int
     n_union_beams: int
     max_beams_per_segment: int
+    dataset: str = ""
+    rotation_index: int | None = None
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index if self.rotation_index is not None else self.index
 
     @property
     def measurements(self) -> Mapping[str, float]:
@@ -689,6 +752,47 @@ class RotationCoupling:
             "max_tilts_per_segment": float(self.max_tilts_per_segment),
             "n_union_beams": float(self.n_union_beams),
             "max_beams_per_segment": float(self.max_beams_per_segment),
+        }
+
+
+@dataclass(frozen=True)
+class RotationCouplingSegments:
+    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers."""
+
+    channel: ClassVar[str] = "coupling segments"
+    rotation_index: int
+    segment_index: tuple[int, ...]
+    first_tilt_index: tuple[int, ...]
+    last_tilt_index: tuple[int, ...]
+    n_tilts: tuple[int, ...]
+    n_segment_beams: tuple[int, ...]
+    n_union_beams: int
+    n_total_tilts: int
+    dataset: str = ""
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.segment_index),
+            len(self.first_tilt_index),
+            len(self.last_tilt_index),
+            len(self.n_tilts),
+            len(self.n_segment_beams),
+        }
+        if len(lengths) != 1:
+            raise ValueError("coupling segment columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_segments": float(len(self.segment_index)),
+            "n_union_beams": float(self.n_union_beams),
+            "n_total_tilts": float(self.n_total_tilts),
+            "max_segment_beams": float(max(self.n_segment_beams, default=0)),
+            "max_segment_tilts": float(max(self.n_tilts, default=0)),
         }
 
 
@@ -1080,6 +1184,7 @@ class RefinementOrientationStep:
     wr2: float | None = None
     r_obs: float | None = None
     diff_loss: float | None = None
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:

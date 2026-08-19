@@ -40,6 +40,7 @@ from diffBloch.observability import (
     OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
+    OrientationSearchTrace,
     PlanStepCompleted,
     PreprocessCompleted,
     RefinementCompleted,
@@ -47,6 +48,7 @@ from diffBloch.observability import (
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
+    RotationCouplingSegments,
     RotationScored,
     RunStageStarted,
     RunStageStopped,
@@ -158,6 +160,28 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "max_passes": 8.0,
     }
 
+    orientation_trace = OrientationSearchTrace(
+        rotation_index=5,
+        residual="wr2",
+        trial_index=(0, 1, 2),
+        alpha=(0.0, 0.1, 0.08),
+        beta=(0.0, 0.0, 0.02),
+        omega=(0.0, 0.0, 0.0),
+        score=(0.4, 0.3, 0.25),
+        comparable_score=(0.4, 0.3, 0.25),
+        n_matched_hkl=(40, 41, 41),
+        is_seed=(1, 0, 0),
+        is_final=(0, 0, 1),
+        dataset="quartz.cif_pets",
+    )
+    assert orientation_trace.channel == "orientation trace"
+    assert orientation_trace.step == 5
+    assert orientation_trace.measurements == {
+        "n_trials": 3.0,
+        "best_wr2": 0.25,
+        "final_wr2": 0.25,
+    }
+
     refinement_started = RefinementStarted(total_steps=40)
     assert refinement_started.channel == "refinement_started"
     assert refinement_started.step is None
@@ -195,6 +219,27 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "max_tilts_per_segment": 15.0,
         "n_union_beams": 700.0,
         "max_beams_per_segment": 641.0,
+    }
+
+    coupling_segments = RotationCouplingSegments(
+        rotation_index=2,
+        segment_index=(0, 1),
+        first_tilt_index=(0, 3),
+        last_tilt_index=(2, 5),
+        n_tilts=(3, 3),
+        n_segment_beams=(100, 120),
+        n_union_beams=160,
+        n_total_tilts=6,
+        dataset="quartz.cif_pets",
+    )
+    assert coupling_segments.channel == "coupling segments"
+    assert coupling_segments.step == 2
+    assert coupling_segments.measurements == {
+        "n_segments": 2.0,
+        "n_union_beams": 160.0,
+        "n_total_tilts": 6.0,
+        "max_segment_beams": 120.0,
+        "max_segment_tilts": 3.0,
     }
 
     coupling_summary = CouplingSummary(measurements={"n_orientations": 55.0})
@@ -285,10 +330,24 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
     fanout.report(event)
 
     assert [_record.payload for _record in _records(a_path)] == [
-        {"index": 1, "r_obs": 0.2, "n_observed": 3, "n_beams": 5}
+        {
+            "index": 1,
+            "r_obs": 0.2,
+            "n_observed": 3,
+            "n_beams": 5,
+            "dataset": "",
+            "rotation_index": None,
+        }
     ]
     assert [_record.payload for _record in _records(b_path)] == [
-        {"index": 1, "r_obs": 0.2, "n_observed": 3, "n_beams": 5}
+        {
+            "index": 1,
+            "r_obs": 0.2,
+            "n_observed": 3,
+            "n_beams": 5,
+            "dataset": "",
+            "rotation_index": None,
+        }
     ]
 
 

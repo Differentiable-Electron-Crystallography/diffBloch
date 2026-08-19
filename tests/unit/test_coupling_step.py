@@ -460,6 +460,11 @@ def test_fit_orientation_emits_progress_events(tmp_path: Path) -> None:
     assert all(
         1 <= e.payload["n_passes"] <= e.payload["pass_cap"] == search.max_iterations for e in fits
     )
+    traces = [e for e in _records(path) if e.event_type == "OrientationSearchTrace"]
+    assert [e.rotation_index for e in traces] == [op.pattern.rotation_index] * 2
+    assert all(e.series["is_seed"][0] == 1.0 for e in traces)
+    assert all(e.series["is_final"][-1] == 1.0 for e in traces)
+    assert all(len(e.series["score"]) == e.measurements["n_trials"] for e in traces)
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:

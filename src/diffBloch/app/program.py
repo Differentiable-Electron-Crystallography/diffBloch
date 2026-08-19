@@ -106,6 +106,7 @@ from diffBloch.preprocess import (
     pipeline,
     pool,
     read_plan,
+    report_coupling,
     require_built_plans,
     resolve_recipe,
     run_inference,
@@ -502,6 +503,9 @@ def run_experiment(
         max_batch=max_batch,
         logger=logger,
         absorption=cfg.blochwave.to_absorption(),
+        dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
+            _dataset_ranges, rotation_index
+        ),
     )
 
 
@@ -1051,6 +1055,12 @@ def _preprocess(
         if any(sha is None for sha in lock_sha256s)
         else tuple(sha for sha in lock_sha256s if sha is not None)
     )
+    report_coupling(
+        logger,
+        dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
+            dataset_ranges, rotation_index
+        ),
+    )(pooled)
     logger.report(
         PreprocessCompleted(
             n_rotations=len(built_pooled),

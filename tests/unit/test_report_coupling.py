@@ -92,18 +92,29 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary(tmp_p
 
     path = tmp_path / "report.jsonl"
     log = ReportLogger(path)
-    out = report_coupling(log)(plan)
+    out = report_coupling(
+        log, dataset_for_rotation=lambda rotation_index: f"dataset-{rotation_index}"
+    )(plan)
 
     assert out is plan  # identity: a boundary observation, not a transform
     records = _records(path)
     rotations = [event for event in records if event.event_type == "RotationCoupling"]
+    segments = [event for event in records if event.event_type == "RotationCouplingSegments"]
     summaries = [event for event in records if event.event_type == "CouplingSummary"]
     assert [event.payload["index"] for event in rotations] == [0, 1]
+    assert [event.payload["rotation_index"] for event in rotations] == [0, 0]
+    assert [event.dataset for event in rotations] == ["dataset-0", "dataset-0"]
     assert (
         rotations[0].payload["n_coupling_segments"] == 2
         and rotations[0].payload["max_beams_per_segment"] == 2
     )  # the segmented rotation
     assert rotations[1].payload["n_coupling_segments"] == 1  # the tilt-independent rotation
+    assert len(segments) == 2
+    assert segments[0].series["segment_index"] == [0.0, 1.0]
+    assert segments[0].series["n_segment_beams"] == [2.0, 2.0]
+    assert segments[0].measurements["n_segments"] == 2.0
+    assert segments[1].series["segment_index"] == [0.0]
+    assert segments[1].measurements["n_segments"] == 1.0
     assert len(summaries) == 1
     assert summaries[0].measurements["n_orientations"] == 2.0
     assert summaries[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])

@@ -170,7 +170,11 @@ def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
     logger = ReportLogger(path)
 
     result = run_inference(
-        plan, _refinement(asu_plan, spec, numbers), method=_METHOD, logger=logger
+        plan,
+        _refinement(asu_plan, spec, numbers),
+        method=_METHOD,
+        logger=logger,
+        dataset_for_rotation=lambda rotation_index: f"dataset-{rotation_index}",
     )
 
     # One RotationScored per rotation (in order), then one InferenceCompleted aggregate.
@@ -178,6 +182,8 @@ def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
     rotations = [e for e in events if e.event_type == "RotationScored"]
     completed = [e for e in events if e.event_type == "InferenceCompleted"]
     assert [e.payload["index"] for e in rotations] == [0, 1]
+    assert [e.payload["rotation_index"] for e in rotations] == [0, 0]
+    assert [e.payload["dataset"] for e in rotations] == ["dataset-0", "dataset-0"]
     assert rotations[0].measurements["r_obs"] == result.per_rotation[0].r_obs
     assert len(completed) == 1
     assert completed[0].payload["n_rotations"] == 2

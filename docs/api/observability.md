@@ -30,8 +30,11 @@ from result-event names.
 The report stream includes enough structured data for the top-level `tools/event_report/` consumer
 to render the old human-facing views without runtime plot writers: preprocess completion,
 per-epoch train/validation wR2 and R_obs, orientation before/after scores with fitted angle deltas,
-per-dataset final rotation metrics, and thickness score grids. Matplotlib rendering and optional
-figure export live in `tools/event_report/event_report.ipynb`, not in `src/diffBloch`.
+per-dataset final rotation metrics, and thickness score grids. Higher-cardinality visualization
+data is batched into single events: `OrientationSearchTrace` carries the scored search path for one
+rotation, and `RotationCouplingSegments` carries the per-segment tilt/beam geometry for one
+rotation. Matplotlib rendering and optional figure export live in
+`tools/event_report/event_report.ipynb`, not in `src/diffBloch`.
 
 ```{eval-rst}
 .. automodule:: diffBloch.observability
