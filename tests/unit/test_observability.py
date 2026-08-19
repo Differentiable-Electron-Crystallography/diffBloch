@@ -665,18 +665,51 @@ def test_console_logger_renders_a_refinement_progress_bar_on_a_tty(
 
 
 def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     logger = ConsoleLogger(level=logging.INFO)
 
-    logger.report(OrientationOptimizationStarted(total_rotations=2))
-    logger.report(_fitted(index=5, score=0.05))
-    logger.report(_fitted(index=9, score=0.02))
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(OrientationOptimizationStarted(total_rotations=2))
+        logger.report(_fitted(index=5, score=0.05))
+        logger.report(
+            OrientationSearchTrace(
+                rotation_index=5,
+                residual="wr2",
+                trial_index=(0, 1),
+                alpha=(0.0, 0.1),
+                beta=(0.0, 0.0),
+                omega=(0.0, 0.0),
+                score=(0.06, 0.05),
+                comparable_score=(0.06, 0.05),
+                n_matched_hkl=(10, 10),
+                is_seed=(1, 0),
+                is_final=(0, 1),
+            )
+        )
+        logger.report(
+            RotationCouplingSegments(
+                rotation_index=5,
+                segment_index=(0,),
+                first_tilt_index=(0,),
+                last_tilt_index=(2,),
+                n_tilts=(3,),
+                n_segment_beams=(20,),
+                n_union_beams=20,
+                n_total_tilts=3,
+            )
+        )
+        logger.report(_fitted(index=9, score=0.02))
 
     out = capsys.readouterr().out
     assert "1/2" in out and "2/2" in out
+    assert out.count("\r") == 2
     assert out.endswith("\n")
+    assert not any("orientation trace" in record.getMessage() for record in caplog.records)
+    assert not any("coupling segments" in record.getMessage() for record in caplog.records)
 
 
 def test_console_logger_renders_a_thickness_progress_bar_on_a_tty(
