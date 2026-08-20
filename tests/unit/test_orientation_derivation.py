@@ -20,6 +20,7 @@ from diffBloch.preprocess.orientation import (
     orientation_basis,
     orientation_matrices,
     rocking_curve_tilts,
+    rotation_axis_correction,
     u_matrix,
 )
 
@@ -53,6 +54,50 @@ def test_u_matrix_carries_the_cell_correction(golden: dict[str, np.ndarray]) -> 
     u = u_matrix(golden["ub_matrix"], golden["cell_params"])
     assert np.linalg.det(u) == pytest.approx(1.03302, abs=1e-4)
     assert not np.allclose(u @ u.T, np.eye(3), atol=1e-2)
+
+
+def test_rotation_axis_correction_is_a_proper_rotation() -> None:
+    assert np.allclose(rotation_axis_correction(0.0), np.eye(3))
+    r = rotation_axis_correction(272.994)
+    assert np.allclose(r @ r.T, np.eye(3), atol=1e-12)
+    assert np.linalg.det(r) == pytest.approx(1.0, abs=1e-12)
+    # R_z(-theta) rotates x onto (cos(-theta), sin(-theta), 0).
+    theta = np.deg2rad(272.994)
+    assert np.allclose(r @ [1.0, 0.0, 0.0], [np.cos(-theta), np.sin(-theta), 0.0])
+
+
+def test_orientation_matrices_applies_rotation_axis_correction(
+    golden: dict[str, np.ndarray],
+) -> None:
+    uncorrected = orientation_matrices(
+        golden["ub_matrix"],
+        golden["cell_params"],
+        golden["alphas"],
+        golden["betas"],
+        golden["omegas"],
+    )
+    corrected = orientation_matrices(
+        golden["ub_matrix"],
+        golden["cell_params"],
+        golden["alphas"],
+        golden["betas"],
+        golden["omegas"],
+        rotation_axis_position=272.994,
+    )
+    axis_correction = rotation_axis_correction(272.994)
+    assert np.allclose(corrected, axis_correction @ uncorrected)
+    # A zero rotation_axis_position is the same as omitting it (no correction).
+    assert np.allclose(
+        orientation_matrices(
+            golden["ub_matrix"],
+            golden["cell_params"],
+            golden["alphas"],
+            golden["betas"],
+            golden["omegas"],
+            rotation_axis_position=0.0,
+        ),
+        uncorrected,
+    )
 
 
 def test_goniometer_rotation_is_a_proper_rotation() -> None:
