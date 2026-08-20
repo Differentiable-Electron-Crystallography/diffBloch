@@ -1,0 +1,59 @@
+# L-alanine 3D electron diffraction charge-density experiment.
+# Structure: Jana2020 dynamical-refinement IAM (dynamical_IAM.cif), P 21 21 21, Z=4.
+# Data: continuous-rotation PETS2 export, 61 zone axes, dstarmax 2.25, wavelength 0.0251 A.
+name: alanine
+
+inputs:
+  structure: dynamical_IAM.cif
+  exp_data: L-alanine_exp_976_dyn.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [500.0]
+
+blochwave:
+  solver: matrix_exp
+  absorption: true
+  coupling_mode: union
+  g_max: 2.5
+  sg_max: 0.01
+  rocking_curve_sampling: 42
+  dsg: 0.00
+  rsg: 0.66
+  ignore_orientations: []
+
+preprocess:
+  optimize_orientation: true
+  optimize_thickness: true
+  orientation:
+    nelder_mead:
+      step_size: 1
+  thickness:
+    min_thickness: 50.0
+    max_thickness: 2000.0
+    n_steps: 100
+    plot: true
+
+loss_metrics:
+  residual: wr2
+
+refinement:
+  steps: 40
+  thickness_nn:
+    enabled: true
+    num_samples: 40
+    sample_thickness: false
+    form: min_thickness
+    min_thickness: 50.0
+    max_thickness: 2000.0
+    init_seed: 0
+  optimizer:
+    name: adam
+    lr: 0.001
+  trainable:
+    positions: all
+    adp: all
+    occupancy: none
+  split:
+    train_test: false
+    val_frac: 0.1

@@ -24,6 +24,7 @@ from diffBloch.io.record import ExperimentalRecord
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
 _FLOAT_TEXT = r"[-+]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?|inf(?:inity)?|nan)"
 _MOSAICITY = re.compile(rf"mosaicity:\s*({_FLOAT_TEXT})", re.IGNORECASE)
+_ROTATION_AXIS_POSITION = re.compile(rf"tilt\s+axis\s+position:\s*({_FLOAT_TEXT})", re.IGNORECASE)
 _DATA_COLLECTION_GEOMETRY = re.compile(
     r"data\s+collection\s+geometry\s*:\s*([^\r\n;]+)", re.IGNORECASE
 )
@@ -76,6 +77,7 @@ def parse_experimental_block(
         data_collection_geometry=_data_collection_geometry(block),
         dstar_max=_dstar_max(block),
         mosaicity_degrees=_mosaicity(block),
+        rotation_axis_position_degrees=_rotation_axis_position(block),
         ub_matrix=_ub_matrix(block),
         zone_axis_ids=np.asarray(
             [int(row["_diffrn_zone_axis_id"]) for row in zone_rows], dtype=np.int64
@@ -165,6 +167,20 @@ def _mosaicity(block: gemmi.cif.Block) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def _rotation_axis_position(block: gemmi.cif.Block) -> float | None:
+    """PETS2's tilt-axis azimuthal offset (degrees) from measurement details.
+
+    None when absent (an older PETS build that never wrote it) -- ``orientation_matrices`` treats
+    that as coinciding with x, the goniometer axis convention every rotation/rocking-curve tilt in
+    this package is expressed in, so no correction is applied.
+    """
+    details = _measurement_details(block, _ROTATION_AXIS_POSITION)
+    if details is None:
+        return None
+    match = _ROTATION_AXIS_POSITION.search(details.text)
+    return float(match.group(1)) if match else None
+
+
 def _data_collection_geometry(
     block: gemmi.cif.Block,
 ) -> Literal["continuous_rotation", "precession"]:
@@ -200,6 +216,7 @@ def _experimental_parse_diagnostics(
         ("data_collection_geometry", _DATA_COLLECTION_GEOMETRY),
         ("dstarmax", _DSTAR_MAX),
         ("mosaicity", _MOSAICITY),
+        ("tilt axis position", _ROTATION_AXIS_POSITION),
     )
     used_by_tag: dict[str, list[str]] = {}
     absent_optional: list[str] = []

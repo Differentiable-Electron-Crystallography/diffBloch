@@ -1,0 +1,12 @@
+{
+  "structure": {
+    "ref": "dynamical_IAM.cif",
+    "sha256": "d01680f9875e2eda3319341b6c1c0b4f61b6785c8ccbec50fa9e429a07b9adae",
+    "bytes": 4045563
+  },
+  "experimental_data": {
+    "ref": "L-alanine_exp_976_dyn.cif_pets",
+    "sha256": "7509c487c00be9d6767fd1897df7eabdc37988b2e92347a8d5ec8acf682b83fd",
+    "bytes": 1004021
+  }
+}
