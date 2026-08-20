@@ -104,6 +104,7 @@ def run_inference(
     max_batch: int | None = None,
     absorption: Absorption = NO_ABSORPTION,
     logger: Logger = NULL_LOGGER,
+    dataset_for_rotation: Callable[[int], str] | None = None,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
 
@@ -137,14 +138,23 @@ def run_inference(
     )
     with torch.no_grad():
         solutions = engine.simulate(params)
+    built = require_built_plans(plan)
     rows = tuple(
         _score_rotation(orientation, solution)
-        for orientation, solution in zip(require_built_plans(plan), solutions, strict=True)
+        for orientation, solution in zip(built, solutions, strict=True)
     )
     for index, row in enumerate(rows):
+        rotation_index = int(built[index].pattern.rotation_index)
         logger.report(
             RotationScored(
-                index=index, r_obs=row.r_obs, n_observed=row.n_observed, n_beams=row.n_beams
+                index=index,
+                r_obs=row.r_obs,
+                n_observed=row.n_observed,
+                n_beams=row.n_beams,
+                dataset=""
+                if dataset_for_rotation is None
+                else dataset_for_rotation(rotation_index),
+                rotation_index=rotation_index,
             )
         )
     result = InferenceResult(per_rotation=rows)

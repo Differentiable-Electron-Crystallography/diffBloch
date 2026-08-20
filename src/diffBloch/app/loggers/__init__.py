@@ -1,15 +1,12 @@
 """Logger backends -- the ``app/`` boundary where sinks and vendor SDKs live, never the core.
 
-Each backend consumes the uniform :class:`~diffBloch.observability.Event` surface (``channel`` +
-``measurements``), so none knows the concrete event types and new events need no backend change.
-:class:`ConsoleLogger` (here, no vendor dependency) routes events to stdlib ``logging`` and
-:class:`CSVLogger` (here too) appends them to a file; each third-party backend lives in its own
-confined submodule that imports its SDK lazily, so importing this package never requires an optional
-dependency:
+Each backend consumes the uniform :class:`~diffBloch.observability.Event` surface. The console sink
+uses the scalar ``measurements`` view, while :class:`ReportLogger` writes the full versioned
+event-record payload for post-run tools. Each third-party backend lives in its own confined submodule
+that imports its SDK lazily, so importing this package never requires an optional dependency:
 
 - :class:`~diffBloch.app.loggers.wandb.WandbLogger` (``diffBloch.app.loggers.wandb``)
 - :class:`~diffBloch.app.loggers.comet.CometLogger` (``diffBloch.app.loggers.comet``)
-- :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` (``diffBloch.app.loggers.plotting``)
 
 Writing your own backend is a single method: implement ``report(event)`` for the events you care
 about.
@@ -17,51 +14,56 @@ about.
 
 from __future__ import annotations
 
-import csv
 import logging
 import math
+import shutil
 import sys
+import tempfile
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from diffBloch.io import ParseDiagnostic
 from diffBloch.observability import (
-    NULL_LOGGER,
     ConvergencePassStarted,
     ConvergenceSweepStarted,
     ConvergenceTrial,
+    CouplingSummary,
     DeviceSelected,
     Event,
     ExperimentDeclared,
-    Logger,
     ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
+    OrientationSearchTrace,
     PlanSeeded,
     PlanStepCompleted,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
+    RotationCoupling,
+    RotationCouplingSegments,
+    RunStageStarted,
+    RunStageStopped,
     ThicknessOptimizationStarted,
     ThicknessOptimized,
+    event_record_from_event,
 )
 
 __all__ = [
-    "CSVLogger",
     "ConsoleLogger",
-    "EarlyAbortLogger",
-    "FitAbortedError",
+    "ReportLogger",
     "format_measurements",
     "namespaced_measurements",
     "residual_label",
 ]
 
 _log = logging.getLogger("diffBloch.loggers")
-
-_CSV_HEADER = ("channel", "step", "metric", "value")
 
 
 def format_measurements(event: Event) -> str:
@@ -93,7 +95,7 @@ def _mean_over(value: float | None, evaluated: int | None, total: int | None) ->
     a finite score, so a run that quietly evaluates fewer of them would otherwise look like a run
     that got better.
 
-    A non-finite mean renders ``n/a [0/99]``, matching the refinement report's per-rotation means.
+    A non-finite mean renders ``n/a [0/99]``, matching the report visualizer's per-rotation means.
     The objective averages only the finite per-rotation scores, so its mean is non-finite in exactly
     one case -- nothing was evaluated -- which the ``[0/99]`` already states; the bare ``nan`` adds
     nothing and reads as a numerical failure rather than an empty denominator. ``None`` is the
@@ -196,6 +198,13 @@ class ConsoleLogger:
     _thickness_started_at: float = field(default=0.0, init=False, repr=False)
 
     def report(self, event: Event) -> None:
+        if isinstance(
+            event,
+            OrientationSearchTrace | RotationCoupling | RotationCouplingSegments | CouplingSummary,
+        ):
+            # High-cardinality payload for JSONL/notebook consumers. Logging it to the live console
+            # breaks the in-place progress bars without adding human-readable progress.
+            return
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
             return
@@ -227,10 +236,29 @@ class ConsoleLogger:
                 "on" if event.absorption else "off",
             )
             return
+        if isinstance(event, RunStageStarted):
+            _log.log(self.level, "Stage │ %s started", event.stage)
+            return
+        if isinstance(event, RunStageStopped):
+            status = event.status
+            suffix = (
+                f" │ {event.error_type}: {event.error_message}"
+                if event.status == "failed" and event.error_type
+                else ""
+            )
+            _log.log(
+                self.level,
+                "Stage │ %s stopped │ %s │ %.3fs%s",
+                event.stage,
+                status,
+                event.elapsed_seconds,
+                suffix,
+            )
+            return
         if isinstance(event, RefinedRotationMetrics):
             # Gated at the sink, not the emitter: the event must always be emitted -- the
-            # SummaryLogger builds its per-rotation table from it and W&B/Comet want the settled
-            # scores -- so a console that wants less says so here.
+            # ReportLogger and vendor sinks want the settled scores, so a console that wants less
+            # says so here.
             if self.per_rotation:
                 _log.log(
                     self.level,
@@ -263,7 +291,12 @@ class ConsoleLogger:
             self._refinement_started_at = time.perf_counter()
             return
         if isinstance(event, OrientationOptimizationStarted):
-            _log.log(self.level, "Orientation optimization │ %d rotation(s)", event.total_rotations)
+            label = (
+                f"Orientation optimization │ {event.dataset} │"
+                if event.dataset
+                else "Orientation optimization │"
+            )
+            _log.log(self.level, "%s %d rotation(s)", label, event.total_rotations)
             self._orientation_total = event.total_rotations
             self._orientation_seen = 0
             self._orientation_started_at = time.perf_counter()
@@ -283,7 +316,12 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, ThicknessOptimizationStarted):
-            _log.log(self.level, "Thickness optimization │ %d rotation(s)", event.total_rotations)
+            label = (
+                f"Thickness optimization │ {event.dataset} │"
+                if event.dataset
+                else "Thickness optimization │"
+            )
+            _log.log(self.level, "%s %d rotation(s)", label, event.total_rotations)
             self._thickness_total = event.total_rotations
             self._thickness_seen = 0
             self._thickness_started_at = time.perf_counter()
@@ -306,6 +344,14 @@ class ConsoleLogger:
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            if event.val_wr2 is not None or event.val_r_obs is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                suffix += f" │ val wR2 {val_wr2} │ val R_obs {val_r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
             for term, values in _penalty_components(event):
@@ -365,12 +411,22 @@ class ConsoleLogger:
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
+            val_suffix = ""
+            if event.val_wr2 is not None or event.val_r_obs is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                val_suffix = f" │ val wR2 {val_wr2} │ val R_obs {val_r_obs}"
             _log.log(
                 self.level,
-                "Refinement epoch %3d │ wR2 %s │ R_obs %s │ diffraction loss %s",
+                "Refinement epoch %3d │ wR2 %s │ R_obs %s%s │ diffraction loss %s",
                 event.iteration + 1,
                 wr2,
                 r_obs,
+                val_suffix,
                 diff_loss,
             )
             for term, values in _penalty_components(event):
@@ -415,93 +471,98 @@ class ConsoleLogger:
                 format_measurements(event),
             )
             return
+        elif isinstance(event, PreprocessCompleted):
+            _log.log(
+                self.level,
+                "PREPROCESS COMPLETE │ rotations=%d │ matched_hkl=%d │ total_hkl=%d",
+                event.n_rotations,
+                event.matched_hkl,
+                event.total_hkl,
+            )
+            return
         else:
             label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
         _log.log(self.level, "%s %s", label, format_measurements(event))
 
 
 @dataclass
-class CSVLogger:
-    """Append each event's measurements to a CSV file in long format (Lightning-style sink).
+class ReportLogger:
+    """Write a versioned JSONL event stream for post-run visualizers.
 
-    One row per measurement -- ``channel, step, metric, value`` -- so a heterogeneous event stream
-    (rotation, inference, refinement) shares a single flat table with no sparse columns, ready to
-    filter by ``channel`` or pivot by ``step``. The header is written once at construction (a fresh
-    file per run); each :meth:`report` appends and flushes, so the file is crash-safe and tailable.
+    This supersedes the old scalar file sink: each line preserves the whole event payload, including
+    structured fields that are intentionally absent from the flat scalar ``measurements`` surface. It
+    is still an ordinary app-boundary logger: producers emit typed event values, and this sink alone
+    performs filesystem I/O.
 
-    This is an *observation log*, not persistence: run state is checkpointed by serialising the
-    whole ``Plan``, never reconstructed from these rows.
+    ``completed_only`` streams to a temporary file and promotes it on :meth:`finalize`, so a report
+    only appears at its declared path once the run reached an end. A run that *failed* still gets
+    its artifact -- promoted beside the successful name with a ``-failed`` suffix. Deleting it would
+    throw away the one structured record of the failure, including the
+    :class:`~diffBloch.observability.RunStageStopped` event that reports it, at exactly the moment
+    a reader most needs the event stream.
+
+    Use it as a context manager (or ``try``/``finally``) so an exception that escapes the caught set
+    -- ``KeyboardInterrupt``, an allocator error -- still promotes the partial report and removes
+    the temporary directory.
     """
 
     path: Path
+    run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    completed_only: bool = False
+    _active_path: Path = field(default=Path(), init=False, repr=False)
+    _temporary_dir: Path | None = field(default=None, init=False, repr=False)
+    _sequence: int = field(default=0, init=False, repr=False)
+    _final_path: Path | None = field(default=None, init=False, repr=False)
+
+    @staticmethod
+    def timestamped_path(directory: Path, *, prefix: str = "report") -> Path:
+        """Return ``directory/report-YYYYMMDDTHHMMSSZ.jsonl`` for a new report artifact."""
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        return Path(directory) / f"{prefix}-{stamp}.jsonl"
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
-        with self.path.open("w", newline="") as handle:
-            csv.writer(handle).writerow(_CSV_HEADER)
+        if self.completed_only:
+            temporary_dir = Path(tempfile.mkdtemp(prefix="diffbloch-report-"))
+            self._temporary_dir = temporary_dir
+            self._active_path = temporary_dir / self.path.name
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._active_path = self.path
+        self._active_path.write_text("")
 
     def report(self, event: Event) -> None:
-        with self.path.open("a", newline="") as handle:
-            writer = csv.writer(handle)
-            for metric, value in event.measurements.items():
-                writer.writerow([event.channel, event.step, metric, value])
+        if self._final_path is not None:
+            raise RuntimeError("cannot write to a finalized ReportLogger")
+        record = event_record_from_event(event, run_id=self.run_id, sequence=self._sequence)
+        self._sequence += 1
+        with self._active_path.open("a") as handle:
+            handle.write(record.model_dump_json() + "\n")
 
+    def finalize(self, *, failed: bool = False) -> Path:
+        """Promote the streamed report and return the path it landed at.
 
-class FitAbortedError(RuntimeError):
-    """Raised by :class:`EarlyAbortLogger` to unwind a fit judged unpromising and stop it early.
+        Idempotent: a second call returns the same path without touching the filesystem, so a
+        ``finally`` block and an explicit call cannot fight each other.
+        """
+        if self._final_path is not None:
+            return self._final_path
+        target = self.failed_path if failed else self.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if self._active_path != target:
+            shutil.move(str(self._active_path), target)
+        if self._temporary_dir is not None:
+            shutil.rmtree(self._temporary_dir, ignore_errors=True)
+        self._final_path = target
+        return target
 
-    Carries the diagnostic that triggered the abort (rotations seen, best ``wr2``, the ceiling), so
-    the caller running the fit sees *why* it stopped, not just that it did.
-    """
+    @property
+    def failed_path(self) -> Path:
+        """Where a failed run's report lands: ``report-....jsonl`` -> ``report-...-failed.jsonl``."""
+        return self.path.with_name(f"{self.path.stem}-failed{self.path.suffix}")
 
+    def __enter__(self) -> ReportLogger:
+        return self
 
-@dataclass
-class EarlyAbortLogger:
-    """Watch the per-rotation fit stream and abort a run that is not tracking the data.
-
-    A fit-quality guard for a long, oracle-less **from-scratch** fit -- one with no committed
-    checkpoint and no reference ``R_obs`` to pin against, so a mis-set-up
-    run (wrong energy / ``g_max``, bad data lineage) would otherwise burn its whole budget producing
-    a bad answer. ``optimize_orientation`` emits one :class:`~diffBloch.observability.OrientationOptimized`
-    per rotation as it finishes, carrying the scaling-optimised ``wr2`` at the fitted orientation. A
-    healthy run reaches a low ``wr2`` on essentially every rotation; a fundamentally broken one stays
-    high on all of them. This guard gives the run
-    ``patience`` rotations to show *at least one* orientation reaching ``wr2 <= wr2_ceiling``; if
-    none does, it raises :class:`FitAbortedError`, unwinding the fit before the remaining rotations
-    run. Pick ``wr2_ceiling`` generously (well above a healthy fit, well below a garbage one) so a
-    real run clears it within the first rotation or two and never false-aborts.
-
-    Only the fit stream drives the decision; **every** event is forwarded verbatim to ``inner``
-    (default :data:`~diffBloch.observability.NULL_LOGGER`), so this composes with a
-    :class:`ConsoleLogger` / :class:`CSVLogger` for the live scroll --
-    ``EarlyAbortLogger(inner=ConsoleLogger())``. Raising from :meth:`report` is the abort mechanism:
-    the fit loop's only per-rotation hook is the logger, and both the sequential and ``workers > 1``
-    paths call ``report`` from the driving thread, so the raise unwinds the run cleanly. Compute
-    saved: **all** remaining rotations under ``workers = 1`` (sequential -- nothing further starts);
-    under ``workers > 1`` the queued rotations are cancelled but the ``<= workers`` already running
-    cannot be interrupted and finish first (``optimize_orientation`` cancels the rest on abort).
-    """
-
-    wr2_ceiling: float = 0.6
-    patience: int = 5
-    inner: Logger = NULL_LOGGER
-    _seen: int = field(default=0, init=False, repr=False)
-    _best_wr2: float = field(default=math.inf, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if self.patience < 1:
-            raise ValueError("patience must be >= 1")
-
-    def report(self, event: Event) -> None:
-        self.inner.report(event)  # forward first: the guard never swallows an observation
-        if event.channel != OrientationOptimized.channel:
-            return
-        self._seen += 1
-        self._best_wr2 = min(self._best_wr2, event.measurements["wr2"])
-        if self._seen >= self.patience and self._best_wr2 > self.wr2_ceiling:
-            raise FitAbortedError(
-                f"fit aborted early: after {self._seen} rotation(s) the best wr2 is "
-                f"{self._best_wr2:.4g}, above the {self.wr2_ceiling:g} ceiling -- the run is not "
-                "tracking the data (check energy / g_max / data lineage). Raise wr2_ceiling or "
-                "patience to allow a slower/looser fit."
-            )
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.finalize(failed=exc_type is not None)

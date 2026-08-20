@@ -11,6 +11,8 @@ reassembly adds beams per chunk, it does not change the physics when the beam se
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -23,9 +25,11 @@ from tests.unit.test_inference import (
     _simulated_intensities,
 )
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import MosaicSmoothed, PatternBatch, align
 from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
+from diffBloch.observability import EventRecord
 from diffBloch.preprocess import (
     couple_beams,
     optimize_orientation,
@@ -45,6 +49,10 @@ from diffBloch.specs import (
 )
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 def _pattern(intensities: torch.Tensor) -> PatternBatch:
@@ -428,29 +436,35 @@ def test_fit_orientation_workers_match_sequential() -> None:
         assert seq_op.alignment.hkl.tolist() == par_op.alignment.hkl.tolist()
 
 
-def test_fit_orientation_emits_progress_events() -> None:
+def test_fit_orientation_emits_progress_events(tmp_path: Path) -> None:
     """optimize_orientation streams one OrientationOptimized per rotation (the run's long phase).
 
     Uses the coupled path: the fixture's plain op carries the private's *output* beam list (no
     000, so a plain solve is all-zero and its wR2 is nan -- which the event faithfully surfaces);
     a coupled trial re-derives its union with 000, giving a finite objective to assert on.
     """
-    from diffBloch.observability import OrientationOptimized, RecordingLogger
-
     grid, op, refinement = _quartz_rot13()
     coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=1.6))
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    recorder = ReportLogger(path)
     search = NelderMeadSearch(step_size=0.5)
 
     optimize_orientation(refinement, search, method=_METHOD, coupling=coupling, logger=recorder)(
         Plan(structure_factor_grid=grid, orientations=(op, op))
     )
 
-    fits = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
+    fits = [e for e in _records(path) if e.event_type == "OrientationOptimized"]
     assert [e.rotation_index for e in fits] == [op.pattern.rotation_index] * 2
-    assert all(e.n_trials >= 1 and e.score >= 0.0 for e in fits)
+    assert all(e.payload["n_trials"] >= 1 and e.payload["score"] >= 0.0 for e in fits)
     # n_passes is the capped quantity and must be observable within its cap for calibration.
-    assert all(1 <= e.n_passes <= e.pass_cap == search.max_iterations for e in fits)
+    assert all(
+        1 <= e.payload["n_passes"] <= e.payload["pass_cap"] == search.max_iterations for e in fits
+    )
+    traces = [e for e in _records(path) if e.event_type == "OrientationSearchTrace"]
+    assert [e.rotation_index for e in traces] == [op.pattern.rotation_index] * 2
+    assert all(e.series["is_seed"][0] == 1.0 for e in traces)
+    assert all(e.series["is_final"][-1] == 1.0 for e in traces)
+    assert all(len(e.series["score"]) == e.measurements["n_trials"] for e in traces)
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:

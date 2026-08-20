@@ -57,22 +57,24 @@ from the training engine and the best epoch is selected by the held-out validati
 Validation still does not stop the run early; the loop always runs the configured
 `refinement.steps`.
 
-Which objective did the selecting is reported, not implied: `refinement_report.txt` carries a
-`Best epoch selection` row, and the `RefinementCompleted` event reports its number under
-`best_training_loss` or `best_validation_loss` accordingly. The per-epoch stream is always the
-training objective.
+Which objective did the selecting is reported, not implied: the canonical JSONL report's
+`RefinementCompleted` event reports its number under `best_training_loss` or
+`best_validation_loss` accordingly. The per-epoch stream always carries the training objective and,
+when a train/test split is enabled, the validation wR2/R_obs values computed during best-epoch
+selection.
 
 | File | Contents |
 |---|---|
 | `refined_structure.cif` | Best constrained coordinates, occupancies, and ADPs in CIF form. |
-| `refinement_report.txt` | Best epoch metrics, which objective selected it, and the compact HKL count. |
+| `reproducibility/reports/report-*.jsonl` | Canonical versioned event report for completed commands, consumed by post-run notebooks and visualizers. |
 | `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
 | `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. Thickness-network tensors are stored per dataset under `apparent_thickness[<ref>]__<parameter>` names. |
 | `plan.<stem>.npz` / `plan.<stem>.lock` | Settled preprocessing plan and its provenance lock, one pair per `inputs.exp_data` file. |
 | `refinement.lock` | Binds the refined outputs to every dataset's plan lock (`plan_lock_sha256s`), config digest, and code version; written only when every plan lock exists. |
 
-`refined_structure.cif` and `refinement_report.txt` land in the experiment directory; the `.npz`
-snapshots and locks go under `reproducibility/`.
+`refined_structure.cif` lands in the experiment directory; the completed-run JSONL report, `.npz`
+snapshots, and locks go under `reproducibility/`. Any summary view is derived from the JSONL report
+by whatever consumes it, not an extra refinement side effect.
 
 The completion summary prints the absolute location of every output.
 

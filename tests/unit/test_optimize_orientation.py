@@ -11,14 +11,11 @@ is deferred to the real quartz e2e.
 
 from __future__ import annotations
 
-import time
-
 import numpy as np
 import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
-from diffBloch.app.loggers import EarlyAbortLogger, FitAbortedError
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
@@ -250,47 +247,6 @@ def test_fit_orientation_workers_matches_sequential() -> None:
     threaded = optimize_orientation(refinement, NelderMeadSearch(), workers=3)(plan).orientations
     for a, b in zip(sequential, threaded, strict=True):
         assert torch.equal(a.orientation, b.orientation)
-
-
-def test_fit_orientation_workers_abort_cancels_pending_rotations(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Under ``workers > 1`` an early abort cancels the queued rotations, not drains them.
-
-    Regression for the ThreadPoolExecutor drain: a ``with`` block's ``shutdown(wait=True)`` ran
-    every submitted search before the ``FitAbortedError`` surfaced, defeating the point of stopping
-    early. With ``cancel_futures`` the queued rotations' compute is saved (only the ``<= workers``
-    already in flight finish). The per-rotation search is stubbed so the test is fast; we count how
-    many actually run and assert it is below the total -- which the old draining code could not do.
-    """
-    import diffBloch.preprocess.steps.optimize_orientation as fo
-
-    calls: list[int] = []
-
-    def stub(  # type: ignore[no-untyped-def]
-        engine,
-        fgb,
-        plan,
-        op,
-        *,
-        search,
-        coupling,
-        validate=True,
-    ):
-        calls.append(1)
-        time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return op, 0.5, 1, 1
-
-    monkeypatch.setattr(fo, "_refine_one", stub)
-    grid, asu_plan, spec, numbers = _silicon()
-    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
-    plan = Plan(structure_factor_grid=grid, orientations=(matched,) * 40)
-    refinement = _refinement(asu_plan, spec, numbers)
-    logger = EarlyAbortLogger(wr2_ceiling=-1.0, patience=1)  # aborts on the first fit event
-
-    with pytest.raises(FitAbortedError):
-        optimize_orientation(refinement, NelderMeadSearch(), workers=4, logger=logger)(plan)
-    assert len(calls) < 40  # queued rotations cancelled; the draining code ran all 40
 
 
 def test_nelder_mead_search_rejects_a_nonpositive_iteration_cap() -> None:

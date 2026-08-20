@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from typing import cast
 
 import numpy as np
@@ -10,6 +11,7 @@ import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.losses import mse
 from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
@@ -32,19 +34,20 @@ from diffBloch.engine import (
 )
 from diffBloch.observability import (
     NULL_LOGGER,
+    EventRecord,
     Logger,
     ObjectiveManifest,
     ObjectiveTerm,
-    RecordingLogger,
-    RefinementCompleted,
-    RefinementOrientationStep,
-    RefinementStep,
 )
 from diffBloch.params import PhysicalState, RefinableParams
 
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0  # 5 A cubic -> reciprocal basis (1/5) I
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 def _engine(
@@ -247,13 +250,14 @@ def test_refinement_problem_can_run_current_refinement_loop_with_engine() -> Non
     assert result.losses[-1] < result.losses[0]
 
 
-def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
+def test_run_refinement_model_verbose_reports_per_rotation_steps(tmp_path: Path) -> None:
     """``verbose`` ("verbose refinement") adds one per-rotation event per step, off by default."""
     engine = _engine(
         loss=wr2_loss
     )  # wr2 loss so RefinementStep.wr2 is populated to compare against
     model = build_refinement_model(initial=_params())
-    logger = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path)
 
     run_refinement_model(
         engine,
@@ -267,20 +271,23 @@ def test_run_refinement_model_verbose_reports_per_rotation_steps() -> None:
         verbose=True,
     )
 
-    epoch_events = [e for e in logger.events if isinstance(e, RefinementStep)]
-    orientation_events = [e for e in logger.events if isinstance(e, RefinementOrientationStep)]
+    events = _records(path)
+    epoch_events = [e for e in events if e.event_type == "RefinementStep"]
+    orientation_events = [e for e in events if e.event_type == "RefinementOrientationStep"]
     assert len(epoch_events) == 3
     # one engine orientation -> one RefinementOrientationStep per step, matching the epoch mean.
     assert len(orientation_events) == 3
     for epoch, orientation_event in zip(epoch_events, orientation_events, strict=True):
-        assert orientation_event.iteration == epoch.iteration
+        assert orientation_event.payload["iteration"] == epoch.payload["iteration"]
         assert orientation_event.rotation_index == 0
-        assert orientation_event.wr2 == pytest.approx(epoch.wr2)
-        assert orientation_event.r_obs == pytest.approx(epoch.r_obs)
-        assert orientation_event.diff_loss == pytest.approx(epoch.diff_loss)
+        assert orientation_event.measurements["wr2"] == pytest.approx(epoch.payload["wr2"])
+        assert orientation_event.measurements["r_obs"] == pytest.approx(epoch.payload["r_obs"])
+        assert orientation_event.measurements["diff_loss"] == pytest.approx(
+            epoch.payload["diff_loss"]
+        )
 
 
-def test_run_refinement_model_declares_the_objective_before_the_first_step() -> None:
+def test_run_refinement_model_declares_the_objective_before_the_first_step(tmp_path: Path) -> None:
     """The manifest opens the stream and is returned on the result, empty penalties included."""
 
     @dataclasses.dataclass(frozen=True)
@@ -293,7 +300,8 @@ def test_run_refinement_model_declares_the_objective_before_the_first_step() -> 
 
     engine = _engine(loss=mse_loss)
     model = build_refinement_model(initial=_params())
-    logger = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path)
 
     result = run_refinement_model(
         engine,
@@ -306,17 +314,21 @@ def test_run_refinement_model_declares_the_objective_before_the_first_step() -> 
         logger=logger,
     )
 
-    (manifest,) = [e for e in logger.events if isinstance(e, ObjectiveManifest)]
-    assert logger.events.index(manifest) == 0  # declared before any compute is reported
-    assert manifest.penalties == (ObjectiveTerm(name="bond_length", weight=2.5),)
-    assert manifest.constraints == () and manifest.components == ()
-    assert result.objective_manifest == manifest
+    records = _records(path)
+    (manifest,) = [e for e in records if e.event_type == "ObjectiveManifest"]
+    assert records.index(manifest) == 0  # declared before any compute is reported
+    assert manifest.payload["penalties"] == [{"name": "bond_length", "weight": 2.5}]
+    assert manifest.payload["constraints"] == [] and manifest.payload["components"] == []
+    assert result.objective_manifest == ObjectiveManifest(
+        penalties=(ObjectiveTerm(name="bond_length", weight=2.5),)
+    )
 
 
-def test_run_refinement_model_default_omits_per_rotation_steps() -> None:
+def test_run_refinement_model_default_omits_per_rotation_steps(tmp_path: Path) -> None:
     engine = _engine(loss=mse_loss)
     model = build_refinement_model(initial=_params())
-    logger = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    logger = ReportLogger(path)
 
     run_refinement_model(
         engine,
@@ -329,7 +341,7 @@ def test_run_refinement_model_default_omits_per_rotation_steps() -> None:
         logger=logger,
     )
 
-    assert not [e for e in logger.events if isinstance(e, RefinementOrientationStep)]
+    assert not [e for e in _records(path) if e.event_type == "RefinementOrientationStep"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -518,14 +530,15 @@ def test_refine_best_params_track_the_lowest_recorded_loss() -> None:
     assert not result.best_params.occupancy_raw.requires_grad
 
 
-def test_refine_best_params_can_track_a_selection_engine() -> None:
+def test_refine_best_params_can_track_a_selection_engine(tmp_path: Path) -> None:
     train_engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
     selection_engine = _engine(
         loss=mse_loss,
         pattern=_observed_pattern(_params(occupancy_logit=0.0)),
     )
     initial = _params(occupancy_logit=0.0)
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    recorder = ReportLogger(path)
 
     result = run_refinement_model(
         train_engine,
@@ -548,17 +561,19 @@ def test_refine_best_params_can_track_a_selection_engine() -> None:
 
     # The completion event must name the objective that selected the epoch, and must not report a
     # held-out number under the training key -- the per-step stream stays the training objective.
-    (completed,) = [e for e in recorder.events if isinstance(e, RefinementCompleted)]
-    assert completed.selection == "validation"
+    records = _records(path)
+    (completed,) = [e for e in records if e.event_type == "RefinementCompleted"]
+    assert completed.payload["selection"] == "validation"
     assert completed.measurements["best_validation_loss"] == result.best_loss
     assert "best_training_loss" not in completed.measurements
-    steps_reported = [e.loss for e in recorder.events if isinstance(e, RefinementStep)]
+    steps_reported = [float(e.payload["loss"]) for e in records if e.event_type == "RefinementStep"]
     assert steps_reported == [float(x) for x in result.losses]
 
 
-def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
+def test_refine_emits_a_step_stream_and_a_completion_event(tmp_path: Path) -> None:
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    recorder = ReportLogger(path)
 
     result = _refine(
         engine,
@@ -570,41 +585,43 @@ def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
         logger=recorder,
     )
 
-    steps = [e for e in recorder.events if isinstance(e, RefinementStep)]
-    (completed,) = [e for e in recorder.events if isinstance(e, RefinementCompleted)]
-    assert [e.iteration for e in steps] == [0, 1, 2, 3, 4, 5]  # one event per step, in order
-    assert [e.loss for e in steps] == [float(x) for x in result.losses]  # the reported curve
+    records = _records(path)
+    steps = [e for e in records if e.event_type == "RefinementStep"]
+    (completed,) = [e for e in records if e.event_type == "RefinementCompleted"]
+    assert [e.payload["iteration"] for e in steps] == [0, 1, 2, 3, 4, 5]
+    assert [e.payload["loss"] for e in steps] == [float(x) for x in result.losses]
     first = steps[0]
-    assert first.objective_total == first.loss
-    assert first.components.keys() == {"diffraction"}
+    assert first.payload["objective_total"] == first.payload["loss"]
+    assert first.payload["components"].keys() == {"diffraction"}
     # wr2/r_obs are always-computed reporting diagnostics, independent of the configured loss
     # (mse_loss here) -- both are real numbers and both appear in measurements.
-    assert first.wr2 is not None
-    assert first.r_obs is not None
+    assert first.payload["wr2"] is not None
+    assert first.payload["r_obs"] is not None
     assert first.measurements == {
-        "wr2": first.wr2,
-        "r_obs": first.r_obs,
-        "diff_loss": first.loss,
+        "wr2": first.payload["wr2"],
+        "r_obs": first.payload["r_obs"],
+        "diff_loss": first.payload["loss"],
         # The sole composed term reports its raw value, weight, and weighted contribution.
-        "diffraction/raw": first.loss,
+        "diffraction/raw": first.payload["loss"],
         "diffraction/weight": 1.0,
-        "diffraction/contribution": first.loss,
+        "diffraction/contribution": first.payload["loss"],
         # Each mean carries the denominator it was taken over.
         "n_rotations": 1.0,
         "n_wr2_evaluated": 1.0,
         "n_r_obs_evaluated": 1.0,
     }
-    assert completed.n_steps == 6
-    assert completed.best_step == result.best_step
-    assert completed.best_loss == result.best_loss
+    assert completed.payload["n_steps"] == 6
+    assert completed.payload["best_step"] == result.best_step
+    assert completed.payload["best_loss"] == result.best_loss
     # No selection engine: the summary's best is the training objective, and says so.
-    assert completed.selection == "training"
+    assert completed.payload["selection"] == "training"
     assert "best_training_loss" in completed.measurements
 
 
-def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
+def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss(tmp_path: Path) -> None:
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
+    recorder = ReportLogger(path)
 
     result = _refine(
         engine,
@@ -616,17 +633,19 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss() -> None:
         logger=recorder,
     )
 
-    (step,) = [e for e in recorder.events if isinstance(e, RefinementStep)]
-    assert step.loss == float(result.losses[0])
-    assert step.objective_total == step.loss
-    assert step.r_obs is not None  # always-computed reporting diagnostic, independent of loss
+    (step,) = [e for e in _records(path) if e.event_type == "RefinementStep"]
+    assert step.payload["loss"] == float(result.losses[0])
+    assert step.payload["objective_total"] == step.payload["loss"]
+    assert (
+        step.payload["r_obs"] is not None
+    )  # always-computed reporting diagnostic, independent of loss
     assert step.measurements == {
-        "wr2": step.wr2,
-        "r_obs": step.r_obs,
-        "diff_loss": step.loss,
-        "diffraction/raw": step.loss,
+        "wr2": step.payload["wr2"],
+        "r_obs": step.payload["r_obs"],
+        "diff_loss": step.payload["loss"],
+        "diffraction/raw": step.payload["loss"],
         "diffraction/weight": 1.0,
-        "diffraction/contribution": step.loss,
+        "diffraction/contribution": step.payload["loss"],
         "n_rotations": 1.0,
         "n_wr2_evaluated": 1.0,
         "n_r_obs_evaluated": 1.0,
