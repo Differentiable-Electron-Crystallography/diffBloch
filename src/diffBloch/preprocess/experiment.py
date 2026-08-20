@@ -41,7 +41,7 @@ from diffBloch.engine.plan import StructureFactorGrid
 from diffBloch.io.record import AdpRecord, ExperimentalRecord, StructureRecord
 from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
-from diffBloch.preprocess.orientation import orientation_matrices
+from diffBloch.preprocess.orientation import orientation_matrices, rotation_axis_correction
 from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry, RockingCurve
 
@@ -52,6 +52,7 @@ __all__ = [
     "RefinementSetup",
     "from_experiment",
     "resolve_dataset_mosaicity",
+    "resolve_dataset_orientations",
     "seed_beam_hkl",
     "setup_datasets",
     "validation_mask",
@@ -318,14 +319,7 @@ def setup_datasets(
                 grid, refinement_setup, energy=energy, absorption=absorption
             )
         u0 = u0_by_energy[energy]
-        orientations = orientation_matrices(
-            record.ub_matrix,
-            record.cell_parameters,
-            record.alphas,
-            record.betas,
-            record.omegas,
-            rotation_axis_position=record.rotation_axis_position_degrees,
-        )
+        orientations = resolve_dataset_orientations(record, config.blochwave.rotation_axis_position)
         local_ignore_set = set(local_ignored)
         plans = tuple(
             CandidatePlan.seed(
@@ -355,6 +349,51 @@ def setup_datasets(
         )
         offset += count
     return refinement_setup, tuple(datasets)
+
+
+def resolve_dataset_orientations(
+    record: ExperimentalRecord,
+    declared_position: float | None,
+) -> NDArray[np.float64]:
+    """This dataset's per-rotation orientations, in the frame the rest of the pipeline assumes.
+
+    Composes the two concerns kept separate in ``preprocess.orientation``: the as-collected
+    derivation (:func:`~diffBloch.preprocess.orientation.orientation_matrices`) and the
+    goniometer-axis correction
+    (:func:`~diffBloch.preprocess.orientation.rotation_axis_correction`), which brings the rotation
+    axis onto x so the left-multiplied rocking tilts and ``klar_beam_mask``'s ``(g_y, g_z)`` lever
+    arm are measured about the right axis.
+
+    The azimuth comes from the PETS file; ``blochwave.rotation_axis_position`` overrides it and is
+    the only way to proceed when the file records none. A *missing* value is an error rather than an
+    assumed zero: absent, unparsed, and genuinely-zero are three different situations, and silently
+    treating the first two as the third is how a wrong integration axis goes unnoticed.
+    """
+    source = record.source_path if record.source_path is not None else "<experimental data>"
+    position = (
+        declared_position
+        if declared_position is not None
+        else (record.rotation_axis_position_degrees)
+    )
+    if position is None:
+        raise ValueError(
+            f"a 'rotation axis position:' value is required in {source}; add it, or declare the "
+            "assumed goniometer-axis azimuth as blochwave.rotation_axis_position (0.0 means the "
+            "rotation axis already lies along x)"
+        )
+    if not np.isfinite(position):
+        raise ValueError(
+            f"the goniometer-axis azimuth must be finite in {source}; got {position!r}"
+        )
+    orientations = orientation_matrices(
+        record.ub_matrix,
+        record.cell_parameters,
+        record.alphas,
+        record.betas,
+        record.omegas,
+    )
+    correction = rotation_axis_correction(position)
+    return np.stack([correction @ orientation for orientation in orientations])
 
 
 def resolve_dataset_mosaicity(

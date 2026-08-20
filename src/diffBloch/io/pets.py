@@ -24,7 +24,11 @@ from diffBloch.io.record import ExperimentalRecord
 _DSTAR_MAX = re.compile(r"dstarmax:\s*([\d.]+)", re.IGNORECASE)
 _FLOAT_TEXT = r"[-+]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][-+]?\d+)?|inf(?:inity)?|nan)"
 _MOSAICITY = re.compile(rf"mosaicity:\s*({_FLOAT_TEXT})", re.IGNORECASE)
-_ROTATION_AXIS_POSITION = re.compile(rf"tilt\s+axis\s+position:\s*({_FLOAT_TEXT})", re.IGNORECASE)
+# PETS writes "rotation axis position"; "tilt axis position" is accepted as a newer PETS2
+# spelling. Matching only the latter silently disabled the correction on every real file.
+_ROTATION_AXIS_POSITION = re.compile(
+    rf"(?:rotation|tilt)\s+axis\s+position:\s*({_FLOAT_TEXT})", re.IGNORECASE
+)
 _DATA_COLLECTION_GEOMETRY = re.compile(
     r"data\s+collection\s+geometry\s*:\s*([^\r\n;]+)", re.IGNORECASE
 )
@@ -216,7 +220,7 @@ def _experimental_parse_diagnostics(
         ("data_collection_geometry", _DATA_COLLECTION_GEOMETRY),
         ("dstarmax", _DSTAR_MAX),
         ("mosaicity", _MOSAICITY),
-        ("tilt axis position", _ROTATION_AXIS_POSITION),
+        ("rotation_axis_position", _ROTATION_AXIS_POSITION),
     )
     used_by_tag: dict[str, list[str]] = {}
     absent_optional: list[str] = []

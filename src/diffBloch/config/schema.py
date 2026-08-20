@@ -77,7 +77,8 @@ class BlochwaveConfig(_StrictConfig):
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
     integration semi-angle is read from the PETS experimental data rather than configured.
     ``mosaicity: true`` opts into PETS-derived angular mosaic averaging, while the default ``false``
-    disables it.
+    disables it. ``rotation_axis_position`` is normally read from the PETS file and is declared
+    here only when that file records none.
     """
 
     # One solver for every phase (preprocessing search, refinement, and inference/scoring) --
@@ -96,6 +97,13 @@ class BlochwaveConfig(_StrictConfig):
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
     ignore_orientations: tuple[int, ...] = ()
+    # Escape hatch for a PETS file that records no `rotation axis position` (an older build, or a
+    # hand-assembled file). Declaring it here states the assumption explicitly instead of letting a
+    # missing field silently mean "the axis is already on x" -- see
+    # `preprocess.experiment.resolve_dataset_orientations`. Lives on `blochwave` rather than
+    # `inputs` because this section is hashed wholesale into `dataset_config_digest`, so changing
+    # the declared value restales the checkpoint it settled.
+    rotation_axis_position: float | None = None
 
     def to_absorption(self) -> Absorption:
         """Parse the absorption switch into its typed scientific value."""
