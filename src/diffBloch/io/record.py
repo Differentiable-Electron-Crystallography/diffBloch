@@ -205,6 +205,11 @@ class ExperimentalRecord(BaseModel):
     # version that wrote this file doesn't record it (a manual/config g_max is then the only option).
     dstar_max: float | None = None
     mosaicity_degrees: float | None = None
+    # PETS2's azimuthal offset (degrees) of the true goniometer/rotation axis from the x-axis of
+    # its own coordinate frame -- the frame every per-rotation orientation and rocking-curve tilt
+    # (about x) is expressed in. None (absent field, or an older PETS build that doesn't record it)
+    # means the rotation axis coincides with x, i.e. no correction is needed.
+    rotation_axis_position_degrees: float | None = None
     ub_matrix: FloatArray
     zone_axis_ids: IntArray
     zone_axes: FloatArray

@@ -324,6 +324,7 @@ def setup_datasets(
             record.alphas,
             record.betas,
             record.omegas,
+            rotation_axis_position=record.rotation_axis_position_degrees,
         )
         local_ignore_set = set(local_ignored)
         plans = tuple(

@@ -37,6 +37,7 @@ __all__ = [
     "orientation_basis",
     "orientation_matrices",
     "rocking_curve_tilts",
+    "rotation_axis_correction",
     "u_matrix",
 ]
 
@@ -86,6 +87,27 @@ def goniometer_rotation(alpha: float, beta: float, omega: float) -> FloatArray:
     ry = np.array([[np.cos(b), 0.0, np.sin(b)], [0.0, 1.0, 0.0], [-np.sin(b), 0.0, np.cos(b)]])
     rotation: FloatArray = rz @ rx @ ry
     return rotation
+
+
+def rotation_axis_correction(rotation_axis_position: float) -> FloatArray:
+    """``R_z(-rotation_axis_position)``, degrees: brings the true goniometer axis onto x.
+
+    Every rocking-curve tilt (:func:`rocking_curve_tilts`) and the hexagonal search
+    (:func:`hexagonal_tilt`) assume the goniometer/rotation axis lies along x in PETS's own
+    coordinate frame -- true only when PETS's ``tilt axis position`` is zero (or absent, on PETS
+    builds that never recorded it). A nonzero value means the real rotation axis sits at that
+    azimuth instead, so every per-rotation orientation must be pre-rotated back by its negative
+    before any x-axis tilt is composed onto it, or the whole rocking-curve integration runs about
+    the wrong axis.
+    """
+    theta = np.deg2rad(-rotation_axis_position)
+    return np.array(
+        [
+            [np.cos(theta), -np.sin(theta), 0.0],
+            [np.sin(theta), np.cos(theta), 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
 
 
 def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
@@ -181,11 +203,17 @@ def orientation_matrices(
     alphas: FloatArray,
     betas: FloatArray,
     omegas: FloatArray,
+    *,
+    rotation_axis_position: float | None = None,
 ) -> FloatArray:
-    """Per-rotation orientation matrices ``R_goni @ U``, shape ``(R, 3, 3)``.
+    """Per-rotation orientation matrices ``R_axis @ R_goni @ U``, shape ``(R, 3, 3)``.
 
     ``alphas``/``betas``/``omegas`` are the per-rotation goniometer angles (degrees), one entry per
-    PETS zone axis, in the same order as the record's ``zone_axis_ids``.
+    PETS zone axis, in the same order as the record's ``zone_axis_ids``. ``rotation_axis_position``
+    is PETS's ``tilt axis position`` (degrees, dataset-wide, see
+    :attr:`~diffBloch.io.record.ExperimentalRecord.rotation_axis_position_degrees`); ``None`` (or
+    ``0.0``) applies no correction (:func:`rotation_axis_correction`), matching every rotation's
+    goniometer axis already lying along x.
     """
     alphas = np.asarray(alphas, dtype=np.float64)
     betas = np.asarray(betas, dtype=np.float64)
@@ -193,6 +221,14 @@ def orientation_matrices(
     if alphas.ndim != 1 or not (alphas.shape == betas.shape == omegas.shape):
         raise ValueError("alphas, betas, omegas must be 1-D arrays of equal length")
     u = u_matrix(ub_matrix, cell_parameters)
+    axis_correction = (
+        rotation_axis_correction(rotation_axis_position)
+        if rotation_axis_position is not None
+        else np.eye(3)
+    )
     return np.stack(
-        [goniometer_rotation(a, b, o) @ u for a, b, o in zip(alphas, betas, omegas, strict=True)]
+        [
+            axis_correction @ goniometer_rotation(a, b, o) @ u
+            for a, b, o in zip(alphas, betas, omegas, strict=True)
+        ]
     )
