@@ -10,6 +10,11 @@ Convention::
 
     orientation = R_z(omega) . R_x(alpha) . R_y(beta) @ U,    U = UB @ B^-1
 
+This is the *as-collected* convention -- what PETS recorded. The goniometer axis is additionally
+brought onto x by ``R_z(-rotation_axis_position)`` (:func:`rotation_axis_correction`), composed at
+the dataset boundary in :func:`~diffBloch.preprocess.experiment.resolve_dataset_orientations` rather
+than here, so this module's derivation stays a pure function of the PETS-recorded geometry.
+
 where ``B`` is the Busing-Levy reciprocal matrix built from *this dataset's own* PETS cell
 parameters (the same cell ``UB`` was fit against, so ``U`` is close to a pure rotation -- see
 ``diffBloch.preprocess.experiment._resolve_authoritative_cell`` for how a combined experiment's
@@ -92,14 +97,23 @@ def goniometer_rotation(alpha: float, beta: float, omega: float) -> FloatArray:
 def rotation_axis_correction(rotation_axis_position: float) -> FloatArray:
     """``R_z(-rotation_axis_position)``, degrees: brings the true goniometer axis onto x.
 
-    Every rocking-curve tilt (:func:`rocking_curve_tilts`) and the hexagonal search
-    (:func:`hexagonal_tilt`) assume the goniometer/rotation axis lies along x in PETS's own
-    coordinate frame -- true only when PETS's ``tilt axis position`` is zero (or absent, on PETS
-    builds that never recorded it). A nonzero value means the real rotation axis sits at that
-    azimuth instead, so every per-rotation orientation must be pre-rotated back by its negative
-    before any x-axis tilt is composed onto it, or the whole rocking-curve integration runs about
-    the wrong axis.
+    Two independent parts of the pipeline assume the goniometer/rotation axis lies along x in PETS's
+    own coordinate frame: :func:`rocking_curve_tilts`, whose tilts are left-multiplied onto an
+    orientation (``R_tilt @ orientation``), and
+    :func:`~diffBloch.preprocess.steps.beams.klar_beam_mask`, whose lever arm is the lab-frame
+    ``(g_y, g_z)`` -- the distance from the x rock axis. Both hold only when PETS's
+    ``rotation axis position`` is zero.
+
+    A nonzero value means the real axis sits at that azimuth instead, so every per-rotation
+    orientation must be pre-rotated back by its negative before any x-axis tilt is composed onto it,
+    or the whole rocking-curve integration runs about the wrong axis. This is the pure matrix; the
+    composition and the record-vs-config resolution live in
+    :func:`~diffBloch.preprocess.experiment.resolve_dataset_orientations`.
     """
+    if not np.isfinite(rotation_axis_position):
+        # PETS's free-text float grammar admits `nan`/`inf`; without this the trig below yields an
+        # all-NaN matrix that silently poisons every orientation rather than failing here.
+        raise ValueError(f"rotation_axis_position must be finite; got {rotation_axis_position!r}")
     theta = np.deg2rad(-rotation_axis_position)
     return np.array(
         [
@@ -203,17 +217,16 @@ def orientation_matrices(
     alphas: FloatArray,
     betas: FloatArray,
     omegas: FloatArray,
-    *,
-    rotation_axis_position: float | None = None,
 ) -> FloatArray:
-    """Per-rotation orientation matrices ``R_axis @ R_goni @ U``, shape ``(R, 3, 3)``.
+    """Per-rotation *as-collected* orientation matrices ``R_goni @ U``, shape ``(R, 3, 3)``.
 
     ``alphas``/``betas``/``omegas`` are the per-rotation goniometer angles (degrees), one entry per
-    PETS zone axis, in the same order as the record's ``zone_axis_ids``. ``rotation_axis_position``
-    is PETS's ``tilt axis position`` (degrees, dataset-wide, see
-    :attr:`~diffBloch.io.record.ExperimentalRecord.rotation_axis_position_degrees`); ``None`` (or
-    ``0.0``) applies no correction (:func:`rotation_axis_correction`), matching every rotation's
-    goniometer axis already lying along x.
+    PETS zone axis, in the same order as the record's ``zone_axis_ids``.
+
+    As-collected means exactly what PETS recorded: this deliberately applies no goniometer-axis
+    correction, so the result is a pure function of ``UB``, the cell, and the angles. Bringing the
+    rotation axis onto x is a separate concern with a separate input, and lives in
+    :func:`~diffBloch.preprocess.experiment.resolve_dataset_orientations`.
     """
     alphas = np.asarray(alphas, dtype=np.float64)
     betas = np.asarray(betas, dtype=np.float64)
@@ -221,14 +234,6 @@ def orientation_matrices(
     if alphas.ndim != 1 or not (alphas.shape == betas.shape == omegas.shape):
         raise ValueError("alphas, betas, omegas must be 1-D arrays of equal length")
     u = u_matrix(ub_matrix, cell_parameters)
-    axis_correction = (
-        rotation_axis_correction(rotation_axis_position)
-        if rotation_axis_position is not None
-        else np.eye(3)
-    )
     return np.stack(
-        [
-            axis_correction @ goniometer_rotation(a, b, o) @ u
-            for a, b, o in zip(alphas, betas, omegas, strict=True)
-        ]
+        [goniometer_rotation(a, b, o) @ u for a, b, o in zip(alphas, betas, omegas, strict=True)]
     )

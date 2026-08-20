@@ -14,7 +14,11 @@ from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
-from diffBloch.preprocess import RefinementSetup, from_experiment, orientation_matrices
+from diffBloch.preprocess import (
+    RefinementSetup,
+    from_experiment,
+    resolve_dataset_orientations,
+)
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURE_ROOT / "quartz_anchor"
@@ -171,13 +175,9 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     # Raw index 9 remains a validation member when removed; later rotations are not renumbered.
     assert len(setup.plans.train.orientations) == 88
     assert len(setup.plans.validation.orientations) == 8
-    expected = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
+    # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
+    # records a nonzero goniometer-axis azimuth for quartz, so these differ.
+    expected = resolve_dataset_orientations(experimental_data, None)
     assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
     assert setup.plans.train.orientations[0].pattern.rotation_index == 1
     assert [op.pattern.rotation_index for op in setup.plans.validation.orientations[:2]] == [19, 29]
@@ -214,13 +214,9 @@ def test_from_experiment_rejects_invalid_data_dependent_ignore_selection() -> No
 
 def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
     structure, experimental_data, config, setup = _quartz_setup()
-    expected = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
+    # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
+    # records a nonzero goniometer-axis azimuth for quartz, so these differ.
+    expected = resolve_dataset_orientations(experimental_data, None)
 
     # First train rotation is rotation index 0 (index 9 is the first validation pick). The candidate
     # phase carries plain-numpy source (orientation / beam_hkl), built into tensors later.

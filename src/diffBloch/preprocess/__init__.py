@@ -20,6 +20,7 @@ from diffBloch.preprocess.experiment import (
     RefinementSetup,
     from_experiment,
     resolve_dataset_mosaicity,
+    resolve_dataset_orientations,
     setup_datasets,
     validation_mask,
 )
@@ -34,6 +35,7 @@ from diffBloch.preprocess.orientation import (
     hexagonal_tilt,
     orientation_basis,
     orientation_matrices,
+    rotation_axis_correction,
     u_matrix,
 )
 from diffBloch.preprocess.pipeline import (
@@ -143,6 +145,7 @@ __all__ = [
     "couple_beams",
     "orientation_basis",
     "orientation_matrices",
+    "rotation_axis_correction",
     "pipeline",
     "plan_coverage",
     "pool",
@@ -152,6 +155,7 @@ __all__ = [
     "require_candidate_plans",
     "require_orientation_plans",
     "resolve_dataset_mosaicity",
+    "resolve_dataset_orientations",
     "resolve_recipe",
     "run_inference",
     "score_orientations",

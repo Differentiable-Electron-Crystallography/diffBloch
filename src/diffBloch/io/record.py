@@ -207,8 +207,10 @@ class ExperimentalRecord(BaseModel):
     mosaicity_degrees: float | None = None
     # PETS2's azimuthal offset (degrees) of the true goniometer/rotation axis from the x-axis of
     # its own coordinate frame -- the frame every per-rotation orientation and rocking-curve tilt
-    # (about x) is expressed in. None (absent field, or an older PETS build that doesn't record it)
-    # means the rotation axis coincides with x, i.e. no correction is needed.
+    # (about x) is expressed in. None means the field was absent, NOT that the axis lies on x:
+    # `preprocess.experiment.resolve_dataset_orientations` refuses to guess and requires
+    # `blochwave.rotation_axis_position` to be declared instead, so an unparsed field cannot
+    # masquerade as a zero offset.
     rotation_axis_position_degrees: float | None = None
     ub_matrix: FloatArray
     zone_axis_ids: IntArray
