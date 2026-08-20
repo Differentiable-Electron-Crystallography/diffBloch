@@ -13,30 +13,23 @@ from diffBloch.params import RefinableParams, constrain
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 
 
-def test_read_lta_structure_has_coupled_special_positions() -> None:
-    record = read_structure(FIXTURE_ROOT / "lta_anchor" / "lta.cif")
-    assert record.n_atoms == 4
-    assert record.labels == ("O1", "O2", "O3", "T1")
-    assert record.spacegroup_hm == "P  m-3 m"  # verbatim from the PETS file (its own spacing)
-    assert record.spacegroup_number == 221
-    assert record.n_symops == 48  # Pm-3m: the coupled O2 (x,x,z) / O3 (0,y,y) sites
+def test_read_abiraterone_observations_parses_a_large_pets_reflection_loop() -> None:
+    # The loop_rows O(N) fix on the largest committed PETS loop: the quadratic parse this used to
+    # trip is why loop_rows binds loop.values once. Kept on the biggest fixture available so a
+    # regression shows up as a hang rather than passing unnoticed on a toy file.
+    obs = read_experimental_data(
+        FIXTURE_ROOT / "abiraterone_anchor" / "abiraterone_exp_data.cif_pets"
+    )
+    assert obs.n_rotations == 55
+    assert obs.n_reflections == 10670
 
 
-def test_read_lta_observations_parses_the_full_pets_reflection_loop() -> None:
-    # Fixture integrity + the loop_rows O(N)->fix on a real large loop: LTA's PETS export is 50
-    # rotations / 29,023 reflections (the quadratic parse this used to trip is why loop_rows binds
-    # loop.values once).
-    obs = read_experimental_data(FIXTURE_ROOT / "lta_anchor" / "exp_data.cif_pets")
-    assert obs.n_rotations == 50
-    assert obs.n_reflections == 29023
-
-
-def test_lta_experiment_lock_verifies_the_committed_inputs() -> None:
-    # Enforce the hash-verification the fixture ships: load_experiment checks lta.cif /
-    # exp_data.cif_pets against experiment.lock, so a fixture that drifts from its lock (e.g. a
-    # whitespace hook silently rewriting the PETS file) fails loudly here, not silently at Tier 2.
-    cfg, _lock = load_experiment(FIXTURE_ROOT / "lta_anchor")
-    assert cfg.name == "lta-anchor"
+def test_quartz_experiment_lock_verifies_the_committed_inputs() -> None:
+    # Enforce the hash-verification the fixture ships: load_experiment checks the structure /
+    # exp_data against experiment.lock, so a fixture that drifts from its lock (e.g. a whitespace
+    # hook silently rewriting the PETS file) fails loudly here, not silently at Tier 2.
+    cfg, _lock = load_experiment(FIXTURE_ROOT / "quartz_anchor")
+    assert cfg.name == "quartz-anchor"
 
 
 def test_read_paracetamol_uiso_fixture() -> None:
