@@ -321,6 +321,7 @@ _diffrn_reflns_reduction_process
 data collection geometry: precession
 dstarmax:  1.400
 mosaicity:  0.100
+tilt axis position:  272.994
 ;
 loop_
 _diffrn_zone_axis_id
@@ -349,6 +350,7 @@ _refln_zone_axis_id
     assert record.data_collection_geometry == "precession"
     assert record.dstar_max == pytest.approx(1.4)
     assert record.mosaicity_degrees == pytest.approx(0.1)
+    assert record.rotation_axis_position_degrees == pytest.approx(272.994)
 
 
 def test_read_pets_reports_summary_source_diagnostics(tmp_path: Path) -> None:
