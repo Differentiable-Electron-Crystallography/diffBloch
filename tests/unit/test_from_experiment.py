@@ -177,7 +177,7 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     assert len(setup.plans.validation.orientations) == 8
     # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
     # records a nonzero goniometer-axis azimuth for quartz, so these differ.
-    expected = resolve_dataset_orientations(experimental_data, None)
+    expected = resolve_dataset_orientations(experimental_data)
     assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
     assert setup.plans.train.orientations[0].pattern.rotation_index == 1
     assert [op.pattern.rotation_index for op in setup.plans.validation.orientations[:2]] == [19, 29]
@@ -216,7 +216,7 @@ def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
     structure, experimental_data, config, setup = _quartz_setup()
     # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
     # records a nonzero goniometer-axis azimuth for quartz, so these differ.
-    expected = resolve_dataset_orientations(experimental_data, None)
+    expected = resolve_dataset_orientations(experimental_data)
 
     # First train rotation is rotation index 0 (index 9 is the first validation pick). The candidate
     # phase carries plain-numpy source (orientation / beam_hkl), built into tensors later.

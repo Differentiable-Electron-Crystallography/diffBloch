@@ -319,7 +319,7 @@ def setup_datasets(
                 grid, refinement_setup, energy=energy, absorption=absorption
             )
         u0 = u0_by_energy[energy]
-        orientations = resolve_dataset_orientations(record, config.blochwave.rotation_axis_position)
+        orientations = resolve_dataset_orientations(record)
         local_ignore_set = set(local_ignored)
         plans = tuple(
             CandidatePlan.seed(
@@ -353,7 +353,6 @@ def setup_datasets(
 
 def resolve_dataset_orientations(
     record: ExperimentalRecord,
-    declared_position: float | None,
 ) -> NDArray[np.float64]:
     """This dataset's per-rotation orientations, in the frame the rest of the pipeline assumes.
 
@@ -364,22 +363,17 @@ def resolve_dataset_orientations(
     axis onto x so the left-multiplied rocking tilts and ``klar_beam_mask``'s ``(g_y, g_z)`` lever
     arm are measured about the right axis.
 
-    The azimuth comes from the PETS file; ``blochwave.rotation_axis_position`` overrides it and is
-    the only way to proceed when the file records none. A *missing* value is an error rather than an
-    assumed zero: absent, unparsed, and genuinely-zero are three different situations, and silently
-    treating the first two as the third is how a wrong integration axis goes unnoticed.
+    The azimuth is read from the PETS file and there is no override: a file that does not record
+    it cannot be processed. A missing value is an error rather than an assumed zero, because absent,
+    unparsed, and genuinely-zero are three different situations, and silently treating the first two
+    as the third is how a wrong integration axis goes unnoticed.
     """
     source = record.source_path if record.source_path is not None else "<experimental data>"
-    position = (
-        declared_position
-        if declared_position is not None
-        else (record.rotation_axis_position_degrees)
-    )
+    position = record.rotation_axis_position_degrees
     if position is None:
         raise ValueError(
-            f"a 'rotation axis position:' value is required in {source}; add it, or declare the "
-            "assumed goniometer-axis azimuth as blochwave.rotation_axis_position (0.0 means the "
-            "rotation axis already lies along x)"
+            f"a 'rotation axis position:' value is required in {source}; every rocking-curve tilt "
+            "is composed about x, so the goniometer-axis azimuth cannot be assumed"
         )
     if not np.isfinite(position):
         raise ValueError(
