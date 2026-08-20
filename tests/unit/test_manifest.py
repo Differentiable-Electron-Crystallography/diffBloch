@@ -669,20 +669,3 @@ def test_missing_checkpoint_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     npz.unlink()
     assert preprocess_lock_status(lock, **_args(cfg, recipe, npz, tmp_path)) == "stale"
-
-
-def test_declared_rotation_axis_position_restales_the_checkpoint() -> None:
-    """The escape hatch must enter checkpoint identity.
-
-    Declaring a goniometer-axis azimuth changes every settled orientation, so a checkpoint settled
-    under a different declaration must not be reused. `blochwave` is hashed wholesale, which is why
-    the field lives there rather than under `inputs` (an explicit allowlist that would drop it).
-    """
-    cfg = load_config(LOCKED / "experiment.yaml")
-    declared = cfg.model_copy(
-        update={"blochwave": cfg.blochwave.model_copy(update={"rotation_axis_position": 12.0})}
-    )
-
-    assert dataset_config_digest(cfg, exp_data=EXP_REF) != dataset_config_digest(
-        declared, exp_data=EXP_REF
-    )

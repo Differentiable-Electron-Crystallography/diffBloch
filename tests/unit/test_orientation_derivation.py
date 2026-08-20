@@ -90,7 +90,7 @@ def test_resolved_orientations_are_the_golden_under_the_axis_correction() -> Non
         record.omegas,
     )
 
-    resolved = resolve_dataset_orientations(record, None)
+    resolved = resolve_dataset_orientations(record)
 
     position = record.rotation_axis_position_degrees
     assert position == pytest.approx(0.484)  # this fixture records a nonzero azimuth
@@ -99,25 +99,12 @@ def test_resolved_orientations_are_the_golden_under_the_axis_correction() -> Non
 
 
 def test_resolve_dataset_orientations_requires_an_axis_position() -> None:
-    """Absent is an error, not an assumed zero -- the three cases must stay distinguishable."""
+    """Absent is an error, not an assumed zero, and there is no way to override it."""
     record = read_experimental_data(FIXTURES / "exp_data.cif_pets")
     absent = record.model_copy(update={"rotation_axis_position_degrees": None})
 
     with pytest.raises(ValueError, match="rotation axis position"):
-        resolve_dataset_orientations(absent, None)
-
-    # ...but the config escape hatch records the assumption explicitly and proceeds.
-    declared = resolve_dataset_orientations(absent, 0.0)
-    assert np.allclose(
-        declared,
-        orientation_matrices(
-            record.ub_matrix,
-            record.cell_parameters,
-            record.alphas,
-            record.betas,
-            record.omegas,
-        ),
-    )
+        resolve_dataset_orientations(absent)
 
 
 def test_resolve_dataset_orientations_rejects_a_non_finite_azimuth() -> None:
@@ -126,7 +113,7 @@ def test_resolve_dataset_orientations_rejects_a_non_finite_azimuth() -> None:
     poisoned = record.model_copy(update={"rotation_axis_position_degrees": float("nan")})
 
     with pytest.raises(ValueError, match="finite"):
-        resolve_dataset_orientations(poisoned, None)
+        resolve_dataset_orientations(poisoned)
     with pytest.raises(ValueError, match="finite"):
         rotation_axis_correction(float("nan"))
 
