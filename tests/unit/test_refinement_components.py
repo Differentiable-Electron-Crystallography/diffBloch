@@ -613,9 +613,7 @@ def test_structure_only_model_keeps_quartz_objective_exactly_unchanged() -> None
 
 def test_trainable_isotropic_mosaicity_validates_construction() -> None:
     with pytest.raises(ValueError, match="polar_degrees must be non-empty"):
-        TrainableIsotropicMosaicity(
-            polar_degrees=(), init_sigma_degrees=0.1, rotation_range=(0, 1)
-        )
+        TrainableIsotropicMosaicity(polar_degrees=(), init_sigma_degrees=0.1, rotation_range=(0, 1))
     with pytest.raises(ValueError, match="init_sigma_degrees must be positive"):
         TrainableIsotropicMosaicity(
             polar_degrees=(0.0,), init_sigma_degrees=0.0, rotation_range=(0, 1)
@@ -697,9 +695,7 @@ def test_trainable_isotropic_mosaicity_forward_context_requires_unconstrained_si
         component.forward_context({}, rotation_index=0, orientation=_orientation_at(engine, 0))
 
 
-def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_its_samples() -> (
-    None
-):
+def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_its_samples() -> None:
     tilts = rocking_curve_tilts(0.5, 3)  # 3 tilts, not a multiple of 2 mosaic samples
     engine = _engine(tilts=tilts)
     component = TrainableIsotropicMosaicity(
