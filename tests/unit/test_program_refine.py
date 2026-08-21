@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-
 from tests.unit.test_engine import _engine, _params
 
 from diffBloch.app.program import (
