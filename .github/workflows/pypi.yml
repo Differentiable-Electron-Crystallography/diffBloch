@@ -1,0 +1,151 @@
+name: Release
+
+# Merging to main publishes nothing. A release happens only when a version tag is pushed:
+#
+#   1. bump __version__ in src/diffBloch/__init__.py (and mirror it per RELEASING.md)
+#   2. git tag v0.3.0 && git push origin main v0.3.0
+#
+# Pre-release tags (v0.3.0rc1) go to TestPyPI; final tags go to PyPI. Both indexes are written
+# via Trusted Publishing (OIDC), so there are no API tokens in this repo's secrets.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  # Build once, verify, then hand the SAME artifact to whichever publish job applies. Rebuilding
+  # before upload would let the two indexes receive different bytes for one version number.
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true  # the test suite's fixtures are LFS-tracked; the sdist check below is what
+                     # guarantees none of them reach the distribution
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      # Tags can be pushed from any commit, including one that never went through CI. Re-running
+      # the fast suite here is the only thing standing between a stray tag and a permanent upload.
+      - name: Unit tests
+        run: uv run pytest
+
+      - name: Build package (wheel + sdist)
+        run: uv build
+
+      # The wheel is scoped by [tool.hatch.build.targets.wheel]; the sdist by its own target.
+      # Assert the result rather than trusting the config: tests/ and examples/ hold Git LFS
+      # pointers (*.npz, *.cif_pets), which would ship as ~130-byte stubs and produce an sdist
+      # that installs but cannot run.
+      - name: Verify sdist scope
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          files=$(tar -tzf "$sdist" | sed 's|^[^/]*/||' | grep -v '/$' | grep -v '^$')
+          # PKG-INFO and .gitignore are added by hatchling itself, not by only-include.
+          unexpected=$(printf '%s\n' "$files" \
+            | grep -Ev '^(src/diffBloch/|README\.md$|LICENSE$|REFERENCES\.md$|PKG-INFO$|pyproject\.toml$|\.gitignore$)' \
+            || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::sdist contains paths outside the package:"
+            printf '  %s\n' $unexpected
+            exit 1
+          fi
+          for want in src/diffBloch/core/data/lobato.json src/diffBloch/py.typed; do
+            printf '%s\n' "$files" | grep -qx "$want" \
+              || { echo "::error::sdist is missing $want"; exit 1; }
+          done
+
+      # __version__ is a static string, so a tag can silently disagree with the metadata it
+      # ships. Compare against the built wheel (real metadata, not a re-parse of the source) and
+      # normalise both sides through PEP 440 so v0.3.0-rc1 and v0.3.0rc1 are treated as equal.
+      - name: Check tag against built version
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          uv run --with packaging python - <<'PY'
+          import os, pathlib, sys
+          from packaging.version import InvalidVersion, Version
+
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          dist_v = Version(wheel.name.split("-")[1])
+          tag = os.environ["TAG"]
+          try:
+              tag_v = Version(tag.removeprefix("v"))
+          except InvalidVersion:
+              sys.exit(f"::error::tag {tag} is not a PEP 440 version")
+          if tag_v != dist_v:
+              sys.exit(
+                  f"::error::tag {tag} implies version {tag_v}, but the build produced {dist_v}. "
+                  "Bump __version__ in src/diffBloch/__init__.py to match the tag."
+              )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={dist_v}\n")
+              fh.write(f"prerelease={str(dist_v.is_prerelease).lower()}\n")
+          index = "TestPyPI" if dist_v.is_prerelease else "PyPI"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              fh.write(f"Built **diffBloch {dist_v}** -> publishing to **{index}**\n")
+          PY
+
+      # twine's check is the only thing that catches a README that fails to render on PyPI --
+      # the project page falls back to raw text and there is no way to fix it without a new
+      # version number.
+      - name: Check distribution metadata
+        run: uv run --with twine twine check --strict dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Neither publish job checks out the repo, so job-level permissions (which REPLACE the
+  # defaults) carry only the OIDC token the trusted publisher needs.
+  testpypi:
+    needs: build
+    if: needs.build.outputs.prerelease == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/diffBloch
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    needs: build
+    if: needs.build.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/diffBloch
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
