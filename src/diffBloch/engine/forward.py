@@ -37,6 +37,8 @@ from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
     BlochSolution,
+    TiltReduction,
+    WeightedSum,
     align,
     intensities,
     reduce_tilts,
@@ -349,7 +351,9 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(
+                        orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                    ),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -397,7 +401,9 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(
+                        orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                    ),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -466,7 +472,9 @@ class RefinementEngine:
             if thickness is None:
                 thickness = self._thickness_for(orientation, params)
             with _Timer(f"solve[rotation={rotation_index}]", fgb.device, self.profile):
-                solution = self._solve(orientation, fgb, thickness)
+                solution = self._solve(
+                    orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                )
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
                 wr2_scores = torch.stack(
@@ -595,10 +603,17 @@ class RefinementEngine:
         )
 
     def _solve(
-        self, orientation: OrientationPlanLike, fgb: Tensor, thicknesses: Tensor
+        self,
+        orientation: OrientationPlanLike,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        reduction_override: TiltReduction | None = None,
     ) -> BlochSolution:
         if isinstance(orientation, CoupledOrientationPlan):
-            return self._solve_segmented(orientation, fgb, thicknesses)
+            return self._solve_segmented(
+                orientation, fgb, thicknesses, reduction_override=reduction_override
+            )
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         beam_hkl = orientation.beam_hkl.to(device)
@@ -633,11 +648,21 @@ class RefinementEngine:
             else solve_batch(fgb, thicknesses)
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
-            amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
+            amplitudes,
+            beam_hkl,
+            thicknesses,
+            reduction=(
+                orientation.tilt_reduction if reduction_override is None else reduction_override
+            ),
         )
 
     def _solve_segmented(
-        self, plan: CoupledOrientationPlan, fgb: Tensor, thicknesses: Tensor
+        self,
+        plan: CoupledOrientationPlan,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        reduction_override: TiltReduction | None = None,
     ) -> BlochSolution:
         """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
 
@@ -685,7 +710,8 @@ class RefinementEngine:
             block = curve[cover]  # (C, T, n_union) gathered copy
             block[:, :, union_beam_index] = intensities(amplitudes)
             curve[cover] = block
-        total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
+        reduction = plan.tilt_reduction if reduction_override is None else reduction_override
+        total = reduce_tilts(curve, reduction)  # (T, n_union)
         # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
         # store the magnitude sqrt(total) in the solve's complex64 format (matching the
         # static/batched paths).
@@ -698,11 +724,21 @@ class RefinementEngine:
 class ForwardContext:
     """Forward-model values supplied by refinement model components.
 
-    Deliberately narrow: apparent thickness is the only value admitted, since it is the only value a
-    component currently supplies. Scale/background/damage fields should be added only when consumed.
+    ``thickness`` and ``mosaic_weights`` are the only values admitted, since they are the only
+    values a component currently supplies. Scale/background/damage fields should be added only when
+    consumed. ``mosaic_weights`` (from
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity`) overrides the orientation's
+    baked-in :class:`~diffBloch.core.products.WeightedSum` tilt reduction with a differentiable one,
+    shape ``(N_tilts,)`` matching ``orientation.tilts``.
     """
 
     thickness: Tensor | None = None
+    mosaic_weights: Tensor | None = None
+
+
+def _reduction_override(context: ForwardContext) -> TiltReduction | None:
+    """A component-supplied :class:`WeightedSum` for ``context.mosaic_weights``, else ``None``."""
+    return None if context.mosaic_weights is None else WeightedSum(weights=context.mosaic_weights)
 
 
 class ModelComponent(Protocol):
@@ -790,6 +826,7 @@ def _forward_context(
     orientation: OrientationPlanLike,
 ) -> ForwardContext:
     thickness: Tensor | None = None
+    mosaic_weights: Tensor | None = None
     for component in model.components:
         params = model.component_params[component.key]
         context = component.forward_context(
@@ -799,7 +836,11 @@ def _forward_context(
             if thickness is not None:
                 raise ValueError("multiple refinement components provided thickness")
             thickness = context.thickness
-    return ForwardContext(thickness=thickness)
+        if context.mosaic_weights is not None:
+            if mosaic_weights is not None:
+                raise ValueError("multiple refinement components provided mosaic_weights")
+            mosaic_weights = context.mosaic_weights
+    return ForwardContext(thickness=thickness, mosaic_weights=mosaic_weights)
 
 
 def build_refinement_model(

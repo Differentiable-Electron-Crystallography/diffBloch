@@ -33,6 +33,7 @@ from diffBloch.observability import (
     DeviceSelected,
     Event,
     InferenceCompleted,
+    IsotropicMosaicityRefined,
     Logger,
     MultiLogger,
     NullLogger,
@@ -86,6 +87,13 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "n_evaluated": 97.0,
         "mean_r_obs": 0.065,
     }
+
+    mosaicity = IsotropicMosaicityRefined(
+        label="a.cif_pets", sigma_degrees=0.024, pets_sigma_degrees=0.018
+    )
+    assert mosaicity.channel == "isotropic_mosaicity_refined[a.cif_pets]"
+    assert mosaicity.step is None
+    assert mosaicity.measurements == {"sigma_degrees": 0.024, "pets_sigma_degrees": 0.018}
 
     thickness = ThicknessOptimized(
         rotation_index=7,
@@ -232,6 +240,11 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
         "best_validation_loss": 0.3,
     }
     assert "best_training_loss" not in validation_done.measurements
+
+
+def test_isotropic_mosaicity_refined_rejects_an_empty_label() -> None:
+    with pytest.raises(ValueError, match="isotropic mosaicity refined label must name its dataset"):
+        IsotropicMosaicityRefined(label="", sigma_degrees=0.02, pets_sigma_degrees=0.018)
 
 
 def test_events_and_loggers_satisfy_the_protocols_structurally() -> None:

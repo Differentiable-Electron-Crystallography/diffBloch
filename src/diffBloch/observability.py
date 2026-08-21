@@ -36,6 +36,7 @@ __all__ = [
     "Event",
     "ExperimentDeclared",
     "InferenceCompleted",
+    "IsotropicMosaicityRefined",
     "Logger",
     "MultiLogger",
     "NullLogger",
@@ -536,6 +537,7 @@ class ExperimentDeclared:
     solve_g_max: float
     sg_max: float
     absorption: bool
+    incoherent_mosaicity: bool
     steps: int
     learning_rate: float
 
@@ -564,6 +566,7 @@ class ExperimentDeclared:
             "solve_g_max": self.solve_g_max,
             "sg_max": self.sg_max,
             "absorption": float(self.absorption),
+            "incoherent_mosaicity": float(self.incoherent_mosaicity),
             "steps": float(self.steps),
             "learning_rate": self.learning_rate,
         }
@@ -644,6 +647,41 @@ class ThicknessProfile:
             "n_rotations": float(len(self.rotation_indices)),
             "min_thickness": self.min_thickness,
             "max_thickness": self.max_thickness,
+        }
+
+
+@dataclass(frozen=True)
+class IsotropicMosaicityRefined:
+    """One dataset's refined isotropic-mosaicity sigma, once refinement settles.
+
+    Emitted once per composed :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity`
+    component -- one event per dataset that opted into ``refinement.trainable.mosaicity_sigma`` --
+    labeled by its ``inputs.exp_data`` ref. ``pets_sigma_degrees`` is the PETS-reported apparent
+    mosaicity it started from, alongside ``sigma_degrees`` so a sink can show the shift refinement
+    made without recomputing it.
+    """
+
+    label: str
+    sigma_degrees: float
+    pets_sigma_degrees: float
+
+    def __post_init__(self) -> None:
+        if not self.label:
+            raise ValueError("isotropic mosaicity refined label must name its dataset")
+
+    @property
+    def channel(self) -> str:
+        return f"isotropic_mosaicity_refined[{self.label}]"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "sigma_degrees": self.sigma_degrees,
+            "pets_sigma_degrees": self.pets_sigma_degrees,
         }
 
 
