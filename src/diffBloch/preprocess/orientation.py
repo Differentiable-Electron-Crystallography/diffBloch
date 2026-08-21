@@ -209,7 +209,8 @@ def compose_mosaic_tilts(rocking_tilts: FloatArray, mosaic_tilts: FloatArray) ->
     consecutive entries share a rocking tilt (``m`` fastest) -- convenient for anyone reshaping back
     to ``(R, M, 3, 3)``.
     """
-    return np.einsum("rij,mjk->rmik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
+    composed: FloatArray = np.einsum("rij,mjk->rmik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
+    return composed
 
 
 def rocking_curve_tilts(

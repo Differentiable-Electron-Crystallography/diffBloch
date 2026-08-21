@@ -376,7 +376,7 @@ def preprocess_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root, refresh=refresh)
+    cfg, _lock = load_experiment(root)
     _refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
         _preprocess(
             root,
@@ -419,7 +419,7 @@ def run_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root, refresh=refresh)
+    cfg, _lock = load_experiment(root)
     refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
         _preprocess(
             root,
@@ -500,7 +500,7 @@ def refine_experiment(
     """
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
-    cfg, _lock = load_experiment(root, refresh=refresh)
+    cfg, _lock = load_experiment(root)
     refinement, integrations, prepared, validation_rotation_indices, plan_lock_sha256s = (
         _preprocess(
             root,
