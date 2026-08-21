@@ -66,6 +66,7 @@ def _experiment() -> ExperimentDeclared:
         solve_g_max=2.25,
         sg_max=0.01,
         absorption=False,
+        incoherent_mosaicity=False,
         steps=3,
         learning_rate=0.001,
     )
@@ -190,6 +191,7 @@ def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> Non
             solve_g_max=experiment.solve_g_max,
             sg_max=experiment.sg_max,
             absorption=experiment.absorption,
+            incoherent_mosaicity=experiment.incoherent_mosaicity,
             steps=experiment.steps,
             learning_rate=experiment.learning_rate,
         ),

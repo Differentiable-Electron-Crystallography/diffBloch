@@ -37,8 +37,10 @@ type FloatArray = NDArray[np.float64]
 
 __all__ = [
     "busing_levy_matrix",
+    "compose_mosaic_tilts",
     "goniometer_rotation",
     "hexagonal_tilt",
+    "isotropic_mosaic_tilts",
     "orientation_basis",
     "orientation_matrices",
     "rocking_curve_tilts",
@@ -144,6 +146,70 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     )
     tilt: FloatArray = rz @ rx @ rz.T  # rz.T = R_z(-azimuth)
     return tilt
+
+
+def isotropic_mosaic_tilts(
+    sigma_degrees: float, samples: int
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Isotropic Gaussian mosaic-spread tilts, weights, and polar angles: ``(samples, 3, 3)``,
+    ``(samples,)``, ``(samples,)``.
+
+    Unlike :func:`rocking_curve_tilts` (tilts confined to one axis, x), this places ``samples``
+    small rotations isotropically over *every* azimuth around the identity -- the physical picture
+    of mosaic-block orientation spread (:class:`~diffBloch.specs.IsotropicMosaicity`), not a 1-D
+    approximation of it. ``sigma_degrees`` is the standard deviation of a 2-D isotropic Gaussian
+    orientation distribution (the usual crystallographic mosaicity convention), not a hard cutoff:
+    directions are placed by a Fibonacci spherical spiral (golden-angle azimuth step) with the polar
+    angle at each point set by the *inverse Rayleigh CDF* -- the polar-angle magnitude of a 2-D
+    Gaussian with that standard deviation is Rayleigh-distributed, so this is quantile (not uniform)
+    sampling of the true distribution, reaching well past ``sigma_degrees`` with shrinking density,
+    exactly like the distribution it represents. Each direction becomes a :func:`hexagonal_tilt` (the
+    tilt taking the pole to that direction).
+
+    The returned ``weights`` are each sample's relative Gaussian density
+    (``exp(-polar**2 / (2 * sigma_degrees**2))``), for :class:`~diffBloch.core.products.WeightedSum`:
+    quantile placement alone assumes every bin carries equal probability mass, which the golden-angle
+    azimuth spiral only approximates, so weighting by density on top corrects the residual bias
+    quantile sampling leaves at small ``samples``. ``samples = 1`` or ``sigma_degrees = 0`` is the
+    identity with weight 1, so a unit/zero-spread mosaicity composes off.
+
+    The returned ``polar`` angles (degrees) are exposed separately from ``weights`` so a caller can
+    recompute weights at a *different* sigma without regenerating the tilt geometry itself -- e.g.
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity` refines sigma by reweighting
+    this same fixed set of directions on every forward pass, rather than moving the directions
+    themselves (which would require rebuilding the structure-factor gather every step).
+    """
+    if samples < 1:
+        raise ValueError("samples must be >= 1")
+    if sigma_degrees < 0.0:
+        raise ValueError("sigma_degrees must be non-negative")
+    if samples == 1 or sigma_degrees == 0.0:
+        return np.eye(3)[None], np.ones(1), np.zeros(1)
+    golden_angle_deg = np.rad2deg(np.pi * (3.0 - np.sqrt(5.0)))
+    k = np.arange(samples, dtype=np.float64)
+    # Inverse Rayleigh CDF at quantiles (k + 0.5) / samples: the polar-angle magnitude of an
+    # isotropic 2-D Gaussian with std sigma_degrees is Rayleigh(sigma_degrees)-distributed.
+    polar = sigma_degrees * np.sqrt(-2.0 * np.log(1.0 - (k + 0.5) / samples))
+    azimuth = (golden_angle_deg * k) % 360.0
+    tilts = np.stack([hexagonal_tilt(az, po) for az, po in zip(azimuth, polar, strict=True)])
+    weights = np.exp(-(polar**2) / (2.0 * sigma_degrees**2))
+    return tilts, weights, polar
+
+
+def compose_mosaic_tilts(rocking_tilts: FloatArray, mosaic_tilts: FloatArray) -> FloatArray:
+    """Every rocking-curve tilt composed with every mosaic tilt: ``(R * M, 3, 3)``.
+
+    ``rocking_tilts`` (``R`` of them, from :func:`rocking_curve_tilts`) sweep the goniometer/beam
+    through the Ewald sphere; ``mosaic_tilts`` (``M``, from :func:`isotropic_mosaic_tilts`) perturb
+    which way an individual mosaic block happens to point. Every block sees the same rocking sweep,
+    so each mosaic tilt is applied to the *base* orientation first and the rocking sweep composed on
+    top (``rocking_tilts[i] @ mosaic_tilts[j]``, matching the ``R_tilt @ orientation``
+    left-multiply convention both already use) -- physically a block-orientation offset, then the
+    beam sweeping across it, not the other way round. Flattened as ``index = r * M + m``, so
+    consecutive entries share a rocking tilt (``m`` fastest) -- convenient for anyone reshaping back
+    to ``(R, M, 3, 3)``.
+    """
+    return np.einsum("rij,mjk->rmik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
 
 
 def rocking_curve_tilts(
