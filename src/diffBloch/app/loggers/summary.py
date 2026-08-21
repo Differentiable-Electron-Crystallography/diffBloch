@@ -37,9 +37,11 @@ import gemmi
 from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.core.crystal import cell_volume
 from diffBloch.io import read_structure
+from diffBloch.io._cifio import select_block
 from diffBloch.observability import (
     Event,
     ExperimentDeclared,
+    IsotropicMosaicityRefined,
     ObjectiveManifest,
     RefinedRotationMetrics,
     RefinementCompleted,
@@ -108,6 +110,9 @@ class SummaryLogger:
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
     _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
+    _mosaicities: dict[str, IsotropicMosaicityRefined] = field(
+        default_factory=dict, init=False, repr=False
+    )
     _started_at: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -131,6 +136,8 @@ class SummaryLogger:
             # Keyed by dataset so a re-reported profile replaces its section (last event wins),
             # while insertion order keeps sections in exp_data order.
             self._profiles[event.label] = event
+        elif isinstance(event, IsotropicMosaicityRefined):
+            self._mosaicities[event.label] = event
         elif isinstance(event, RefinementOutputsWritten):
             self._write(event)
 
@@ -160,6 +167,7 @@ class SummaryLogger:
         self._objective_components(lines, rule)
         self._rotation_metrics(lines, rule)
         self._thickness_profile(lines, rule)
+        self._mosaicity(lines, rule)
         self._refined_structure(lines, rule, Path(outputs.structure))
 
         self.path.write_text("\n".join(lines) + "\n")
@@ -222,6 +230,7 @@ class SummaryLogger:
             ],
             ["sg_max (A^-1)", f"{experiment.sg_max:g}"],
             ["Absorption (T/F)", "T" if experiment.absorption else "F"],
+            ["Mosaicity (T/F)", "T" if experiment.incoherent_mosaicity else "F"],
             ["Seed thickness (A)", seed_thickness],
             ["Epochs (configured)", f"{experiment.steps:g}"],
             ["Best epoch", best_epoch],
@@ -389,11 +398,33 @@ class SummaryLogger:
                 lines.append("")
                 lines.append(" plot: skipped (matplotlib is not importable in this environment)")
 
+    def _mosaicity(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        if not self._mosaicities:
+            rule("Isotropic mosaicity")
+            lines.append(" enabled: no (refinement.trainable.mosaicity_sigma is off)")
+            return
+        rule("Isotropic mosaicity")
+        lines.append(
+            ascii_table(
+                ["Dataset", "PETS sigma (deg)", "Refined sigma (deg)"],
+                [
+                    [
+                        mosaicity.label,
+                        f"{mosaicity.pets_sigma_degrees:.4f}",
+                        f"{mosaicity.sigma_degrees:.4f}",
+                    ]
+                    for mosaicity in self._mosaicities.values()
+                ],
+            )
+        )
+
     def _refined_structure(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path
     ) -> None:
         rule("Refined structure -- atom_site")
-        block = gemmi.cif.read_file(str(structure_path)).sole_block()
+        block = select_block(
+            gemmi.cif.read_file(str(structure_path)), required_loop_tag="_atom_site_label"
+        )
         atom_table = _cif_loop_as_table(block, "_atom_site_label")
         if atom_table is not None:
             lines.append(atom_table)
