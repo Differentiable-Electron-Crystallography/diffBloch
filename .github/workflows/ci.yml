@@ -90,11 +90,10 @@ jobs:
       - name: Build docs
         run: uv run sphinx-build -W -b html docs docs/_build/html
 
-      # The docsite is the PUBLIC host for badge data while the repo is private: shields.io
-      # (coverage badge) and camo (README trend embed) can fetch Pages but not the private
-      # `badges` branch. The trend SVGs come from `badges` as of the previous publish -- this
-      # job runs before the current merge's row lands there (one-merge lag, invisible on a
-      # flatline).
+      # The docsite is the public host for badge data: shields.io (coverage badge) and camo
+      # (README trend embed) fetch it from Pages rather than from the orphan `badges` branch.
+      # The trend SVGs come from `badges` as of the previous publish -- this job runs before the
+      # current merge's row lands there (one-merge lag, invisible on a flatline).
       - name: Download coverage JSON
         uses: actions/download-artifact@v8
         with:
