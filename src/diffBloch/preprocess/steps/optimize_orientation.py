@@ -59,6 +59,7 @@ from diffBloch.core.dynamical import (
     grid_source_indices,
 )
 from diffBloch.core.reciprocal import g_vectors
+from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine, ScoresFn, wr2_scores
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
@@ -100,6 +101,7 @@ def optimize_orientation(
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
+    scattering_factors: ScatteringFactorModel = "lobato2026",
     scores: ScoresFn = wr2_scores,
     residual: str = "wr2",
 ) -> PlanStep:
@@ -192,6 +194,7 @@ def optimize_orientation(
             method=method,
             max_batch=max_batch,
             absorption=absorption,
+            scattering_factors=scattering_factors,
             scores=scores,
         )
         params = refinement.params if device is None else refinement.params.to(device)
@@ -299,7 +302,12 @@ def optimize_orientation(
     # output only to solver tolerance -- see the docstring -- so it stays out of the identity).
     return as_step(
         "optimize_orientation",
-        {"search": search, "coupling": coupling, "absorption": absorption},
+        {
+            "search": search,
+            "coupling": coupling,
+            "absorption": absorption,
+            "scattering_factors": scattering_factors,
+        },
         run,
     )
 

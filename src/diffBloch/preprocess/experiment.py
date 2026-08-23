@@ -35,7 +35,7 @@ from diffBloch.core.dynamical import (
 )
 from diffBloch.core.products import MosaicSmoothed, PatternBatch
 from diffBloch.core.reciprocal import gmax_mask
-from diffBloch.core.scattering import structure_factors
+from diffBloch.core.scattering import ScatteringFactorModel, structure_factors
 from diffBloch.core.symmetry import AsuExpansionPlan, build_asu_expansion_plan, expand_asu
 from diffBloch.engine.plan import StructureFactorGrid
 from diffBloch.io.record import AdpRecord, ExperimentalRecord, StructureRecord
@@ -316,7 +316,11 @@ def setup_datasets(
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
             u0_by_energy[energy] = _mean_inner_potential(
-                grid, refinement_setup, energy=energy, absorption=absorption
+                grid,
+                refinement_setup,
+                energy=energy,
+                absorption=absorption,
+                scattering_factors=config.blochwave.scattering_factors,
             )
         u0 = u0_by_energy[energy]
         orientations = resolve_dataset_orientations(record)
@@ -543,6 +547,7 @@ def _mean_inner_potential(
     *,
     energy: float,
     absorption: Absorption = NO_ABSORPTION,
+    scattering_factors: ScatteringFactorModel = "lobato2026",
 ) -> float:
     """The mean-inner-potential correction ``U0 = |Fgb(000)| * prefactor``, from the seed structure.
 
@@ -575,6 +580,7 @@ def _mean_inner_potential(
         g_max=grid.g_max,
         absorption=absorption,
         energy=energy,
+        scattering_factors=scattering_factors,
     )
     prefactor = energy2sigma(energy) / (kappa * energy2wavelength(energy) * float(np.pi))
     return float(torch.abs(fgb_000[0]) * prefactor)

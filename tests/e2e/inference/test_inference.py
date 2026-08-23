@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from diffBloch.config import load_experiment
+from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
@@ -51,6 +52,7 @@ class Case:
     compare_n_rotations: int
     rotation_indices: tuple[int, ...]
     solver: SolverMethod
+    scattering_factors: ScatteringFactorModel
     union_adaptive: bool
     atol: float
 
@@ -69,6 +71,7 @@ def _load_case(material: str) -> Case:
         compare_n_rotations=int(raw["compare_n_rotations"]),
         rotation_indices=tuple(int(index) for index in raw["rotation_indices"]),
         solver=raw["solver"],
+        scattering_factors=raw["scattering_factors"],
         union_adaptive=bool(raw["union_adaptive"]),
         atol=float(raw["atol"]),
     )
@@ -126,6 +129,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         setup.refinement,
         prepare=prepare,
         method=case.solver,
+        scattering_factors=case.scattering_factors,
     )
     elapsed = time.perf_counter() - started
 

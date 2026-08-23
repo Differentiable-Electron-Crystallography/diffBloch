@@ -30,6 +30,7 @@ from dataclasses import replace
 import torch
 from torch import Tensor
 
+from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import RefinementEngine, ScoresFn, wr2_scores
 from diffBloch.engine.plan import OrientationPlanLike
@@ -58,6 +59,7 @@ def optimize_thickness(
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
+    scattering_factors: ScatteringFactorModel = "lobato2026",
     scores: ScoresFn = wr2_scores,
     residual: str = "wr2",
 ) -> PlanStep:
@@ -103,6 +105,7 @@ def optimize_thickness(
             method=method,
             max_batch=max_batch,
             absorption=absorption,
+            scattering_factors=scattering_factors,
             scores=scores,
         )
         params = refinement.params if device is None else refinement.params.to(device)

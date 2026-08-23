@@ -41,7 +41,7 @@ from diffBloch.core.products import (
     intensities,
     reduce_tilts,
 )
-from diffBloch.core.scattering import structure_factors
+from diffBloch.core.scattering import ScatteringFactorModel, structure_factors
 from diffBloch.core.solver import (
     SolverMethod,
     memory_safe_max_batch,
@@ -190,6 +190,7 @@ class RefinementEngine:
     # for a specific device budget. Execution-only, like method.
     max_batch: int | None = None
     absorption: Absorption = Absorption()
+    scattering_factors: ScatteringFactorModel = "lobato2026"
     active_structure_factor_indices: Tensor | None = None
     # Execution-only diagnostics switch (like method): logs per-phase wall time
     # (structure factors, each rotation's solve) via stdlib logging. Off by default -- zero cost.
@@ -592,6 +593,7 @@ class RefinementEngine:
             g_max=self.grid.g_max,
             absorption=self.absorption,
             energy=self.orientations[0].energy,
+            scattering_factors=self.scattering_factors,
         )
 
     def _solve(

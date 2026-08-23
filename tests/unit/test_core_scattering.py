@@ -24,6 +24,13 @@ _REFERENCE = {
     8: [2.029092, 1.231758, 0.542695, 0.158564],  # O
     14: [5.836000, 1.967708, 0.742909, 0.270509],  # Si
 }
+# Oracle for the lobato2026 (Dirac-Pade) basis at the same g grid: the released
+# scattering_factors_2026.electron_scattering_factor reference implementation, model="dirac_pade"
+# (Lobato, Zhang, Van Aert & Kirkland, 2026), cross-checked against core/data/lobato2026.json.
+_REFERENCE_2026 = {
+    8: [1.9874938848952297, 1.2232321767891299, 0.5421625512001946, 0.15851264177404414],  # O
+    14: [5.77925214413699, 1.969078411933374, 0.7428588097619235, 0.27040885111711876],  # Si
+}
 _G = torch.tensor([0.0, 0.5, 1.0, 2.0], dtype=torch.float64)
 
 
@@ -65,9 +72,47 @@ def test_chunked_absorptive_form_factors_preserve_values_and_adp_gradients() -> 
 
 def test_lobato_form_factors_match_reference() -> None:
     numbers = torch.tensor([8, 14])
-    factors = lobato_form_factors(numbers, _G)
+    factors = lobato_form_factors(numbers, _G, model="lobato2014")
     assert torch.allclose(factors[0], torch.tensor(_REFERENCE[8], dtype=torch.float64), atol=1e-4)
     assert torch.allclose(factors[1], torch.tensor(_REFERENCE[14], dtype=torch.float64), atol=1e-4)
+
+
+def test_lobato2026_form_factors_match_reference() -> None:
+    numbers = torch.tensor([8, 14])
+    factors = lobato_form_factors(numbers, _G, model="lobato2026")
+    for row, z in enumerate([8, 14]):
+        expected = torch.tensor(_REFERENCE_2026[z], dtype=torch.float64)
+        assert torch.allclose(factors[row], expected, rtol=1e-6, atol=1e-9)
+
+
+def test_lobato2026_differs_from_lobato2014() -> None:
+    # The two vendored tables are independently fitted; they must not silently coincide.
+    numbers = torch.tensor([82])  # Pb, where the 2026 table's accuracy gain is largest
+    old = lobato_form_factors(numbers, _G, model="lobato2014")
+    new = lobato_form_factors(numbers, _G, model="lobato2026")
+    assert not torch.allclose(old, new, rtol=1e-3)
+
+
+def test_structure_factors_scattering_factors_model_selects_table() -> None:
+    positions = torch.tensor([[0.13, 0.27, 0.31]], dtype=torch.float64)
+    numbers = torch.tensor([82])
+    occupancies = torch.ones(1, dtype=torch.float64)
+    uij = (torch.eye(3, dtype=torch.float64) * 0.01).unsqueeze(0)
+    hkl = torch.tensor([[1, 0, 0]])
+    reciprocal_basis = torch.eye(3, dtype=torch.float64)
+    common = dict(
+        positions=positions,
+        numbers=numbers,
+        occupancies=occupancies,
+        uij_star=uij,
+        hkl=hkl,
+        reciprocal_basis=reciprocal_basis,
+        cell_volume=100.0,
+        g_max=2.0,
+    )
+    old = structure_factors(**common, scattering_factors="lobato2014")
+    new = structure_factors(**common, scattering_factors="lobato2026")
+    assert not torch.allclose(old, new)
 
 
 def test_form_factors_vectorise_over_unique_z() -> None:
