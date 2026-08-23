@@ -15,7 +15,14 @@
 diffBloch stands on published science and several open-source projects. This section records the
 sources used throughout the codebase.
 
-- **Electron scattering factors (Lobato parametrization).**
+- **Electron scattering factors (Lobato parametrization, 2026, default).**
+  Lobato, I., Zhang, Z., Van Aert, S. & Kirkland, A. I. (2026). *Updated all-electron Dirac–Fock
+  densities and an element-adaptive parameterisation of scattering factors and potentials for
+  neutral atoms.* Submitted to Acta Crystallographica A.
+  <https://arxiv.org/abs/2608.14934>
+
+- **Electron scattering factors (Lobato parametrization, 2014, `blochwave.scattering_factors:
+  "lobato2014"`).**
   Lobato, I. & Van Dyck, D. (2014). *An accurate parameterization for scattering factors, electron
   densities and electrostatic potentials for neutral atoms that obey all physical constraints.*
   **Acta Crystallographica A70(6), 636–649.** DOI: [10.1107/S205327331401643X](https://doi.org/10.1107/S205327331401643X)
