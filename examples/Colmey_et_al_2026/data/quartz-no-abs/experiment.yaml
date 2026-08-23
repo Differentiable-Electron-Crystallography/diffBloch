@@ -10,6 +10,7 @@ sample:
   thicknesses: [850.0]
 
 blochwave:
+  scattering_factors: lobato2014  # or lobato2026
   coupling_mode: union
   absorption: false
   g_max: 2.0
@@ -33,7 +34,6 @@ preprocess:
     min_thickness: 5.0
     max_thickness: 1000.0
     n_steps: 100
-    plot: true
 
 loss_metrics:
   residual: wr2

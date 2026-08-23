@@ -9,6 +9,7 @@ sample:
   thicknesses: [460.0]
 
 blochwave:
+  scattering_factors: lobato2014  # or lobato2026
   solver: matrix_exp
   absorption: true
   coupling_mode: union

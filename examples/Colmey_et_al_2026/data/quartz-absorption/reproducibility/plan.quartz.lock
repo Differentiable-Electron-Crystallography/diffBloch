@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "afc484c278753e49f5ceebb7d52876de7e49aa4e814676eb76a065bef253fc7f",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "1ab18d81069b3116b7a4809b41e02e54f83fb8b688db82b9bae445bcd30815a8",
+  "code_version": "0.2.0+g4ee4e62.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -63,7 +63,8 @@
           "max_iterations": 60,
           "x_tolerance": 0.001,
           "f_tolerance": 0.001,
-          "penalize_fewer_reflections": true
+          "penalize_fewer_reflections": true,
+          "smooth_polynomial": false
         },
         "coupling": {
           "__type__": "TrialCoupling",
@@ -99,8 +100,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.quartz.npz",
-    "sha256": "f32dd3f1c0c04e8c10383d4fedd4b784e8faded39d3290c766e38509a89d655c",
-    "bytes": 558697,
+    "sha256": "ce1ec2dc5ad15fe910ebb262fdcd285517f2c9c08ef9abd251b09da39e7ef046",
+    "bytes": 557672,
     "media_type": "application/octet-stream"
   }
 }
