@@ -1,18 +1,18 @@
 {
   "plan_lock_sha256s": [
-    "cb42823135c7c0f5f7ed600d267cde6163c4901f08228007d857d7978ffd35e9"
+    "1b1ceeb25a95eba733023045294839f867f7bdbfe47bb05a7e16f07ecfa21e0a"
   ],
-  "refinement_config_digest": "a243b2754e5901dd2142ef6ed0748e1368137c502c177a28c63e4004f9c686f5",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "refinement_config_digest": "3814421083705f88dd8985157ce204223dffaa316599cbbe164526798b34271b",
+  "code_version": "0.2.0+g4ee4e62.dirty",
   "refined_structure": {
     "path": "refined_structure.cif",
-    "sha256": "461552e03bcf94059193c3960700d5f555f6cf43bbf2875bebcf9b6780af4182",
-    "bytes": 1022,
+    "sha256": "ecf8d773847d3b2c81311e75fa80a0471422f471d90db1a595ca0a5d04b666ee",
+    "bytes": 1024,
     "media_type": "chemical/x-cif"
   },
   "refined_parameters": {
     "path": "reproducibility/refined_parameters.npz",
-    "sha256": "127cf58379e09b36ff8bf6acfc1d68c923414972016bb6a71f86ee979e019ff4",
+    "sha256": "1490a0cccf3979c8ceff1223a026d57da5d8acb48cba71edbb7f1a2052267392",
     "bytes": 956,
     "media_type": "application/octet-stream"
   }
