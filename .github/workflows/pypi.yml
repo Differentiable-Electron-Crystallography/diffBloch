@@ -1,9 +1,9 @@
 name: Release
 
-# Merging to main publishes nothing. A release happens only when a version tag is pushed:
+# A release happens only when a version tag is pushed:
 #
-#   1. bump __version__ in src/diffBloch/__init__.py (and mirror it per RELEASING.md)
-#   2. git tag v0.3.0 && git push origin main v0.3.0
+#   1. bump __version__ in src/diffBloch/__init__.py -- then open a PR and merge it
+#   2. gh release create v0.3.0 --target main --generate-notes
 #
 # Pre-release tags (v0.3.0rc1) go to TestPyPI; final tags go to PyPI. Both indexes are written
 # via Trusted Publishing (OIDC), so there are no API tokens in this repo's secrets.
@@ -15,9 +15,25 @@ permissions:
   contents: read
 
 jobs:
-  # Build once, verify, then hand the SAME artifact to whichever publish job applies. Rebuilding
-  # before upload would let the two indexes receive different bytes for one version number.
+  # Refuse a tag that is not reachable from main, before anything expensive runs.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0     # --is-ancestor needs the history joining the tag to main
+          filter: blob:none  # ...but never the file contents of it
+
+      - name: Check the tag is on main
+        run: |
+          git fetch --no-tags --filter=blob:none origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD || {
+            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main."
+            echo "::error::Delete the tag and re-create it with: gh release create $GITHUB_REF_NAME --target main"
+            exit 1
+          }
   build:
+    needs: guard
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -25,9 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          lfs: true  # the test suite's fixtures are LFS-tracked; the sdist check below is what
-                     # guarantees none of them reach the distribution
-
+          lfs: true
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
         with:
@@ -36,18 +50,12 @@ jobs:
       - name: Sync (dev)
         run: uv sync --dev
 
-      # Tags can be pushed from any commit, including one that never went through CI. Re-running
-      # the fast suite here is the only thing standing between a stray tag and a permanent upload.
       - name: Unit tests
         run: uv run pytest
 
       - name: Build package (wheel + sdist)
         run: uv build
 
-      # The wheel is scoped by [tool.hatch.build.targets.wheel]; the sdist by its own target.
-      # Assert the result rather than trusting the config: tests/ and examples/ hold Git LFS
-      # pointers (*.npz, *.cif_pets), which would ship as ~130-byte stubs and produce an sdist
-      # that installs but cannot run.
       - name: Verify sdist scope
         run: |
           sdist=$(ls dist/*.tar.gz)
