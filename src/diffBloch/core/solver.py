@@ -3,7 +3,9 @@
 Two first-class methods, selected by a ``SolverMethod`` *value* (strategy-as-value, not a stateful class):
 
 - ``matrix_exp`` -- the refine default. ``psi(t) = matrix_exp(A * i pi t / k_n) @ psi0``; a single
-  dense matrix exponential with stable autograd.
+  dense matrix exponential with stable autograd. Forward is ``torch.matrix_exp`` unchanged; backward
+  is the pair-algebra Frechet derivative (:mod:`core._matrix_exp_pair`), not PyTorch's own
+  block-embedding autograd -- same gradients (to floating-point precision), cheaper to compute.
 - ``bloch_eigen`` -- eval-only. Diagonalise ``A`` once, then every thickness is a cheap phase
   multiply -- fast for many thicknesses, but ``eigh``'s backward is ill-conditioned near degenerate
   eigenvalues (which symmetric crystals routinely produce), so it is not the refine default.
@@ -22,6 +24,7 @@ from typing import Literal
 import torch
 from torch import Tensor
 
+from diffBloch.core._matrix_exp_pair import matrix_exp as _matrix_exp
 from diffBloch.core.dynamical.assembly import BlochSystem, _fill_diagonal
 
 type SolverMethod = Literal["matrix_exp", "bloch_eigen"]
@@ -117,7 +120,7 @@ def _propagate_matrix_exp(
         # a.unsqueeze(-3) inserts the thickness axis before (N, N): a single (N, N) becomes
         # (1, N, N) broadcasting to (T, N, N); a batched (B, N, N) becomes (B, 1, N, N) broadcasting
         # to (B, T, N, N) -- one matrix_exp over the whole tilt/thickness grid.
-        transfer = torch.matrix_exp(a.unsqueeze(-3) * scalars[:, None, None])  # (..., T, N, N)
+        transfer = _matrix_exp(a.unsqueeze(-3) * scalars[:, None, None])  # (..., T, N, N)
         return (transfer @ psi0.unsqueeze(-1)).squeeze(-1)  # (..., T, N)
     # Bounded-memory path: exponentiate the flattened (B*T, N, N) operator stack in row-blocks of
     # `max_batch`, applying psi0 per block, so the full (..., T, N, N) transfer is never
@@ -138,7 +141,7 @@ def _propagate_matrix_exp(
     for start in range(0, total, max_batch):
         flat = torch.arange(start, min(total, start + max_batch), device=a.device)
         block = a_flat[flat // n_thick] * scalars[flat % n_thick][:, None, None]  # (blk, N, N)
-        amplitudes.append((torch.matrix_exp(block) @ psi0.unsqueeze(-1)).squeeze(-1))
+        amplitudes.append((_matrix_exp(block) @ psi0.unsqueeze(-1)).squeeze(-1))
     return torch.cat(amplitudes, dim=0).reshape(*a.shape[:-2], n_thick, n)  # (..., T, N)
 
 
