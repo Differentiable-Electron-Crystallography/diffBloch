@@ -30,7 +30,7 @@ stdlib ``logging`` (not the domain-observation ``logger``).
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import gemmi
@@ -371,21 +371,18 @@ def preprocess_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    _refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
-    )
-    return prepared
+    return _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
+    ).plan
 
 
 def run_experiment(
@@ -414,23 +411,21 @@ def run_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
+    outcome = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
     )
     return run_inference(
-        prepared,
-        refinement,
+        outcome.plan,
+        outcome.refinement,
         method=cfg.blochwave.solver,
         device=device,
         max_batch=max_batch,
@@ -495,20 +490,21 @@ def refine_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, integrations, prepared, validation_rotation_indices, plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
+    outcome = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
     )
+    refinement, integrations, prepared = outcome.refinement, outcome.integrations, outcome.plan
+    validation_rotation_indices = outcome.validation_rotation_indices
+    plan_lock_sha256s = outcome.plan_lock_sha256s
     # `engine` covers every rotation (train + validation) -- reporting always scores the whole
     # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
     # validation angles it never saw, which is the point. Only the *training* engine, built
@@ -876,6 +872,27 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
+@dataclass(frozen=True)
+class PreprocessOutcome:
+    """Everything :func:`_preprocess` settles, named rather than positional.
+
+    A plain tuple return made every field addition churn all three entry points at once, since each
+    had to restructure its unpacking to keep the underscore-prefixed elements it ignores. Fields:
+    ``refinement`` the structure-side :class:`~diffBloch.preprocess.experiment.RefinementSetup`,
+    ``integrations`` the per-dataset :class:`~diffBloch.specs.IntegrationGeometry` in
+    ``inputs.exp_data`` order, ``plan`` the pooled settled ``Plan``,
+    ``validation_rotation_indices`` the held-out pooled indices (empty when ``train_test`` is off),
+    and ``plan_lock_sha256s`` the locks this run verified or wrote (``None`` when it didn't
+    checkpoint). See :func:`_preprocess` for what each one means in full.
+    """
+
+    refinement: RefinementSetup
+    integrations: tuple[IntegrationGeometry, ...]
+    plan: Plan
+    validation_rotation_indices: frozenset[int]
+    plan_lock_sha256s: tuple[str, ...] | None
+
+
 def _preprocess(
     root: Path,
     cfg: ExperimentConfig,
@@ -888,13 +905,7 @@ def _preprocess(
     max_batch: int | None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[
-    RefinementSetup,
-    tuple[IntegrationGeometry, ...],
-    Plan,
-    frozenset[int],
-    tuple[str, ...] | None,
-]:
+) -> PreprocessOutcome:
     """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
     Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --
@@ -1003,7 +1014,13 @@ def _preprocess(
         if any(sha is None for sha in lock_sha256s)
         else tuple(sha for sha in lock_sha256s if sha is not None)
     )
-    return refinement_setup, integrations, pooled, validation_rotation_indices, plan_lock_sha256s
+    return PreprocessOutcome(
+        refinement=refinement_setup,
+        integrations=integrations,
+        plan=pooled,
+        validation_rotation_indices=validation_rotation_indices,
+        plan_lock_sha256s=plan_lock_sha256s,
+    )
 
 
 def _prune_stale_dataset_checkpoints(reproducibility_dir: Path, refs: tuple[str, ...]) -> None:
