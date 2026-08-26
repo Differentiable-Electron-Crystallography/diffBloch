@@ -262,22 +262,32 @@ class OrientationOptimized:
     ran against, matching :attr:`ThicknessProfile.label`'s convention, and read off the rotation's
     own ``pattern``), since ``optimize_orientation`` runs once per dataset, before a multi-dataset
     pool renumbers anything -- so a rotation index alone cannot disambiguate a pooled run; pair it
-    with ``dataset``. ``score`` the final orientation's value under ``residual`` -- the
-    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
-    it, carried alongside so a consumer can label the number correctly
-    (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``) rather
-    than a generic, misleading ``wr2`` field under a different residual. ``n_trials`` the number of
-    trial orientations the search scored, ``n_passes`` scipy's reported iteration count (the
-    quantity ``NelderMeadSearch.max_iterations`` caps), and ``pass_cap`` that cap itself -- carried
-    per event so a plot can show each rotation's headroom (``n_passes`` vs ``pass_cap``) and flag
-    any rotation that ran to the cap. With ``workers > 1`` events arrive in *completion* order (the
-    plan itself stays ordered). The channel is shared with the step's ``PlanStepCompleted`` summary
-    line, like the refinement stream's events.
+    with ``dataset``. ``score`` the final orientation's value
+    under ``residual`` -- the :class:`~diffBloch.config.schema.LossMetricsConfig` name
+    (``"wr2"``/``"robs"``) that produced it, carried alongside so a consumer can label the number
+    correctly (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``)
+    rather than a generic, misleading ``wr2`` field under a different residual. ``seed_score`` is the
+    same metric at the *unsearched* seed orientation (the goniometer correction fixed at
+    ``(0, 0, 0)``), so ``seed_score - score`` states what the search actually bought. ``alpha``,
+    ``beta``, ``omega`` are the goniometer-correction angles (degrees) the search settled on --
+    exactly the ``(alpha, beta, omega)`` :func:`~diffBloch.preprocess.orientation.goniometer_rotation`
+    right-multiplies onto the seed orientation, so they are already "distance from the original
+    orientation" in the search's own three degrees of freedom, not a derived quantity. ``n_trials``
+    the number of trial orientations the search scored, ``n_passes`` scipy's reported iteration count
+    (the quantity ``NelderMeadSearch.max_iterations`` caps), and ``pass_cap`` that cap itself --
+    carried per event so a plot can show each rotation's headroom (``n_passes`` vs ``pass_cap``) and
+    flag any rotation that ran to the cap. With ``workers > 1`` events arrive in *completion* order
+    (the plan itself stays ordered). The channel is shared with the step's ``PlanStepCompleted``
+    summary line, like the refinement stream's events.
     """
 
     channel: ClassVar[str] = "orientation"
     rotation_index: int
     score: float
+    seed_score: float
+    alpha: float
+    beta: float
+    omega: float
     residual: str
     n_matched_hkl: int
     n_trials: int
@@ -291,7 +301,14 @@ class OrientationOptimized:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {self.residual: self.score, "n_matched_hkl": float(self.n_matched_hkl)}
+        return {
+            self.residual: self.score,
+            f"seed_{self.residual}": self.seed_score,
+            "delta_alpha_deg": self.alpha,
+            "delta_beta_deg": self.beta,
+            "delta_omega_deg": self.omega,
+            "n_matched_hkl": float(self.n_matched_hkl),
+        }
 
 
 @dataclass(frozen=True)

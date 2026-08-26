@@ -326,7 +326,16 @@ def test_fit_orientation_workers_abort_cancels_pending_rotations(
     ):
         calls.append(1)
         time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return op, 0.5, 1, 1
+        return fo._FitResult(
+            plan=op,
+            score=0.5,
+            n_trials=1,
+            n_passes=1,
+            alpha=0.0,
+            beta=0.0,
+            omega=0.0,
+            seed_score=0.5,
+        )
 
     monkeypatch.setattr(fo, "_refine_one", stub)
     grid, asu_plan, spec, numbers = _silicon()

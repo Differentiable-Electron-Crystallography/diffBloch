@@ -61,6 +61,10 @@ def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptim
     return OrientationOptimized(
         rotation_index=index,
         score=score,
+        seed_score=score + 0.1,
+        alpha=0.05,
+        beta=-0.02,
+        omega=0.01,
         residual=residual,
         n_matched_hkl=42,
         n_trials=10,
@@ -316,6 +320,40 @@ def test_console_logger_formats_refinement_epoch_metrics(
     )
 
 
+def test_console_logger_prints_validation_metrics_when_a_selection_engine_ran(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementStep(
+                iteration=7,
+                loss=4.95,
+                wr2=0.05,
+                val_wr2=0.09,
+                val_r_obs=0.07,
+                val_n_rotations=10,
+                val_n_wr2_evaluated=9,
+                val_n_r_obs_evaluated=8,
+            )
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a" in messages
+    assert "  validation      │ wR2 0.090000 [9/10] │ R_obs 0.070000 [8/10]" in messages
+
+
+def test_console_logger_omits_validation_line_without_a_selection_engine(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No val_wr2 on the event -> no validation line, not one printed with placeholder values."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.1))
+
+    assert not any("validation" in record.getMessage() for record in caplog.records)
+
+
 def test_objective_manifest_declares_composition_including_the_empty_case() -> None:
     empty = ObjectiveManifest()
     assert empty.channel == "objective"
@@ -487,7 +525,7 @@ def test_console_logger_labels_orientation_refinement_index(
     assert (
         caplog.records[-1]
         .getMessage()
-        .startswith("orientation optimization[rotation_index=10] wr2=0.025 n_matched_hkl=42")
+        .startswith("orientation optimization[rotation_index=10] wr2=0.025")
     )
 
 
@@ -589,6 +627,39 @@ def test_console_logger_renders_a_thickness_progress_bar_on_a_tty(
     out = capsys.readouterr().out
     assert "1/2" in out and "2/2" in out
     assert out.endswith("\n")
+
+
+def test_console_logger_names_the_dataset_on_orientation_and_thickness_started(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression for #140-adjacent multi-dataset log readability: previously these two lines
+    carried only a rotation count, with no way to tell which dataset a pooled run's announcement
+    belonged to."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            OrientationOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets")
+        )
+        logger.report(ThicknessOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets"))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+    assert "Thickness optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+
+
+def test_console_logger_omits_the_dataset_segment_when_unlabeled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A direct API caller outside the multi-dataset preprocess loop passes no dataset_label -- the
+    line must fall back to its original plain form, not print an empty "│  │" segment."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(OrientationOptimizationStarted(total_rotations=52))
+        logger.report(ThicknessOptimizationStarted(total_rotations=52))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 52 rotation(s)" in messages
+    assert "Thickness optimization │ 52 rotation(s)" in messages
 
 
 def test_console_logger_falls_back_to_plain_lines_off_a_tty(
