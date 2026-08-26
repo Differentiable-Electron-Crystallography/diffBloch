@@ -1,41 +1,46 @@
-name: Release
+name: PyPI publish
 
-# A release happens only when a version tag is pushed:
+# Called by release.yml once a merge to main bumps __version__ in src/diffBloch/__init__.py.
+# Deliberately NOT triggered by a tag: release.yml creates the tag with GITHUB_TOKEN, and tags
+# pushed by that token never start a workflow run. Dropping the tag trigger also means a
+# hand-pushed v* tag publishes nothing, so releasing goes through a reviewed PR or not at all.
 #
-#   1. bump __version__ in src/diffBloch/__init__.py -- then open a PR and merge it
-#   2. gh release create v0.3.0 --target main --generate-notes
-#
+# There is nothing to run by hand for a normal release -- see release.yml.
 on:
-  push:
-    tags: ['v*']
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit (or tag) to build and publish.
+        required: true
+        type: string
+      version:
+        description: Version the caller expects that ref to build, e.g. 0.2.1.
+        required: true
+        type: string
+  # Re-run path for a release whose publish failed after the fact. Name the commit and the version
+  # it carries; the check below refuses the pair if they disagree. Repeated in full rather than
+  # shared with an anchor -- GitHub Actions does not support YAML anchors.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit (or tag) to build and publish.
+        required: true
+        type: string
+      version:
+        description: Version the caller expects that ref to build, e.g. 0.2.1.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  # Refuse a tag that is not reachable from main.
-  guard:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0     # --is-ancestor needs the history joining the tag to main
-          filter: blob:none  # ...but never the file contents of it
-
-      - name: Check the tag is on main
-        run: |
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
-            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main."
-            echo "::error::Delete the tag and re-create it with: gh release create $GITHUB_REF_NAME --target main"
-            exit 1
-          }
-
   build:
-    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           lfs: true
 
       - name: Install uv
@@ -46,12 +51,16 @@ jobs:
       - name: Build package (wheel + sdist)
         run: uv build
 
-      # __version__ is a static string, so a tag can silently disagree with the metadata it
-      # ships. Compare against the built wheel (real metadata, not a re-parse of the source) and
-      # normalise both sides through PEP 440 so v0.3.0-rc1 and v0.3.0rc1 are treated as equal.
-      - name: Check tag against built version
+      # Two independent reads of __init__.py have to agree: the caller's (release.yml greps the
+      # line) and hatchling's (which builds the wheel from it). This is a weaker guarantee than the
+      # tag-vs-metadata check it replaces -- the file is the only source of truth now, so there is
+      # no second number to disagree with it -- but it still catches a bug in that grep and a
+      # workflow_dispatch naming a ref/version pair that don't match. Compare against the built
+      # wheel (real metadata, not a re-parse of the source), normalising both through PEP 440 so
+      # 0.3.0-rc1 and 0.3.0rc1 are treated as equal.
+      - name: Check expected version against built version
         env:
-          TAG: ${{ github.ref_name }}
+          EXPECTED: ${{ inputs.version }}
         run: |
           uv run --no-project --with packaging python - <<'PY'
           import os, pathlib, sys
@@ -59,15 +68,15 @@ jobs:
 
           wheel = next(pathlib.Path("dist").glob("*.whl"))
           dist_v = Version(wheel.name.split("-")[1])
-          tag = os.environ["TAG"]
+          expected = os.environ["EXPECTED"]
           try:
-              tag_v = Version(tag.removeprefix("v"))
+              expected_v = Version(expected)
           except InvalidVersion:
-              sys.exit(f"::error::tag {tag} is not a PEP 440 version")
-          if tag_v != dist_v:
+              sys.exit(f"::error::requested version {expected} is not a PEP 440 version")
+          if expected_v != dist_v:
               sys.exit(
-                  f"::error::tag {tag} implies version {tag_v}, but the build produced {dist_v}. "
-                  "Bump __version__ in src/diffBloch/__init__.py to match the tag."
+                  f"::error::caller asked for {expected_v}, but the build produced {dist_v}. "
+                  "The requested ref does not carry the requested version."
               )
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
@@ -77,7 +86,9 @@ jobs:
       - name: Sync (dev)
         run: uv sync --dev
 
-      # Tags can be pushed from any commit, including one that skipped CI so we run checks here.
+      # Redundant with CI on the PR -- `check` is a required status check on main -- but a PyPI
+      # upload is irreversible (a version number can never be reused) and workflow_dispatch can
+      # name any ref. Cheap insurance run directly against the artifact being shipped.
       - name: Unit tests
         run: uv run pytest
 

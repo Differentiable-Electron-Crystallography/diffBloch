@@ -1,0 +1,81 @@
+name: Release
+
+# Releasing is an ordinary PR: bump __version__ in src/diffBloch/__init__.py, refresh the example
+# locks alongside it (ci.yml's release-guard enforces that pairing), get it approved, merge. There
+# is no command to run afterwards and no tag to push by hand.
+#
+# This fires on every push to main but only acts when __version__ names a version that has no tag
+# yet, so an ordinary merge is a clean no-op.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # the tag list is the record of what has already been released
+
+      # Keyed on "is this version already tagged" rather than on a HEAD^ diff: a merge that leaves
+      # the version alone is a no-op, and a re-run after a mid-flight failure resumes instead of
+      # deciding the release already happened.
+      - name: Decide whether this is a release
+        id: decide
+        run: |
+          version=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/diffBloch/__init__.py)
+          if [ -z "$version" ]; then
+            echo "::error::no __version__ assignment found in src/diffBloch/__init__.py"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is unreleased; publishing $version"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
+    uses: ./.github/workflows/pypi.yml
+    with:
+      ref: ${{ github.sha }}
+      version: ${{ needs.decide.outputs.version }}
+    permissions:
+      contents: read
+      id-token: write  # PyPI Trusted Publishing; a called workflow cannot escalate, so grant it here
+
+  # The tag is created LAST, and only once PyPI has accepted the upload. `decide` reads tag
+  # existence as "already released", so tagging first would leave that marker behind on any publish
+  # failure -- a flaky test, twine check on a bad README, a PyPI outage -- and the re-run would
+  # silently skip. Tagging last means a failed release leaves no trace and re-running just works.
+  tag:
+    needs: [decide, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # POST /git/refs rather than `git push`: the endpoint is create-only (422 if the ref already
+      # exists), so a re-run can never force-move a published tag, and it needs no git identity on
+      # the runner. The tag is the record that makes a lock's `code_version: <version>+g<sha>`
+      # resolve back to source with `git checkout v<version>`.
+      - name: Record the release as a tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.decide.outputs.version }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$GITHUB_SHA" \
+            --silent
+          echo "tagged $GITHUB_SHA as $TAG"
