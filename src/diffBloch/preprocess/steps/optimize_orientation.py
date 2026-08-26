@@ -74,7 +74,12 @@ from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import goniometer_rotation
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan, require_built_plans, unique_hkl_count
+from diffBloch.preprocess.plan import (
+    Plan,
+    dataset_of,
+    require_built_plans,
+    unique_hkl_count,
+)
 from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import (
@@ -229,7 +234,12 @@ def optimize_orientation(
             )
 
         built = require_built_plans(plan)
-        logger.report(OrientationOptimizationStarted(total_rotations=len(built)))
+        # This step runs once per dataset, before a multi-dataset pool renumbers anything, so its
+        # rotation_index is file-local and cannot disambiguate a pooled report on its own. The ref
+        # rides on each rotation's own pattern (stamped at setup_datasets), so it is read off the
+        # plan rather than passed in -- a recipe step takes no dataset argument.
+        dataset = dataset_of(built)
+        logger.report(OrientationOptimizationStarted(total_rotations=len(built), dataset=dataset))
         results_by_index: dict[int, tuple[OrientationPlanLike, float, int, int]] = {}
         cap = search.max_iterations
 
@@ -250,6 +260,7 @@ def optimize_orientation(
                     n_trials=n_trials,
                     n_passes=n_passes,
                     pass_cap=cap,
+                    dataset=dataset,
                 )
             )
 

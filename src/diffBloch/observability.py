@@ -232,11 +232,16 @@ class OrientationOptimizationStarted:
     only assembled deep inside the step itself. Deliberately a distinct channel from
     ``OrientationOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    search is fitting, read off the plan's own rotations
+    (:func:`~diffBloch.preprocess.dataset_of`) -- without it, a pooled multi-dataset run's console
+    log cannot tell which dataset a "N rotation(s)" announcement belongs to. It is ``""`` only when
+    the plan names no single dataset (a pooled or unlabelled plan reaching the fit directly).
     """
 
     channel: ClassVar[str] = "orientation_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -253,7 +258,11 @@ class OrientationOptimized:
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
-    PETS rotation index, ``score`` the final orientation's value under ``residual`` -- the
+    PETS rotation index -- *file-local* to ``dataset`` (the raw ``inputs.exp_data`` ref this search
+    ran against, matching :attr:`ThicknessProfile.label`'s convention, and read off the rotation's
+    own ``pattern``), since ``optimize_orientation`` runs once per dataset, before a multi-dataset
+    pool renumbers anything -- so a rotation index alone cannot disambiguate a pooled run; pair it
+    with ``dataset``. ``score`` the final orientation's value under ``residual`` -- the
     :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
     it, carried alongside so a consumer can label the number correctly
     (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``) rather
@@ -274,6 +283,7 @@ class OrientationOptimized:
     n_trials: int
     n_passes: int
     pass_cap: int
+    dataset: str
 
     @property
     def step(self) -> int | None:
@@ -335,11 +345,13 @@ class ThicknessOptimizationStarted:
     :class:`OrientationOptimizationStarted`. Deliberately a distinct channel from
     ``ThicknessOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    grid search is fitting, mirroring :attr:`OrientationOptimizationStarted.dataset`.
     """
 
     channel: ClassVar[str] = "thickness_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -617,7 +629,11 @@ class RefinedRotationMetrics:
     is the settled result, scored once on the best model by the *reporting* engine, so it covers
     every rotation including the held-out ones (``is_validation`` marks those). The refinement loop
     cannot emit it -- the loop only ever sees the training engine -- so the app boundary emits it
-    once the run has finished.
+    once the run has finished. ``dataset`` is the raw ``inputs.exp_data`` ref ``rotation_index``
+    (the *pooled* index for a multi-dataset run) belongs to, matching :attr:`ThicknessProfile.label`'s
+    convention. It is carried on the rotation's own ``pattern`` from
+    :func:`~diffBloch.preprocess.setup_datasets` onwards, so nothing downstream re-derives dataset
+    membership from pooled index offsets.
     """
 
     channel: ClassVar[str] = "refined rotation"
@@ -626,6 +642,7 @@ class RefinedRotationMetrics:
     r_obs: float
     n_matched: int
     is_validation: bool
+    dataset: str
 
     @property
     def step(self) -> int | None:
