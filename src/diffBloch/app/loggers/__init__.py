@@ -350,6 +350,14 @@ class ConsoleLogger:
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                suffix += f" │ val wR2 {val_wr2} │ val R_obs {val_r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
             for term, values in _penalty_components(event):
@@ -420,6 +428,19 @@ class ConsoleLogger:
                 r_obs,
                 diff_loss,
             )
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                _log.log(
+                    self.level,
+                    "  validation      │ wR2 %s │ R_obs %s",
+                    val_wr2,
+                    val_r_obs,
+                )
             for term, values in _penalty_components(event):
                 _log.log(
                     self.level,

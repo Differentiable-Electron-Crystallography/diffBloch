@@ -1076,6 +1076,19 @@ def run_refinement_model(
         # ExperimentConfig.loss_metrics, so refinement always reports both -- free, unlike the
         # preprocessing search, which reports only the metric it actually spent a solve computing.
         diagnostics = reported_objective.diagnostics
+        # Scored before the event below so its wR2/R_obs ride on the *same* RefinementStep as the
+        # training numbers -- this scoring already happens every epoch purely to pick best_model, so
+        # reporting it is free; without it, the validation curve never surfaces until the run ends.
+        selection_loss = loss_value
+        selection_diagnostics: Mapping[str, float] | None = None
+        if selection_engine is not None:
+            with torch.no_grad():
+                selection_objective = selection_engine.objective_value_model(
+                    snapshot, penalties=problem.penalties
+                )
+            selection_loss = _scalar_float(selection_objective.total)
+            selection_losses.append(selection_loss)
+            selection_diagnostics = selection_objective.diagnostics
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
@@ -1087,6 +1100,21 @@ def run_refinement_model(
             n_rotations=int(diagnostics["n_rotations"]),
             n_wr2_evaluated=int(diagnostics["n_wr2_evaluated"]),
             n_r_obs_evaluated=int(diagnostics["n_r_obs_evaluated"]),
+            val_wr2=None if selection_diagnostics is None else selection_diagnostics["wr2"],
+            val_r_obs=None if selection_diagnostics is None else selection_diagnostics["r_obs"],
+            val_n_rotations=(
+                None if selection_diagnostics is None else int(selection_diagnostics["n_rotations"])
+            ),
+            val_n_wr2_evaluated=(
+                None
+                if selection_diagnostics is None
+                else int(selection_diagnostics["n_wr2_evaluated"])
+            ),
+            val_n_r_obs_evaluated=(
+                None
+                if selection_diagnostics is None
+                else int(selection_diagnostics["n_r_obs_evaluated"])
+            ),
         )
         history.append(event)
         logger.report(event)
@@ -1101,14 +1129,6 @@ def run_refinement_model(
                         diff_loss=entry["diff_loss"],
                     )
                 )
-        selection_loss = loss_value
-        if selection_engine is not None:
-            with torch.no_grad():
-                selection_objective = selection_engine.objective_value_model(
-                    snapshot, penalties=problem.penalties
-                )
-            selection_loss = _scalar_float(selection_objective.total)
-            selection_losses.append(selection_loss)
         if selection_loss < best_loss:
             best_loss, best_step, best_model = selection_loss, step, snapshot
     _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)

@@ -555,6 +555,35 @@ def test_refine_best_params_can_track_a_selection_engine() -> None:
     steps_reported = [e.loss for e in recorder.events if isinstance(e, RefinementStep)]
     assert steps_reported == [float(x) for x in result.losses]
 
+    # The validation scoring already happens every epoch purely to pick best_model -- reporting it
+    # on the same RefinementStep must not cost an extra evaluation or ever surface as unevaluated.
+    step_events = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    assert len(step_events) == 8
+    assert all(e.val_wr2 is not None and e.val_r_obs is not None for e in step_events)
+    assert all(e.val_n_rotations == 1 for e in step_events)
+
+
+def test_refinement_step_omits_validation_fields_without_a_selection_engine() -> None:
+    """No selection_engine -> no val_* fields, not zeros or NaNs standing in for "not scored"."""
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
+    recorder = RecordingLogger()
+
+    run_refinement_model(
+        engine,
+        build_refinement_model(initial=_params(occupancy_logit=0.0)),
+        RefinementProblem(),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        steps=3,
+        optimizer="adam",
+        lr=0.2,
+        logger=recorder,
+    )
+
+    step_events = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    assert len(step_events) == 3
+    assert all(e.val_wr2 is None and e.val_r_obs is None for e in step_events)
+    assert all("val_wr2" not in e.measurements for e in step_events)
+
 
 def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
