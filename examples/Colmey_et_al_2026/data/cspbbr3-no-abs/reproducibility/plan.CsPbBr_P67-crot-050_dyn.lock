@@ -18,8 +18,8 @@
     90.00002
   ],
   "ignored_rotations": [],
-  "config_digest": "e0cef01d14af0ee816b69d2a87a2cb0f36b6ea76c69b39d39ba1df4fa66e111f",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "69a4cf63a3e0b644738036d6d57ef57b3e7fe471b189689b31f09018bbbf8ddb",
+  "code_version": "0.2.0+g4ee4e62.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -63,7 +63,8 @@
           "max_iterations": 60,
           "x_tolerance": 0.001,
           "f_tolerance": 0.001,
-          "penalize_fewer_reflections": true
+          "penalize_fewer_reflections": true,
+          "smooth_polynomial": false
         },
         "coupling": {
           "__type__": "TrialCoupling",
@@ -99,8 +100,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.CsPbBr_P67-crot-050_dyn.npz",
-    "sha256": "cf05b2377e9e5b068412b8ede54162b362345f1a8d2086f8739dcd2ac2975ce1",
-    "bytes": 1140895,
+    "sha256": "8c12845290b782cb6405f05b0f0ce358ef43f7b909e21b6f15c46b44dd199377",
+    "bytes": 1140787,
     "media_type": "application/octet-stream"
   }
 }

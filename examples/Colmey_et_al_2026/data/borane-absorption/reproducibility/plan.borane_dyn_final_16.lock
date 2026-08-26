@@ -18,8 +18,8 @@
     90.00002
   ],
   "ignored_rotations": [],
-  "config_digest": "c9d3603ebde0703c101236d8a2ad31115ca62b16b05fcb2383e6464b5ec6c9fa",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "6f22eb3d9379d30438c579f57f5f582f275599cc4ff016f9d34b886cc1ad2ac9",
+  "code_version": "0.2.0+g4ee4e62.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -63,7 +63,8 @@
           "max_iterations": 60,
           "x_tolerance": 0.001,
           "f_tolerance": 0.001,
-          "penalize_fewer_reflections": true
+          "penalize_fewer_reflections": true,
+          "smooth_polynomial": false
         },
         "coupling": {
           "__type__": "TrialCoupling",
@@ -93,14 +94,15 @@
         "absorption": {
           "__type__": "Absorption",
           "enabled": true
-        }
+        },
+        "scattering_factors": "lobato2014"
       }
     }
   ],
   "plan": {
     "path": "reproducibility/plan.borane_dyn_final_16.npz",
-    "sha256": "3c389a24238fe6d08f8baf68062bda56c45a38d55bb4e34919c83b19dc520495",
-    "bytes": 977266,
+    "sha256": "f914b7c9eef27ce7d30146b7937f1b3dbc41e97ef8955995ebce27fdeaa24625",
+    "bytes": 977737,
     "media_type": "application/octet-stream"
   }
 }
