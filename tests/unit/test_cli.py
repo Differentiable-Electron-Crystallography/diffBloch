@@ -23,8 +23,8 @@ from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
-# A real CIF on disk: SummaryLogger reads the written structure back on the terminal event, so the
-# artifact path a fake emits has to point at a file that parses.
+# A real CIF on disk: SummaryLogger reads the written structure back on the terminal
+# event, so the artifact path a fake emits has to point at a file that parses.
 REFINED_CIF = Path(__file__).parent.parent / "fixtures" / "quartz_anchor" / "enantiomer_1.cif"
 
 
@@ -322,6 +322,10 @@ def test_preprocess_delegates_and_reports_without_scoring(
             OrientationOptimized(
                 rotation_index=3,
                 score=0.25,
+                seed_score=0.4,
+                alpha=0.1,
+                beta=0.0,
+                omega=-0.1,
                 residual="wr2",
                 n_matched_hkl=2,
                 n_trials=10,
@@ -334,6 +338,10 @@ def test_preprocess_delegates_and_reports_without_scoring(
             OrientationOptimized(
                 rotation_index=8,
                 score=0.5,
+                seed_score=0.6,
+                alpha=0.05,
+                beta=-0.05,
+                omega=0.0,
                 residual="wr2",
                 n_matched_hkl=3,
                 n_trials=10,
@@ -515,7 +523,8 @@ def test_refine_delegates_and_reports(
     assert rc == 0
     assert captured["dir"] == str(tmp_path)
     # The refine path fans out to the console and to the summary sink that writes
-    # refinement_report.txt -- composed here, not inside refine_experiment.
+    # refinement_report.txt -- composed here, not inside refine_experiment. Both COMPLETE boxes
+    # come from the ConsoleLogger's own event handling, so no third sink is wired in for them.
     logger = captured["logger"]
     assert isinstance(logger, MultiLogger)
     assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "SummaryLogger"]
