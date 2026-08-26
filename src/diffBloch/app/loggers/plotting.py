@@ -89,6 +89,7 @@ class ThicknessPlotLogger:
         ax.set_xlabel("Thickness (Å)")
         ax.set_ylabel(label)
         ax.set_title(f"{label} vs thickness — rotation {event.rotation_index}")
+        ax.set_ylim(bottom=0)
         _apply_house_style(ax)
         fig.tight_layout()
         fig.savefig(self.output_dir / f"{event.rotation_index}.png")

@@ -81,6 +81,24 @@ def test_report_writes_a_separate_png_per_rotation(tmp_path: Path) -> None:
     assert {p.name for p in output_dir.iterdir()} == {"3.png", "4.png"}
 
 
+def test_report_floors_the_y_axis_at_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """wR2/R_obs never go negative, so the plot must not auto-zoom into a narrow non-zero band."""
+    import matplotlib.axes
+
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    original = matplotlib.axes.Axes.set_ylim
+
+    def recording_set_ylim(self: matplotlib.axes.Axes, *args: object, **kwargs: object) -> object:
+        calls.append((args, kwargs))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "set_ylim", recording_set_ylim)
+
+    ThicknessPlotLogger(tmp_path / "thickness_optim").report(_EVENT)
+
+    assert any(kwargs.get("bottom") == 0 for _, kwargs in calls)
+
+
 def test_thickness_nn_shape_plot_carries_its_dataset_title(tmp_path: Path) -> None:
     png = tmp_path / "thickness_nn_shape_a.png"
 
