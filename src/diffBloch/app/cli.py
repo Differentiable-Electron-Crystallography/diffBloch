@@ -16,7 +16,7 @@ import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger, print_summary_box
 from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
@@ -225,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            result = run_experiment(
+            run_experiment(
                 args.experiment_directory,
                 logger=_build_logger(csv=args.csv),
                 checkpoint=not args.no_checkpoint,
@@ -241,7 +241,6 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
         return 0
 
     if args.command == "preprocess":
@@ -340,15 +339,14 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print("========================================")
-        print("HYPERPARAMETER OPTIMIZATION RESULT")
-        print(f"gmax: {settled.g_max:g}")
-        print(f"sgmax: {settled.sg_max:g}")
-        print(f"tilt_steps: {settled.tilt_steps}")
-        print("========================================")
-        print(
-            f"optimized_hyperparams gmax={settled.g_max:g} "
-            f"sgmax={settled.sg_max:g} tilt_steps={settled.tilt_steps}"
+        print()
+        print_summary_box(
+            "CONVERGENCE COMPLETE",
+            (
+                ("g_max", f"{settled.g_max:g}"),
+                ("sg_max", f"{settled.sg_max:g}"),
+                ("Tilt steps", str(settled.tilt_steps)),
+            ),
         )
         return 0
 

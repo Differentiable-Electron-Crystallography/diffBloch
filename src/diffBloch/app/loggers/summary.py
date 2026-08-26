@@ -31,6 +31,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import gemmi
 
@@ -41,7 +42,7 @@ from diffBloch.observability import (
     Event,
     ExperimentDeclared,
     ObjectiveManifest,
-    OrientationOptimized,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -68,6 +69,42 @@ def ascii_table(headers: list[str], rows: list[list[str]]) -> str:
     lines = [fmt(headers), "  ".join("-" * width for width in widths)]
     lines.extend(fmt(row) for row in rows)
     return "\n".join(lines)
+
+
+def _render_step_params(params: dict[str, Any] | None) -> list[str]:
+    """Flatten a step's serialized config (see ``preprocess.pipeline.spec_to_params``) to lines.
+
+    Recurses into nested dataclass dicts (dropping their ``__type__`` tag, which exists only to
+    disambiguate a fieldless spec for provenance identity, not for display), rendering each leaf as
+    ``key=value``. A paramless step (``params is None``) reports that plainly rather than nothing --
+    absent from the report and "ran with no configurable settings" must not look the same.
+    """
+    if params is None:
+        return ["(no parameters)"]
+
+    def leaf(value: object) -> str:
+        if value is None:
+            return "none"
+        return f"{value:g}" if isinstance(value, float) else str(value)
+
+    def walk(prefix: str, value: object) -> list[str]:
+        if isinstance(value, dict):
+            inner = {k: v for k, v in value.items() if k != "__type__"}
+            if not inner:
+                return [f"{prefix}=none"]
+            return [line for k, v in inner.items() for line in walk(f"{prefix}.{k}", v)]
+        return [f"{prefix}={leaf(value)}"]
+
+    top = {k: v for k, v in params.items() if k != "__type__"}
+    if not top:
+        return ["(no parameters)"]
+    return [line for key, value in top.items() for line in walk(key, value)]
+
+
+def _kv_list(rows: list[list[str]]) -> str:
+    """Column-aligned label/value pairs, no header row -- each label already says what it is."""
+    width = max((len(row[0]) for row in rows), default=0)
+    return "\n".join(f"{label.ljust(width)}  {value}" for label, value in rows)
 
 
 def _finite_mean_cell(values: Sequence[float]) -> str:
@@ -120,7 +157,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
-    _orientations: list[OrientationOptimized] = field(default_factory=list, init=False, repr=False)
+    _preprocess: PreprocessCompleted | None = field(default=None, init=False, repr=False)
     _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
     _started_at: float = field(default=0.0, init=False, repr=False)
 
@@ -141,8 +178,8 @@ class SummaryLogger:
             self._completed = event
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
-        elif isinstance(event, OrientationOptimized):
-            self._orientations.append(event)
+        elif isinstance(event, PreprocessCompleted):
+            self._preprocess = event
         elif isinstance(event, ThicknessProfile):
             # Keyed by dataset so a re-reported profile replaces its section (last event wins),
             # while insertion order keeps sections in exp_data order.
@@ -173,7 +210,7 @@ class SummaryLogger:
         self._simulation_parameters(lines, rule)
         self._crystallographic_parameters(lines, rule, Path(outputs.structure))
         self._objective_terms(lines, rule)
-        self._orientation_optimization(lines, rule)
+        self._preprocessing(lines, rule)
         self._objective_components(lines, rule)
         self._epoch_curve(lines, rule)
         self._rotation_metrics(lines, rule)
@@ -201,19 +238,19 @@ class SummaryLogger:
             lines.append(" n/a (no recorded experiment declaration)")
             return
 
-        def epoch_mean_pct(value: float | None, evaluated: int | None) -> str:
+        def epoch_mean_pct(value: float | None, evaluated: int | None, total: int | None) -> str:
             """A best-epoch mean as a percentage, with the rotation count it was averaged over.
 
             A non-finite mean renders ``n/a``, the same spelling the per-rotation means below this
             table use: the objective averages only finite scores, so non-finite means nothing was
             evaluated -- already stated by the count beside it.
             """
-            if best is None or value is None:
+            if value is None:
                 return "n/a"
             rendered = f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
-            if evaluated is None or best.n_rotations is None:
+            if evaluated is None or total is None:
                 return rendered
-            return f"{rendered} [{evaluated}/{best.n_rotations}]"
+            return f"{rendered} [{evaluated}/{total}]"
 
         counts = completed.reflection_counts if completed else {}
         hkls_matched = (
@@ -246,19 +283,46 @@ class SummaryLogger:
             ["Best epoch", best_epoch],
             ["Optimizer", experiment.optimizer],
             ["Learning rate", f"{experiment.learning_rate:g}"],
-            [
-                "R_obs (%)",
-                epoch_mean_pct(
-                    best.r_obs if best else None, best.n_r_obs_evaluated if best else None
-                ),
-            ],
-            [
-                "wR2 (%)",
-                epoch_mean_pct(best.wr2 if best else None, best.n_wr2_evaluated if best else None),
-            ],
-            ["HKLs (Observed/total)", hkls_matched],
         ]
-        lines.append(ascii_table(["Parameter", "Value"], rows))
+        if best is not None and best.val_wr2 is not None:
+            rows += [
+                ["Train wR2 (%)", epoch_mean_pct(best.wr2, best.n_wr2_evaluated, best.n_rotations)],
+                [
+                    "Train R_obs (%)",
+                    epoch_mean_pct(best.r_obs, best.n_r_obs_evaluated, best.n_rotations),
+                ],
+                [
+                    "Val wR2 (%)",
+                    epoch_mean_pct(best.val_wr2, best.val_n_wr2_evaluated, best.val_n_rotations),
+                ],
+                [
+                    "Val R_obs (%)",
+                    epoch_mean_pct(
+                        best.val_r_obs, best.val_n_r_obs_evaluated, best.val_n_rotations
+                    ),
+                ],
+            ]
+        else:
+            rows += [
+                [
+                    "R_obs (%)",
+                    epoch_mean_pct(
+                        best.r_obs if best else None,
+                        best.n_r_obs_evaluated if best else None,
+                        best.n_rotations if best else None,
+                    ),
+                ],
+                [
+                    "wR2 (%)",
+                    epoch_mean_pct(
+                        best.wr2 if best else None,
+                        best.n_wr2_evaluated if best else None,
+                        best.n_rotations if best else None,
+                    ),
+                ],
+            ]
+        rows.append(["Matched HKLs (I>3σ/total)", hkls_matched])
+        lines.append(_kv_list(rows))
 
     def _crystallographic_parameters(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path
@@ -267,15 +331,14 @@ class SummaryLogger:
         structure = read_structure(structure_path)
         a, b, c, alpha, beta, gamma = (float(v) for v in structure.cell_parameters)
         lines.append(
-            ascii_table(
-                ["Parameter", "Value"],
+            _kv_list(
                 [
                     ["Space group", f"{structure.spacegroup_hm} (#{structure.spacegroup_number})"],
                     ["a, b, c (A)", f"{a:.4f}, {b:.4f}, {c:.4f}"],
                     ["alpha, beta, gamma (deg)", f"{alpha:.2f}, {beta:.2f}, {gamma:.2f}"],
                     ["Volume (A^3)", f"{cell_volume(structure.unit_cell):.1f}"],
                     ["N atoms (ASU)", f"{len(structure.labels)}"],
-                ],
+                ]
             )
         )
 
@@ -292,37 +355,25 @@ class SummaryLogger:
         lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
         lines.append(f" components : {', '.join(manifest.components) or 'none'}")
 
-    def _orientation_optimization(self, lines: list[str], rule: Callable[[str], None]) -> None:
-        rule("Orientation optimization")
-        if not self._orientations:
-            lines.append(" enabled: no (orientation search was not part of this run)")
-            return
-        residual = self._orientations[0].residual
-        lines.append(
-            ascii_table(
-                [
-                    "Dataset",
-                    "Rotation",
-                    "delta alpha (deg)",
-                    "delta beta (deg)",
-                    "delta omega (deg)",
-                    f"seed {residual}",
-                    f"final {residual}",
-                ],
-                [
-                    [
-                        event.dataset,
-                        str(event.rotation_index),
-                        f"{event.alpha:.4f}",
-                        f"{event.beta:.4f}",
-                        f"{event.omega:.4f}",
-                        f"{event.seed_score:.6f}",
-                        f"{event.score:.6f}",
-                    ]
-                    for event in self._orientations
-                ],
-            )
-        )
+    def _preprocessing(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Preprocess")
+        steps = dict(self._preprocess.steps) if self._preprocess is not None else {}
+
+        def report_step(label: str, step_name: str, own_key: str) -> None:
+            if step_name not in steps:
+                lines.append(f" {label}: false")
+                return
+            lines.append(f" {label}: true")
+            # Only the step's own spec (e.g. the search/grid), not composition-site kwargs like
+            # ``coupling``/``absorption`` -- those are shared context other steps configure too,
+            # not a setting of *this* step.
+            params = steps[step_name]
+            own = params.get(own_key) if params is not None else None
+            for param_line in _render_step_params(own):
+                lines.append(f"     {param_line}")
+
+        report_step("Orientation optimization", "optimize_orientation", "search")
+        report_step("Thickness optimization", "optimize_thickness", "grid")
 
     def _objective_components(self, lines: list[str], rule: Callable[[str], None]) -> None:
         rule("Objective components (best epoch)")
@@ -347,9 +398,6 @@ class SummaryLogger:
         lines.append("")
         total = "n/a" if best.objective_total is None else f"{best.objective_total:.6g}"
         lines.append(f" objective total = {total}")
-        # Every row is a term the objective actually composed. A restraint that was not composed
-        # has no row, so this table never reports an inactive term as a satisfied zero.
-        lines.append(" (terms not composed into the objective have no row)")
 
     def _epoch_curve(self, lines: list[str], rule: Callable[[str], None]) -> None:
         rule("Epoch curve")

@@ -95,8 +95,7 @@ def test_run_inference_reports_low_r_obs_at_a_self_consistent_pattern() -> None:
 
     assert len(result.per_rotation) == 1
     row = result.per_rotation[0]
-    assert row.n_beams == 3
-    assert 0 < row.n_observed <= 3
+    assert 0 < row.n_matched <= 3
     assert math.isfinite(row.r_obs) and row.r_obs < 1e-3
     assert result.n_evaluated == 1
     assert result.mean_r_obs == row.r_obs
@@ -147,7 +146,6 @@ def test_inference_result_aggregates_only_finite_rotations() -> None:
     result = run_inference(plan, _refinement(asu_plan, spec, numbers), method=_METHOD)
 
     assert math.isnan(result.per_rotation[1].r_obs)
-    assert result.per_rotation[1].n_observed == 0
     assert result.n_evaluated == 1
     assert result.mean_r_obs == result.per_rotation[0].r_obs
 

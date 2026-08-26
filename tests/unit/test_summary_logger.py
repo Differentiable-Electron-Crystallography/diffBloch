@@ -16,7 +16,7 @@ from diffBloch.observability import (
     ExperimentDeclared,
     ObjectiveManifest,
     ObjectiveTerm,
-    OrientationOptimized,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -98,7 +98,7 @@ def _run(
     experiment: ExperimentDeclared | None = None,
     steps: tuple[RefinementStep, ...] = (),
     rotations: tuple[RefinedRotationMetrics, ...] = (),
-    orientations: tuple[OrientationOptimized, ...] = (),
+    preprocess: PreprocessCompleted | None = None,
     profiles: tuple[ThicknessProfile, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
@@ -112,8 +112,8 @@ def _run(
         if manifest is not None
         else ObjectiveManifest(penalties=(ObjectiveTerm(name="bond_length", weight=3.0),))
     )
-    for orientation in orientations:
-        logger.report(orientation)
+    if preprocess is not None:
+        logger.report(preprocess)
     for step in steps or (_step(),):
         logger.report(step)
     logger.report(
@@ -151,33 +151,6 @@ def _rotation(
     )
 
 
-def _orientation(
-    index: int,
-    *,
-    alpha: float = 0.05,
-    beta: float = -0.02,
-    omega: float = 0.01,
-    score: float = 0.02,
-    seed_score: float = 0.08,
-    residual: str = "wr2",
-    dataset: str = "q.cif_pets",
-) -> OrientationOptimized:
-    return OrientationOptimized(
-        rotation_index=index,
-        score=score,
-        seed_score=seed_score,
-        alpha=alpha,
-        beta=beta,
-        omega=omega,
-        residual=residual,
-        n_matched_hkl=5,
-        n_trials=20,
-        n_passes=4,
-        pass_cap=2000,
-        dataset=dataset,
-    )
-
-
 def test_summary_is_written_only_on_the_terminal_event(tmp_path: Path) -> None:
     """No committed structure means no summary -- the sink does not write a half-finished run."""
     logger = SummaryLogger(tmp_path / "refinement_report.txt")
@@ -207,7 +180,7 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
     assert "10.00 [3/4]" in text  # best-epoch wR2 (%), 3 of 4 rotations finite
     assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
     assert "mean wR2   = 0.200000 [1/1]" in text
-    assert "HKLs (Observed/total)" in text and "8 / 12" in text
+    assert "Matched HKLs (I>3σ/total)" in text and "8 / 12" in text
 
 
 def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> None:
@@ -313,31 +286,49 @@ def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine
     assert "Val wR2" not in epoch_curve
 
 
-def test_summary_orientation_optimization_defaults_to_disabled(tmp_path: Path) -> None:
+def test_summary_preprocess_defaults_to_not_done(tmp_path: Path) -> None:
     text = _run(tmp_path, rotations=(_rotation(0),))
 
-    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
-    assert "enabled: no" in orientation_section
+    preprocess_section = text.split("Preprocess")[1].split("\n--- ")[0]
+    assert "Orientation optimization: false" in preprocess_section
+    assert "Thickness optimization: false" in preprocess_section
 
 
-def test_summary_orientation_optimization_lists_delta_angles_and_before_after_score(
+def test_summary_preprocess_reports_orientation_optimization_params_when_done(
     tmp_path: Path,
 ) -> None:
     text = _run(
         tmp_path,
-        orientations=(
-            _orientation(0, alpha=0.15, beta=-0.05, omega=0.02, seed_score=0.09, score=0.03),
+        preprocess=PreprocessCompleted(
+            n_rotations=1,
+            n_stages=1,
+            total_hkl=10,
+            matched_hkl=8,
+            steps=(
+                (
+                    "optimize_orientation",
+                    {
+                        "search": {
+                            "__type__": "NelderMeadSearch",
+                            "step_size": 0.05,
+                            "max_iterations": 60,
+                        },
+                        "coupling": None,
+                    },
+                ),
+            ),
         ),
         rotations=(_rotation(0),),
     )
 
-    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
-    assert "0.1500" in orientation_section  # delta alpha
-    assert "-0.0500" in orientation_section  # delta beta
-    assert "0.0200" in orientation_section  # delta omega
-    assert "0.090000" in orientation_section  # seed score (before the search)
-    assert "0.030000" in orientation_section  # final score (after the search)
-    assert "q.cif_pets" in orientation_section
+    preprocess_section = text.split("Preprocess")[1].split("\n--- ")[0]
+    assert "Orientation optimization: true" in preprocess_section
+    assert "step_size=0.05" in preprocess_section
+    assert "max_iterations=60" in preprocess_section
+    # Composition-site kwargs (coupling, absorption) are shared context, not this step's own
+    # setting, so they must not show up here.
+    assert "coupling" not in preprocess_section
+    assert "Thickness optimization: false" in preprocess_section
 
 
 def test_summary_per_dataset_summary_is_omitted_for_a_single_dataset(tmp_path: Path) -> None:
@@ -494,7 +485,7 @@ def test_thickness_profile_channel_names_its_dataset() -> None:
 def test_summary_degrades_without_the_declaration_events(tmp_path: Path) -> None:
     """A sink attached mid-run says so rather than inventing values or raising."""
     logger = SummaryLogger(tmp_path / "refinement_report.txt")
-    logger.report(RotationScored(index=0, r_obs=0.1, n_observed=5, n_beams=9))
+    logger.report(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=5))
     logger.report(RefinementOutputsWritten(structure=str(_structure(tmp_path))))
 
     text = (tmp_path / "refinement_report.txt").read_text()
