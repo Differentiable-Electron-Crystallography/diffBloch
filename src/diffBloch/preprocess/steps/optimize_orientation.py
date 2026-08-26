@@ -45,6 +45,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -202,7 +203,7 @@ def optimize_orientation(
         params = refinement.params if device is None else refinement.params.to(device)
         fgb = engine.fgb(params)
 
-        def refine(op: OrientationPlanLike) -> tuple[OrientationPlanLike, float, int, int]:
+        def refine(op: OrientationPlanLike) -> _FitResult:
             trial_fgb: Tensor | Callable[[OrientationPlanLike], Tensor] = fgb
             if coupling is not None:
                 cached = fgb.clone()
@@ -240,25 +241,25 @@ def optimize_orientation(
         # plan rather than passed in -- a recipe step takes no dataset argument.
         dataset = dataset_of(built)
         logger.report(OrientationOptimizationStarted(total_rotations=len(built), dataset=dataset))
-        results_by_index: dict[int, tuple[OrientationPlanLike, float, int, int]] = {}
+        results_by_index: dict[int, _FitResult] = {}
         cap = search.max_iterations
 
-        def report(
-            index: int,
-            result: tuple[OrientationPlanLike, float, int, int],
-        ) -> None:
-            fitted, score, n_trials, n_passes = result
+        def report(index: int, result: _FitResult) -> None:
             results_by_index[index] = result
-            pattern_index = fitted.alignment.pattern_index
+            pattern_index = result.plan.alignment.pattern_index
             n_matched = int(pattern_index.shape[0])
             logger.report(
                 OrientationOptimized(
-                    rotation_index=fitted.pattern.rotation_index,
-                    score=score,
+                    rotation_index=result.plan.pattern.rotation_index,
+                    score=result.score,
+                    seed_score=result.seed_score,
+                    alpha=result.alpha,
+                    beta=result.beta,
+                    omega=result.omega,
                     residual=residual,
                     n_matched_hkl=n_matched,
-                    n_trials=n_trials,
-                    n_passes=n_passes,
+                    n_trials=result.n_trials,
+                    n_passes=result.n_passes,
                     pass_cap=cap,
                     dataset=dataset,
                 )
@@ -284,7 +285,7 @@ def optimize_orientation(
             for index, op in enumerate(built):
                 report(index, refine(op))
         ordered_results = tuple(results_by_index[i] for i in range(len(built)))
-        ordered = tuple(result[0] for result in ordered_results)
+        ordered = tuple(result.plan for result in ordered_results)
 
         def strong_matched_hkl(op: OrientationPlanLike) -> Tensor:
             pattern_index = op.alignment.pattern_index
@@ -294,13 +295,13 @@ def optimize_orientation(
         logger.report(
             OrientationOptimizationSummary(
                 n_orientations=len(ordered_results),
-                mean_score=sum(result[1] for result in ordered_results) / len(ordered_results),
+                mean_score=sum(result.score for result in ordered_results) / len(ordered_results),
                 residual=residual,
                 unique_matched_hkl=unique_hkl_count(op.alignment.hkl for op in ordered),
                 unique_strong_hkl=unique_hkl_count(strong_matched_hkl(op) for op in ordered),
                 unique_observed_hkl=unique_hkl_count(op.pattern.hkl for op in ordered),
-                total_trials=sum(result[2] for result in ordered_results),
-                max_passes=max(result[3] for result in ordered_results),
+                total_trials=sum(result.n_trials for result in ordered_results),
+                max_passes=max(result.n_passes for result in ordered_results),
             )
         )
         return replace(plan, orientations=ordered)
@@ -333,6 +334,20 @@ def _comparable_score(score: float, plan: OrientationPlanLike, search: NelderMea
     return score / n_matched if n_matched > 0 else float("inf")
 
 
+class _FitResult(NamedTuple):
+    """One rotation's finished search: the fitted plan plus everything :class:`OrientationOptimized`
+    reports about it."""
+
+    plan: OrientationPlanLike
+    score: float
+    n_trials: int
+    n_passes: int
+    alpha: float
+    beta: float
+    omega: float
+    seed_score: float
+
+
 def _refine_one(
     engine: RefinementEngine,
     fgb: Tensor | Callable[[OrientationPlanLike], Tensor],
@@ -342,7 +357,7 @@ def _refine_one(
     search: NelderMeadSearch,
     coupling: TrialCoupling | None,
     validate: bool = True,
-) -> tuple[OrientationPlanLike, float, int, int]:
+) -> _FitResult:
     """Local Nelder-Mead search over the goniometer correction ``(alpha, beta, omega)``.
 
     Every trial composes directly off the fixed seed orientation: ``seed_orientation @
@@ -351,6 +366,11 @@ def _refine_one(
     ``method="Nelder-Mead"`` from a fixed initial simplex of edge length ``search.step_size``
     around ``(alpha, beta, omega) = (0, 0, 0)``, exactly mirroring the reference implementation
     this port is checked against. ``n_passes`` is scipy's reported iteration count (``result.nit``).
+
+    ``seed_score`` is the same metric evaluated once more at the unsearched seed orientation
+    (``alpha = beta = omega = 0``) -- one extra forward solve on top of the search's own trials, paid
+    so the report can state what the search actually bought (``seed_score - score``) instead of only
+    the post-search value.
     """
     grid = plan.structure_factor_grid
     n_trials = 0
@@ -363,6 +383,11 @@ def _refine_one(
         if coupling is None:
             return op.with_orientation(grid, orientation)
         return _coupled_trial(grid, op, orientation, coupling, gather_cache, validate=validate)
+
+    seed_trial = build_trial(seed_orientation)
+    n_trials += 1
+    seed_trial_fgb = fgb(seed_trial) if callable(fgb) else fgb
+    seed_score = float(engine.score_orientation(seed_trial, seed_trial_fgb))
 
     def objective(params: NDArray[np.float64]) -> float:
         nonlocal n_trials
@@ -404,7 +429,16 @@ def _refine_one(
     # result.fun is the comparable (penalized) score minimised above; report the plain score
     # instead (self.scores, under whichever residual ExperimentConfig.loss_metrics configures).
     score = float(engine.score_orientation(current, current_fgb))
-    return current, score, n_trials, int(result.nit)
+    return _FitResult(
+        plan=current,
+        score=score,
+        n_trials=n_trials,
+        n_passes=int(result.nit),
+        alpha=float(alpha),
+        beta=float(beta),
+        omega=float(omega),
+        seed_score=seed_score,
+    )
 
 
 def _coupled_trial(

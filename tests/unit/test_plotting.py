@@ -51,6 +51,10 @@ def test_report_ignores_events_that_are_not_thickness_optimized(tmp_path: Path) 
         OrientationOptimized(
             rotation_index=3,
             score=0.05,
+            seed_score=0.09,
+            alpha=0.02,
+            beta=0.0,
+            omega=-0.01,
             residual="wr2",
             n_matched_hkl=100,
             n_trials=40,
