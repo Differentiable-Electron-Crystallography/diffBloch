@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 import gemmi
 import numpy as np
@@ -69,6 +70,7 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.io import (
     ExperimentalRecord,
     StructureRecord,
@@ -81,6 +83,7 @@ from diffBloch.observability import (
     DeviceSelected,
     Logger,
     MultiLogger,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementOutputsWritten,
 )
@@ -1013,6 +1016,16 @@ def _preprocess(
         None
         if any(sha is None for sha in lock_sha256s)
         else tuple(sha for sha in lock_sha256s if sha is not None)
+    )
+    built = cast(tuple[OrientationPlanLike, ...], pooled.orientations)
+    logger.report(
+        PreprocessCompleted(
+            n_rotations=len(built),
+            n_stages=len(pooled.provenance),
+            total_hkl=sum(int(op.pattern.hkl.shape[0]) for op in built),
+            matched_hkl=sum(int(op.alignment.hkl.shape[0]) for op in built),
+            max_solve_beams=max(int(op.beam_hkl.shape[0]) for op in built),
+        )
     )
     return PreprocessOutcome(
         refinement=refinement_setup,

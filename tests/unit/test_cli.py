@@ -10,11 +10,22 @@ from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, OrientationOptimized
+from diffBloch.observability import (
+    Logger,
+    MultiLogger,
+    OrientationOptimized,
+    PreprocessCompleted,
+    RefinementCompleted,
+    RefinementOutputsWritten,
+    RefinementStep,
+)
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
+# A real CIF on disk: SummaryLogger reads the written structure back on the terminal event, so the
+# artifact path a fake emits has to point at a file that parses.
+REFINED_CIF = Path(__file__).parent.parent / "fixtures" / "quartz_anchor" / "enantiomer_1.cif"
 
 
 def _summary_row(out: str, label: str, value: str) -> bool:
@@ -159,7 +170,8 @@ def test_infer_delegates_to_run_experiment_and_reports(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], ConsoleLogger)  # console on by default (no --quiet)
+    # One sink renders everything, boxes included, so the default shape is a bare ConsoleLogger.
+    assert isinstance(captured["logger"], ConsoleLogger)
     assert captured["checkpoint"] is True  # checkpoint on by default
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
@@ -328,6 +340,13 @@ def test_preprocess_delegates_and_reports_without_scoring(
                 pass_cap=2000,
             )
         )
+        # _preprocess() itself emits this once preprocessing settles; ConsoleLogger is what turns
+        # it into the PREPROCESS COMPLETE box, so the fake must emit it too.
+        logger.report(
+            PreprocessCompleted(
+                n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5, max_solve_beams=9
+            )
+        )
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
@@ -335,14 +354,16 @@ def test_preprocess_delegates_and_reports_without_scoring(
 
     assert rc == 0
     assert captured["dir"] == "/some/experiment"
-    assert isinstance(captured["logger"], MultiLogger)
+    assert isinstance(captured["logger"], ConsoleLogger)
     assert captured["checkpoint"] is True and captured["refresh"] is False
     assert captured["workers"] == 1 and captured["device"] == "cuda"
     out = capsys.readouterr().out
     assert "PREPROCESS COMPLETE" in out
     assert _summary_row(out, "Rotations", "2")
+    assert _summary_row(out, "Stages", "3")
     assert _summary_row(out, "Total HKLs", "7")
     assert _summary_row(out, "Matched HKLs", "5")
+    assert _summary_row(out, "Solve beams (max/rotation)", "9")
     assert _summary_row(out, "Mean wR2", "0.375")
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
@@ -421,13 +442,15 @@ def _fake_refinement_result() -> SimpleNamespace:
             "matched_i_le_3sigma": 4,
             "unmatched_observed": 3,
         },
-        artifacts={"refined_structure": "/tmp/refined_structure.cif"},
+        artifacts={"refined_structure": str(REFINED_CIF)},
     )
 
 
 def test_refine_delegates_and_reports(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
+    # A real directory: the fake emits the terminal event, so SummaryLogger actually writes its
+    # report next to it -- the same fan-out a real run does.
     captured: dict[str, object] = {}
 
     def fake_refine_experiment(
@@ -447,13 +470,41 @@ def test_refine_delegates_and_reports(
         captured["dir"] = experiment_dir
         captured["logger"] = logger
         captured["checkpoint"] = checkpoint
-        return _fake_refinement_result()
+        result = _fake_refinement_result()
+        # The box now comes off the event stream rather than off this return value, so the fake
+        # emits what a real refine_experiment emits: the per-epoch steps, then the run summary,
+        # then the terminal outputs event the box and the file list print on.
+        assert isinstance(logger, Logger)
+        for iteration, step in enumerate(result.history):
+            logger.report(
+                RefinementStep(
+                    iteration=iteration,
+                    loss=float(result.losses[iteration]),
+                    wr2=step.wr2,
+                    r_obs=step.r_obs,
+                    diff_loss=step.diff_loss,
+                )
+            )
+        logger.report(
+            RefinementCompleted(
+                n_steps=len(result.history),
+                best_step=result.best_step,
+                best_loss=result.best_loss,
+                reflection_counts=result.reflection_counts,
+            )
+        )
+        logger.report(
+            RefinementOutputsWritten(
+                structure=result.artifacts["refined_structure"], artifacts=result.artifacts
+            )
+        )
+        return result
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
-    rc = main(["refine", "/some/experiment"])
+    rc = main(["refine", str(tmp_path)])
 
     assert rc == 0
-    assert captured["dir"] == "/some/experiment"
+    assert captured["dir"] == str(tmp_path)
     # The refine path fans out to the console and to the summary sink that writes
     # refinement_report.txt -- composed here, not inside refine_experiment.
     logger = captured["logger"]
@@ -467,7 +518,7 @@ def test_refine_delegates_and_reports(
     assert _summary_row(out, "Diffraction loss", "1")
     assert _summary_row(out, "HKLs (Observed/total)", "8 / 12")
     assert "Refined Structure" in out
-    assert "/tmp/refined_structure.cif" in out
+    assert str(REFINED_CIF) in out
 
 
 def test_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
