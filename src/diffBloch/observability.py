@@ -815,6 +815,13 @@ class RefinementStep:
     rotation can contribute to one and not the other -- and a mean whose denominator is implicit can
     improve simply by evaluating fewer rotations. Compare
     :class:`InferenceCompleted`, which has always reported ``n_evaluated`` beside its mean.
+
+    ``val_wr2``/``val_r_obs`` (and their own ``val_n_rotations``/``val_n_wr2_evaluated``/
+    ``val_n_r_obs_evaluated`` denominators) are the *same* diagnostics scored on the held-out
+    validation set, present only when ``run_refinement_model`` was given a ``selection_engine``
+    (``refinement.split.train_test``). That scoring already happens every epoch purely to pick
+    ``best_model`` -- reporting it here is free, and lets a sink show the training/validation curves
+    side by side instead of the validation numbers only ever surfacing once, at the very end.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -828,6 +835,11 @@ class RefinementStep:
     n_rotations: int | None = None
     n_wr2_evaluated: int | None = None
     n_r_obs_evaluated: int | None = None
+    val_wr2: float | None = None
+    val_r_obs: float | None = None
+    val_n_rotations: int | None = None
+    val_n_wr2_evaluated: int | None = None
+    val_n_r_obs_evaluated: int | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -854,6 +866,16 @@ class RefinementStep:
             values["n_wr2_evaluated"] = float(self.n_wr2_evaluated)
         if self.n_r_obs_evaluated is not None:
             values["n_r_obs_evaluated"] = float(self.n_r_obs_evaluated)
+        if self.val_wr2 is not None:
+            values["val_wr2"] = self.val_wr2
+        if self.val_r_obs is not None:
+            values["val_r_obs"] = self.val_r_obs
+        if self.val_n_rotations is not None:
+            values["val_n_rotations"] = float(self.val_n_rotations)
+        if self.val_n_wr2_evaluated is not None:
+            values["val_n_wr2_evaluated"] = float(self.val_n_wr2_evaluated)
+        if self.val_n_r_obs_evaluated is not None:
+            values["val_n_r_obs_evaluated"] = float(self.val_n_r_obs_evaluated)
         for term, entries in self.components.items():
             for name, value in entries.items():
                 values[f"{term}/{name}"] = value
