@@ -56,6 +56,7 @@ def test_report_ignores_events_that_are_not_thickness_optimized(tmp_path: Path) 
             n_trials=40,
             n_passes=12,
             pass_cap=60,
+            dataset="q.cif_pets",
         )
     )
 

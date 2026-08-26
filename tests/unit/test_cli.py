@@ -327,6 +327,7 @@ def test_preprocess_delegates_and_reports_without_scoring(
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
         logger.report(
@@ -338,6 +339,7 @@ def test_preprocess_delegates_and_reports_without_scoring(
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
         # _preprocess() itself emits this once preprocessing settles; ConsoleLogger is what turns
