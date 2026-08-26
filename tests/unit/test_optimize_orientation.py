@@ -12,6 +12,7 @@ is deferred to the real quartz e2e.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -152,6 +153,52 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
 
     # Already optimal: the search must not wander it away from the seed.
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
+
+
+def test_fit_orientation_reads_the_dataset_label_off_the_plan() -> None:
+    """The label comes from the rotations' own pattern.dataset, not from a step argument, so a
+    pooled multi-dataset console log can tell which dataset a "N rotation(s)" announcement belongs
+    to without the app boundary threading a label into the recipe."""
+    from diffBloch.observability import (
+        OrientationOptimizationStarted,
+        OrientationOptimized,
+        RecordingLogger,
+    )
+
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    labelled = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets"))
+    refinement = _refinement(asu_plan, spec, numbers)
+    recorder = RecordingLogger()
+
+    optimize_orientation(refinement, NelderMeadSearch(), logger=recorder)(
+        Plan(structure_factor_grid=grid, orientations=(labelled,))
+    )
+
+    (started,) = [e for e in recorder.events if isinstance(e, OrientationOptimizationStarted)]
+    assert started.dataset == "a.cif_pets"
+    (fitted,) = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
+    assert fitted.dataset == "a.cif_pets"
+
+
+def test_fit_orientation_leaves_the_label_empty_for_a_mixed_dataset_plan() -> None:
+    """A pooled plan names no single dataset, so the label is empty rather than an arbitrary pick
+    from whichever rotation happened to be first."""
+    from diffBloch.observability import OrientationOptimizationStarted, RecordingLogger
+
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    a = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets", rotation_index=0))
+    b = replace(matched, pattern=replace(matched.pattern, dataset="b.cif_pets", rotation_index=1))
+    refinement = _refinement(asu_plan, spec, numbers)
+    recorder = RecordingLogger()
+
+    optimize_orientation(refinement, NelderMeadSearch(), logger=recorder)(
+        Plan(structure_factor_grid=grid, orientations=(a, b))
+    )
+
+    (started,) = [e for e in recorder.events if isinstance(e, OrientationOptimizationStarted)]
+    assert started.dataset == ""
 
 
 def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() -> None:
