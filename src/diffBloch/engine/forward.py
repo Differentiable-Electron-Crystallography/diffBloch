@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
@@ -326,10 +326,15 @@ class RefinementEngine:
         )
 
     def refinement_metrics(self, model: RefinementModel) -> tuple[float, int, int, int, int]:
-        """Return mean R_obs and reflection counts for one refinement-model snapshot.
+        """Return mean R_obs and unique reflection counts for one refinement-model snapshot.
 
-        Counts are over PETS rows in the selected rotations: matched rows enter the diffraction
-        alignment, unmatched rows do not; strong/weak split matched rows at ``I > 3 sigma``.
+        Counts are *unique* ``(h, k, l)`` triples across the selected rotations, not raw PETS rows
+        -- rotation electron diffraction frames overlap in angle, so the same reflection is
+        routinely re-observed in several consecutive rotations, and a raw row sum would count it
+        once per rotation rather than once (see :func:`_unique_hkl_count`). A triple is "matched"
+        if it entered the diffraction alignment in *any* selected rotation, "strong" if any of its
+        matched measurements has ``I > 3 sigma`` (weak otherwise), and "unmatched" if it was
+        observed but never matched in any rotation.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
@@ -337,10 +342,9 @@ class RefinementEngine:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
             r_values: list[float] = []
-            n_matched = 0
-            n_strong = 0
-            n_weak = 0
-            n_unmatched = 0
+            matched_hkl: list[Tensor] = []
+            strong_hkl: list[Tensor] = []
+            observed_hkl: list[Tensor] = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
                     model, rotation_index=rotation_index, orientation=orientation
@@ -368,12 +372,23 @@ class RefinementEngine:
                 if finite.numel():
                     r_values.append(float(finite.min()))
                 strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
-                matched = int(strong.numel())
-                n_matched += matched
-                n_strong += int(strong.sum())
-                n_weak += matched - int(strong.sum())
-                n_unmatched += int(orientation.pattern.hkl.shape[0]) - matched
+                matched_hkl.append(orientation.alignment.hkl)
+                # alignment.hkl is geometry-only and CPU-resident; strong lives on aligned's
+                # (possibly accelerator) device, so the mask -- not the indexed tensor -- moves,
+                # mirroring core.products.align's own convention of moving indices to the tensor
+                # they index.
+                strong_hkl.append(
+                    orientation.alignment.hkl[strong.to(orientation.alignment.hkl.device)]
+                )
+                observed_hkl.append(orientation.pattern.hkl)
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
+        n_matched = _unique_hkl_count(matched_hkl)
+        n_strong = _unique_hkl_count(strong_hkl)
+        n_weak = n_matched - n_strong
+        # matched_hkl is a subset of observed_hkl by construction (alignment only ever intersects
+        # a rotation's own pattern), so this difference is a valid unique-triple count, not an
+        # approximation.
+        n_unmatched = _unique_hkl_count(observed_hkl) - n_matched
         return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
 
     def per_rotation_metrics(self, model: RefinementModel) -> tuple[RotationMetrics, ...]:
@@ -703,6 +718,19 @@ class ForwardContext:
     """
 
     thickness: Tensor | None = None
+
+
+def _unique_hkl_count(hkl_batches: Sequence[Tensor]) -> int:
+    """Count of *distinct* ``(h, k, l)`` triples across ``hkl_batches`` (each ``(M, 3)``).
+
+    Local counterpart of :func:`~diffBloch.preprocess.plan.unique_hkl_count` -- duplicated rather
+    than imported since ``preprocess`` already imports from ``engine`` (``engine.plan``), so the
+    reverse import would be circular.
+    """
+    non_empty = [batch for batch in hkl_batches if batch.shape[0] > 0]
+    if not non_empty:
+        return 0
+    return int(torch.unique(torch.cat(non_empty, dim=0), dim=0).shape[0])
 
 
 class ModelComponent(Protocol):
