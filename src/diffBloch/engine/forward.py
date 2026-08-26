@@ -377,7 +377,9 @@ class RefinementEngine:
                 # (possibly accelerator) device, so the mask -- not the indexed tensor -- moves,
                 # mirroring core.products.align's own convention of moving indices to the tensor
                 # they index.
-                strong_hkl.append(orientation.alignment.hkl[strong.to(orientation.alignment.hkl.device)])
+                strong_hkl.append(
+                    orientation.alignment.hkl[strong.to(orientation.alignment.hkl.device)]
+                )
                 observed_hkl.append(orientation.pattern.hkl)
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
         n_matched = _unique_hkl_count(matched_hkl)
