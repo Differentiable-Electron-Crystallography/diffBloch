@@ -131,10 +131,19 @@ def _run(
 
 
 def _rotation(
-    index: int, *, wr2: float = 0.2, is_validation: bool = False
+    index: int,
+    *,
+    wr2: float = 0.2,
+    is_validation: bool = False,
+    dataset: str = "q.cif_pets",
 ) -> RefinedRotationMetrics:
     return RefinedRotationMetrics(
-        rotation_index=index, wr2=wr2, r_obs=0.15, n_matched=5, is_validation=is_validation
+        rotation_index=index,
+        wr2=wr2,
+        r_obs=0.15,
+        n_matched=5,
+        is_validation=is_validation,
+        dataset=dataset,
     )
 
 

@@ -151,13 +151,17 @@ class RotationMetrics:
     Report/plot use (:meth:`RefinementEngine.per_rotation_metrics`), not the objective: each metric
     independently re-optimises its own intensity scale (:func:`diffBloch.core.losses.optimal_scale`),
     exactly as ``refinement_metrics``/the training objective do, so ``wr2``/``r_obs`` here match what
-    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index.
+    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index (the
+    *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
+    came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
+    never re-derives dataset membership from index offsets.
     """
 
     rotation_index: int
     wr2: float
     r_obs: float
     n_matched: int
+    dataset: str = ""
 
 
 @dataclass(frozen=True)
@@ -445,6 +449,7 @@ class RefinementEngine:
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
+                        dataset=orientation.pattern.dataset,
                     )
                 )
         return tuple(rows)
