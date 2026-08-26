@@ -368,3 +368,60 @@ def test_ascii_table_widens_a_column_to_its_content() -> None:
     table = ascii_table(["A", "B"], [["a-very-long-cell", "1"]])
     header, rule, row = table.splitlines()
     assert len(header) == len(rule) == len(row)
+
+
+def test_summary_epoch_curve_lists_every_recorded_step(tmp_path: Path) -> None:
+    """The epoch curve is the whole trajectory, not just the best epoch."""
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8),
+            _step(iteration=1, wr2=0.1, r_obs=0.05),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    assert "Epoch curve" in text
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "1" in epoch_curve and "0.900000" in epoch_curve and "0.800000" in epoch_curve
+    assert "2" in epoch_curve and "0.100000" in epoch_curve and "0.050000" in epoch_curve
+
+
+def test_summary_epoch_curve_renders_na_for_unevaluated_epochs(tmp_path: Path) -> None:
+    text = _run(
+        tmp_path,
+        steps=(_step(wr2=None, r_obs=None),),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "n/a" in epoch_curve
+
+
+def test_summary_epoch_curve_adds_validation_columns_when_a_selection_engine_ran(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8, val_wr2=0.95, val_r_obs=0.85),
+            _step(iteration=1, wr2=0.1, r_obs=0.05, val_wr2=0.2, val_r_obs=0.15),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" in epoch_curve and "Val R_obs" in epoch_curve
+    assert "0.950000" in epoch_curve and "0.850000" in epoch_curve
+    assert "0.200000" in epoch_curve and "0.150000" in epoch_curve
+
+
+def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine(
+    tmp_path: Path,
+) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" not in epoch_curve
