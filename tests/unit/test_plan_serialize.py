@@ -9,7 +9,11 @@ path the reverted serializer never handled) -- plus faithful provenance.
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+
 import numpy as np
+import pytest
 import torch
 from tests.unit.test_inference import (
     _BEAM_HKL,
@@ -27,7 +31,7 @@ from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import StepRecord
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.preprocess.serialize import read_plan, write_plan
+from diffBloch.preprocess.serialize import plan_is_readable, read_plan, write_plan
 
 _TILTS = rocking_curve_tilts(1.0, 4, geometry="continuous_rotation")  # (4, 3, 3)
 
@@ -129,3 +133,65 @@ def test_mixed_plan_round_trips(tmp_path) -> None:
     loaded = _assert_round_trips(plan, tmp_path)
     assert isinstance(loaded.orientations[0], OrientationPlan)
     assert isinstance(loaded.orientations[1], CoupledOrientationPlan)
+
+
+def test_dataset_label_survives_the_round_trip(tmp_path) -> None:
+    """``pattern.dataset`` is checkpoint state, not a runtime decoration.
+
+    A reused checkpoint must come back knowing which ``inputs.exp_data`` file its rotations came
+    from, or the per-dataset report sections would silently go blank on exactly the runs that
+    skipped preprocessing.
+    """
+    grid, *_ = _silicon()
+    op = OrientationPlan.build(
+        grid,
+        _BEAM_HKL,
+        replace(_pattern(), dataset="a.cif_pets"),
+        energy=_ENERGY,
+        thickness=(300.0,),
+    )
+    path = tmp_path / "plan.npz"
+    write_plan(Plan(structure_factor_grid=grid, orientations=(op,)), path)
+
+    (loaded,) = read_plan(path).orientations
+    assert loaded.pattern.dataset == "a.cif_pets"
+
+
+def test_plan_is_readable_accepts_what_this_build_wrote(tmp_path) -> None:
+    grid, *_ = _silicon()
+    op = OrientationPlan.build(grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,))
+    path = tmp_path / "plan.npz"
+    write_plan(Plan(structure_factor_grid=grid, orientations=(op,)), path)
+
+    assert plan_is_readable(path) is True
+
+
+def test_plan_is_readable_rejects_an_older_format_instead_of_read_plan_raising(tmp_path) -> None:
+    """An older-format checkpoint is *stale*, not an error.
+
+    The checkpoint reuse gate keys on the release version, not on this format, so a checkpoint
+    written by an earlier format within the same release still passes the lock. Without this probe
+    the run would reach ``read_plan`` and die on what is, from the user's side, an ordinary resume.
+    """
+    grid, *_ = _silicon()
+    op = OrientationPlan.build(grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,))
+    path = tmp_path / "plan.npz"
+    write_plan(Plan(structure_factor_grid=grid, orientations=(op,)), path)
+
+    with np.load(path, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in data.files}
+    meta = json.loads(str(arrays["__meta__"].item()))
+    meta["format_version"] -= 1
+    arrays["__meta__"] = np.array(json.dumps(meta))
+    with path.open("wb") as handle:
+        np.savez_compressed(handle, **arrays)
+
+    assert plan_is_readable(path) is False
+    with pytest.raises(ValueError, match="unsupported plan checkpoint format"):
+        read_plan(path)
+
+
+def test_plan_is_readable_rejects_a_corrupt_file(tmp_path) -> None:
+    path = tmp_path / "plan.npz"
+    path.write_bytes(b"not an npz")
+    assert plan_is_readable(path) is False

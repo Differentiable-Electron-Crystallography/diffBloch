@@ -66,6 +66,7 @@ def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptim
         n_trials=10,
         n_passes=3,
         pass_cap=2000,
+        dataset="q.cif_pets",
     )
 
 

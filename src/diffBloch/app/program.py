@@ -99,6 +99,7 @@ from diffBloch.preprocess import (
     optimize_orientation,
     optimize_thickness,
     pipeline,
+    plan_is_readable,
     pool,
     read_plan,
     resolve_recipe,
@@ -625,7 +626,9 @@ def _report_refinement_outcome(
     (which cover held-out rotations too) and the trained thickness curve have to be emitted here,
     where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`
     goes last and is the run's terminal event -- a sink that must write exactly once, after
-    everything else, acts on it.
+    everything else, acts on it. Each row already knows its dataset ref (``RotationMetrics.dataset``,
+    read off the rotation's own ``pattern``), so the per-dataset breakdown in the report costs
+    nothing here.
     """
     for row in engine.per_rotation_metrics(result.best_model):
         logger.report(
@@ -635,6 +638,7 @@ def _report_refinement_outcome(
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,
                 is_validation=row.rotation_index in validation_rotation_indices,
+                dataset=row.dataset,
             )
         )
     if raw_alphas is not None:
@@ -664,7 +668,12 @@ def _thickness_networks(
     Ranges follow the cumulative pre-ignore rotation counts in ``inputs.exp_data`` order --
     exactly how :func:`~diffBloch.preprocess.pool` numbers the pooled ``rotation_index`` space --
     so the networks partition that space and composition finds exactly one thickness per
-    orientation. Alphas are normalized independently per dataset so overlapping tilt ranges do
+    orientation. This offset arithmetic looks like the dataset attribution a rotation now carries on
+    its own ``pattern.dataset``, but it is a different quantity and cannot be replaced by it:
+    ``ApparentThicknessNN`` indexes ``normalized_alphas`` by ``rotation_index - start`` and requires
+    the range to be exactly the alphas wide, so the range must span the dataset's *pre-ignore* block.
+    Grouping the settled plan by dataset label would yield the narrower observed span and misalign
+    every alpha lookup. Alphas are normalized independently per dataset so overlapping tilt ranges do
     not share one thickness-vs-alpha curve. A single dataset is simply the N=1 case.
     """
     bounds = ThicknessBounds(spec.min_thickness, spec.max_thickness)
@@ -924,7 +933,9 @@ def _preprocess(
     stable under ignore edits), and the sha256s of the plan locks this run verified or wrote (in
     ``exp_data`` order) -- ``None`` when the run didn't checkpoint, so ``refinement.lock`` never
     chains to a leftover lock this run never validated. Hydrogen sites are loaded per
-    ``inputs.load_hydrogens``.
+    ``inputs.load_hydrogens``. Dataset attribution is *not* returned alongside: each rotation
+    already carries its own ``pattern.dataset`` from :func:`~diffBloch.preprocess.setup_datasets`,
+    which survives the pooled renumbering.
 
     ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn
     plotting on. ``plot_thickness_dir`` overrides the default output directory,
@@ -1214,7 +1225,7 @@ def _prepare(
         lock = _read_lock_or_none(lock_path)
         status = (
             "stale"
-            if lock is None
+            if lock is None or not plan_is_readable(npz)
             else preprocess_lock_status(
                 lock,
                 structure=structure_lock,
