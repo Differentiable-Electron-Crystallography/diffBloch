@@ -16,6 +16,7 @@ from diffBloch.observability import (
     ExperimentDeclared,
     ObjectiveManifest,
     ObjectiveTerm,
+    OrientationOptimized,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -97,6 +98,7 @@ def _run(
     experiment: ExperimentDeclared | None = None,
     steps: tuple[RefinementStep, ...] = (),
     rotations: tuple[RefinedRotationMetrics, ...] = (),
+    orientations: tuple[OrientationOptimized, ...] = (),
     profiles: tuple[ThicknessProfile, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
@@ -110,6 +112,8 @@ def _run(
         if manifest is not None
         else ObjectiveManifest(penalties=(ObjectiveTerm(name="bond_length", weight=3.0),))
     )
+    for orientation in orientations:
+        logger.report(orientation)
     for step in steps or (_step(),):
         logger.report(step)
     logger.report(
@@ -128,6 +132,33 @@ def _run(
         logger.report(profile)
     logger.report(RefinementOutputsWritten(structure=str(structure)))
     return (tmp_path / "refinement_report.txt").read_text()
+
+
+def _orientation(
+    index: int,
+    *,
+    alpha: float = 0.05,
+    beta: float = -0.02,
+    omega: float = 0.01,
+    score: float = 0.02,
+    seed_score: float = 0.08,
+    residual: str = "wr2",
+    dataset: str = "q.cif_pets",
+) -> OrientationOptimized:
+    return OrientationOptimized(
+        rotation_index=index,
+        score=score,
+        seed_score=seed_score,
+        alpha=alpha,
+        beta=beta,
+        omega=omega,
+        residual=residual,
+        n_matched_hkl=5,
+        n_trials=20,
+        n_passes=4,
+        pass_cap=2000,
+        dataset=dataset,
+    )
 
 
 def _rotation(
@@ -434,3 +465,30 @@ def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine
 
     epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
     assert "Val wR2" not in epoch_curve
+
+
+def test_summary_orientation_optimization_defaults_to_disabled(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
+    assert "enabled: no" in orientation_section
+
+
+def test_summary_orientation_optimization_lists_delta_angles_and_before_after_score(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        orientations=(
+            _orientation(0, alpha=0.15, beta=-0.05, omega=0.02, seed_score=0.09, score=0.03),
+        ),
+        rotations=(_rotation(0),),
+    )
+
+    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
+    assert "0.1500" in orientation_section  # delta alpha
+    assert "-0.0500" in orientation_section  # delta beta
+    assert "0.0200" in orientation_section  # delta omega
+    assert "0.090000" in orientation_section  # seed score (before the search)
+    assert "0.030000" in orientation_section  # final score (after the search)
+    assert "q.cif_pets" in orientation_section

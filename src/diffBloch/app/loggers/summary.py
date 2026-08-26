@@ -41,6 +41,7 @@ from diffBloch.observability import (
     Event,
     ExperimentDeclared,
     ObjectiveManifest,
+    OrientationOptimized,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -107,6 +108,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
+    _orientations: list[OrientationOptimized] = field(default_factory=list, init=False, repr=False)
     _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
     _started_at: float = field(default=0.0, init=False, repr=False)
 
@@ -127,6 +129,8 @@ class SummaryLogger:
             self._completed = event
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
+        elif isinstance(event, OrientationOptimized):
+            self._orientations.append(event)
         elif isinstance(event, ThicknessProfile):
             # Keyed by dataset so a re-reported profile replaces its section (last event wins),
             # while insertion order keeps sections in exp_data order.
@@ -157,6 +161,7 @@ class SummaryLogger:
         self._simulation_parameters(lines, rule)
         self._crystallographic_parameters(lines, rule, Path(outputs.structure))
         self._objective_terms(lines, rule)
+        self._orientation_optimization(lines, rule)
         self._objective_components(lines, rule)
         self._epoch_curve(lines, rule)
         self._rotation_metrics(lines, rule)
@@ -273,6 +278,38 @@ class SummaryLogger:
         lines.append(f" penalties  : {penalties or 'none'}")
         lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
         lines.append(f" components : {', '.join(manifest.components) or 'none'}")
+
+    def _orientation_optimization(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Orientation optimization")
+        if not self._orientations:
+            lines.append(" enabled: no (orientation search was not part of this run)")
+            return
+        residual = self._orientations[0].residual
+        lines.append(
+            ascii_table(
+                [
+                    "Dataset",
+                    "Rotation",
+                    "delta alpha (deg)",
+                    "delta beta (deg)",
+                    "delta omega (deg)",
+                    f"seed {residual}",
+                    f"final {residual}",
+                ],
+                [
+                    [
+                        event.dataset,
+                        str(event.rotation_index),
+                        f"{event.alpha:.4f}",
+                        f"{event.beta:.4f}",
+                        f"{event.omega:.4f}",
+                        f"{event.seed_score:.6f}",
+                        f"{event.score:.6f}",
+                    ]
+                    for event in self._orientations
+                ],
+            )
+        )
 
     def _objective_components(self, lines: list[str], rule: Callable[[str], None]) -> None:
         rule("Objective components (best epoch)")
