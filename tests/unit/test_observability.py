@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import re
 import sys
 import types
 from pathlib import Path
@@ -42,9 +43,11 @@ from diffBloch.observability import (
     OrientationOptimizationSummary,
     OrientationOptimized,
     PlanStepCompleted,
+    PreprocessCompleted,
     RecordingLogger,
     RefinementCompleted,
     RefinementOrientationStep,
+    RefinementOutputsWritten,
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
@@ -749,3 +752,108 @@ def test_console_logger_omits_the_marker_without_a_pass_header() -> None:
     """No announced threshold means no claim about settling, rather than a guess."""
     logger = ConsoleLogger(level=logging.INFO)
     assert logger._r_factor_threshold is None
+
+
+# --- ConsoleLogger completion boxes ------------------------------------------------------------
+
+
+def _preprocess_completed(**overrides: int) -> PreprocessCompleted:
+    fields = {
+        "n_rotations": 2,
+        "n_stages": 3,
+        "total_hkl": 100,
+        "matched_hkl": 80,
+        "max_solve_beams": 40,
+    }
+    return PreprocessCompleted(**{**fields, **overrides})
+
+
+def test_console_logger_prints_the_preprocess_box_on_preprocess_completed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The box prints from the event stream alone -- the same way whether the caller is
+    preprocess_experiment, run_experiment, or refine_experiment, since all three funnel through
+    the shared _preprocess spine that emits PreprocessCompleted."""
+    logger = ConsoleLogger()
+    logger.report(_fitted(index=0, score=0.4, residual="wr2"))
+    logger.report(_fitted(index=1, score=0.2, residual="wr2"))
+    logger.report(_preprocess_completed())
+
+    out = capsys.readouterr().out
+    assert "PREPROCESS COMPLETE" in out
+    assert re.search(r"Rotations\s+2", out)
+    assert re.search(r"Stages\s+3", out)
+    assert re.search(r"Total HKLs\s+100", out)
+    assert re.search(r"Matched HKLs\s+80", out)
+    assert re.search(r"Solve beams \(max/rotation\)\s+40", out)
+    assert re.search(r"Mean wR2\s+0\.3", out)  # mean of 0.4 and 0.2
+
+
+def test_console_logger_preprocess_box_states_checkpoint_reuse_with_no_orientation_events(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A reused checkpoint runs no orientation search -- the box must say so, not claim a mean."""
+    logger = ConsoleLogger()
+    logger.report(_preprocess_completed(n_rotations=5, total_hkl=50, matched_hkl=40))
+
+    out = capsys.readouterr().out
+    assert re.search(r"Mean score\s+n/a \(checkpoint reused\)", out)
+
+
+def test_console_logger_preprocess_box_resets_between_completions() -> None:
+    """A logger instance reused across two settle events must not leak the first run's scores into
+    the second's mean."""
+    logger = ConsoleLogger()
+    logger.report(_fitted(index=0, score=0.9, residual="wr2"))
+    logger.report(_preprocess_completed())
+    logger.report(_preprocess_completed())
+
+    assert logger._orientation_scores == []
+    assert logger._orientation_residual is None
+
+
+def test_console_logger_prints_the_refinement_box_on_outputs_written(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The box reports the *selected* epoch's numbers, so it needs both the step stream (for the
+    per-epoch values) and RefinementCompleted (for which epoch was selected); it prints on
+    RefinementOutputsWritten because it also lists files that must exist by then."""
+    logger = ConsoleLogger()
+    logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.5, r_obs=0.4, diff_loss=0.3))
+    logger.report(RefinementStep(iteration=1, loss=0.5, wr2=0.2, r_obs=0.1, diff_loss=0.05))
+    logger.report(
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.5,
+            reflection_counts={"matched": 90, "matched_i_gt_3sigma": 60},
+        )
+    )
+    logger.report(
+        RefinementOutputsWritten(
+            structure="/out/refined_structure.cif",
+            artifacts={"refined_structure": "/out/refined_structure.cif"},
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" in out
+    assert re.search(r"Best epoch\s+2", out)  # 1-based, from best_step=1
+    assert re.search(r"wR2\s+0\.2", out)  # epoch 2's value, not epoch 1's
+    assert re.search(r"HKLs \(Observed/total\)\s+60 / 90", out)
+    assert "Refined Structure" in out and "/out/refined_structure.cif" in out
+
+
+def test_console_logger_lists_outputs_even_without_a_refinement_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """RefinementOutputsWritten is emitted by paths that never ran a refinement loop, so the file
+    list must not depend on a RefinementCompleted that never arrives."""
+    logger = ConsoleLogger()
+    logger.report(
+        RefinementOutputsWritten(structure="/out/s.cif", artifacts={"structure": "/out/s.cif"})
+    )
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" not in out
+    assert "Output files" in out

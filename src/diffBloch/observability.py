@@ -46,6 +46,7 @@ __all__ = [
     "OrientationOptimizationSummary",
     "PlanSeeded",
     "PlanStepCompleted",
+    "PreprocessCompleted",
     "RecordingLogger",
     "RefinedRotationMetrics",
     "RefinementCompleted",
@@ -481,6 +482,45 @@ class CouplingSummary:
     @property
     def step(self) -> int | None:
         return None
+
+
+@dataclass(frozen=True)
+class PreprocessCompleted:
+    """The pooled ``Plan``'s settled shape, emitted once when preprocessing finishes.
+
+    Emitted from the shared ``_preprocess`` spine every public entry point
+    (``preprocess_experiment``, ``run_experiment``, ``refine_experiment``) funnels through, so a
+    console sink can print the same "preprocessing is done" summary regardless of which one is
+    running. Before this event existed, only ``preprocess_experiment``'s own CLI handler could show
+    it -- it alone had the settled ``Plan`` back in hand to inspect after the call returned;
+    ``run_experiment``/``refine_experiment`` swallow preprocessing internally and go straight into
+    their own next phase, so a sink attached to *them* had no equivalent moment to react to.
+
+    ``n_stages`` is the settled plan's recipe length (``provenance``) and ``max_solve_beams`` the
+    widest per-rotation solve; both are here because the console box shows them, and an event that
+    carried only the cheap-to-compute fields would quietly shrink what a sink can render.
+    """
+
+    channel: ClassVar[str] = "preprocess"
+    n_rotations: int
+    n_stages: int
+    total_hkl: int
+    matched_hkl: int
+    max_solve_beams: int
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level aggregate has no position on the per-rotation axis
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_rotations": float(self.n_rotations),
+            "n_stages": float(self.n_stages),
+            "total_hkl": float(self.total_hkl),
+            "matched_hkl": float(self.matched_hkl),
+            "max_solve_beams": float(self.max_solve_beams),
+        }
 
 
 @dataclass(frozen=True)
