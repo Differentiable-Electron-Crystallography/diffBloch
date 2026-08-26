@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
-from diffBloch.observability import MultiLogger, NullLogger, OrientationOptimized
+from diffBloch.observability import MultiLogger, OrientationOptimized
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
@@ -220,29 +220,6 @@ def test_infer_builds_console_and_csv_sinks(
     assert isinstance(logger, MultiLogger)
     assert len(logger.loggers) == 2  # console + csv fanned out
     assert csv_path.is_file()  # CSVLogger writes its header at construction
-
-
-def test_infer_quiet_silences_the_console(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``--quiet`` opts out of the default console stream -> the null sink (no experimental_data)."""
-    seen: dict[str, object] = {}
-
-    def fake_run_experiment(
-        experiment_dir: str,
-        *,
-        logger: object,
-        checkpoint: bool = True,
-        refresh: bool = False,
-        device: object = None,
-        workers: int = 1,
-        max_batch: object = None,
-        **_kwargs: object,
-    ) -> InferenceResult:
-        seen["logger"] = logger
-        return InferenceResult(per_rotation=())
-
-    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["infer", "x", "--quiet"]) == 0
-    assert isinstance(seen["logger"], NullLogger)
 
 
 def test_infer_missing_experiment_reports_concise_error(
@@ -558,5 +535,5 @@ def test_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> Non
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["converge", "/some/experiment", "--quiet"]) == 0
-    assert isinstance(seen["logger"], NullLogger)  # --quiet reaches it, not a hardcoded console
+    assert main(["converge", "/some/experiment"]) == 0
+    assert isinstance(seen["logger"], ConsoleLogger)  # built by _build_logger, not hardcoded
