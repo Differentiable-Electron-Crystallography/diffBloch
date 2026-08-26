@@ -134,6 +134,33 @@ def _run(
     return (tmp_path / "refinement_report.txt").read_text()
 
 
+def _orientation(
+    index: int,
+    *,
+    alpha: float = 0.05,
+    beta: float = -0.02,
+    omega: float = 0.01,
+    score: float = 0.02,
+    seed_score: float = 0.08,
+    residual: str = "wr2",
+    dataset: str = "q.cif_pets",
+) -> OrientationOptimized:
+    return OrientationOptimized(
+        rotation_index=index,
+        score=score,
+        seed_score=seed_score,
+        alpha=alpha,
+        beta=beta,
+        omega=omega,
+        residual=residual,
+        n_matched_hkl=5,
+        n_trials=20,
+        n_passes=4,
+        pass_cap=2000,
+        dataset=dataset,
+    )
+
+
 def _rotation(
     index: int,
     *,
