@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from diffBloch.app.loggers.plotting import ThicknessPlotLogger, plot_thickness_nn_shape
+import pytest
+
+from diffBloch.app.loggers.plotting import (
+    ThicknessPlotLogger,
+    _apply_house_style,
+    plot_thickness_nn_shape,
+)
 from diffBloch.observability import OrientationOptimized, ThicknessOptimized
 
 _EVENT = ThicknessOptimized(
@@ -84,3 +90,45 @@ def test_thickness_nn_shape_plot_carries_its_dataset_title(tmp_path: Path) -> No
 
     assert png.is_file()
     assert png.stat().st_size > 0
+
+
+def test_house_style_prefers_arial_via_the_sans_serif_fallback_list() -> None:
+    """Regression for #140: font.family must be the generic 'sans-serif' family with Arial as the
+    preferred face in font.sans-serif, not a direct font.family = "Arial" -- the direct form makes
+    every glyph search Arial by itself and log its own findfont warning when it's missing."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    try:
+        _apply_house_style(ax)
+        assert plt.rcParams["font.family"] == ["sans-serif"]
+        assert plt.rcParams["font.sans-serif"][:2] == ["Arial", "DejaVu Sans"]
+    finally:
+        plt.close(fig)
+
+
+def test_house_style_logs_no_findfont_warning_when_the_preferred_font_is_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Deterministic regardless of whether Arial is actually installed on the host: even with a
+    guaranteed-missing font first in the preference list, the sans-serif family fallback must not
+    log findfont -- proving the mechanism the #140 fix relies on, not just today's environment.
+
+    Sets rcParams directly (the same shape ``_apply_house_style`` sets, with a font guaranteed
+    absent standing in for "Arial happens to be missing") rather than monkeypatching the function
+    itself, so this exercises the real fallback mechanism, not a stand-in.
+    """
+    import logging
+
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["NotARealFontXYZ", "DejaVu Sans"]
+    fig, ax = plt.subplots()
+    try:
+        with caplog.at_level(logging.WARNING, logger="matplotlib.font_manager"):
+            ax.set_title("t")
+            fig.canvas.draw()
+        assert not any("findfont" in record.getMessage() for record in caplog.records)
+    finally:
+        plt.close(fig)
