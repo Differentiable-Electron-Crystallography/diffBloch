@@ -134,6 +134,23 @@ def _run(
     return (tmp_path / "refinement_report.txt").read_text()
 
 
+def _rotation(
+    index: int,
+    *,
+    wr2: float = 0.2,
+    is_validation: bool = False,
+    dataset: str = "q.cif_pets",
+) -> RefinedRotationMetrics:
+    return RefinedRotationMetrics(
+        rotation_index=index,
+        wr2=wr2,
+        r_obs=0.15,
+        n_matched=5,
+        is_validation=is_validation,
+        dataset=dataset,
+    )
+
+
 def _orientation(
     index: int,
     *,
@@ -157,23 +174,6 @@ def _orientation(
         n_trials=20,
         n_passes=4,
         pass_cap=2000,
-        dataset=dataset,
-    )
-
-
-def _rotation(
-    index: int,
-    *,
-    wr2: float = 0.2,
-    is_validation: bool = False,
-    dataset: str = "q.cif_pets",
-) -> RefinedRotationMetrics:
-    return RefinedRotationMetrics(
-        rotation_index=index,
-        wr2=wr2,
-        r_obs=0.15,
-        n_matched=5,
-        is_validation=is_validation,
         dataset=dataset,
     )
 
@@ -254,6 +254,121 @@ def test_summary_selects_the_best_epoch_not_the_last(tmp_path: Path) -> None:
 
     assert "objective total = 1" in text
     assert "10.00 [3/4]" in text  # the best epoch's wR2, not epoch 2's
+
+
+def test_summary_epoch_curve_lists_every_recorded_step(tmp_path: Path) -> None:
+    """The epoch curve is the whole trajectory, not just the best epoch."""
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8),
+            _step(iteration=1, wr2=0.1, r_obs=0.05),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    assert "Epoch curve" in text
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "1" in epoch_curve and "0.900000" in epoch_curve and "0.800000" in epoch_curve
+    assert "2" in epoch_curve and "0.100000" in epoch_curve and "0.050000" in epoch_curve
+
+
+def test_summary_epoch_curve_renders_na_for_unevaluated_epochs(tmp_path: Path) -> None:
+    text = _run(
+        tmp_path,
+        steps=(_step(wr2=None, r_obs=None),),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "n/a" in epoch_curve
+
+
+def test_summary_epoch_curve_adds_validation_columns_when_a_selection_engine_ran(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8, val_wr2=0.95, val_r_obs=0.85),
+            _step(iteration=1, wr2=0.1, r_obs=0.05, val_wr2=0.2, val_r_obs=0.15),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" in epoch_curve and "Val R_obs" in epoch_curve
+    assert "0.950000" in epoch_curve and "0.850000" in epoch_curve
+    assert "0.200000" in epoch_curve and "0.150000" in epoch_curve
+
+
+def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine(
+    tmp_path: Path,
+) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" not in epoch_curve
+
+
+def test_summary_orientation_optimization_defaults_to_disabled(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
+    assert "enabled: no" in orientation_section
+
+
+def test_summary_orientation_optimization_lists_delta_angles_and_before_after_score(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        orientations=(
+            _orientation(0, alpha=0.15, beta=-0.05, omega=0.02, seed_score=0.09, score=0.03),
+        ),
+        rotations=(_rotation(0),),
+    )
+
+    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
+    assert "0.1500" in orientation_section  # delta alpha
+    assert "-0.0500" in orientation_section  # delta beta
+    assert "0.0200" in orientation_section  # delta omega
+    assert "0.090000" in orientation_section  # seed score (before the search)
+    assert "0.030000" in orientation_section  # final score (after the search)
+    assert "q.cif_pets" in orientation_section
+
+
+def test_summary_per_dataset_summary_is_omitted_for_a_single_dataset(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0), _rotation(1)))
+
+    assert "Per-dataset summary" not in text
+
+
+def test_summary_per_dataset_summary_breaks_out_train_validation_and_total(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        rotations=(
+            _rotation(0, wr2=0.1, dataset="a.cif_pets"),
+            _rotation(1, wr2=0.3, is_validation=True, dataset="a.cif_pets"),
+            _rotation(2, wr2=0.2, dataset="b.cif_pets"),
+        ),
+    )
+
+    assert "Per-dataset summary" in text
+    per_dataset = text.split("Per-dataset summary")[1].split("\n--- ")[0]
+    assert "a.cif_pets" in per_dataset and "b.cif_pets" in per_dataset
+    assert "All datasets" in per_dataset
+    # a.cif_pets: 1 train (wr2=0.1), 1 validation (wr2=0.3), 2 total.
+    assert "0.100000 [1/1]" in per_dataset  # a's train wR2
+    assert "0.300000 [1/1]" in per_dataset  # a's validation wR2
+    # b.cif_pets has no validation rotations -- the cell must not blow up on an empty split.
+    assert "n/a [0/0]" in per_dataset
+    # All datasets aggregates every rotation regardless of which dataset it came from.
+    assert "0.200000 [3/3]" in per_dataset  # mean wR2 over all three rotations
 
 
 def test_summary_renders_an_unevaluated_mean_as_na(tmp_path: Path) -> None:
@@ -408,87 +523,3 @@ def test_ascii_table_widens_a_column_to_its_content() -> None:
     table = ascii_table(["A", "B"], [["a-very-long-cell", "1"]])
     header, rule, row = table.splitlines()
     assert len(header) == len(rule) == len(row)
-
-
-def test_summary_epoch_curve_lists_every_recorded_step(tmp_path: Path) -> None:
-    """The epoch curve is the whole trajectory, not just the best epoch."""
-    text = _run(
-        tmp_path,
-        steps=(
-            _step(iteration=0, wr2=0.9, r_obs=0.8),
-            _step(iteration=1, wr2=0.1, r_obs=0.05),
-        ),
-        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
-        rotations=(_rotation(0),),
-    )
-
-    assert "Epoch curve" in text
-    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
-    assert "1" in epoch_curve and "0.900000" in epoch_curve and "0.800000" in epoch_curve
-    assert "2" in epoch_curve and "0.100000" in epoch_curve and "0.050000" in epoch_curve
-
-
-def test_summary_epoch_curve_renders_na_for_unevaluated_epochs(tmp_path: Path) -> None:
-    text = _run(
-        tmp_path,
-        steps=(_step(wr2=None, r_obs=None),),
-        rotations=(_rotation(0),),
-    )
-
-    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
-    assert "n/a" in epoch_curve
-
-
-def test_summary_epoch_curve_adds_validation_columns_when_a_selection_engine_ran(
-    tmp_path: Path,
-) -> None:
-    text = _run(
-        tmp_path,
-        steps=(
-            _step(iteration=0, wr2=0.9, r_obs=0.8, val_wr2=0.95, val_r_obs=0.85),
-            _step(iteration=1, wr2=0.1, r_obs=0.05, val_wr2=0.2, val_r_obs=0.15),
-        ),
-        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
-        rotations=(_rotation(0),),
-    )
-
-    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
-    assert "Val wR2" in epoch_curve and "Val R_obs" in epoch_curve
-    assert "0.950000" in epoch_curve and "0.850000" in epoch_curve
-    assert "0.200000" in epoch_curve and "0.150000" in epoch_curve
-
-
-def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine(
-    tmp_path: Path,
-) -> None:
-    text = _run(tmp_path, rotations=(_rotation(0),))
-
-    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
-    assert "Val wR2" not in epoch_curve
-
-
-def test_summary_orientation_optimization_defaults_to_disabled(tmp_path: Path) -> None:
-    text = _run(tmp_path, rotations=(_rotation(0),))
-
-    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
-    assert "enabled: no" in orientation_section
-
-
-def test_summary_orientation_optimization_lists_delta_angles_and_before_after_score(
-    tmp_path: Path,
-) -> None:
-    text = _run(
-        tmp_path,
-        orientations=(
-            _orientation(0, alpha=0.15, beta=-0.05, omega=0.02, seed_score=0.09, score=0.03),
-        ),
-        rotations=(_rotation(0),),
-    )
-
-    orientation_section = text.split("Orientation optimization")[1].split("\n--- ")[0]
-    assert "0.1500" in orientation_section  # delta alpha
-    assert "-0.0500" in orientation_section  # delta beta
-    assert "0.0200" in orientation_section  # delta omega
-    assert "0.090000" in orientation_section  # seed score (before the search)
-    assert "0.030000" in orientation_section  # final score (after the search)
-    assert "q.cif_pets" in orientation_section
