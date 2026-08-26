@@ -19,6 +19,7 @@ from diffBloch.observability import (
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
+LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
 
 
 def _summary_row(out: str, label: str, value: str) -> bool:
@@ -65,6 +66,73 @@ def test_debug_flag_reraises(tmp_path: Path) -> None:
     bad.write_text("name: only-a-name\n")
     with pytest.raises(ValidationError):
         main(["--debug", "validate", str(bad)])
+
+
+def test_lock_experiment_writes_the_experiment_lock(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+
+    rc = main(["lock-experiment", str(experiment)])
+
+    assert rc == 0
+    lock_path = experiment / "reproducibility" / "experiment.lock"
+    assert lock_path.exists()
+    out = capsys.readouterr().out
+    assert str(lock_path.resolve()) in out
+    assert "enantiomer_1.cif" in out
+    assert "exp_data.cif_pets" in out
+
+
+def test_lock_experiment_refuses_to_overwrite_an_existing_lock(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    assert main(["lock-experiment", str(experiment)]) == 0
+    capsys.readouterr()
+
+    rc = main(["lock-experiment", str(experiment)])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "already exists" in err
+
+
+def test_lock_experiment_force_rewrites_the_experiment_lock(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = tmp_path / "experiment"
+    experiment.mkdir()
+    for name in ["experiment.yaml", "enantiomer_1.cif", "exp_data.cif_pets"]:
+        (experiment / name).write_bytes((LOCKED / name).read_bytes())
+    assert main(["lock-experiment", str(experiment)]) == 0
+    (experiment / "enantiomer_1.cif").write_text("changed\n")
+    capsys.readouterr()
+
+    rc = main(["lock-experiment", "--force", str(experiment)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "rewrote" in out
+    assert "warning:" in out
+    assert "plan and refinement locks" in out
+
+
+def test_lock_experiment_missing_experiment_reports_concise_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(["lock-experiment", "/no/such/experiment"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error:")
+    assert "Traceback" not in err
 
 
 def test_infer_delegates_to_run_experiment_and_reports(

@@ -29,7 +29,7 @@ from diffBloch.app.program import (
     refine_experiment,
     run_experiment,
 )
-from diffBloch.config import load_config
+from diffBloch.config import load_config, write_experiment_lock
 from diffBloch.observability import NULL_LOGGER, Logger, MultiLogger
 
 
@@ -110,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
             "  diffbloch preprocess experiment/\n"
             "  diffbloch refine experiment/\n"
             "\n"
-            "Each command has its own flags; see e.g. 'diffbloch refine --help'."
+            "Each command has its own flags; see e.g. 'diffbloch refine --help'. "
+            "reproducibility/experiment.lock is created automatically on first run; "
+            "use 'diffbloch lock-experiment --force experiment/' to refresh it after inputs "
+            "intentionally change."
         ),
     )
     parser.add_argument("--version", action="version", version=f"diffbloch {__version__}")
@@ -120,6 +123,19 @@ def main(argv: list[str] | None = None) -> int:
     # Registered in typical workflow order so the --help listing reads as the pipeline.
     p_validate = sub.add_parser("validate", help="Validate an experiment.yaml and report")
     p_validate.add_argument("config", help="Path to experiment.yaml")
+
+    p_lock_experiment = sub.add_parser(
+        "lock-experiment",
+        help="Create reproducibility/experiment.lock from the current input files (other commands "
+        "create it automatically on first run; existing locks require --force)",
+    )
+    p_lock_experiment.add_argument(
+        "--force",
+        action="store_true",
+        help="rewrite an existing experiment.lock after an intentional input change; this "
+        "invalidates existing plan and refinement locks",
+    )
+    p_lock_experiment.add_argument("experiment_directory", help="Path to the experiment directory")
 
     p_converge = sub.add_parser(
         "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
@@ -190,6 +206,34 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {args.config}: {exc}", file=sys.stderr)
             return 1
         print(f"OK: experiment '{cfg.name}' validated.")
+        return 0
+
+    if args.command == "lock-experiment":
+        lock_path = (
+            Path(args.experiment_directory) / "reproducibility" / "experiment.lock"
+        ).resolve()
+        replacing = lock_path.exists()
+        try:
+            experiment_lock = write_experiment_lock(args.experiment_directory, force=args.force)
+        except (FileExistsError, FileNotFoundError, ValidationError, yaml.YAMLError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        refs = (
+            [entry.ref for entry in experiment_lock.experimental_data]
+            if isinstance(experiment_lock.experimental_data, list)
+            else [experiment_lock.experimental_data.ref]
+        )
+        print(f"{'rewrote' if replacing else 'wrote'} {lock_path}")
+        if replacing:
+            print(
+                "warning: if this accepts changed input bytes, existing plan and refinement locks "
+                "are invalid and must be regenerated"
+            )
+        print(f"  - {'Structure':<20} {experiment_lock.structure.ref}")
+        for ref in refs:
+            print(f"  - {'Experimental data':<20} {ref}")
         return 0
 
     if args.command == "infer":

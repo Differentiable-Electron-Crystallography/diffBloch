@@ -17,6 +17,8 @@ Paths written in `experiment.yaml` are measured from the experiment directory:
 inputs:
   structure: structure.cif
   exp_data: experiment.cif_pets
+  # Optional: force all CIF ADPs to refine as Uiso.
+  isotropic_displacements_only: false
 ```
 
 The structure CIF supplies the atoms, fractional coordinates, occupancies, atomic displacement
@@ -32,6 +34,23 @@ structure-CIF cell as a consistency check.
 
 - A difference greater than 1% in any cell parameter produces a warning.
 - A difference greater than 5% stops the calculation.
+
+## ADP parameterization
+
+By default, diffBloch preserves the ADP kinds declared by the structure CIF: `Uani` sites refine with
+anisotropic ADPs, and `Uiso` sites refine with isotropic ADPs. Set
+`inputs.isotropic_displacements_only: true` to force every atom onto isotropic ADPs even when the CIF
+contains `_atom_site_aniso_*` rows.
+
+Atoms that were already `Uiso` keep their CIF `U_iso_or_equiv` seed. Atoms that were `Uani` are
+seeded from the crystallographic equivalent isotropic value, `Ueq`, computed from their CIF `Uij`
+tensor using the same unit cell that defines the refinement ADP frame. The original parsed structure
+record is not mutated; this is an experiment parameterization choice applied when refinement inputs
+are built.
+
+The flag changes the preprocessed starting point and is recorded in the per-dataset checkpoint
+identity. When refinement writes `refined_structure.cif`, force-converted atoms are written as `Uiso`
+and stale anisotropic rows are removed so the output re-reads with the same effective ADP kinds.
 
 
 
@@ -80,11 +99,16 @@ Running preprocessing or refinement adds results to the experiment directory:
 | `refinement_report.txt` | Final residuals, reflection counts, and refinement summary. |
 | `thickness_optim/` | Thickness-search plots when plotting is enabled. |
 | `thickness_nn_shape_<stem>.png` | Learned thickness curve per `.cif_pets` dataset, when the thickness network and plotting are enabled. |
-| `reproducibility/experiment.lock` | Record of the input files. |
 | `reproducibility/plan.<stem>.npz` | Saved preprocessing for each `.cif_pets` dataset. |
 | `reproducibility/plan.<stem>.lock` | Inputs and settings used for the saved preprocessing. |
 | `reproducibility/refined_parameters.npz` | Refined parameter values. |
 | `reproducibility/refinement.lock` | Inputs and settings used for the refinement. |
+
+`reproducibility/experiment.lock` is not one of these calculation outputs. It identifies the raw
+input files accepted for the experiment and is created automatically the first time any command runs
+against the experiment directory. See [Reproducibility](reproducibility.md#input-files) for the
+create-only `lock-experiment` command and the warning about invalidating plan and refinement locks
+after input changes.
 
 See [Refinement](refinement.md#refinement-outputs) for the refinement report and
 [Reproducibility](reproducibility.md) for the lock files.

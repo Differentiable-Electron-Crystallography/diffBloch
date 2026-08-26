@@ -793,6 +793,13 @@ def _write_refinement_outputs(
         if block.find_pair("_cell_volume") is not None:
             authoritative_unit_cell = cell_matrix_from_parameters(refinement.cell_parameters)
             block.set_pair("_cell_volume", f"{cell_volume(authoritative_unit_cell):.5f}")
+    # The *effective* ADP kind (post inputs.isotropic_displacements_only override), not
+    # structure.adp.kind (the raw CIF classification): an atom the override force-converted to
+    # Uiso must be written back as Uiso, with its stale _atom_site_aniso_* row stripped below --
+    # otherwise re-reading this file classifies it back to Uani by the aniso row's mere presence
+    # (see io.cif._adp_for_site) and silently loses the override.
+    effective_kind = refinement.spec.adp_kind
+    assert effective_kind is not None
     atom_loop = block.find_loop("_atom_site_label").get_loop()
     tags = list(atom_loop.tags)
     label_column = tags.index("_atom_site_label")
@@ -808,7 +815,7 @@ def _write_refinement_outputs(
             "_atom_site_fract_z": positions[index, 2],
             "_atom_site_occupancy": occupancies[index],
         }
-        if structure.adp.kind[index] == "Uiso":
+        if effective_kind[index] == "Uiso":
             updates["_atom_site_U_iso_or_equiv"] = np.sum(
                 uij_star[index] * reciprocal_metric
             ) / np.sum(reciprocal_metric * reciprocal_metric)
@@ -835,8 +842,14 @@ def _write_refinement_outputs(
             "_atom_site_aniso_U_23": (1, 2),
         }
         scale = reciprocal_lengths[:, None] * reciprocal_lengths[None, :]
+        stale_aniso_labels: list[str] = []
         for index, label in enumerate(structure.labels):
-            if structure.adp.kind[index] != "Uani" or label not in aniso_rows:
+            if label not in aniso_rows:
+                continue
+            if effective_kind[index] != "Uani":
+                # Was Uani in the CIF but the override forces it to Uiso: strip the row rather than
+                # leaving it untouched (stale) or refreshing it with new anisotropic-looking values.
+                stale_aniso_labels.append(label)
                 continue
             row = aniso_rows[label]
             uij_cif = uij_star[index] / scale
@@ -844,6 +857,10 @@ def _write_refinement_outputs(
                 if tag in aniso_tags:
                     column = aniso_tags.index(tag)
                     aniso_loop[row, column] = f"{float(uij_cif[i, j]):.10g}"
+        if stale_aniso_labels:
+            aniso_table = block.find(list(aniso_loop.tags))
+            for label in stale_aniso_labels:
+                aniso_table.remove_row(aniso_table.find_row(label).row_index)
     document.write_file(str(structure_path))
 
     params = result.best_params
@@ -939,9 +956,11 @@ def _preprocess(
 
     ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn
     plotting on. ``plot_thickness_dir`` overrides the default output directory,
-    ``<inputs.structure's directory>/thickness_optim``, when given. Both are execution-only (they
-    only decide whether/where a PNG gets written, never the fitted ``Plan``) -- see
-    :func:`~diffBloch.config.manifest.dataset_config_digest`.
+    ``<inputs.structure's directory>/thickness_optim``, when given. A multi-dataset experiment gets
+    one subdirectory per dataset under it (named by :func:`~diffBloch.config.schema.
+    dataset_checkpoint_stem`), so two datasets sharing a rotation index never overwrite each other's
+    PNG. Both are execution-only (they only decide whether/where a PNG gets written, never the
+    fitted ``Plan``) -- see :func:`~diffBloch.config.manifest.dataset_config_digest`.
     """
     structure = _read_structure(root, cfg, logger=logger)
     records = _read_experimental_data(root, cfg, logger=logger)
@@ -956,26 +975,37 @@ def _preprocess(
         float(cell[4]),
         float(cell[5]),
     )
-    if plot_thickness or cfg.preprocess.thickness.plot:
-        from diffBloch.app.loggers.plotting import ThicknessPlotLogger
-
-        effective_plot_dir = (
+    effective_plot_dir = (
+        (
             Path(plot_thickness_dir)
             if plot_thickness_dir is not None
             else (root / cfg.inputs.structure).parent / "thickness_optim"
         )
-        logger = MultiLogger((logger, ThicknessPlotLogger(effective_plot_dir)))
+        if plot_thickness or cfg.preprocess.thickness.plot
+        else None
+    )
 
     structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
     prepared_plans: list[Plan] = []
     lock_sha256s: list[str | None] = []
-    for ref, dataset in zip(refs, datasets, strict=True):
+    for i, (ref, dataset) in enumerate(zip(refs, datasets, strict=True)):
+        _log.info("preprocessing dataset %r (%d/%d)", ref, i + 1, len(refs))
+        dataset_logger = logger
+        if effective_plot_dir is not None:
+            from diffBloch.app.loggers.plotting import ThicknessPlotLogger
+
+            dataset_logger = MultiLogger(
+                (
+                    logger,
+                    ThicknessPlotLogger(effective_plot_dir / dataset_checkpoint_stem(ref)),
+                )
+            )
         steps = _recipe_steps(
             cfg,
             refinement_setup,
             dataset.integration,
             dataset.mosaicity,
-            logger,
+            dataset_logger,
             device=device,
             workers=workers,
             max_batch=max_batch,
@@ -993,7 +1023,7 @@ def _preprocess(
             dataset_lock=input_lock_for(root / ref, ref=ref),
             checkpoint=checkpoint,
             refresh=refresh,
-            logger=logger,
+            logger=dataset_logger,
         )
         prepared_plans.append(prepared)
         lock_sha256s.append(lock_sha256)
