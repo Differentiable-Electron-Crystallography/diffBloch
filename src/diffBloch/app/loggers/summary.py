@@ -70,6 +70,18 @@ def ascii_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _finite_mean_cell(values: Sequence[float]) -> str:
+    """A compact ``mean [n_finite/n_total]`` cell, ``n/a [0/n_total]`` when nothing was finite.
+
+    Every mean in the report states the denominator it was taken over: a mean that covers fewer
+    rotations is a different quantity, not a better one.
+    """
+    finite = [value for value in values if math.isfinite(value)]
+    if not finite:
+        return f"n/a [0/{len(values)}]"
+    return f"{sum(finite) / len(finite):.6f} [{len(finite)}/{len(values)}]"
+
+
 def _cif_loop_as_table(block: gemmi.cif.Block, first_tag: str) -> str | None:
     """Render a CIF loop (identified by its first column tag) as a plain aligned ASCII table.
 
@@ -165,6 +177,7 @@ class SummaryLogger:
         self._objective_components(lines, rule)
         self._epoch_curve(lines, rule)
         self._rotation_metrics(lines, rule)
+        self._per_dataset_summary(lines, rule)
         self._thickness_profile(lines, rule)
         self._refined_structure(lines, rule, Path(outputs.structure))
 
@@ -379,21 +392,9 @@ class SummaryLogger:
                     ],
                 )
             )
-            finite_wr2 = [row.wr2 for row in rows if math.isfinite(row.wr2)]
-            finite_r_obs = [row.r_obs for row in rows if math.isfinite(row.r_obs)]
             lines.append("")
-
-            def mean_line(label: str, finite: list[float]) -> str:
-                # Each mean states the denominator it was taken over: a mean that covers fewer
-                # rotations is a different quantity, not a better one.
-                if not finite:
-                    return f" mean {label} = n/a [0/{len(rows)}]"
-                return (
-                    f" mean {label} = {sum(finite) / len(finite):.6f} [{len(finite)}/{len(rows)}]"
-                )
-
-            lines.append(mean_line("wR2  ", finite_wr2))
-            lines.append(mean_line("R_obs", finite_r_obs))
+            lines.append(f" mean wR2   = {_finite_mean_cell([row.wr2 for row in rows])}")
+            lines.append(f" mean R_obs = {_finite_mean_cell([row.r_obs for row in rows])}")
 
         rule("Per-rotation wR2 / R_obs (final refined model)")
         block(self._rotations)
@@ -403,6 +404,53 @@ class SummaryLogger:
             lines.append(f" n_rotations = {len(validation)}")
             lines.append("")
             block(validation)
+
+    def _per_dataset_summary(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        # Distinct datasets, in first-seen (exp_data) order -- a single-dataset run has nothing a
+        # per-dataset breakdown would add over the table above, so the section is omitted entirely.
+        labels: list[str] = []
+        for row in self._rotations:
+            if row.dataset not in labels:
+                labels.append(row.dataset)
+        if len(labels) < 2:
+            return
+
+        rule("Per-dataset summary")
+
+        def dataset_row(name: str, rows: Sequence[RefinedRotationMetrics]) -> list[str]:
+            train = [row for row in rows if not row.is_validation]
+            validation = [row for row in rows if row.is_validation]
+            return [
+                name,
+                f"{len(train)}/{len(validation)}",
+                _finite_mean_cell([row.wr2 for row in train]),
+                _finite_mean_cell([row.r_obs for row in train]),
+                _finite_mean_cell([row.wr2 for row in validation]),
+                _finite_mean_cell([row.r_obs for row in validation]),
+                _finite_mean_cell([row.wr2 for row in rows]),
+                _finite_mean_cell([row.r_obs for row in rows]),
+            ]
+
+        rows = [
+            dataset_row(label, [row for row in self._rotations if row.dataset == label])
+            for label in labels
+        ]
+        rows.append(dataset_row("All datasets", self._rotations))
+        lines.append(
+            ascii_table(
+                [
+                    "Dataset",
+                    "N (train/val)",
+                    "Train wR2",
+                    "Train R_obs",
+                    "Val wR2",
+                    "Val R_obs",
+                    "Total wR2",
+                    "Total R_obs",
+                ],
+                rows,
+            )
+        )
 
     def _thickness_profile(self, lines: list[str], rule: Callable[[str], None]) -> None:
         if not self._profiles:
