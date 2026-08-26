@@ -28,7 +28,6 @@ from diffBloch.app.program import (
 from diffBloch.config import load_config, write_experiment_lock
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
-    NULL_LOGGER,
     Logger,
     MultiLogger,
     OrientationOptimized,
@@ -56,12 +55,6 @@ def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-step / per-rotation observation stream (console logging is on by "
-        "default; the run summary line still prints)",
-    )
     parser.add_argument(
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
     )
@@ -175,11 +168,6 @@ def main(argv: list[str] | None = None) -> int:
         help="use the first N orientations for convergence testing (default: 1)",
     )
     p_converge.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-trial observation stream (the settled result still prints)",
-    )
-    p_converge.add_argument(
         "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
     )
     p_preprocess = sub.add_parser(
@@ -257,14 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "infer":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
             result = run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=_build_logger(csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -282,18 +269,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "preprocess":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
             summary_logger = RecordingLogger()
-            logger: Logger = (
-                summary_logger
-                if progress_logger is NULL_LOGGER
-                else MultiLogger((progress_logger, summary_logger))
-            )
+            logger: Logger = MultiLogger((_build_logger(csv=args.csv), summary_logger))
             plan = preprocess_experiment(
                 args.experiment_directory,
                 logger=logger,
@@ -354,17 +335,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "refine":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
             # The written summary is one more sink on the run's event stream, chosen here beside
             # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
             # not) for themselves instead of having a file appear as a side effect of refining.
             report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
             refine_sinks: tuple[Logger, ...] = (
-                _build_logger(console=not args.quiet, csv=args.csv),
+                _build_logger(csv=args.csv),
                 SummaryLogger(report_path),
             )
             refined = refine_experiment(
@@ -420,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=_build_logger(csv=args.csv),
                 device=args.device,
                 n_orientations=args.orientations,
             )
@@ -445,21 +425,16 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) -> Logger:
-    """Combine the requested observation sinks (none => the null logger that discards events).
+def _build_logger(*, csv: str | None, per_rotation: bool = True) -> Logger:
+    """Combine the observation sinks every command gets: the console, plus a CSV log if asked.
 
-    ``per_rotation`` opts the console into the settled per-rotation stream.
+    The single place a CLI run's sinks are assembled. ``per_rotation`` opts the console into the
+    settled per-rotation stream.
     """
-    sinks: list[Logger] = []
-    if console:
-        sinks.append(ConsoleLogger(per_rotation=per_rotation))
-    if csv is not None:
-        sinks.append(CSVLogger(Path(csv)))
-    if not sinks:
-        return NULL_LOGGER
-    if len(sinks) == 1:
-        return sinks[0]
-    return MultiLogger(tuple(sinks))
+    console = ConsoleLogger(per_rotation=per_rotation)
+    if csv is None:
+        return console
+    return MultiLogger((console, CSVLogger(Path(csv))))
 
 
 if __name__ == "__main__":
