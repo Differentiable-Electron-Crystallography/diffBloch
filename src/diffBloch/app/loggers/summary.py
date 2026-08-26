@@ -158,6 +158,7 @@ class SummaryLogger:
         self._crystallographic_parameters(lines, rule, Path(outputs.structure))
         self._objective_terms(lines, rule)
         self._objective_components(lines, rule)
+        self._epoch_curve(lines, rule)
         self._rotation_metrics(lines, rule)
         self._thickness_profile(lines, rule)
         self._refined_structure(lines, rule, Path(outputs.structure))
@@ -299,6 +300,31 @@ class SummaryLogger:
         # Every row is a term the objective actually composed. A restraint that was not composed
         # has no row, so this table never reports an inactive term as a satisfied zero.
         lines.append(" (terms not composed into the objective have no row)")
+
+    def _epoch_curve(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Epoch curve")
+        if not self._steps:
+            lines.append(" n/a (no recorded refinement steps)")
+            return
+
+        def cell(value: float | None) -> str:
+            return "n/a" if value is None or not math.isfinite(value) else f"{value:.6f}"
+
+        # val_wr2/val_r_obs are populated only when refinement.split.train_test held out a
+        # validation set (see RefinementStep) -- included here whenever any step carries them, so
+        # the train/validation curves sit side by side rather than validation only ever surfacing
+        # once, in the final "Validation set" table.
+        has_validation = any(step.val_wr2 is not None for step in self._steps)
+        headers = ["Epoch", "wR2", "R_obs"]
+        if has_validation:
+            headers += ["Val wR2", "Val R_obs"]
+        rows = []
+        for step in self._steps:
+            row = [str(step.iteration + 1), cell(step.wr2), cell(step.r_obs)]
+            if has_validation:
+                row += [cell(step.val_wr2), cell(step.val_r_obs)]
+            rows.append(row)
+        lines.append(ascii_table(headers, rows))
 
     def _rotation_metrics(self, lines: list[str], rule: Callable[[str], None]) -> None:
         def block(rows: Sequence[RefinedRotationMetrics]) -> None:
