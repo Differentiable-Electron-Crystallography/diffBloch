@@ -58,6 +58,7 @@ __all__ = [
     "EarlyAbortLogger",
     "FitAbortedError",
     "format_measurements",
+    "print_summary_box",
     "namespaced_measurements",
     "print_summary_box",
     "residual_label",
