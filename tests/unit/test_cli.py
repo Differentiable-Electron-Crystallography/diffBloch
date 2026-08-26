@@ -349,13 +349,6 @@ def test_preprocess_delegates_and_reports_without_scoring(
                 n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5, max_solve_beams=9
             )
         )
-        # _preprocess() itself emits this once preprocessing settles; ConsoleLogger is what turns
-        # it into the PREPROCESS COMPLETE box, so the fake must emit it too.
-        logger.report(
-            PreprocessCompleted(
-                n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5, max_solve_beams=9
-            )
-        )
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
