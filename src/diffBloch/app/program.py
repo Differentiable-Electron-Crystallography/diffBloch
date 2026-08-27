@@ -113,6 +113,7 @@ from diffBloch.preprocess import (
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.plan import unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
@@ -1033,9 +1034,9 @@ def _preprocess(
         PreprocessCompleted(
             n_rotations=len(built),
             n_stages=len(pooled.provenance),
-            total_hkl=sum(int(op.pattern.hkl.shape[0]) for op in built),
-            matched_hkl=sum(int(op.alignment.hkl.shape[0]) for op in built),
-            max_solve_beams=max(int(op.beam_hkl.shape[0]) for op in built),
+            total_hkl=unique_hkl_count(op.pattern.hkl for op in built),
+            matched_hkl=unique_hkl_count(op.alignment.hkl for op in built),
+            steps=tuple((record.name, record.params) for record in pooled.provenance),
         )
     )
     return PreprocessOutcome(

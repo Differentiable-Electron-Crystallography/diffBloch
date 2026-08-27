@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import ClassVar, Literal, Protocol, runtime_checkable
+from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
 
 __all__ = [
     "NULL_LOGGER",
@@ -202,13 +202,17 @@ class ConvergenceSweepStarted:
 
 @dataclass(frozen=True)
 class RotationScored:
-    """One rotation's forward-inference score, emitted per rotation by ``run_inference``."""
+    """One rotation's forward-inference score, emitted per rotation by ``run_inference``.
+
+    ``n_matched`` is the rotation's full matched-reflection count (observed and calculated both, no
+    intensity cut) -- not the ``I > 3*sigma`` subset ``r_obs`` is itself scored over.
+    """
 
     channel: ClassVar[str] = "rotation"
     index: int
     r_obs: float
-    n_observed: int
-    n_beams: int
+    wr2: float
+    n_matched: int
 
     @property
     def step(self) -> int | None:
@@ -218,8 +222,8 @@ class RotationScored:
     def measurements(self) -> Mapping[str, float]:
         return {
             "r_obs": self.r_obs,
-            "n_observed": float(self.n_observed),
-            "n_beams": float(self.n_beams),
+            "wr2": self.wr2,
+            "n_matched": float(self.n_matched),
         }
 
 
@@ -525,9 +529,20 @@ class PreprocessCompleted:
     ``run_experiment``/``refine_experiment`` swallow preprocessing internally and go straight into
     their own next phase, so a sink attached to *them* had no equivalent moment to react to.
 
-    ``n_stages`` is the settled plan's recipe length (``provenance``) and ``max_solve_beams`` the
-    widest per-rotation solve; both are here because the console box shows them, and an event that
-    carried only the cheap-to-compute fields would quietly shrink what a sink can render.
+    ``n_stages`` is the settled plan's recipe length (``provenance``); it is here because the
+    console box shows it, and an event that carried only the cheap-to-compute fields would quietly
+    shrink what a sink can render.
+
+    ``total_hkl``/``matched_hkl`` are deduplicated distinct ``(h, k, l)`` counts across every
+    rotation (:func:`~diffBloch.preprocess.plan.unique_hkl_count`), not a sum of each rotation's own
+    count -- a reflection re-observed (or matched) in more than one rotation is counted once.
+
+    ``steps`` is the settled plan's ``provenance`` -- each ran step's name paired with its
+    serialized config (:func:`~diffBloch.preprocess.pipeline.spec_to_params`'s form, or ``None`` for
+    a paramless step) -- carried here as plain data (not a :class:`~diffBloch.preprocess.pipeline.
+    StepRecord`) so this module never imports ``preprocess``. A display sink reports *what actually
+    ran and with what settings* instead of a per-rotation search trace, which is display-only detail
+    the settled result does not need to justify itself.
     """
 
     channel: ClassVar[str] = "preprocess"
@@ -535,7 +550,7 @@ class PreprocessCompleted:
     n_stages: int
     total_hkl: int
     matched_hkl: int
-    max_solve_beams: int
+    steps: tuple[tuple[str, dict[str, Any] | None], ...] = ()
 
     @property
     def step(self) -> int | None:
@@ -548,7 +563,6 @@ class PreprocessCompleted:
             "n_stages": float(self.n_stages),
             "total_hkl": float(self.total_hkl),
             "matched_hkl": float(self.matched_hkl),
-            "max_solve_beams": float(self.max_solve_beams),
         }
 
 
@@ -560,6 +574,7 @@ class InferenceCompleted:
     n_rotations: int
     n_evaluated: int
     mean_r_obs: float
+    mean_wr2: float
 
     @property
     def step(self) -> int | None:
@@ -571,6 +586,7 @@ class InferenceCompleted:
             "n_rotations": float(self.n_rotations),
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
+            "mean_wr2": self.mean_wr2,
         }
 
 

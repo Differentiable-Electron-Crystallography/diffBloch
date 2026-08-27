@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from diffBloch.app.cli import main
 from diffBloch.app.loggers import ConsoleLogger
 from diffBloch.observability import (
+    InferenceCompleted,
     Logger,
     MultiLogger,
     OrientationOptimized,
@@ -149,7 +150,7 @@ def test_infer_delegates_to_run_experiment_and_reports(
     def fake_run_experiment(
         experiment_dir: str,
         *,
-        logger: object,
+        logger: Logger,
         checkpoint: bool = True,
         refresh: bool = False,
         device: object = None,
@@ -162,8 +163,19 @@ def test_infer_delegates_to_run_experiment_and_reports(
         captured["checkpoint"] = checkpoint
         captured["refresh"] = refresh
         captured["workers"] = workers
-        rotation = RotationInference(r_obs=0.05, wr2=0.06, n_observed=9, n_beams=20)
-        return InferenceResult(per_rotation=(rotation,))
+        rotation = RotationInference(r_obs=0.05, wr2=0.06, n_matched=9)
+        result = InferenceResult(per_rotation=(rotation,))
+        # _preprocess()/run_inference() emit this once settled; the fake must too, since ConsoleLogger
+        # (not the CLI) renders the INFER COMPLETE box off the event.
+        logger.report(
+            InferenceCompleted(
+                n_rotations=1,
+                n_evaluated=result.n_evaluated,
+                mean_r_obs=result.mean_r_obs,
+                mean_wr2=result.mean_wr2,
+            )
+        )
+        return result
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
     rc = main(["infer", "/some/experiment"])
@@ -176,8 +188,9 @@ def test_infer_delegates_to_run_experiment_and_reports(
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
     out = capsys.readouterr().out
-    assert "evaluated 1 rotations" in out
-    assert "mean R_obs = 0.0500" in out
+    assert "INFER COMPLETE" in out
+    assert _summary_row(out, "Evaluated", "1")
+    assert _summary_row(out, "Mean R_obs", "0.05")
 
 
 def test_infer_checkpoint_flags_thread_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -263,15 +276,11 @@ def test_converge_delegates_and_reports(
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
 
     assert main(["converge", "/some/experiment"]) == 0
-    assert capsys.readouterr().out == (
-        "========================================\n"
-        "HYPERPARAMETER OPTIMIZATION RESULT\n"
-        "gmax: 2.5\n"
-        "sgmax: 0.02\n"
-        "tilt_steps: 46\n"
-        "========================================\n"
-        "optimized_hyperparams gmax=2.5 sgmax=0.02 tilt_steps=46\n"
-    )
+    out = capsys.readouterr().out
+    assert "CONVERGENCE COMPLETE" in out
+    assert _summary_row(out, "g_max", "2.5")
+    assert _summary_row(out, "sg_max", "0.02")
+    assert _summary_row(out, "Tilt steps", "46")
 
 
 class _FakePlan:
@@ -352,11 +361,7 @@ def test_preprocess_delegates_and_reports_without_scoring(
         )
         # _preprocess() itself emits this once preprocessing settles; ConsoleLogger is what turns
         # it into the PREPROCESS COMPLETE box, so the fake must emit it too.
-        logger.report(
-            PreprocessCompleted(
-                n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5, max_solve_beams=9
-            )
-        )
+        logger.report(PreprocessCompleted(n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5))
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
@@ -373,7 +378,6 @@ def test_preprocess_delegates_and_reports_without_scoring(
     assert _summary_row(out, "Stages", "3")
     assert _summary_row(out, "Total HKLs", "7")
     assert _summary_row(out, "Matched HKLs", "5")
-    assert _summary_row(out, "Solve beams (max/rotation)", "9")
     assert _summary_row(out, "Mean wR2", "0.375")
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
@@ -527,7 +531,7 @@ def test_refine_delegates_and_reports(
     assert _summary_row(out, "wR2", "0.1")
     assert _summary_row(out, "R_obs", "0.2")
     assert _summary_row(out, "Diffraction loss", "1")
-    assert _summary_row(out, "HKLs (Observed/total)", "8 / 12")
+    assert _summary_row(out, "Matched HKLs (I>3σ/total)", "8 / 12")
     assert "Refined Structure" in out
     assert str(REFINED_CIF) in out
 

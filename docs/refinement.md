@@ -45,8 +45,7 @@ refinement:
 
 Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
 at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
-`HKLs (Observed/total): X / Y` means matched observed reflections / all matched reflections, where
-the observed classification uses the conventional `I > 3 sigma` test internally.
+`Matched HKLs (I>3σ/total): X / Y` means matched reflections with `I > 3 sigma` / all matched reflections.
 
 ## Refinement outputs
 
