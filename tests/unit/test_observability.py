@@ -82,18 +82,19 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert device.step is None
     assert device.measurements == {"cuda_available": 0.0, "selected_cuda": 0.0}
 
-    rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
+    rotation = RotationScored(index=3, r_obs=0.42, wr2=0.38, n_matched=12)
     assert rotation.channel == "rotation"
     assert rotation.step == 3  # a rotation's step is its index
-    assert rotation.measurements == {"r_obs": 0.42, "n_observed": 12.0, "n_beams": 20.0}
+    assert rotation.measurements == {"r_obs": 0.42, "wr2": 0.38, "n_matched": 12.0}
 
-    completed = InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.065)
+    completed = InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.065, mean_wr2=0.05)
     assert completed.channel == "inference"
     assert completed.step is None  # a run-level aggregate has no per-rotation position
     assert completed.measurements == {
         "n_rotations": 99.0,
         "n_evaluated": 97.0,
         "mean_r_obs": 0.065,
+        "mean_wr2": 0.05,
     }
 
     mosaicity = IsotropicMosaicityRefined(
@@ -256,20 +257,20 @@ def test_isotropic_mosaicity_refined_rejects_an_empty_label() -> None:
 
 
 def test_events_and_loggers_satisfy_the_protocols_structurally() -> None:
-    assert isinstance(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2), Event)
+    assert isinstance(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=1), Event)
     assert isinstance(NullLogger(), Logger)
     assert isinstance(RecordingLogger(), Logger)
 
 
 def test_null_logger_discards_events() -> None:
     logger = NullLogger()
-    assert logger.report(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2)) is None
+    assert logger.report(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=1)) is None
 
 
 def test_multi_logger_fans_each_event_out_to_every_logger() -> None:
     a, b = RecordingLogger(), RecordingLogger()
     fanout = MultiLogger(loggers=(a, b))
-    event = RotationScored(index=1, r_obs=0.2, n_observed=3, n_beams=5)
+    event = RotationScored(index=1, r_obs=0.2, wr2=0.2, n_matched=3)
 
     fanout.report(event)
 
@@ -282,13 +283,27 @@ def test_console_logger_logs_channel_step_and_measurements(
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(RotationScored(index=47, r_obs=0.5, n_observed=4, n_beams=7))
-        logger.report(InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.06))
+        logger.report(RotationScored(index=47, r_obs=0.5, wr2=0.5, n_matched=4))
 
-    rotation_msg, inference_msg = (r.getMessage() for r in caplog.records)
+    [rotation_msg] = (r.getMessage() for r in caplog.records)
     assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
     assert "r_obs=0.5" in rotation_msg
-    assert inference_msg.startswith("inference ")  # aggregate has no step bracket
+
+
+def test_console_logger_prints_the_infer_box_on_inference_completed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    logger = ConsoleLogger()
+    logger.report(
+        InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.06, mean_wr2=0.05)
+    )
+
+    out = capsys.readouterr().out
+    assert "INFER COMPLETE" in out
+    assert re.search(r"Rotations\s+99", out)
+    assert re.search(r"Evaluated\s+97", out)
+    assert re.search(r"Mean R_obs\s+0\.06", out)
+    assert re.search(r"Mean wR2\s+0\.05", out)
 
 
 def test_console_logger_formats_device_selection(caplog: pytest.LogCaptureFixture) -> None:
@@ -594,6 +609,37 @@ def test_console_logger_renders_a_refinement_progress_bar_on_a_tty(
     assert "eta" not in out.rsplit("\r", 1)[-1]  # the final (4/4, complete) line has none
 
 
+def test_console_logger_still_prints_the_refinement_box_after_a_tty_progress_bar(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The tty progress-bar branch must record epochs too, not only the non-tty fallback.
+
+    Regression: RefinementStep events on a real terminal took the live-progress-bar branch and
+    returned before ``_epochs`` was populated, so the REFINEMENT COMPLETE box's lookup of the
+    selected epoch's numbers (``self._epochs.get(completed.best_step)``) silently found nothing and
+    the whole box vanished -- on every real terminal run, working only when stdout was piped.
+    """
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    logger = ConsoleLogger(level=logging.INFO)
+
+    logger.report(RefinementStarted(total_steps=2))
+    logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.05, r_obs=0.06))
+    logger.report(RefinementStep(iteration=1, loss=0.5, wr2=0.03, r_obs=0.04))
+    logger.report(
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.5,
+            reflection_counts={"matched": 10, "matched_i_gt_3sigma": 7},
+        )
+    )
+    logger.report(RefinementOutputsWritten(structure="/out/refined_structure.cif", artifacts={}))
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" in out
+    assert re.search(r"wR2\s+0\.03", out)
+
+
 def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -701,8 +747,8 @@ def test_early_abort_logger_ignores_the_started_events(
 def test_csv_logger_appends_events_in_long_format(tmp_path: Path) -> None:
     path = tmp_path / "run.csv"
     logger = CSVLogger(path=path)
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
-    logger.report(InferenceCompleted(n_rotations=1, n_evaluated=1, mean_r_obs=0.5))
+    logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
+    logger.report(InferenceCompleted(n_rotations=1, n_evaluated=1, mean_r_obs=0.5, mean_wr2=0.4))
 
     with path.open() as handle:
         rows = list(csv.reader(handle))
@@ -719,11 +765,9 @@ def test_wandb_logger_maps_measurements_to_a_namespaced_payload(
     fake_wandb.log = lambda payload, step=None: logged.append((payload, step))  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
-    WandbLogger().report(RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7))
+    WandbLogger().report(RotationScored(index=5, r_obs=0.5, wr2=0.5, n_matched=4))
 
-    assert logged == [
-        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
-    ]
+    assert logged == [({"rotation/r_obs": 0.5, "rotation/wr2": 0.5, "rotation/n_matched": 4.0}, 5)]
 
 
 def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
@@ -734,12 +778,10 @@ def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
             logged.append((metrics, step))
 
     CometLogger(experiment=_FakeExperiment()).report(
-        RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7)
+        RotationScored(index=5, r_obs=0.5, wr2=0.5, n_matched=4)
     )
 
-    assert logged == [
-        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
-    ]
+    assert logged == [({"rotation/r_obs": 0.5, "rotation/wr2": 0.5, "rotation/n_matched": 4.0}, 5)]
 
 
 # --- EarlyAbortLogger: abort a from-scratch fit that is not tracking the data --------------------
@@ -776,7 +818,7 @@ def test_early_abort_forwards_every_event_to_inner_including_the_aborting_one() 
     """The guard is also a pass-through: inner sees all events, including the one that aborts."""
     inner = RecordingLogger()
     guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2, inner=inner)
-    guard.report(RotationScored(index=0, r_obs=0.3, n_observed=1, n_beams=2))  # non-fit, forwarded
+    guard.report(RotationScored(index=0, r_obs=0.3, wr2=0.3, n_matched=1))  # non-fit, forwarded
     guard.report(_fitted(0, 0.9))
     with pytest.raises(FitAbortedError):
         guard.report(_fitted(1, 0.9))
@@ -789,7 +831,7 @@ def test_early_abort_ignores_non_fit_events_for_the_decision() -> None:
     """Only the fit stream counts toward patience -- a flood of rotation events never aborts."""
     guard = EarlyAbortLogger(wr2_ceiling=0.6, patience=2)
     for i in range(20):
-        guard.report(RotationScored(index=i, r_obs=0.99, n_observed=1, n_beams=2))  # never aborts
+        guard.report(RotationScored(index=i, r_obs=0.99, wr2=0.99, n_matched=1))  # never aborts
 
 
 def test_early_abort_rejects_nonpositive_patience() -> None:
@@ -848,7 +890,6 @@ def _preprocess_completed(**overrides: int) -> PreprocessCompleted:
         "n_stages": 3,
         "total_hkl": 100,
         "matched_hkl": 80,
-        "max_solve_beams": 40,
     }
     return PreprocessCompleted(**{**fields, **overrides})
 
@@ -870,7 +911,6 @@ def test_console_logger_prints_the_preprocess_box_on_preprocess_completed(
     assert re.search(r"Stages\s+3", out)
     assert re.search(r"Total HKLs\s+100", out)
     assert re.search(r"Matched HKLs\s+80", out)
-    assert re.search(r"Solve beams \(max/rotation\)\s+40", out)
     assert re.search(r"Mean wR2\s+0\.3", out)  # mean of 0.4 and 0.2
 
 
@@ -925,7 +965,7 @@ def test_console_logger_prints_the_refinement_box_on_outputs_written(
     assert "REFINEMENT COMPLETE" in out
     assert re.search(r"Best epoch\s+2", out)  # 1-based, from best_step=1
     assert re.search(r"wR2\s+0\.2", out)  # epoch 2's value, not epoch 1's
-    assert re.search(r"HKLs \(Observed/total\)\s+60 / 90", out)
+    assert re.search(r"Matched HKLs \(I>3σ/total\)\s+60 / 90", out)
     assert "Refined Structure" in out and "/out/refined_structure.cif" in out
 
 

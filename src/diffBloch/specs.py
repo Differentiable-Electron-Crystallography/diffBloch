@@ -185,7 +185,7 @@ class ConvergenceTolerance:
     patience window and no null-step handling.
     """
 
-    r_factor_threshold: float = 0.005  # converged once consecutive-sim R-factor < this
+    r_factor_threshold: float = 0.01  # converged once consecutive-sim R-factor < this
     max_iterations: int = 100  # hard cap on sweep steps before raising non-convergence
 
     def __post_init__(self) -> None:

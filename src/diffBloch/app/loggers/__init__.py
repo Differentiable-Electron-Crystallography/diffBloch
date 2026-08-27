@@ -35,6 +35,7 @@ from diffBloch.observability import (
     DeviceSelected,
     Event,
     ExperimentDeclared,
+    InferenceCompleted,
     Logger,
     ObjectiveManifest,
     OrientationOptimizationStarted,
@@ -240,6 +241,9 @@ class ConsoleLogger:
         if isinstance(event, RefinementOutputsWritten):
             self._print_refinement_box(event)
             return
+        if isinstance(event, InferenceCompleted):
+            self._print_infer_box(event)
+            return
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
             return
@@ -262,7 +266,7 @@ class ConsoleLogger:
             )
             _log.log(
                 self.level,
-                "Experiment │ %s lr=%g │ %d epoch(s) │ g_max(solve)=%g sg_max=%g │ absorption %s │ "
+                "Experiment │ %s lr=%g │ %d epoch(s) │ g_max=%g sg_max=%g │ absorption %s │ "
                 "mosaicity %s",
                 event.optimizer,
                 event.learning_rate,
@@ -369,6 +373,13 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, RefinementStep) and self._refinement_total > 0 and sys.stdout.isatty():
+            # Recorded here too, not only in the non-tty branch below: the REFINEMENT COMPLETE box
+            # (printed later, off RefinementOutputsWritten) looks up the selected epoch's numbers by
+            # iteration regardless of which branch rendered its live progress -- skipping this would
+            # silently drop the box on a real terminal (the common case) while it kept working
+            # whenever stdout was piped, which is precisely the inconsistency that makes it easy to
+            # miss.
+            self._epochs[event.iteration] = event
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
@@ -536,12 +547,24 @@ class ConsoleLogger:
                 ("Stages", str(event.n_stages)),
                 ("Total HKLs", str(event.total_hkl)),
                 ("Matched HKLs", str(event.matched_hkl)),
-                ("Solve beams (max/rotation)", str(event.max_solve_beams)),
                 (mean_label, mean_value),
             ),
         )
         self._orientation_scores = []
         self._orientation_residual = None
+
+    def _print_infer_box(self, event: InferenceCompleted) -> None:
+        """Render "INFER COMPLETE" on the run's terminal event -- ``run_inference``'s own summary."""
+        print()
+        print_summary_box(
+            "INFER COMPLETE",
+            (
+                ("Rotations", str(event.n_rotations)),
+                ("Evaluated", str(event.n_evaluated)),
+                ("Mean R_obs", f"{event.mean_r_obs:.6g}"),
+                ("Mean wR2", f"{event.mean_wr2:.6g}"),
+            ),
+        )
 
     def _print_refinement_box(self, event: RefinementOutputsWritten) -> None:
         """Render "REFINEMENT COMPLETE" + the written artifacts, on the run's terminal event.
@@ -559,17 +582,29 @@ class ConsoleLogger:
             def cell(value: float | None) -> str:
                 return "n/a" if value is None else f"{value:.6g}"
 
+            metric_rows: tuple[tuple[str, str], ...]
+            if best.val_wr2 is not None:
+                metric_rows = (
+                    ("Train wR2", cell(best.wr2)),
+                    ("Train R_obs", cell(best.r_obs)),
+                    ("Val wR2", cell(best.val_wr2)),
+                    ("Val R_obs", cell(best.val_r_obs)),
+                )
+            else:
+                metric_rows = (
+                    ("wR2", cell(best.wr2)),
+                    ("R_obs", cell(best.r_obs)),
+                )
             print()
             print_summary_box(
                 "REFINEMENT COMPLETE",
                 (
                     ("Best epoch", str(completed.best_step + 1)),
                     ("Objective", f"{completed.best_loss:.6g}"),
-                    ("wR2", cell(best.wr2)),
-                    ("R_obs", cell(best.r_obs)),
+                    *metric_rows,
                     ("Diffraction loss", cell(best.diff_loss)),
                     (
-                        "HKLs (Observed/total)",
+                        "Matched HKLs (I>3σ/total)",
                         f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
                     ),
                 ),
