@@ -22,6 +22,7 @@ from torch import Tensor
 
 from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import BlochSolution, align
+from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
@@ -102,6 +103,7 @@ def run_inference(
     device: Device | None = None,
     max_batch: int | None = None,
     absorption: Absorption = NO_ABSORPTION,
+    scattering_factors: ScatteringFactorModel = "lobato2026",
     logger: Logger = NULL_LOGGER,
 ) -> InferenceResult:
     """Run the forward model once per orientation and score each against its observed pattern.
@@ -132,7 +134,12 @@ def run_inference(
     plan = prepare(plan)
     params = refinement.params if device is None else refinement.params.to(device)
     engine = build_engine(
-        plan, refinement, method=method, max_batch=max_batch, absorption=absorption
+        plan,
+        refinement,
+        method=method,
+        max_batch=max_batch,
+        absorption=absorption,
+        scattering_factors=scattering_factors,
     )
     with torch.no_grad():
         solutions = engine.simulate(params)

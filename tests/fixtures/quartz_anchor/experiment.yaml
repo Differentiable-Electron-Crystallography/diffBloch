@@ -8,6 +8,7 @@ inputs:
 sample:
   thicknesses: [820.0]
 blochwave:
+  scattering_factors: lobato2014  # pinned: matches tests/e2e/inference/quartz/case.yaml's run_inference override
   rocking_curve_sampling: 42
   dsg: 0.0015
   rsg: 0.9

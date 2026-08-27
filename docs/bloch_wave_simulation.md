@@ -45,7 +45,7 @@ F_{\mathbf{g}} = \frac{1}{\Omega}\sum_j f^e_j(s)\,T_j(\mathbf{h})\,O_j\,
 \exp(2\pi i\,\mathbf{h}\cdot\mathbf{r}_j),
 ```
 
-diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using the Lobato–Van Dyck (2014) parametrization for {math}`f^e(s)`. 
+diffBloch first computes the Born-approximation structure factor given above (`core.scattering.structure_factors`), using an analytic parametrization for {math}`f^e(s)` (`blochwave.scattering_factors`; see [Hyperparameter selection](hyperparameter-selection.md)).
 
 These values may then be converted to {math}`U_{\mathbf{g}}` using:
 

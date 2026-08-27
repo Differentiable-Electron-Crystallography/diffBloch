@@ -41,6 +41,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.name == "quartz"
     # defaults-as-code: the experiment file only needs inputs + overrides
     assert cfg.blochwave.solver == "matrix_exp"
+    assert cfg.blochwave.scattering_factors == "lobato2026"
     assert cfg.sample.thicknesses == (820.0,)
     assert cfg.refinement.trainable.positions == "all"
     assert cfg.refinement.trainable.adp == "all"
@@ -527,6 +528,20 @@ def test_blochwave_has_one_complete_default() -> None:
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     assert cfg.blochwave.to_policy() == UnionCoupling()
+
+
+def test_scattering_factors_override_parses() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
+    cfg = ExperimentConfig.model_validate(
+        {**base, "blochwave": {"scattering_factors": "lobato2014"}}
+    )
+    assert cfg.blochwave.scattering_factors == "lobato2014"
+
+
+def test_scattering_factors_rejects_unknown_model() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**base, "blochwave": {"scattering_factors": "lobato2099"}})
 
 
 def test_coupling_policy_override_parses() -> None:

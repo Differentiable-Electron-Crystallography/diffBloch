@@ -442,6 +442,7 @@ def run_experiment(
         max_batch=max_batch,
         logger=logger,
         absorption=cfg.blochwave.to_absorption(),
+        scattering_factors=cfg.blochwave.scattering_factors,
     )
 
 
@@ -527,6 +528,7 @@ def refine_experiment(
         method=cfg.blochwave.solver,
         max_batch=max_batch,
         absorption=cfg.blochwave.to_absorption(),
+        scattering_factors=cfg.blochwave.scattering_factors,
         profile=profile,
         checkpoint_activations=checkpoint_activations,
     )
@@ -554,6 +556,7 @@ def refine_experiment(
             method=cfg.blochwave.solver,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
+            scattering_factors=cfg.blochwave.scattering_factors,
             profile=profile,
             checkpoint_activations=checkpoint_activations,
         )
@@ -564,6 +567,7 @@ def refine_experiment(
             method=cfg.blochwave.solver,
             max_batch=max_batch,
             absorption=cfg.blochwave.to_absorption(),
+            scattering_factors=cfg.blochwave.scattering_factors,
             profile=profile,
             checkpoint_activations=checkpoint_activations,
         )
@@ -1182,6 +1186,7 @@ def _recipe_steps(
             workers=workers,
             logger=logger,  # per-rotation fit progress (the run's long phase)
             absorption=cfg.blochwave.to_absorption(),
+            scattering_factors=cfg.blochwave.scattering_factors,
             scores=cfg.loss_metrics.to_scores(),
             residual=cfg.loss_metrics.residual,
         )
@@ -1195,6 +1200,7 @@ def _recipe_steps(
             max_batch=max_batch,
             logger=logger,  # per-rotation thickness-fit progress (the memory-heavy tail phase)
             absorption=cfg.blochwave.to_absorption(),
+            scattering_factors=cfg.blochwave.scattering_factors,
             scores=cfg.loss_metrics.to_scores(),
             residual=cfg.loss_metrics.residual,
         )

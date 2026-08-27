@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.losses import (
     rbragg_loss,
@@ -84,6 +85,12 @@ class BlochwaveConfig(_StrictConfig):
     # typed as the solver's own SolverMethod literal (the single source of truth), so an unknown
     # method fails fast at config load rather than deep in the forward model.
     solver: SolverMethod = "matrix_exp"
+    # Electron scattering-factor table: "lobato2026" (Lobato, Zhang, Van Aert & Kirkland 2026,
+    # element-adaptive Dirac-Pade basis fitted against updated relativistic reference densities --
+    # the default; most accurate for heavier elements) or "lobato2014" (Lobato & Van Dyck 2014,
+    # fixed <=5-term basis, the long-standing prior default; see
+    # core.scattering.ScatteringFactorModel).
+    scattering_factors: ScatteringFactorModel = "lobato2026"
     absorption: bool = False
     rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
     dsg: float = _BEAM_SELECTION_DEFAULTS.dsg

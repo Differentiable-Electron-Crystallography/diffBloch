@@ -48,6 +48,7 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | Field | Default | What it does |
 |---|---|---|
 | `solver` | `"matrix_exp"` | Solver used for preprocessing, inference, and refinement. Use `matrix_exp` when absorption is enabled -- the alternative, `bloch_eigen`, isn't safe for the non-Hermitian absorptive structure matrix. |
+| `scattering_factors` | `"lobato2026"` | Electron scattering-factor table (element-adaptive Dirac-Pade basis, most accurate for heavier elements). Other options: `"lobato2014"` (the original fixed 5-term basis). |
 | `absorption` | `false` | Include absorption as an imaginary structure-factor contribution. |
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
