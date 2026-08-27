@@ -1,0 +1,140 @@
+name: PyPI publish
+
+# Called by release.yml once a merge to main bumps __version__ in src/diffBloch/__init__.py.
+# Deliberately NOT triggered by a tag: release.yml creates the tag with GITHUB_TOKEN, and tags
+# pushed by that token never start a workflow run. Dropping the tag trigger also means a
+# hand-pushed v* tag publishes nothing, so releasing goes through a reviewed PR or not at all.
+#
+# There is nothing to run by hand for a normal release -- see release.yml.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit (or tag) to build and publish.
+        required: true
+        type: string
+      version:
+        description: Version the caller expects that ref to build, e.g. 0.2.1.
+        required: true
+        type: string
+  # Re-run path for a release whose publish failed after the fact. Name the commit and the version
+  # it carries; the check below refuses the pair if they disagree. Repeated in full rather than
+  # shared with an anchor -- GitHub Actions does not support YAML anchors.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit (or tag) to build and publish.
+        required: true
+        type: string
+      version:
+        description: Version the caller expects that ref to build, e.g. 0.2.1.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Build package (wheel + sdist)
+        run: uv build
+
+      # Two independent reads of __init__.py have to agree: the caller's (release.yml greps the
+      # line) and hatchling's (which builds the wheel from it). This is a weaker guarantee than the
+      # tag-vs-metadata check it replaces -- the file is the only source of truth now, so there is
+      # no second number to disagree with it -- but it still catches a bug in that grep and a
+      # workflow_dispatch naming a ref/version pair that don't match. Compare against the built
+      # wheel (real metadata, not a re-parse of the source), normalising both through PEP 440 so
+      # 0.3.0-rc1 and 0.3.0rc1 are treated as equal.
+      - name: Check expected version against built version
+        env:
+          EXPECTED: ${{ inputs.version }}
+        run: |
+          uv run --no-project --with packaging python - <<'PY'
+          import os, pathlib, sys
+          from packaging.version import InvalidVersion, Version
+
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          dist_v = Version(wheel.name.split("-")[1])
+          expected = os.environ["EXPECTED"]
+          try:
+              expected_v = Version(expected)
+          except InvalidVersion:
+              sys.exit(f"::error::requested version {expected} is not a PEP 440 version")
+          if expected_v != dist_v:
+              sys.exit(
+                  f"::error::caller asked for {expected_v}, but the build produced {dist_v}. "
+                  "The requested ref does not carry the requested version."
+              )
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              fh.write(f"Built **diffBloch {dist_v}** -> publishing to **PyPI**\n")
+          PY
+
+      - name: Sync (dev)
+        run: uv sync --dev
+
+      # Redundant with CI on the PR -- `check` is a required status check on main -- but a PyPI
+      # upload is irreversible (a version number can never be reused) and workflow_dispatch can
+      # name any ref. Cheap insurance run directly against the artifact being shipped.
+      - name: Unit tests
+        run: uv run pytest
+
+      - name: Verify sdist scope
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          files=$(tar -tzf "$sdist" | sed 's|^[^/]*/||' | grep -v '/$' | grep -v '^$')
+          # PKG-INFO and .gitignore are added by hatchling itself, not by only-include.
+          unexpected=$(printf '%s\n' "$files" \
+            | grep -Ev '^(src/diffBloch/|README\.md$|LICENSE$|REFERENCES\.md$|PKG-INFO$|pyproject\.toml$|\.gitignore$)' \
+            || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::sdist contains paths outside the package:"
+            printf '  %s\n' $unexpected
+            exit 1
+          fi
+          for want in src/diffBloch/core/data/lobato.json src/diffBloch/py.typed; do
+            printf '%s\n' "$files" | grep -qx "$want" \
+              || { echo "::error::sdist is missing $want"; exit 1; }
+          done
+
+      # twine's check is the only thing that catches a README that fails to render on PyPI --
+      # the project page falls back to raw text and there is no way to fix it without a new
+      # version number.
+      - name: Check distribution metadata
+        run: uv run --with twine twine check --strict dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/diffBloch
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
