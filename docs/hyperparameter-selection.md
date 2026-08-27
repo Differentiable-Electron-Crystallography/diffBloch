@@ -17,7 +17,7 @@ Some values are deliberately **not** config fields in diffBloch, they are read f
 | UB orientation matrix | None; required | `.cif_pets` `_diffrn_orient_matrix_UB_*` | The UB matrix and each rotation's goniometer angles supply its starting orientation. |
 | Data-collection geometry | None; required  | `.cif_pets` `_diffrn_measurement_details`, line `data collection geometry:` | PETS values `continuous rotation` and `precession`, respectively. |
 | Integration semiangle | None; required | Per-rotation `.cif_pets` `_diffrn_zone_axis_precession_angle` | Interpreted as the continuous-rotation tilt half-width or the fixed precession-cone angle. I|
-| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.mosaicity: true`; a missing value then raises rather than defaulting silently. |
+| Apparent mosaicity {math}`\sigma` (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.incoherent_mosaicity: true`. Refined instead of fixed when `refinement.trainable.mosaicity_sigma: true` is also set. |
 
 
 
@@ -52,7 +52,8 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and converts it into an internal moving-average sample span. No additional orientations are simulated. |
+| `incoherent_mosaicity` | `false` | `true` reads the apparent mosaicity {math}`\sigma` in degrees from `.cif_pets` and places `mosaicity_samples` additional tilts over a 2-D isotropic Gaussian orientation distribution per rocking-curve tilt, summing the resulting intensities. See [Rocking curves and mosaicity inside a `Plan`](preprocessing.md#rocking-curves-and-mosaicity-inside-a-plan) and [`incoherent_mosaicity` cost and benefit](#incoherent_mosaicity-cost-and-benefit) below. |
+| `mosaicity_samples` | `5` | Number of mosaic-block orientation samples placed per rocking-curve tilt when `incoherent_mosaicity: true`. Only read when `incoherent_mosaicity` is on. Each sample is a full independent Bloch wave calculation, so runtime scales linearly with this value. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
@@ -60,6 +61,19 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `g_max` | `2.25` | Largest reflection {math}`g` vector simulated (Å⁻¹). Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
 | `ignore_orientations` | `()` | Zero-based `.cif_pets` rotation indices to exclude from the experiment. |
+
+### `incoherent_mosaicity` cost and benefit
+
+Cost is linear in `mosaicity_samples`: each sample is a full Bloch wave solve through the complete
+crystal thickness, not an incremental tilt. At the default `mosaicity_samples: 5`,
+`incoherent_mosaicity` multiplies preprocessing and refinement runtime by 5x on top of
+`rocking_curve_sampling`; the multiplier scales with `mosaicity_samples` beyond that.
+
+Benefit scales with the mosaicity value reported in `.cif_pets`. The larger it is, the more `incoherent_mosaicity` corrects for. Below roughly 0.01°, the
+correction is negligible relative to its cost. Above it, the correction may lower residuals by a few
+percent. This method follows from the isotropic-mosaicity model of Palatinus,
+Acta Cryst. 2024, A80, e225.
+
 
 ### `rsg` and `dsg`
 
@@ -182,6 +196,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 | `positions` | `"all"` | `"all"` or `"none"`: whether atomic positions are refined. |
 | `adp` | `"all"` | `"all"` or `"none"`: whether atomic displacement parameters are refined. |
 | `occupancy` | `"none"` | `"all"` or `"none"`: whether site occupancies are refined. |
+| `mosaicity_sigma` | `false` | Whether the mosaic angular spread {math}`\sigma` is refined jointly with the structure, reweighting the same fixed mosaic-sample directions rather than moving them. Requires `blochwave.incoherent_mosaicity: true`; has nothing to refine otherwise. |
 
 ### `refinement.split`
 

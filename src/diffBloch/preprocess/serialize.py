@@ -45,9 +45,9 @@ from diffBloch.engine.plan import (
 from diffBloch.preprocess.pipeline import StepRecord
 from diffBloch.preprocess.plan import Plan, require_built_plans
 
-__all__ = ["read_plan", "write_plan"]
+__all__ = ["plan_is_readable", "read_plan", "write_plan"]
 
-_FORMAT_VERSION = 5
+_FORMAT_VERSION = 6
 
 
 def write_plan(plan: Plan, path: str | Path) -> None:
@@ -65,6 +65,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
             "energy": op.energy,
             "u0": op.u0,
             "rotation_index": op.pattern.rotation_index,
+            "dataset": op.pattern.dataset,
             "tilt_reduction": _dump_reduction(op.tilt_reduction),
         }
         if isinstance(op, CoupledOrientationPlan):
@@ -90,6 +91,25 @@ def write_plan(plan: Plan, path: str | Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("wb") as file:
         np.savez_compressed(file, **arrays)  # type: ignore[arg-type]
+
+
+def plan_is_readable(path: str | Path) -> bool:
+    """Whether :func:`read_plan` can read ``path``'s checkpoint format (and the file at all).
+
+    ``read_plan`` *raises* on a format it cannot read, but the checkpoint reuse gate
+    (:func:`~diffBloch.config.preprocess_lock_status`) keys on the release ``__version__``, not on
+    this format -- so a checkpoint written by an earlier format within the same release still passes
+    the lock and would then blow up inside ``read_plan``. Callers ask this first and treat ``False``
+    as *stale* (recompute + rewrite), which is what a checkpoint this build cannot read actually is.
+    A corrupt or truncated ``.npz`` is ``False`` for the same reason. Reads only the JSON metadata
+    array, never the geometry, so it stays cheap enough to call on every checkpoint hit.
+    """
+    try:
+        with np.load(Path(path), allow_pickle=False) as data:
+            meta = json.loads(str(data["__meta__"].item()))
+        return int(meta["format_version"]) == _FORMAT_VERSION
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def read_plan(path: str | Path) -> Plan:
@@ -119,6 +139,7 @@ def _read_orientation(
         intensities=torch.as_tensor(data[f"pat_int_{i}"]),
         sigmas=torch.as_tensor(data[f"pat_sig_{i}"]),
         rotation_index=int(entry["rotation_index"]),
+        dataset=str(entry["dataset"]),
     )
     energy = float(entry["energy"])
     thickness = torch.as_tensor(data[f"thickness_{i}"])

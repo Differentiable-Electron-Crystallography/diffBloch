@@ -23,11 +23,20 @@ _RED = "#b40426"
 
 
 def _apply_house_style(ax: Any) -> None:
-    """Shared look for report plots: Arial, blue/red palette, clean integer-ish y-ticks, no grid."""
+    """Shared look for report plots: Arial, blue/red palette, clean integer-ish y-ticks, no grid.
+
+    ``font.family`` is set to the generic ``sans-serif`` family with ``font.sans-serif`` naming
+    Arial as the preferred face, falling back silently to DejaVu Sans (matplotlib's bundled font,
+    always present) when Arial is not installed. Setting ``font.family`` directly to ``"Arial"``
+    instead makes every glyph search Arial specifically and log its own ``findfont: Font family
+    'Arial' not found`` warning when it's missing -- one plot can spam dozens of these, burying the
+    actually useful progress output, even though the plot renders fine either way.
+    """
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MaxNLocator
 
-    plt.rcParams["font.family"] = "Arial"
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans"]
     ax.grid(False)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -80,6 +89,7 @@ class ThicknessPlotLogger:
         ax.set_xlabel("Thickness (Å)")
         ax.set_ylabel(label)
         ax.set_title(f"{label} vs thickness — rotation {event.rotation_index}")
+        ax.set_ylim(bottom=0)
         _apply_house_style(ax)
         fig.tight_layout()
         fig.savefig(self.output_dir / f"{event.rotation_index}.png")
