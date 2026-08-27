@@ -23,7 +23,6 @@ import torch
 from torch import Tensor
 
 from diffBloch.core import StructureFactorGather
-from diffBloch.core.scattering import ScatteringFactorModel
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import (
     CoupledOrientationPlan,
@@ -50,7 +49,6 @@ def build_engine(
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
     absorption: Absorption = NO_ABSORPTION,
-    scattering_factors: ScatteringFactorModel = "lobato2026",
     compact_structure_factors: bool = True,
     profile: bool = False,
     checkpoint_activations: bool = True,
@@ -111,7 +109,6 @@ def build_engine(
         method=method,
         max_batch=max_batch,
         absorption=absorption,
-        scattering_factors=scattering_factors,
         active_structure_factor_indices=active_indices,
         profile=profile,
         checkpoint_activations=checkpoint_activations,

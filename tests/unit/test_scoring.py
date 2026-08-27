@@ -178,16 +178,9 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
 
 
 def test_build_engine_computes_only_structure_factors_referenced_by_solve_gathers() -> None:
-    # Pinned to lobato2014 regardless of the ambient default: this checks the compact/full code
-    # paths agree bit-for-bit, an invariant of the engine machinery, not of which scattering-factor
-    # table happens to be selected -- a table with more summed terms (lobato2026) can flip the
-    # last bit of a float64 sum between the two batch shapes without either being wrong (both
-    # reproduce this element to ~1e-18 relative, far below the float32 solve's own precision).
     plan, refinement = _silicon_plan()
-    compact = build_engine(plan, refinement, scattering_factors="lobato2014")
-    full = build_engine(
-        plan, refinement, compact_structure_factors=False, scattering_factors="lobato2014"
-    )
+    compact = build_engine(plan, refinement)
+    full = build_engine(plan, refinement, compact_structure_factors=False)
 
     assert compact.active_structure_factor_indices is not None
     assert (

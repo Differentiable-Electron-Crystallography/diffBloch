@@ -5,6 +5,5 @@ seed: 42
 compare_n_rotations: 10
 rotation_indices: [26, 33, 56, 18, 70, 84, 85, 96, 20, 34]
 solver: bloch_eigen
-scattering_factors: lobato2014  # pinned: the reference values in results.json were fit against this table
 union_adaptive: false
 atol: 1.0e-6
