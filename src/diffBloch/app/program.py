@@ -59,6 +59,7 @@ from diffBloch.config import (
     write_refinement_lock,
 )
 from diffBloch.config.schema import dataset_checkpoint_stem
+from diffBloch.core.constraints import positive
 from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import (
@@ -66,6 +67,7 @@ from diffBloch.engine import (
     ModelRefinementResult,
     RefinementEngine,
     ThicknessBounds,
+    TrainableIsotropicMosaicity,
     build_refinement_model,
     build_refinement_problem,
     run_refinement_model,
@@ -78,9 +80,11 @@ from diffBloch.io import (
     read_structure,
     read_structure_with_diagnostics,
 )
+from diffBloch.io._cifio import select_block
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
+    IsotropicMosaicityRefined,
     Logger,
     MultiLogger,
     PreprocessCompleted,
@@ -111,13 +115,15 @@ from diffBloch.preprocess import (
     write_plan,
 )
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
-from diffBloch.preprocess.experiment import RefinementSetup
+from diffBloch.preprocess.experiment import RefinementSetup, resolve_dataset_mosaicity
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.orientation import isotropic_mosaic_tilts
 from diffBloch.preprocess.plan import unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
     IntegrationGeometry,
+    IsotropicMosaicity,
     ScoredHklSelection,
     TrialCoupling,
 )
@@ -565,20 +571,27 @@ def refine_experiment(
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
     thickness_nns: tuple[ApparentThicknessNN, ...] = ()
+    mosaicity_nns: tuple[TrainableIsotropicMosaicity, ...] = ()
     raw_alphas: np.ndarray | None = None
-    if thickness_spec.enabled:
+    if thickness_spec.enabled or cfg.refinement.trainable.mosaicity_sigma:
         records = _read_experimental_data(root, cfg)
-        raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
-        thickness_nns = _thickness_networks(cfg, records, thickness_spec)
+        if thickness_spec.enabled:
+            raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
+            thickness_nns = _thickness_networks(cfg, records, thickness_spec)
+        if cfg.refinement.trainable.mosaicity_sigma:
+            mosaicity_nns = _mosaicity_components(cfg, records, integrations)
+        components: tuple[ApparentThicknessNN | TrainableIsotropicMosaicity, ...] = (
+            thickness_nns + mosaicity_nns
+        )
         model = build_refinement_model(
             initial=initial,
-            components=thickness_nns,
+            components=components,
             component_params={
-                thickness_nn.key: thickness_nn.initial_params(
+                component.key: component.initial_params(
                     dtype=initial.asu_positions.dtype,
                     device=initial.asu_positions.device,
                 )
-                for thickness_nn in thickness_nns
+                for component in components
             },
         )
     else:
@@ -607,6 +620,7 @@ def refine_experiment(
         result,
         validation_rotation_indices=validation_rotation_indices,
         thickness_nns=thickness_nns,
+        mosaicity_nns=mosaicity_nns,
         raw_alphas=raw_alphas,
     )
     return result
@@ -619,6 +633,7 @@ def _report_refinement_outcome(
     *,
     validation_rotation_indices: frozenset[int],
     thickness_nns: tuple[ApparentThicknessNN, ...],
+    mosaicity_nns: tuple[TrainableIsotropicMosaicity, ...],
     raw_alphas: np.ndarray | None,
 ) -> None:
     """Emit the settled-result events the refinement loop itself cannot produce.
@@ -652,6 +667,18 @@ def _report_refinement_outcome(
                     raw_alphas,
                 )
             )
+    for mosaicity_nn in mosaicity_nns:
+        params = result.best_model.component_params[mosaicity_nn.key]
+        sigma = float(positive(params["unconstrained_sigma"]).reshape(()).item())
+        # The component's own key is "isotropic_mosaicity[<ref>]"; the label is just <ref>.
+        label = mosaicity_nn.key.removeprefix("isotropic_mosaicity[").removesuffix("]")
+        logger.report(
+            IsotropicMosaicityRefined(
+                label=label,
+                sigma_degrees=sigma,
+                pets_sigma_degrees=mosaicity_nn.init_sigma_degrees,
+            )
+        )
     logger.report(
         RefinementOutputsWritten(
             structure=result.artifacts["refined_structure"], artifacts=result.artifacts
@@ -697,6 +724,45 @@ def _thickness_networks(
     )
 
 
+def _mosaicity_components(
+    cfg: ExperimentConfig,
+    records: tuple[ExperimentalRecord, ...],
+    integrations: tuple[IntegrationGeometry, ...],
+) -> tuple[TrainableIsotropicMosaicity, ...]:
+    """One trainable isotropic-mosaicity component per dataset, scoped to its pooled rotation range
+    (same partitioning as :func:`_thickness_networks`).
+
+    Only built when ``refinement.trainable.mosaicity_sigma`` is on; a dataset whose apparent
+    mosaicity resolves to exactly 0 gets no component (there's no spread to refine).
+    """
+    if not cfg.refinement.trainable.mosaicity_sigma:
+        return ()
+    offsets = np.cumsum([0, *(record.n_rotations for record in records)])
+    components: list[TrainableIsotropicMosaicity] = []
+    for ref, record, integration, start, end in zip(
+        _exp_data_refs(cfg), records, integrations, offsets[:-1], offsets[1:], strict=True
+    ):
+        resolved = resolve_dataset_mosaicity(
+            cfg.blochwave.incoherent_mosaicity,
+            record,
+            cfg.blochwave.to_rocking_curve(integration),
+            model="isotropic",
+            isotropic_samples=cfg.blochwave.mosaicity_samples,
+        )
+        if not isinstance(resolved, IsotropicMosaicity):
+            continue
+        _tilts, _weights, polar = isotropic_mosaic_tilts(resolved.sigma_degrees, resolved.samples)
+        components.append(
+            TrainableIsotropicMosaicity(
+                polar_degrees=tuple(float(p) for p in polar.tolist()),
+                init_sigma_degrees=resolved.sigma_degrees,
+                rotation_range=(int(start), int(end)),
+                key=f"isotropic_mosaicity[{ref}]",
+            )
+        )
+    return tuple(components)
+
+
 def _normalized_pets_alphas(alphas: np.ndarray) -> tuple[float, ...]:
     """Legacy MinMaxScaler ``[-1, 1]`` normalization for the PETS alpha coordinate."""
     values = np.asarray(alphas, dtype=np.float64)
@@ -738,7 +804,7 @@ def _write_refinement_outputs(
     state = constrain(result.best_params, refinement.spec)
     source_path = root / cfg.inputs.structure
     document = gemmi.cif.read_file(str(source_path))
-    block = document.sole_block()
+    block = select_block(document, required_loop_tag="_atom_site_label")
     structure = read_structure(source_path, load_hydrogens=cfg.inputs.load_hydrogens)
     positions = state.positions.detach().cpu().numpy()
     occupancies = state.occupancies.detach().cpu().numpy()
@@ -1068,7 +1134,7 @@ def _recipe_steps(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     integration: IntegrationGeometry,
-    mosaicity: MosaicSmoothed | None,
+    mosaicity: MosaicSmoothed | IsotropicMosaicity | None,
     logger: Logger,
     *,
     device: Device | None = None,
