@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import math
 from collections.abc import Mapping
 
 import pytest
@@ -11,7 +10,6 @@ import torch
 from tests.unit.test_engine import _engine, _observed_pattern, _params
 from torch import Tensor
 
-from diffBloch.core.constraints import positive
 from diffBloch.engine import (
     ApparentThicknessNN,
     AtomSelection,
@@ -21,14 +19,12 @@ from diffBloch.engine import (
     RefinementEngine,
     RefinementProblem,
     ThicknessBounds,
-    TrainableIsotropicMosaicity,
     TrainableSpec,
     build_refinement_model,
     mean_plan_thickness,
     run_refinement_model,
 )
 from diffBloch.engine.plan import OrientationPlanLike
-from diffBloch.preprocess.orientation import rocking_curve_tilts
 
 
 @dataclasses.dataclass(frozen=True)
@@ -609,124 +605,3 @@ def test_structure_only_model_keeps_quartz_objective_exactly_unchanged() -> None
     wrapped = engine.objective_value_model(build_refinement_model(initial=params))
 
     assert torch.allclose(wrapped.total, legacy.total, rtol=0.0, atol=0.0)
-
-
-def test_trainable_isotropic_mosaicity_validates_construction() -> None:
-    with pytest.raises(ValueError, match="polar_degrees must be non-empty"):
-        TrainableIsotropicMosaicity(polar_degrees=(), init_sigma_degrees=0.1, rotation_range=(0, 1))
-    with pytest.raises(ValueError, match="init_sigma_degrees must be positive"):
-        TrainableIsotropicMosaicity(
-            polar_degrees=(0.0,), init_sigma_degrees=0.0, rotation_range=(0, 1)
-        )
-    with pytest.raises(ValueError, match="rotation_range must be"):
-        TrainableIsotropicMosaicity(
-            polar_degrees=(0.0,), init_sigma_degrees=0.1, rotation_range=(1, 1)
-        )
-
-
-def test_trainable_isotropic_mosaicity_initial_params_round_trips_the_seed_sigma() -> None:
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0, 0.1), init_sigma_degrees=0.024, rotation_range=(0, 1)
-    )
-    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    assert torch.allclose(
-        positive(params["unconstrained_sigma"]), torch.tensor([0.024], dtype=torch.float64)
-    )
-
-
-def test_trainable_isotropic_mosaicity_forward_context_is_empty_outside_its_rotation_range() -> (
-    None
-):
-    engine = _engine()
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,), init_sigma_degrees=0.1, rotation_range=(5, 7)
-    )
-    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-
-    context = component.forward_context(
-        params, rotation_index=1, orientation=_orientation_at(engine, 1)
-    )
-    assert context.mosaic_weights is None
-
-
-def test_trainable_isotropic_mosaicity_forward_context_computes_gaussian_density_weights() -> None:
-    tilts = rocking_curve_tilts(0.5, 4)  # 4 rocking tilts, tiled across 2 mosaic samples below
-    engine = _engine(tilts=tilts)
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0, 0.2), init_sigma_degrees=0.1, rotation_range=(0, 1)
-    )
-    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-
-    context = component.forward_context(
-        params, rotation_index=0, orientation=_orientation_at(engine, 0)
-    )
-    assert context.mosaic_weights is not None
-    sigma = 0.1
-    expected_pair = torch.tensor(
-        [math.exp(-(0.0**2) / (2.0 * sigma**2)), math.exp(-(0.2**2) / (2.0 * sigma**2))],
-        dtype=torch.float64,
-    )
-    # Tiled across the 4 rocking tilts / 2 mosaic samples = 2 repeats of the same pair.
-    assert torch.allclose(context.mosaic_weights, expected_pair.repeat(2))
-
-
-def test_trainable_isotropic_mosaicity_forward_context_is_differentiable() -> None:
-    engine = _engine()
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,), init_sigma_degrees=0.1, rotation_range=(0, 1)
-    )
-    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    params["unconstrained_sigma"].requires_grad_(True)
-
-    context = component.forward_context(
-        params, rotation_index=0, orientation=_orientation_at(engine, 0)
-    )
-    assert context.mosaic_weights is not None
-    context.mosaic_weights.sum().backward()
-    assert params["unconstrained_sigma"].grad is not None
-
-
-def test_trainable_isotropic_mosaicity_forward_context_requires_unconstrained_sigma() -> None:
-    engine = _engine()
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,), init_sigma_degrees=0.1, rotation_range=(0, 1)
-    )
-    with pytest.raises(ValueError, match="requires an 'unconstrained_sigma' tensor"):
-        component.forward_context({}, rotation_index=0, orientation=_orientation_at(engine, 0))
-
-
-def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_its_samples() -> None:
-    tilts = rocking_curve_tilts(0.5, 3)  # 3 tilts, not a multiple of 2 mosaic samples
-    engine = _engine(tilts=tilts)
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0, 0.2), init_sigma_degrees=0.1, rotation_range=(0, 1)
-    )
-    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    with pytest.raises(ValueError, match="not a multiple of the 2 mosaic"):
-        component.forward_context(params, rotation_index=0, orientation=_orientation_at(engine, 0))
-
-
-def test_overlapping_mosaicity_components_reject_duplicate_mosaic_weights() -> None:
-    engine = _engine()  # its single orientation carries rotation_index 0
-    first = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,),
-        init_sigma_degrees=0.1,
-        rotation_range=(0, 1),
-        key="isotropic_mosaicity[a.cif_pets]",
-    )
-    second = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,),
-        init_sigma_degrees=0.1,
-        rotation_range=(0, 1),
-        key="isotropic_mosaicity[b.cif_pets]",
-    )
-    params = _params()
-    component_params = {
-        component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-        for component in (first, second)
-    }
-    clashing = build_refinement_model(
-        initial=params, components=(first, second), component_params=component_params
-    )
-    with pytest.raises(ValueError, match="multiple refinement components provided mosaic_weights"):
-        engine.objective_value_model(clashing)

@@ -10,6 +10,7 @@ import torch
 from diffBloch.config import load_config
 from diffBloch.core.adp import ueq_from_cif_uij
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
+from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
@@ -18,7 +19,6 @@ from diffBloch.preprocess import (
     from_experiment,
     resolve_dataset_orientations,
 )
-from diffBloch.specs import IsotropicMosaicity
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURE_ROOT / "quartz_anchor"
@@ -29,7 +29,7 @@ def _quartz_setup() -> object:
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": False})}
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": False})}
     )
     return (
         structure,
@@ -84,51 +84,54 @@ def test_from_experiment_train_test_false_holds_out_nothing() -> None:
     assert len(setup.plans.train.orientations) == experimental_data.n_rotations
 
 
-def test_incoherent_mosaicity_is_disabled_by_default() -> None:
+def test_mosaicity_is_disabled_by_default() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
         update={"mosaicity_degrees": None}
     )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": False})}
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": False})}
     )
 
     setup = from_experiment(structure, experimental_data, config)
 
-    assert config.blochwave.incoherent_mosaicity is False
+    assert config.blochwave.mosaicity is False
     assert setup.mosaicity is None
+    assert not any(hasattr(plan, "mosaicity_degrees") for plan in setup.plans.combined.orientations)
 
 
-def test_enabled_incoherent_mosaicity_requires_pets_metadata() -> None:
+def test_enabled_mosaicity_requires_pets_metadata_and_names_the_remedy() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
         update={"mosaicity_degrees": None}
     )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": True})}
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
     )
 
-    with pytest.raises(ValueError, match="set blochwave.incoherent_mosaicity: false"):
+    with pytest.raises(ValueError, match="set blochwave.mosaicity: false"):
         from_experiment(structure, experimental_data, config)
 
 
-def test_enabled_incoherent_mosaicity_resolves_pets_degrees_to_isotropic_mosaicity() -> None:
-    # The config path always resolves to the isotropic model at the PETS-reported value and
-    # Jana2020's default 5 samples -- no config knob for a different model, override, or count.
+def test_enabled_mosaicity_resolves_pets_degrees_to_internal_sample_span() -> None:
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
-        update={"mosaicity_degrees": 0.023}
+        update={"mosaicity_degrees": 0.6}
     )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": True})}
+        update={
+            "blochwave": base.blochwave.model_copy(
+                update={"mosaicity": True, "rocking_curve_sampling": 11}
+            )
+        }
     )
 
     setup = from_experiment(structure, experimental_data, config)
 
-    assert setup.mosaicity == IsotropicMosaicity(sigma_degrees=0.023, samples=5)
+    assert setup.mosaicity == MosaicSmoothed(samples=3)
 
 
 def test_enabled_mosaicity_rejects_negative_pets_metadata_at_setup_time() -> None:
@@ -138,7 +141,7 @@ def test_enabled_mosaicity_rejects_negative_pets_metadata_at_setup_time() -> Non
     )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": True})}
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
     )
 
     with pytest.raises(ValueError, match="finite, non-negative"):
@@ -152,7 +155,7 @@ def test_enabled_mosaicity_rejects_nonfinite_pets_metadata_at_setup_time() -> No
     )
     base = load_config(QUARTZ / "experiment.yaml")
     config = base.model_copy(
-        update={"blochwave": base.blochwave.model_copy(update={"incoherent_mosaicity": True})}
+        update={"blochwave": base.blochwave.model_copy(update={"mosaicity": True})}
     )
 
     with pytest.raises(ValueError, match="finite, non-negative"):

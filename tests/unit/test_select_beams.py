@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
-from diffBloch.core.products import MosaicSmoothed, PlainSum, WeightedSum
+from diffBloch.core.products import MosaicSmoothed, PlainSum
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.preprocess import (
     build_orientation_plans,
@@ -21,7 +21,7 @@ from diffBloch.preprocess import (
 )
 from diffBloch.preprocess.experiment import resolve_dataset_mosaicity
 from diffBloch.preprocess.plan import CandidatePlan
-from diffBloch.specs import IntegrationGeometry, IsotropicMosaicity, RockingCurve, UnionCoupling
+from diffBloch.specs import IntegrationGeometry, RockingCurve, UnionCoupling
 
 QUARTZ = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -168,42 +168,6 @@ def test_build_orientation_plans_rejects_mosaic_span_larger_than_sampling() -> N
     )
     with pytest.raises(ValueError, match="exceeds"):
         build_orientation_plans(rocking, MosaicSmoothed(samples=3))
-
-
-def test_build_orientation_plans_composes_isotropic_mosaic_tilts_onto_rocking_tilts() -> None:
-    plan, config, integration, _mosaicity = _quartz_train_plan()
-    pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
-    rocking = config.blochwave.to_rocking_curve(integration)
-    mosaicity = IsotropicMosaicity(sigma_degrees=0.1, samples=5)
-
-    built = build_orientation_plans(rocking, mosaicity)(pruned).orientations[0]
-
-    # Every rocking tilt composed with every mosaic tilt -- not the axis_smoothed model's
-    # moving-average reduction over the bare rocking tilts.
-    n_combined = config.blochwave.rocking_curve_sampling * 5
-    assert built.tilts.shape == (n_combined, 3, 3)
-    assert len(built.beam_plans) == n_combined
-    assert isinstance(built.tilt_reduction, WeightedSum)
-    assert built.tilt_reduction.weights.shape == (n_combined,)
-    # Weights repeat mosaic-minor (index = r * M + m): every block of 5 is the same 5 weights.
-    weights = built.tilt_reduction.weights
-    assert torch.equal(weights[:5], weights[5:10])
-
-
-def test_build_orientation_plans_isotropic_mosaicity_is_not_bounded_by_sampling() -> None:
-    # Unlike MosaicSmoothed, an isotropic sample count has nothing to do with rocking_curve_sampling
-    # -- it composes its own extra tilts rather than smoothing the existing ones.
-    rocking = RockingCurve(
-        integration=IntegrationGeometry(semiangle=1.0, geometry="continuous_rotation"),
-        sampling=2,
-    )
-    step = build_orientation_plans(rocking, IsotropicMosaicity(sigma_degrees=0.1, samples=50))
-    assert step is not None  # construction alone must not raise
-
-
-def test_isotropic_mosaicity_also_requires_rocking() -> None:
-    with pytest.raises(ValueError, match="mosaicity requires"):
-        build_orientation_plans(mosaicity=IsotropicMosaicity(sigma_degrees=0.1, samples=5))
 
 
 def test_build_orientation_plans_builds_coupled_solve_geometry_before_alignment() -> None:

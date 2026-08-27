@@ -14,7 +14,6 @@ import pytest
 from diffBloch.app.loggers.summary import SummaryLogger, ascii_table
 from diffBloch.observability import (
     ExperimentDeclared,
-    IsotropicMosaicityRefined,
     ObjectiveManifest,
     ObjectiveTerm,
     PreprocessCompleted,
@@ -68,7 +67,6 @@ def _experiment() -> ExperimentDeclared:
         solve_g_max=2.25,
         sg_max=0.01,
         absorption=False,
-        incoherent_mosaicity=False,
         steps=3,
         learning_rate=0.001,
     )
@@ -102,7 +100,6 @@ def _run(
     rotations: tuple[RefinedRotationMetrics, ...] = (),
     preprocess: PreprocessCompleted | None = None,
     profiles: tuple[ThicknessProfile, ...] = (),
-    mosaicities: tuple[IsotropicMosaicityRefined, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
 ) -> str:
@@ -133,8 +130,6 @@ def _run(
         logger.report(rotation)
     for profile in profiles:
         logger.report(profile)
-    for mosaicity in mosaicities:
-        logger.report(mosaicity)
     logger.report(RefinementOutputsWritten(structure=str(structure)))
     return (tmp_path / "refinement_report.txt").read_text()
 
@@ -175,8 +170,6 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
     assert "Per-rotation wR2 / R_obs" in text
     assert "Thickness NN" in text
     assert "enabled: no" in text
-    assert "Isotropic mosaicity" in text
-    assert "enabled: no (refinement.trainable.mosaicity_sigma is off)" in text
     assert "C1" in text and "O1" in text  # atom labels read back out of the committed CIF
     # The declared composition is stated up front, including the categories that are empty.
     assert "penalties  : bond_length (weight 3)" in text
@@ -210,7 +203,6 @@ def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> Non
             solve_g_max=experiment.solve_g_max,
             sg_max=experiment.sg_max,
             absorption=experiment.absorption,
-            incoherent_mosaicity=experiment.incoherent_mosaicity,
             steps=experiment.steps,
             learning_rate=experiment.learning_rate,
         ),
@@ -218,23 +210,6 @@ def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> Non
 
     assert "dataset_1.cif_pets: 400" in text
     assert "dataset_2.cif_pets: 800" in text
-
-
-def test_summary_reports_the_refined_mosaicity_sigma_when_one_was_trained(tmp_path: Path) -> None:
-    text = _run(
-        tmp_path,
-        rotations=(_rotation(0),),
-        mosaicities=(
-            IsotropicMosaicityRefined(
-                label="a.cif_pets", sigma_degrees=0.0241, pets_sigma_degrees=0.0220
-            ),
-        ),
-    )
-
-    assert "Isotropic mosaicity" in text
-    assert "a.cif_pets" in text
-    assert "0.0220" in text  # PETS sigma
-    assert "0.0241" in text  # refined sigma
 
 
 def test_summary_selects_the_best_epoch_not_the_last(tmp_path: Path) -> None:

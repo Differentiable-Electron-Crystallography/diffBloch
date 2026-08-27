@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 import torch
@@ -44,13 +43,7 @@ from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
 from diffBloch.preprocess.orientation import orientation_matrices, rotation_axis_correction
 from diffBloch.preprocess.plan import CandidatePlan, Plan
-from diffBloch.specs import (
-    NO_ABSORPTION,
-    Absorption,
-    IntegrationGeometry,
-    IsotropicMosaicity,
-    RockingCurve,
-)
+from diffBloch.specs import NO_ABSORPTION, Absorption, IntegrationGeometry, RockingCurve
 
 __all__ = [
     "DatasetSetup",
@@ -116,7 +109,7 @@ class ExperimentSetup:
     plans: PlanSplit
     refinement: RefinementSetup
     integration: IntegrationGeometry
-    mosaicity: MosaicSmoothed | IsotropicMosaicity | None
+    mosaicity: MosaicSmoothed | None
 
 
 @dataclass(frozen=True)
@@ -224,7 +217,7 @@ class DatasetSetup:
 
     plan: Plan
     integration: IntegrationGeometry
-    mosaicity: MosaicSmoothed | IsotropicMosaicity | None
+    mosaicity: MosaicSmoothed | None
     energy: float
     n_rotations: int
     ignored_rotations: tuple[int, ...]
@@ -325,11 +318,9 @@ def setup_datasets(
             geometry=record.data_collection_geometry,
         )
         mosaicity = resolve_dataset_mosaicity(
-            config.blochwave.incoherent_mosaicity,
+            config.blochwave.mosaicity,
             record,
             config.blochwave.to_rocking_curve(integration),
-            model="isotropic",
-            isotropic_samples=config.blochwave.mosaicity_samples,
         )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
@@ -416,58 +407,35 @@ def resolve_dataset_mosaicity(
     enabled: bool,
     record: ExperimentalRecord,
     rocking: RockingCurve,
-    *,
-    degrees_override: float | None = None,
-    model: Literal["axis_smoothed", "isotropic"] = "axis_smoothed",
-    isotropic_samples: int = 5,
-) -> MosaicSmoothed | IsotropicMosaicity | None:
-    """Resolve apparent mosaicity to the applied tilt geometry, or ``None`` when disabled.
-
-    ``enabled`` is ``blochwave.incoherent_mosaicity``: the only mosaicity switch exposed in
-    ``experiment.yaml``, always the isotropic model at the PETS-reported apparent mosaicity and
-    ``blochwave.mosaicity_samples`` samples (default 5). ``degrees_override``
-    and ``model`` are Python-level knobs for callers that need something other than that default
-    (e.g. the ``axis_smoothed`` model, or a non-PETS sigma); they are not themselves config
-    fields.
-
-    ``model="isotropic"`` (the config path's only choice) returns an
-    :class:`~diffBloch.specs.IsotropicMosaicity` spec of ``isotropic_samples`` tilts scattered over a
-    cone in every direction (see :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`).
-    ``model="axis_smoothed"`` instead returns a :class:`~diffBloch.core.products.MosaicSmoothed`
-    moving-average window sized against the *existing* rocking-curve tilts -- cheaper, but blind to
-    spread off that one axis.
-    """
+) -> MosaicSmoothed | None:
+    """Resolve PETS apparent mosaicity to the applied tilt reduction, or ``None`` when disabled."""
     if not enabled:
         return None
     source = record.source_path if record.source_path is not None else "<experimental data>"
-    mosaicity_degrees = (
-        degrees_override if degrees_override is not None else record.mosaicity_degrees
-    )
+    mosaicity_degrees = record.mosaicity_degrees
     if mosaicity_degrees is None:
         raise ValueError(
-            f"blochwave.incoherent_mosaicity=true requires a 'mosaicity:' value in {source}, and "
-            "none is present; set blochwave.incoherent_mosaicity: false"
+            f"blochwave.mosaicity=true requires a 'mosaicity:' value in {source}; "
+            "add the PETS apparent mosaicity or set blochwave.mosaicity: false"
         )
     if not np.isfinite(mosaicity_degrees) or mosaicity_degrees < 0.0:
         raise ValueError(
-            "blochwave.incoherent_mosaicity=true requires a finite, non-negative PETS mosaicity in "
+            f"blochwave.mosaicity=true requires a finite, non-negative PETS mosaicity in "
             f"{source}; got {mosaicity_degrees!r}"
         )
     if mosaicity_degrees == 0.0:
         return None
-    if model == "isotropic":
-        return IsotropicMosaicity(sigma_degrees=mosaicity_degrees, samples=isotropic_samples)
     degrees_per_sample = 2.0 * rocking.integration.semiangle / rocking.sampling
     samples = round(mosaicity_degrees / degrees_per_sample)
     if samples <= 1:
         return None
     if samples > rocking.sampling:
         raise ValueError(
-            f"blochwave.incoherent_mosaicity=true resolves PETS mosaicity {mosaicity_degrees:g} "
-            f"degrees in {source} to a smoothing span of {samples} samples, which exceeds the "
+            f"blochwave.mosaicity=true resolves PETS mosaicity {mosaicity_degrees:g} degrees "
+            f"in {source} to a smoothing span of {samples} samples, which exceeds the "
             f"{rocking.sampling} sampled rocking-curve tilts across +/-"
             f"{rocking.integration.semiangle:g} degrees. Increase the PETS integration "
-            "coverage or set blochwave.incoherent_mosaicity: false."
+            "coverage or set blochwave.mosaicity: false."
         )
     return MosaicSmoothed(samples=samples)
 

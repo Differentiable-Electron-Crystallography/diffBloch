@@ -6,35 +6,22 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-from tests.unit.test_engine import _engine, _params
 
-from diffBloch.app.program import (
-    _mosaicity_components,
-    _report_refinement_outcome,
-    _thickness_networks,
-    _write_refinement_outputs,
-)
+from diffBloch.app.program import _thickness_networks, _write_refinement_outputs
 from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine import (
     ModelRefinementResult,
     StructureFactorGrid,
-    TrainableIsotropicMosaicity,
     build_refinement_model,
 )
 from diffBloch.io import read_structure
 from diffBloch.io.record import ExperimentalRecord
-from diffBloch.observability import (
-    IsotropicMosaicityRefined,
-    ObjectiveManifest,
-    ObjectiveTerm,
-    RecordingLogger,
-    RefinementStep,
-)
+from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
-from diffBloch.specs import ApparentThicknessNetwork, IntegrationGeometry
+from diffBloch.specs import ApparentThicknessNetwork
 
 _MINIMAL_CIF = """data_q
 _cell_length_a 5
@@ -136,105 +123,6 @@ def test_thickness_networks_treat_a_single_dataset_as_the_n_1_case() -> None:
     assert networks[0].label == "q.cif_pets"
     assert networks[0].rotation_range == (0, 3)
     assert networks[0].normalized_alphas == (-1.0, 0.0, 1.0)
-
-
-def test_mosaicity_components_partition_the_pooled_rotation_space() -> None:
-    cfg = ExperimentConfig.model_validate(
-        {
-            "name": "q",
-            "inputs": {
-                "structure": "q.cif",
-                "exp_data": ["a.cif_pets", "sub/b.cif_pets"],
-                "multi_dataset": True,
-            },
-            "blochwave": {"incoherent_mosaicity": True, "mosaicity_samples": 3},
-            "refinement": {"trainable": {"mosaicity_sigma": True}},
-        }
-    )
-    records = (
-        _record_with_alphas((0.0, 10.0)).model_copy(update={"mosaicity_degrees": 0.02}),
-        _record_with_alphas((100.0, 110.0, 120.0)).model_copy(update={"mosaicity_degrees": 0.03}),
-    )
-    integrations = (IntegrationGeometry(semiangle=1.0), IntegrationGeometry(semiangle=1.0))
-
-    components = _mosaicity_components(cfg, records, integrations)
-
-    assert [component.key for component in components] == [
-        "isotropic_mosaicity[a.cif_pets]",
-        "isotropic_mosaicity[sub/b.cif_pets]",
-    ]
-    assert [component.rotation_range for component in components] == [(0, 2), (2, 5)]
-    assert [component.init_sigma_degrees for component in components] == [0.02, 0.03]
-    assert len(components[0].polar_degrees) == 3
-
-
-def test_mosaicity_components_is_empty_when_trainable_sigma_is_off() -> None:
-    cfg = ExperimentConfig.model_validate(
-        {
-            "name": "q",
-            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
-            "blochwave": {"incoherent_mosaicity": True},
-        }
-    )
-    records = (_record_with_alphas((0.0,)).model_copy(update={"mosaicity_degrees": 0.02}),)
-    integrations = (IntegrationGeometry(semiangle=1.0),)
-
-    assert _mosaicity_components(cfg, records, integrations) == ()
-
-
-def test_mosaicity_components_skips_a_dataset_with_zero_mosaicity() -> None:
-    cfg = ExperimentConfig.model_validate(
-        {
-            "name": "q",
-            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
-            "blochwave": {"incoherent_mosaicity": True},
-            "refinement": {"trainable": {"mosaicity_sigma": True}},
-        }
-    )
-    records = (_record_with_alphas((0.0,)).model_copy(update={"mosaicity_degrees": 0.0}),)
-    integrations = (IntegrationGeometry(semiangle=1.0),)
-
-    assert _mosaicity_components(cfg, records, integrations) == ()
-
-
-def test_report_refinement_outcome_emits_the_refined_mosaicity_sigma() -> None:
-    engine = _engine()  # its single orientation carries rotation_index 0
-    structure_params = _params()
-    component = TrainableIsotropicMosaicity(
-        polar_degrees=(0.0,),
-        init_sigma_degrees=0.02,
-        rotation_range=(0, 1),
-        key="isotropic_mosaicity[a.cif_pets]",
-    )
-    component_params = {
-        component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    }
-    model = build_refinement_model(
-        initial=structure_params, components=(component,), component_params=component_params
-    )
-    result = ModelRefinementResult(
-        model=model,
-        losses=torch.zeros(1, dtype=torch.float64),
-        best_model=model,
-        best_step=0,
-        artifacts={"refined_structure": "q/refined_structure.cif"},
-    )
-    logger = RecordingLogger()
-
-    _report_refinement_outcome(
-        logger,
-        engine,
-        result,
-        validation_rotation_indices=frozenset(),
-        thickness_nns=(),
-        mosaicity_nns=(component,),
-        raw_alphas=None,
-    )
-
-    [event] = [e for e in logger.events if isinstance(e, IsotropicMosaicityRefined)]
-    assert event.label == "a.cif_pets"
-    assert event.pets_sigma_degrees == 0.02
-    assert event.sigma_degrees == pytest.approx(0.02)
 
 
 def _refinement_result_for(

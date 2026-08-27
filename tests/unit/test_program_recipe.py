@@ -86,9 +86,7 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
         )
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
-    monkeypatch.setattr(
-        "diffBloch.app.program.load_experiment", lambda _root, **_kwargs: (object(), object())
-    )
+    monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
     monkeypatch.setattr("diffBloch.app.program._preprocess", fake_preprocess)
 
     assert preprocess_experiment("experiment-dir") is plan
@@ -128,7 +126,11 @@ def test_recipe_records_resolved_mosaicity_not_the_config_request() -> None:
     root = FIXTURES / "quartz_anchor"
     cfg, _ = load_experiment(root)
     cfg = cfg.model_copy(
-        update={"blochwave": cfg.blochwave.model_copy(update={"incoherent_mosaicity": True})}
+        update={
+            "blochwave": cfg.blochwave.model_copy(
+                update={"mosaicity": True, "rocking_curve_sampling": 11}
+            )
+        }
     )
     structure = read_structure(root / cfg.inputs.structure)
     experimental_data = read_experimental_data(root / cfg.inputs.exp_data).model_copy(
@@ -144,13 +146,7 @@ def test_recipe_records_resolved_mosaicity_not_the_config_request() -> None:
     )
 
     build = next(r for r in records if r.name == "build_orientation_plans")
-    # Resolved to the fully-settled spec (PETS value + Jana's default 5 samples), not an echo of
-    # the raw True/False config request.
-    assert build.params["mosaicity"] == {
-        "__type__": "IsotropicMosaicity",
-        "sigma_degrees": 0.6,
-        "samples": 5,
-    }
+    assert build.params["mosaicity"] == {"__type__": "MosaicSmoothed", "samples": 3}
 
 
 def test_stage_order_default_runs_thickness_before_orientation() -> None:

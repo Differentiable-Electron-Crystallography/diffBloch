@@ -26,7 +26,6 @@ from threading import Lock
 from typing import Literal
 
 import numpy as np
-import torch
 from numpy.typing import NDArray
 
 from diffBloch.core.crystal import orientation_basis
@@ -36,20 +35,15 @@ from diffBloch.core.dynamical import (
     excitation_errors,
     grid_source_indices,
 )
-from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction, WeightedSum
+from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
-from diffBloch.preprocess.orientation import (
-    compose_mosaic_tilts,
-    isotropic_mosaic_tilts,
-    rocking_curve_tilts,
-)
+from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import (
     BeamSelection,
-    IsotropicMosaicity,
     PerTiltCoupling,
     RockingCurve,
     UnionCoupling,
@@ -87,7 +81,7 @@ def select_beams(selection: BeamSelection) -> PlanStep:
 
 def build_orientation_plans(
     rocking: RockingCurve | None = None,
-    mosaicity: MosaicSmoothed | IsotropicMosaicity | None = None,
+    mosaicity: MosaicSmoothed | None = None,
     *,
     coupling: UnionCoupling | PerTiltCoupling | None = None,
     scoring_selection: BeamSelection | None = None,
@@ -106,14 +100,8 @@ def build_orientation_plans(
 
     When ``rocking`` is supplied, the builder directly creates its complete sub-tilt geometry
     instead of first building a temporary central-orientation plan and rebuilding it later.
-    ``mosaicity`` requires ``rocking``: :class:`~diffBloch.specs.MosaicSmoothed` selects the
-    reduction applied to the existing rocking-curve tilts (a moving average along that one axis);
-    :class:`~diffBloch.specs.IsotropicMosaicity` instead composes additional tilts, scattered
-    isotropically (a Gaussian orientation distribution, not a hard cutoff) over every rocking-curve
-    tilt (see :func:`~diffBloch.preprocess.orientation.compose_mosaic_tilts`), and reduces the whole
-    combined set with a :class:`~diffBloch.core.products.WeightedSum` of each mosaic sample's
-    relative Gaussian density (tiled across the rocking tilts it was composed onto). When
-    ``coupling`` is supplied, each segment's beam set is selected from the full
+    ``mosaicity`` selects the reduction applied to those sub-tilt intensities and therefore requires
+    ``rocking``. When ``coupling`` is supplied, each segment's beam set is selected from the full
     support grid by ``|g| < g_max`` and ``|Sg| < sg_max`` at its boundary tilts, then the ordinary
     alignment intersects the resulting simulator HKLs with the PETS experimental data.
     ``scoring_selection`` optionally applies the former Klar ``rsg``/``dsg``/semiangle filter to
@@ -137,25 +125,15 @@ def build_orientation_plans(
             geometry=rocking.integration.geometry,
         )
     )
-    reduction: TiltReduction = PLAIN_SUM
-    if isinstance(mosaicity, MosaicSmoothed):
+    if mosaicity is not None:
         assert rocking is not None  # narrowed by the construction guard above
         if mosaicity.samples > rocking.sampling:
             raise ValueError(
                 f"mosaicity sample span {mosaicity.samples} exceeds the {rocking.sampling} "
                 "rocking-curve tilts"
             )
-        reduction = mosaicity
-    elif isinstance(mosaicity, IsotropicMosaicity):
-        assert rocking is not None and plain_tilts is not None  # narrowed above
-        n_rocking = plain_tilts.shape[0]
-        mosaic_tilts, mosaic_weights, _mosaic_polar = isotropic_mosaic_tilts(
-            mosaicity.sigma_degrees, mosaicity.samples
-        )
-        plain_tilts = compose_mosaic_tilts(plain_tilts, mosaic_tilts)
-        # index = r * M + m (compose_mosaic_tilts): the same per-mosaic-sample weights repeat for
-        # every rocking tilt.
-        reduction = WeightedSum(weights=torch.tensor(np.tile(mosaic_weights, n_rocking)))
+
+    reduction: TiltReduction = PLAIN_SUM if mosaicity is None else mosaicity
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)

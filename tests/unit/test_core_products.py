@@ -11,7 +11,6 @@ from diffBloch.core.products import (
     MosaicSmoothed,
     PatternBatch,
     PlainSum,
-    WeightedSum,
     align,
     build_alignment_plan,
     intensities,
@@ -140,31 +139,6 @@ def test_integrate_mosaic_sample_span_may_not_exceed_the_tilt_count() -> None:
     sols = _ramp_tilts([1.0, 2.0, 3.0])
     with pytest.raises(ValueError, match="sample span 4 exceeds the 3 rocking-curve tilts"):
         BlochSolution.integrate(sols, reduction=MosaicSmoothed(4))
-
-
-def test_weighted_sum_rejects_non_1d_weights() -> None:
-    with pytest.raises(ValueError, match="weights must be 1-D"):
-        WeightedSum(weights=torch.ones((2, 2)))
-
-
-def test_integrate_weighted_sum_scales_each_tilt_before_summing() -> None:
-    sols = _ramp_tilts([1.0, 2.0, 3.0])
-    # Each tilt v is weighted by w, so the sum is dot([1,2,3], [1,0,2]) = 1 + 0 + 6 = 7.
-    weighted = BlochSolution.integrate(
-        sols, reduction=WeightedSum(weights=torch.tensor([1.0, 0.0, 2.0]))
-    )
-    assert torch.allclose(weighted.intensities, torch.full((1, 2), 7.0, dtype=torch.float64))
-    assert torch.allclose(weighted.amplitudes.abs().square(), weighted.intensities)
-    # Uniform unit weights reduce to the plain sum.
-    uniform = BlochSolution.integrate(sols, reduction=WeightedSum(weights=torch.ones(3)))
-    plain = BlochSolution.integrate(sols, reduction=PlainSum())
-    assert torch.allclose(uniform.intensities, plain.intensities)
-
-
-def test_integrate_weighted_sum_rejects_mismatched_weight_count() -> None:
-    sols = _ramp_tilts([1.0, 2.0, 3.0])
-    with pytest.raises(ValueError, match="WeightedSum weights has 2 entries, expected 3"):
-        BlochSolution.integrate(sols, reduction=WeightedSum(weights=torch.tensor([1.0, 2.0])))
 
 
 def test_integrate_batched_matches_the_per_tilt_integrate() -> None:

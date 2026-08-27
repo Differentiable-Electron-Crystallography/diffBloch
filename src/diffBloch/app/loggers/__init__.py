@@ -266,15 +266,13 @@ class ConsoleLogger:
             )
             _log.log(
                 self.level,
-                "Experiment │ %s lr=%g │ %d epoch(s) │ g_max=%g sg_max=%g │ absorption %s │ "
-                "mosaicity %s",
+                "Experiment │ %s lr=%g │ %d epoch(s) │ g_max=%g sg_max=%g │ absorption %s",
                 event.optimizer,
                 event.learning_rate,
                 event.steps,
                 event.solve_g_max,
                 event.sg_max,
                 "on" if event.absorption else "off",
-                "on" if event.incoherent_mosaicity else "off",
             )
             return
         if isinstance(event, RefinedRotationMetrics):
