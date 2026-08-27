@@ -23,6 +23,7 @@ __all__ = [
     "PerOrientationThickness",
     "QuadraticThicknessProfile",
     "ThicknessBounds",
+    "TrainableIsotropicMosaicity",
 ]
 
 
@@ -333,6 +334,87 @@ class ApparentThicknessNN:
         )[local_index].to(w0.device)
         thickness = F.softplus(mu + sigma * epsilon)
         return ForwardContext(thickness=thickness)
+
+
+@dataclass(frozen=True)
+class TrainableIsotropicMosaicity:
+    """One trainable isotropic-mosaicity sigma, shared across every rotation in the dataset.
+
+    Mosaicity is a bulk property of the crystal, not of any one orientation, so unlike thickness
+    there is a single free parameter here, not one per rotation. It refines by *reweighting* a fixed
+    set of mosaic-tilt directions rather than moving them: the directions
+    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`'s Rayleigh-quantile placement)
+    were baked into each orientation's structure-factor gather when the ``Plan`` was built, at
+    ``init_sigma_degrees``, and moving them would mean rebuilding that gather every refinement step.
+    Refining sigma instead smoothly redistributes weight across those same fixed directions --
+    concentrated near the center as sigma shrinks, closer to uniform as it grows -- which captures
+    the same qualitative "how much mosaic broadening" effect without the per-step rebuild cost. It
+    cannot represent a spread genuinely wider than the fixed placement covers.
+
+    ``polar_degrees`` is the per-mosaic-sample angular distance from center (one entry per mosaic
+    sample, *not* tiled across the rocking-curve tilts -- :meth:`forward_context` tiles it to match
+    each orientation's actual tilt count, which is a multiple of ``len(polar_degrees)``).
+
+    ``rotation_range`` scopes this component to one dataset's half-open ``[start, end)`` pooled
+    source-rotation indices, exactly like :class:`ApparentThicknessNN`: a pooled multi-dataset
+    experiment gets one component per dataset (each with its own resolved sigma/samples), and a
+    rotation outside a given component's range gets no override from it, falling through to
+    whichever component does claim it.
+    """
+
+    polar_degrees: tuple[float, ...]
+    init_sigma_degrees: float
+    rotation_range: tuple[int, int]
+    key: str = "isotropic_mosaicity"
+
+    def __post_init__(self) -> None:
+        if not self.polar_degrees:
+            raise ValueError("polar_degrees must be non-empty")
+        if self.init_sigma_degrees <= 0.0:
+            raise ValueError("init_sigma_degrees must be positive")
+        start, end = self.rotation_range
+        if start < 0 or end <= start:
+            raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+
+    def initial_params(
+        self,
+        *,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> Mapping[str, Tensor]:
+        sigma = torch.tensor([self.init_sigma_degrees], dtype=dtype, device=device)
+        return {"unconstrained_sigma": _positive_inverse(sigma)}
+
+    def forward_context(
+        self,
+        params: Mapping[str, Tensor],
+        *,
+        rotation_index: int,
+        orientation: OrientationPlanLike,
+    ) -> ForwardContext:
+        _ = rotation_index
+        source_index = orientation.pattern.rotation_index
+        start, end = self.rotation_range
+        if source_index < start or source_index >= end:
+            # Another dataset's rotation: the component that does claim it supplies the weights.
+            return ForwardContext()
+        if "unconstrained_sigma" not in params:
+            raise ValueError(
+                "isotropic mosaicity component requires an 'unconstrained_sigma' tensor"
+            )
+        raw = params["unconstrained_sigma"]
+        sigma = positive(raw).reshape(())
+        polar = raw.new_tensor(self.polar_degrees)
+        weights = torch.exp(-(polar.square()) / (2.0 * sigma.square()))
+        n_tilts = int(orientation.tilts.shape[0])
+        n_mosaic = len(self.polar_degrees)
+        if n_tilts % n_mosaic != 0:
+            raise ValueError(
+                f"orientation has {n_tilts} tilts, not a multiple of the {n_mosaic} mosaic "
+                "samples this component was built from"
+            )
+        tiled = weights.repeat(n_tilts // n_mosaic)
+        return ForwardContext(mosaic_weights=tiled)
 
 
 def _positive_inverse(value: Tensor) -> Tensor:

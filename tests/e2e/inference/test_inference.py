@@ -138,8 +138,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
             "rotation_index": index,
             "r_obs": row.r_obs,
             "wr2": row.wr2,
-            "n_observed": row.n_observed,
-            "n_beams": row.n_beams,
+            "n_matched": row.n_matched,
         }
         for index, row in zip(indices, result.per_rotation, strict=True)
     ]
@@ -194,8 +193,7 @@ def _compare(material: str, actual: dict[str, Any]) -> None:
         assert index in expected, f"{material}: rotation {index} missing from reference"
         pinned = expected[index]
         assert row["r_obs"] == pytest.approx(pinned["r_obs"], abs=case.atol)
-        assert row["n_observed"] == pinned["n_observed"]
-        assert row["n_beams"] == pinned["n_beams"]
+        assert row["n_matched"] == pinned["n_matched"]
 
 
 @pytest.mark.parametrize("material", ALL_MATERIALS)

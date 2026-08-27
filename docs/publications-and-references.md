@@ -49,6 +49,10 @@ sources used throughout the codebase.
   *Structure refinement from precession electron diffraction data.* **Acta Crystallographica A69,
   171–188.** DOI: [10.1107/S010876731204946X](https://doi.org/10.1107/S010876731204946X).
 
+- **Incoherent isotropic mosaicity model.**
+  Palatinus, L. (2024). *Including mosaicity effects in the dynamical refinement against 3D ED
+  data.* **Acta Crystallographica A80, e225.**
+
 ### Software we depend on, extract from, or verify against
 
 **Runtime dependencies**

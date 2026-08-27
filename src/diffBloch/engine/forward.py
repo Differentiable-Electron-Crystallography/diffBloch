@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
@@ -37,6 +37,8 @@ from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import (
     AlignedIntensities,
     BlochSolution,
+    TiltReduction,
+    WeightedSum,
     align,
     intensities,
     reduce_tilts,
@@ -151,13 +153,17 @@ class RotationMetrics:
     Report/plot use (:meth:`RefinementEngine.per_rotation_metrics`), not the objective: each metric
     independently re-optimises its own intensity scale (:func:`diffBloch.core.losses.optimal_scale`),
     exactly as ``refinement_metrics``/the training objective do, so ``wr2``/``r_obs`` here match what
-    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index.
+    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index (the
+    *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
+    came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
+    never re-derives dataset membership from index offsets.
     """
 
     rotation_index: int
     wr2: float
     r_obs: float
     n_matched: int
+    dataset: str = ""
 
 
 @dataclass(frozen=True)
@@ -327,10 +333,15 @@ class RefinementEngine:
         )
 
     def refinement_metrics(self, model: RefinementModel) -> tuple[float, int, int, int, int]:
-        """Return mean R_obs and reflection counts for one refinement-model snapshot.
+        """Return mean R_obs and unique reflection counts for one refinement-model snapshot.
 
-        Counts are over PETS rows in the selected rotations: matched rows enter the diffraction
-        alignment, unmatched rows do not; strong/weak split matched rows at ``I > 3 sigma``.
+        Counts are *unique* ``(h, k, l)`` triples across the selected rotations, not raw PETS rows
+        -- rotation electron diffraction frames overlap in angle, so the same reflection is
+        routinely re-observed in several consecutive rotations, and a raw row sum would count it
+        once per rotation rather than once (see :func:`_unique_hkl_count`). A triple is "matched"
+        if it entered the diffraction alignment in *any* selected rotation, "strong" if any of its
+        matched measurements has ``I > 3 sigma`` (weak otherwise), and "unmatched" if it was
+        observed but never matched in any rotation.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
@@ -338,10 +349,9 @@ class RefinementEngine:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
             r_values: list[float] = []
-            n_matched = 0
-            n_strong = 0
-            n_weak = 0
-            n_unmatched = 0
+            matched_hkl: list[Tensor] = []
+            strong_hkl: list[Tensor] = []
+            observed_hkl: list[Tensor] = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
                     model, rotation_index=rotation_index, orientation=orientation
@@ -350,7 +360,9 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(
+                        orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                    ),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -369,12 +381,23 @@ class RefinementEngine:
                 if finite.numel():
                     r_values.append(float(finite.min()))
                 strong = aligned.observed[0] > 3.0 * aligned.sigmas[0]
-                matched = int(strong.numel())
-                n_matched += matched
-                n_strong += int(strong.sum())
-                n_weak += matched - int(strong.sum())
-                n_unmatched += int(orientation.pattern.hkl.shape[0]) - matched
+                matched_hkl.append(orientation.alignment.hkl)
+                # alignment.hkl is geometry-only and CPU-resident; strong lives on aligned's
+                # (possibly accelerator) device, so the mask -- not the indexed tensor -- moves,
+                # mirroring core.products.align's own convention of moving indices to the tensor
+                # they index.
+                strong_hkl.append(
+                    orientation.alignment.hkl[strong.to(orientation.alignment.hkl.device)]
+                )
+                observed_hkl.append(orientation.pattern.hkl)
         mean_r_obs = sum(r_values) / len(r_values) if r_values else float("nan")
+        n_matched = _unique_hkl_count(matched_hkl)
+        n_strong = _unique_hkl_count(strong_hkl)
+        n_weak = n_matched - n_strong
+        # matched_hkl is a subset of observed_hkl by construction (alignment only ever intersects
+        # a rotation's own pattern), so this difference is a valid unique-triple count, not an
+        # approximation.
+        n_unmatched = _unique_hkl_count(observed_hkl) - n_matched
         return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
 
     def per_rotation_metrics(self, model: RefinementModel) -> tuple[RotationMetrics, ...]:
@@ -398,7 +421,9 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(
+                        orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                    ),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -431,6 +456,7 @@ class RefinementEngine:
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
+                        dataset=orientation.pattern.dataset,
                     )
                 )
         return tuple(rows)
@@ -467,7 +493,9 @@ class RefinementEngine:
             if thickness is None:
                 thickness = self._thickness_for(orientation, params)
             with _Timer(f"solve[rotation={rotation_index}]", fgb.device, self.profile):
-                solution = self._solve(orientation, fgb, thickness)
+                solution = self._solve(
+                    orientation, fgb, thickness, reduction_override=_reduction_override(context)
+                )
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
                 wr2_scores = torch.stack(
@@ -597,10 +625,17 @@ class RefinementEngine:
         )
 
     def _solve(
-        self, orientation: OrientationPlanLike, fgb: Tensor, thicknesses: Tensor
+        self,
+        orientation: OrientationPlanLike,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        reduction_override: TiltReduction | None = None,
     ) -> BlochSolution:
         if isinstance(orientation, CoupledOrientationPlan):
-            return self._solve_segmented(orientation, fgb, thicknesses)
+            return self._solve_segmented(
+                orientation, fgb, thicknesses, reduction_override=reduction_override
+            )
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         beam_hkl = orientation.beam_hkl.to(device)
@@ -635,11 +670,21 @@ class RefinementEngine:
             else solve_batch(fgb, thicknesses)
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
-            amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
+            amplitudes,
+            beam_hkl,
+            thicknesses,
+            reduction=(
+                orientation.tilt_reduction if reduction_override is None else reduction_override
+            ),
         )
 
     def _solve_segmented(
-        self, plan: CoupledOrientationPlan, fgb: Tensor, thicknesses: Tensor
+        self,
+        plan: CoupledOrientationPlan,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        reduction_override: TiltReduction | None = None,
     ) -> BlochSolution:
         """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
 
@@ -687,7 +732,8 @@ class RefinementEngine:
             block = curve[cover]  # (C, T, n_union) gathered copy
             block[:, :, union_beam_index] = intensities(amplitudes)
             curve[cover] = block
-        total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
+        reduction = plan.tilt_reduction if reduction_override is None else reduction_override
+        total = reduce_tilts(curve, reduction)  # (T, n_union)
         # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
         # store the magnitude sqrt(total) in the solve's complex64 format (matching the
         # static/batched paths).
@@ -700,11 +746,34 @@ class RefinementEngine:
 class ForwardContext:
     """Forward-model values supplied by refinement model components.
 
-    Deliberately narrow: apparent thickness is the only value admitted, since it is the only value a
-    component currently supplies. Scale/background/damage fields should be added only when consumed.
+    ``thickness`` and ``mosaic_weights`` are the only values admitted, since they are the only
+    values a component currently supplies. Scale/background/damage fields should be added only when
+    consumed. ``mosaic_weights`` (from
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity`) overrides the orientation's
+    baked-in :class:`~diffBloch.core.products.WeightedSum` tilt reduction with a differentiable one,
+    shape ``(N_tilts,)`` matching ``orientation.tilts``.
     """
 
     thickness: Tensor | None = None
+    mosaic_weights: Tensor | None = None
+
+
+def _reduction_override(context: ForwardContext) -> TiltReduction | None:
+    """A component-supplied :class:`WeightedSum` for ``context.mosaic_weights``, else ``None``."""
+    return None if context.mosaic_weights is None else WeightedSum(weights=context.mosaic_weights)
+
+
+def _unique_hkl_count(hkl_batches: Sequence[Tensor]) -> int:
+    """Count of *distinct* ``(h, k, l)`` triples across ``hkl_batches`` (each ``(M, 3)``).
+
+    Local counterpart of :func:`~diffBloch.preprocess.plan.unique_hkl_count` -- duplicated rather
+    than imported since ``preprocess`` already imports from ``engine`` (``engine.plan``), so the
+    reverse import would be circular.
+    """
+    non_empty = [batch for batch in hkl_batches if batch.shape[0] > 0]
+    if not non_empty:
+        return 0
+    return int(torch.unique(torch.cat(non_empty, dim=0), dim=0).shape[0])
 
 
 class ModelComponent(Protocol):
@@ -792,6 +861,7 @@ def _forward_context(
     orientation: OrientationPlanLike,
 ) -> ForwardContext:
     thickness: Tensor | None = None
+    mosaic_weights: Tensor | None = None
     for component in model.components:
         params = model.component_params[component.key]
         context = component.forward_context(
@@ -801,7 +871,11 @@ def _forward_context(
             if thickness is not None:
                 raise ValueError("multiple refinement components provided thickness")
             thickness = context.thickness
-    return ForwardContext(thickness=thickness)
+        if context.mosaic_weights is not None:
+            if mosaic_weights is not None:
+                raise ValueError("multiple refinement components provided mosaic_weights")
+            mosaic_weights = context.mosaic_weights
+    return ForwardContext(thickness=thickness, mosaic_weights=mosaic_weights)
 
 
 def build_refinement_model(
@@ -1050,6 +1124,19 @@ def run_refinement_model(
         # ExperimentConfig.loss_metrics, so refinement always reports both -- free, unlike the
         # preprocessing search, which reports only the metric it actually spent a solve computing.
         diagnostics = reported_objective.diagnostics
+        # Scored before the event below so its wR2/R_obs ride on the *same* RefinementStep as the
+        # training numbers -- this scoring already happens every epoch purely to pick best_model, so
+        # reporting it is free; without it, the validation curve never surfaces until the run ends.
+        selection_loss = loss_value
+        selection_diagnostics: Mapping[str, float] | None = None
+        if selection_engine is not None:
+            with torch.no_grad():
+                selection_objective = selection_engine.objective_value_model(
+                    snapshot, penalties=problem.penalties
+                )
+            selection_loss = _scalar_float(selection_objective.total)
+            selection_losses.append(selection_loss)
+            selection_diagnostics = selection_objective.diagnostics
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
@@ -1061,6 +1148,21 @@ def run_refinement_model(
             n_rotations=int(diagnostics["n_rotations"]),
             n_wr2_evaluated=int(diagnostics["n_wr2_evaluated"]),
             n_r_obs_evaluated=int(diagnostics["n_r_obs_evaluated"]),
+            val_wr2=None if selection_diagnostics is None else selection_diagnostics["wr2"],
+            val_r_obs=None if selection_diagnostics is None else selection_diagnostics["r_obs"],
+            val_n_rotations=(
+                None if selection_diagnostics is None else int(selection_diagnostics["n_rotations"])
+            ),
+            val_n_wr2_evaluated=(
+                None
+                if selection_diagnostics is None
+                else int(selection_diagnostics["n_wr2_evaluated"])
+            ),
+            val_n_r_obs_evaluated=(
+                None
+                if selection_diagnostics is None
+                else int(selection_diagnostics["n_r_obs_evaluated"])
+            ),
         )
         history.append(event)
         logger.report(event)
@@ -1075,14 +1177,6 @@ def run_refinement_model(
                         diff_loss=entry["diff_loss"],
                     )
                 )
-        selection_loss = loss_value
-        if selection_engine is not None:
-            with torch.no_grad():
-                selection_objective = selection_engine.objective_value_model(
-                    snapshot, penalties=problem.penalties
-                )
-            selection_loss = _scalar_float(selection_objective.total)
-            selection_losses.append(selection_loss)
         if selection_loss < best_loss:
             best_loss, best_step, best_model = selection_loss, step, snapshot
     _, n_matched, n_strong, n_weak, n_unmatched = engine.refinement_metrics(best_model)

@@ -45,8 +45,7 @@ refinement:
 
 Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
 at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
-`HKLs (Observed/total): X / Y` means matched observed reflections / all matched reflections, where
-the observed classification uses the conventional `I > 3 sigma` test internally.
+`Matched HKLs (I>3σ/total): X / Y` means matched reflections with `I > 3 sigma` / all matched reflections.
 
 ## Refinement outputs
 
@@ -67,7 +66,7 @@ training objective.
 | `refined_structure.cif` | Best constrained coordinates, occupancies, and ADPs in CIF form. |
 | `refinement_report.txt` | Best epoch metrics, which objective selected it, and the compact HKL count. |
 | `refined_parameters.npz` | Exact raw optimizer parameters for the best epoch. |
-| `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. Thickness-network tensors are stored per dataset under `apparent_thickness[<ref>]__<parameter>` names. |
+| `refined_components.npz` | Trainable component tensors for the best epoch, when components are composed. Thickness-network tensors are stored per dataset under `apparent_thickness[<ref>]__<parameter>` names; a refined mosaicity spread is stored per dataset under `isotropic_mosaicity[<ref>]__unconstrained_sigma` (softplus-constrained; see [Preprocessing](preprocessing.md#rocking-curves-and-mosaicity-inside-a-plan)). |
 | `plan.<stem>.npz` / `plan.<stem>.lock` | Settled preprocessing plan and its provenance lock, one pair per `inputs.exp_data` file. |
 | `refinement.lock` | Binds the refined outputs to every dataset's plan lock (`plan_lock_sha256s`), config digest, and code version; written only when every plan lock exists. |
 
@@ -92,7 +91,9 @@ X-ray least-squares refinement, and the lower-level Python API exposes it direct
   bond length close to a chemically reasonable value; the optimizer can still trade the restraint off
   against the diffraction fit, unlike a hard constraint;
 - **thickness models** treat the apparent specimen thickness at each tilt as a trainable quantity
-  alongside the atomic parameters, rather than a fixed value fitted once during preprocessing.
+  alongside the atomic parameters, rather than a fixed value fitted once during preprocessing;
+- **incoherent isotropic mosaicity** (`refinement.trainable.mosaicity_sigma: true`) treats the
+  mosaic angular spread {math}`\sigma` as a trainable quantity alongside the atomic parameters.
 
 Compose a structure, optional hard constraints, optional restraints, and an optional thickness model,
 then refine every selected parameter through one objective. The composition entry points --

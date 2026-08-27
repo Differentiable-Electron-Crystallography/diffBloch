@@ -14,6 +14,7 @@ from diffBloch.engine.components import (
     PerOrientationThickness,
     QuadraticThicknessProfile,
     ThicknessBounds,
+    TrainableIsotropicMosaicity,
 )
 from diffBloch.engine.constraints import (
     ConstraintTransform,
@@ -94,6 +95,7 @@ __all__ = [
     "StructureFactorGrid",
     "CoupledOrientationPlan",
     "ThicknessBounds",
+    "TrainableIsotropicMosaicity",
     "TrainableSpec",
     "build_refinement_model",
     "build_refinement_problem",

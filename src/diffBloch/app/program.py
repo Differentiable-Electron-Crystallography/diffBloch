@@ -30,8 +30,9 @@ stdlib ``logging`` (not the domain-observation ``logger``).
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 import gemmi
 import numpy as np
@@ -58,6 +59,7 @@ from diffBloch.config import (
     write_refinement_lock,
 )
 from diffBloch.config.schema import dataset_checkpoint_stem
+from diffBloch.core.constraints import positive
 from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import (
@@ -65,10 +67,12 @@ from diffBloch.engine import (
     ModelRefinementResult,
     RefinementEngine,
     ThicknessBounds,
+    TrainableIsotropicMosaicity,
     build_refinement_model,
     build_refinement_problem,
     run_refinement_model,
 )
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.io import (
     ExperimentalRecord,
     StructureRecord,
@@ -76,11 +80,14 @@ from diffBloch.io import (
     read_structure,
     read_structure_with_diagnostics,
 )
+from diffBloch.io._cifio import select_block
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
+    IsotropicMosaicityRefined,
     Logger,
     MultiLogger,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementOutputsWritten,
 )
@@ -96,6 +103,7 @@ from diffBloch.preprocess import (
     optimize_orientation,
     optimize_thickness,
     pipeline,
+    plan_is_readable,
     pool,
     read_plan,
     resolve_recipe,
@@ -107,12 +115,15 @@ from diffBloch.preprocess import (
     write_plan,
 )
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
-from diffBloch.preprocess.experiment import RefinementSetup
+from diffBloch.preprocess.experiment import RefinementSetup, resolve_dataset_mosaicity
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.orientation import isotropic_mosaic_tilts
+from diffBloch.preprocess.plan import unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
     IntegrationGeometry,
+    IsotropicMosaicity,
     ScoredHklSelection,
     TrialCoupling,
 )
@@ -371,21 +382,18 @@ def preprocess_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    _refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
-    )
-    return prepared
+    return _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
+    ).plan
 
 
 def run_experiment(
@@ -414,23 +422,21 @@ def run_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, _integrations, prepared, _validation_rotation_indices, _plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
+    outcome = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
     )
     return run_inference(
-        prepared,
-        refinement,
+        outcome.plan,
+        outcome.refinement,
         method=cfg.blochwave.solver,
         device=device,
         max_batch=max_batch,
@@ -496,20 +502,21 @@ def refine_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    refinement, integrations, prepared, validation_rotation_indices, plan_lock_sha256s = (
-        _preprocess(
-            root,
-            cfg,
-            logger=logger,
-            checkpoint=checkpoint,
-            refresh=refresh,
-            device=device,
-            workers=workers,
-            max_batch=max_batch,
-            plot_thickness=plot_thickness,
-            plot_thickness_dir=plot_thickness_dir,
-        )
+    outcome = _preprocess(
+        root,
+        cfg,
+        logger=logger,
+        checkpoint=checkpoint,
+        refresh=refresh,
+        device=device,
+        workers=workers,
+        max_batch=max_batch,
+        plot_thickness=plot_thickness,
+        plot_thickness_dir=plot_thickness_dir,
     )
+    refinement, integrations, prepared = outcome.refinement, outcome.integrations, outcome.plan
+    validation_rotation_indices = outcome.validation_rotation_indices
+    plan_lock_sha256s = outcome.plan_lock_sha256s
     # `engine` covers every rotation (train + validation) -- reporting always scores the whole
     # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
     # validation angles it never saw, which is the point. Only the *training* engine, built
@@ -568,20 +575,27 @@ def refine_experiment(
     initial = refinement.params if device is None else refinement.params.to(device)
     thickness_spec = cfg.refinement.thickness_nn.to_spec()
     thickness_nns: tuple[ApparentThicknessNN, ...] = ()
+    mosaicity_nns: tuple[TrainableIsotropicMosaicity, ...] = ()
     raw_alphas: np.ndarray | None = None
-    if thickness_spec.enabled:
+    if thickness_spec.enabled or cfg.refinement.trainable.mosaicity_sigma:
         records = _read_experimental_data(root, cfg)
-        raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
-        thickness_nns = _thickness_networks(cfg, records, thickness_spec)
+        if thickness_spec.enabled:
+            raw_alphas = np.concatenate([np.asarray(record.alphas) for record in records])
+            thickness_nns = _thickness_networks(cfg, records, thickness_spec)
+        if cfg.refinement.trainable.mosaicity_sigma:
+            mosaicity_nns = _mosaicity_components(cfg, records, integrations)
+        components: tuple[ApparentThicknessNN | TrainableIsotropicMosaicity, ...] = (
+            thickness_nns + mosaicity_nns
+        )
         model = build_refinement_model(
             initial=initial,
-            components=thickness_nns,
+            components=components,
             component_params={
-                thickness_nn.key: thickness_nn.initial_params(
+                component.key: component.initial_params(
                     dtype=initial.asu_positions.dtype,
                     device=initial.asu_positions.device,
                 )
-                for thickness_nn in thickness_nns
+                for component in components
             },
         )
     else:
@@ -610,6 +624,7 @@ def refine_experiment(
         result,
         validation_rotation_indices=validation_rotation_indices,
         thickness_nns=thickness_nns,
+        mosaicity_nns=mosaicity_nns,
         raw_alphas=raw_alphas,
     )
     return result
@@ -622,6 +637,7 @@ def _report_refinement_outcome(
     *,
     validation_rotation_indices: frozenset[int],
     thickness_nns: tuple[ApparentThicknessNN, ...],
+    mosaicity_nns: tuple[TrainableIsotropicMosaicity, ...],
     raw_alphas: np.ndarray | None,
 ) -> None:
     """Emit the settled-result events the refinement loop itself cannot produce.
@@ -630,7 +646,9 @@ def _report_refinement_outcome(
     (which cover held-out rotations too) and the trained thickness curve have to be emitted here,
     where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`
     goes last and is the run's terminal event -- a sink that must write exactly once, after
-    everything else, acts on it.
+    everything else, acts on it. Each row already knows its dataset ref (``RotationMetrics.dataset``,
+    read off the rotation's own ``pattern``), so the per-dataset breakdown in the report costs
+    nothing here.
     """
     for row in engine.per_rotation_metrics(result.best_model):
         logger.report(
@@ -640,6 +658,7 @@ def _report_refinement_outcome(
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,
                 is_validation=row.rotation_index in validation_rotation_indices,
+                dataset=row.dataset,
             )
         )
     if raw_alphas is not None:
@@ -652,6 +671,18 @@ def _report_refinement_outcome(
                     raw_alphas,
                 )
             )
+    for mosaicity_nn in mosaicity_nns:
+        params = result.best_model.component_params[mosaicity_nn.key]
+        sigma = float(positive(params["unconstrained_sigma"]).reshape(()).item())
+        # The component's own key is "isotropic_mosaicity[<ref>]"; the label is just <ref>.
+        label = mosaicity_nn.key.removeprefix("isotropic_mosaicity[").removesuffix("]")
+        logger.report(
+            IsotropicMosaicityRefined(
+                label=label,
+                sigma_degrees=sigma,
+                pets_sigma_degrees=mosaicity_nn.init_sigma_degrees,
+            )
+        )
     logger.report(
         RefinementOutputsWritten(
             structure=result.artifacts["refined_structure"], artifacts=result.artifacts
@@ -669,7 +700,12 @@ def _thickness_networks(
     Ranges follow the cumulative pre-ignore rotation counts in ``inputs.exp_data`` order --
     exactly how :func:`~diffBloch.preprocess.pool` numbers the pooled ``rotation_index`` space --
     so the networks partition that space and composition finds exactly one thickness per
-    orientation. Alphas are normalized independently per dataset so overlapping tilt ranges do
+    orientation. This offset arithmetic looks like the dataset attribution a rotation now carries on
+    its own ``pattern.dataset``, but it is a different quantity and cannot be replaced by it:
+    ``ApparentThicknessNN`` indexes ``normalized_alphas`` by ``rotation_index - start`` and requires
+    the range to be exactly the alphas wide, so the range must span the dataset's *pre-ignore* block.
+    Grouping the settled plan by dataset label would yield the narrower observed span and misalign
+    every alpha lookup. Alphas are normalized independently per dataset so overlapping tilt ranges do
     not share one thickness-vs-alpha curve. A single dataset is simply the N=1 case.
     """
     bounds = ThicknessBounds(spec.min_thickness, spec.max_thickness)
@@ -690,6 +726,45 @@ def _thickness_networks(
             _exp_data_refs(cfg), records, offsets[:-1], offsets[1:], strict=True
         )
     )
+
+
+def _mosaicity_components(
+    cfg: ExperimentConfig,
+    records: tuple[ExperimentalRecord, ...],
+    integrations: tuple[IntegrationGeometry, ...],
+) -> tuple[TrainableIsotropicMosaicity, ...]:
+    """One trainable isotropic-mosaicity component per dataset, scoped to its pooled rotation range
+    (same partitioning as :func:`_thickness_networks`).
+
+    Only built when ``refinement.trainable.mosaicity_sigma`` is on; a dataset whose apparent
+    mosaicity resolves to exactly 0 gets no component (there's no spread to refine).
+    """
+    if not cfg.refinement.trainable.mosaicity_sigma:
+        return ()
+    offsets = np.cumsum([0, *(record.n_rotations for record in records)])
+    components: list[TrainableIsotropicMosaicity] = []
+    for ref, record, integration, start, end in zip(
+        _exp_data_refs(cfg), records, integrations, offsets[:-1], offsets[1:], strict=True
+    ):
+        resolved = resolve_dataset_mosaicity(
+            cfg.blochwave.incoherent_mosaicity,
+            record,
+            cfg.blochwave.to_rocking_curve(integration),
+            model="isotropic",
+            isotropic_samples=cfg.blochwave.mosaicity_samples,
+        )
+        if not isinstance(resolved, IsotropicMosaicity):
+            continue
+        _tilts, _weights, polar = isotropic_mosaic_tilts(resolved.sigma_degrees, resolved.samples)
+        components.append(
+            TrainableIsotropicMosaicity(
+                polar_degrees=tuple(float(p) for p in polar.tolist()),
+                init_sigma_degrees=resolved.sigma_degrees,
+                rotation_range=(int(start), int(end)),
+                key=f"isotropic_mosaicity[{ref}]",
+            )
+        )
+    return tuple(components)
 
 
 def _normalized_pets_alphas(alphas: np.ndarray) -> tuple[float, ...]:
@@ -733,7 +808,7 @@ def _write_refinement_outputs(
     state = constrain(result.best_params, refinement.spec)
     source_path = root / cfg.inputs.structure
     document = gemmi.cif.read_file(str(source_path))
-    block = document.sole_block()
+    block = select_block(document, required_loop_tag="_atom_site_label")
     structure = read_structure(source_path, load_hydrogens=cfg.inputs.load_hydrogens)
     positions = state.positions.detach().cpu().numpy()
     occupancies = state.occupancies.detach().cpu().numpy()
@@ -880,6 +955,27 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
+@dataclass(frozen=True)
+class PreprocessOutcome:
+    """Everything :func:`_preprocess` settles, named rather than positional.
+
+    A plain tuple return made every field addition churn all three entry points at once, since each
+    had to restructure its unpacking to keep the underscore-prefixed elements it ignores. Fields:
+    ``refinement`` the structure-side :class:`~diffBloch.preprocess.experiment.RefinementSetup`,
+    ``integrations`` the per-dataset :class:`~diffBloch.specs.IntegrationGeometry` in
+    ``inputs.exp_data`` order, ``plan`` the pooled settled ``Plan``,
+    ``validation_rotation_indices`` the held-out pooled indices (empty when ``train_test`` is off),
+    and ``plan_lock_sha256s`` the locks this run verified or wrote (``None`` when it didn't
+    checkpoint). See :func:`_preprocess` for what each one means in full.
+    """
+
+    refinement: RefinementSetup
+    integrations: tuple[IntegrationGeometry, ...]
+    plan: Plan
+    validation_rotation_indices: frozenset[int]
+    plan_lock_sha256s: tuple[str, ...] | None
+
+
 def _preprocess(
     root: Path,
     cfg: ExperimentConfig,
@@ -892,13 +988,7 @@ def _preprocess(
     max_batch: int | None,
     plot_thickness: bool = False,
     plot_thickness_dir: str | Path | None = None,
-) -> tuple[
-    RefinementSetup,
-    tuple[IntegrationGeometry, ...],
-    Plan,
-    frozenset[int],
-    tuple[str, ...] | None,
-]:
+) -> PreprocessOutcome:
     """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
     Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --
@@ -914,7 +1004,9 @@ def _preprocess(
     stable under ignore edits), and the sha256s of the plan locks this run verified or wrote (in
     ``exp_data`` order) -- ``None`` when the run didn't checkpoint, so ``refinement.lock`` never
     chains to a leftover lock this run never validated. Hydrogen sites are loaded per
-    ``inputs.load_hydrogens``.
+    ``inputs.load_hydrogens``. Dataset attribution is *not* returned alongside: each rotation
+    already carries its own ``pattern.dataset`` from :func:`~diffBloch.preprocess.setup_datasets`,
+    which survives the pooled renumbering.
 
     ``plot_thickness`` (API/CLI) ORs with ``cfg.preprocess.thickness.plot`` -- either can turn
     plotting on. ``plot_thickness_dir`` overrides the default output directory,
@@ -1007,7 +1099,23 @@ def _preprocess(
         if any(sha is None for sha in lock_sha256s)
         else tuple(sha for sha in lock_sha256s if sha is not None)
     )
-    return refinement_setup, integrations, pooled, validation_rotation_indices, plan_lock_sha256s
+    built = cast(tuple[OrientationPlanLike, ...], pooled.orientations)
+    logger.report(
+        PreprocessCompleted(
+            n_rotations=len(built),
+            n_stages=len(pooled.provenance),
+            total_hkl=unique_hkl_count(op.pattern.hkl for op in built),
+            matched_hkl=unique_hkl_count(op.alignment.hkl for op in built),
+            steps=tuple((record.name, record.params) for record in pooled.provenance),
+        )
+    )
+    return PreprocessOutcome(
+        refinement=refinement_setup,
+        integrations=integrations,
+        plan=pooled,
+        validation_rotation_indices=validation_rotation_indices,
+        plan_lock_sha256s=plan_lock_sha256s,
+    )
 
 
 def _prune_stale_dataset_checkpoints(reproducibility_dir: Path, refs: tuple[str, ...]) -> None:
@@ -1030,7 +1138,7 @@ def _recipe_steps(
     cfg: ExperimentConfig,
     refinement: RefinementSetup,
     integration: IntegrationGeometry,
-    mosaicity: MosaicSmoothed | None,
+    mosaicity: MosaicSmoothed | IsotropicMosaicity | None,
     logger: Logger,
     *,
     device: Device | None = None,
@@ -1190,7 +1298,7 @@ def _prepare(
         lock = _read_lock_or_none(lock_path)
         status = (
             "stale"
-            if lock is None
+            if lock is None or not plan_is_readable(npz)
             else preprocess_lock_status(
                 lock,
                 structure=structure_lock,

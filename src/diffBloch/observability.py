@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import ClassVar, Literal, Protocol, runtime_checkable
+from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
 
 __all__ = [
     "NULL_LOGGER",
@@ -36,6 +36,7 @@ __all__ = [
     "Event",
     "ExperimentDeclared",
     "InferenceCompleted",
+    "IsotropicMosaicityRefined",
     "Logger",
     "MultiLogger",
     "NullLogger",
@@ -46,6 +47,7 @@ __all__ = [
     "OrientationOptimizationSummary",
     "PlanSeeded",
     "PlanStepCompleted",
+    "PreprocessCompleted",
     "RecordingLogger",
     "RefinedRotationMetrics",
     "RefinementCompleted",
@@ -201,13 +203,17 @@ class ConvergenceSweepStarted:
 
 @dataclass(frozen=True)
 class RotationScored:
-    """One rotation's forward-inference score, emitted per rotation by ``run_inference``."""
+    """One rotation's forward-inference score, emitted per rotation by ``run_inference``.
+
+    ``n_matched`` is the rotation's full matched-reflection count (observed and calculated both, no
+    intensity cut) -- not the ``I > 3*sigma`` subset ``r_obs`` is itself scored over.
+    """
 
     channel: ClassVar[str] = "rotation"
     index: int
     r_obs: float
-    n_observed: int
-    n_beams: int
+    wr2: float
+    n_matched: int
 
     @property
     def step(self) -> int | None:
@@ -217,8 +223,8 @@ class RotationScored:
     def measurements(self) -> Mapping[str, float]:
         return {
             "r_obs": self.r_obs,
-            "n_observed": float(self.n_observed),
-            "n_beams": float(self.n_beams),
+            "wr2": self.wr2,
+            "n_matched": float(self.n_matched),
         }
 
 
@@ -231,11 +237,16 @@ class OrientationOptimizationStarted:
     only assembled deep inside the step itself. Deliberately a distinct channel from
     ``OrientationOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    search is fitting, read off the plan's own rotations
+    (:func:`~diffBloch.preprocess.dataset_of`) -- without it, a pooled multi-dataset run's console
+    log cannot tell which dataset a "N rotation(s)" announcement belongs to. It is ``""`` only when
+    the plan names no single dataset (a pooled or unlabelled plan reaching the fit directly).
     """
 
     channel: ClassVar[str] = "orientation_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -252,27 +263,42 @@ class OrientationOptimized:
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
-    PETS rotation index, ``score`` the final orientation's value under ``residual`` -- the
-    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
-    it, carried alongside so a consumer can label the number correctly
-    (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``) rather
-    than a generic, misleading ``wr2`` field under a different residual. ``n_trials`` the number of
-    trial orientations the search scored, ``n_passes`` scipy's reported iteration count (the
-    quantity ``NelderMeadSearch.max_iterations`` caps), and ``pass_cap`` that cap itself -- carried
-    per event so a plot can show each rotation's headroom (``n_passes`` vs ``pass_cap``) and flag
-    any rotation that ran to the cap. With ``workers > 1`` events arrive in *completion* order (the
-    plan itself stays ordered). The channel is shared with the step's ``PlanStepCompleted`` summary
-    line, like the refinement stream's events.
+    PETS rotation index -- *file-local* to ``dataset`` (the raw ``inputs.exp_data`` ref this search
+    ran against, matching :attr:`ThicknessProfile.label`'s convention, and read off the rotation's
+    own ``pattern``), since ``optimize_orientation`` runs once per dataset, before a multi-dataset
+    pool renumbers anything -- so a rotation index alone cannot disambiguate a pooled run; pair it
+    with ``dataset``. ``score`` the final orientation's value
+    under ``residual`` -- the :class:`~diffBloch.config.schema.LossMetricsConfig` name
+    (``"wr2"``/``"robs"``) that produced it, carried alongside so a consumer can label the number
+    correctly (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``)
+    rather than a generic, misleading ``wr2`` field under a different residual. ``seed_score`` is the
+    same metric at the *unsearched* seed orientation (the goniometer correction fixed at
+    ``(0, 0, 0)``), so ``seed_score - score`` states what the search actually bought. ``alpha``,
+    ``beta``, ``omega`` are the goniometer-correction angles (degrees) the search settled on --
+    exactly the ``(alpha, beta, omega)`` :func:`~diffBloch.preprocess.orientation.goniometer_rotation`
+    right-multiplies onto the seed orientation, so they are already "distance from the original
+    orientation" in the search's own three degrees of freedom, not a derived quantity. ``n_trials``
+    the number of trial orientations the search scored, ``n_passes`` scipy's reported iteration count
+    (the quantity ``NelderMeadSearch.max_iterations`` caps), and ``pass_cap`` that cap itself --
+    carried per event so a plot can show each rotation's headroom (``n_passes`` vs ``pass_cap``) and
+    flag any rotation that ran to the cap. With ``workers > 1`` events arrive in *completion* order
+    (the plan itself stays ordered). The channel is shared with the step's ``PlanStepCompleted``
+    summary line, like the refinement stream's events.
     """
 
     channel: ClassVar[str] = "orientation"
     rotation_index: int
     score: float
+    seed_score: float
+    alpha: float
+    beta: float
+    omega: float
     residual: str
     n_matched_hkl: int
     n_trials: int
     n_passes: int
     pass_cap: int
+    dataset: str
 
     @property
     def step(self) -> int | None:
@@ -280,7 +306,14 @@ class OrientationOptimized:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {self.residual: self.score, "n_matched_hkl": float(self.n_matched_hkl)}
+        return {
+            self.residual: self.score,
+            f"seed_{self.residual}": self.seed_score,
+            "delta_alpha_deg": self.alpha,
+            "delta_beta_deg": self.beta,
+            "delta_omega_deg": self.omega,
+            "n_matched_hkl": float(self.n_matched_hkl),
+        }
 
 
 @dataclass(frozen=True)
@@ -334,11 +367,13 @@ class ThicknessOptimizationStarted:
     :class:`OrientationOptimizationStarted`. Deliberately a distinct channel from
     ``ThicknessOptimized`` (not merely a different type) -- a consumer such as
     :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result.
+    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    grid search is fitting, mirroring :attr:`OrientationOptimizationStarted.dataset`.
     """
 
     channel: ClassVar[str] = "thickness_started"
     total_rotations: int
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -484,6 +519,55 @@ class CouplingSummary:
 
 
 @dataclass(frozen=True)
+class PreprocessCompleted:
+    """The pooled ``Plan``'s settled shape, emitted once when preprocessing finishes.
+
+    Emitted from the shared ``_preprocess`` spine every public entry point
+    (``preprocess_experiment``, ``run_experiment``, ``refine_experiment``) funnels through, so a
+    console sink can print the same "preprocessing is done" summary regardless of which one is
+    running. Before this event existed, only ``preprocess_experiment``'s own CLI handler could show
+    it -- it alone had the settled ``Plan`` back in hand to inspect after the call returned;
+    ``run_experiment``/``refine_experiment`` swallow preprocessing internally and go straight into
+    their own next phase, so a sink attached to *them* had no equivalent moment to react to.
+
+    ``n_stages`` is the settled plan's recipe length (``provenance``); it is here because the
+    console box shows it, and an event that carried only the cheap-to-compute fields would quietly
+    shrink what a sink can render.
+
+    ``total_hkl``/``matched_hkl`` are deduplicated distinct ``(h, k, l)`` counts across every
+    rotation (:func:`~diffBloch.preprocess.plan.unique_hkl_count`), not a sum of each rotation's own
+    count -- a reflection re-observed (or matched) in more than one rotation is counted once.
+
+    ``steps`` is the settled plan's ``provenance`` -- each ran step's name paired with its
+    serialized config (:func:`~diffBloch.preprocess.pipeline.spec_to_params`'s form, or ``None`` for
+    a paramless step) -- carried here as plain data (not a :class:`~diffBloch.preprocess.pipeline.
+    StepRecord`) so this module never imports ``preprocess``. A display sink reports *what actually
+    ran and with what settings* instead of a per-rotation search trace, which is display-only detail
+    the settled result does not need to justify itself.
+    """
+
+    channel: ClassVar[str] = "preprocess"
+    n_rotations: int
+    n_stages: int
+    total_hkl: int
+    matched_hkl: int
+    steps: tuple[tuple[str, dict[str, Any] | None], ...] = ()
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level aggregate has no position on the per-rotation axis
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_rotations": float(self.n_rotations),
+            "n_stages": float(self.n_stages),
+            "total_hkl": float(self.total_hkl),
+            "matched_hkl": float(self.matched_hkl),
+        }
+
+
+@dataclass(frozen=True)
 class InferenceCompleted:
     """The run-level aggregate, emitted once when ``run_inference`` finishes."""
 
@@ -491,6 +575,7 @@ class InferenceCompleted:
     n_rotations: int
     n_evaluated: int
     mean_r_obs: float
+    mean_wr2: float
 
     @property
     def step(self) -> int | None:
@@ -502,6 +587,7 @@ class InferenceCompleted:
             "n_rotations": float(self.n_rotations),
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
+            "mean_wr2": self.mean_wr2,
         }
 
 
@@ -536,6 +622,7 @@ class ExperimentDeclared:
     solve_g_max: float
     sg_max: float
     absorption: bool
+    incoherent_mosaicity: bool
     steps: int
     learning_rate: float
 
@@ -564,6 +651,7 @@ class ExperimentDeclared:
             "solve_g_max": self.solve_g_max,
             "sg_max": self.sg_max,
             "absorption": float(self.absorption),
+            "incoherent_mosaicity": float(self.incoherent_mosaicity),
             "steps": float(self.steps),
             "learning_rate": self.learning_rate,
         }
@@ -577,7 +665,11 @@ class RefinedRotationMetrics:
     is the settled result, scored once on the best model by the *reporting* engine, so it covers
     every rotation including the held-out ones (``is_validation`` marks those). The refinement loop
     cannot emit it -- the loop only ever sees the training engine -- so the app boundary emits it
-    once the run has finished.
+    once the run has finished. ``dataset`` is the raw ``inputs.exp_data`` ref ``rotation_index``
+    (the *pooled* index for a multi-dataset run) belongs to, matching :attr:`ThicknessProfile.label`'s
+    convention. It is carried on the rotation's own ``pattern`` from
+    :func:`~diffBloch.preprocess.setup_datasets` onwards, so nothing downstream re-derives dataset
+    membership from pooled index offsets.
     """
 
     channel: ClassVar[str] = "refined rotation"
@@ -586,6 +678,7 @@ class RefinedRotationMetrics:
     r_obs: float
     n_matched: int
     is_validation: bool
+    dataset: str
 
     @property
     def step(self) -> int | None:
@@ -644,6 +737,41 @@ class ThicknessProfile:
             "n_rotations": float(len(self.rotation_indices)),
             "min_thickness": self.min_thickness,
             "max_thickness": self.max_thickness,
+        }
+
+
+@dataclass(frozen=True)
+class IsotropicMosaicityRefined:
+    """One dataset's refined isotropic-mosaicity sigma, once refinement settles.
+
+    Emitted once per composed :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity`
+    component -- one event per dataset that opted into ``refinement.trainable.mosaicity_sigma`` --
+    labeled by its ``inputs.exp_data`` ref. ``pets_sigma_degrees`` is the PETS-reported apparent
+    mosaicity it started from, alongside ``sigma_degrees`` so a sink can show the shift refinement
+    made without recomputing it.
+    """
+
+    label: str
+    sigma_degrees: float
+    pets_sigma_degrees: float
+
+    def __post_init__(self) -> None:
+        if not self.label:
+            raise ValueError("isotropic mosaicity refined label must name its dataset")
+
+    @property
+    def channel(self) -> str:
+        return f"isotropic_mosaicity_refined[{self.label}]"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "sigma_degrees": self.sigma_degrees,
+            "pets_sigma_degrees": self.pets_sigma_degrees,
         }
 
 
@@ -775,6 +903,13 @@ class RefinementStep:
     rotation can contribute to one and not the other -- and a mean whose denominator is implicit can
     improve simply by evaluating fewer rotations. Compare
     :class:`InferenceCompleted`, which has always reported ``n_evaluated`` beside its mean.
+
+    ``val_wr2``/``val_r_obs`` (and their own ``val_n_rotations``/``val_n_wr2_evaluated``/
+    ``val_n_r_obs_evaluated`` denominators) are the *same* diagnostics scored on the held-out
+    validation set, present only when ``run_refinement_model`` was given a ``selection_engine``
+    (``refinement.split.train_test``). That scoring already happens every epoch purely to pick
+    ``best_model`` -- reporting it here is free, and lets a sink show the training/validation curves
+    side by side instead of the validation numbers only ever surfacing once, at the very end.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -788,6 +923,11 @@ class RefinementStep:
     n_rotations: int | None = None
     n_wr2_evaluated: int | None = None
     n_r_obs_evaluated: int | None = None
+    val_wr2: float | None = None
+    val_r_obs: float | None = None
+    val_n_rotations: int | None = None
+    val_n_wr2_evaluated: int | None = None
+    val_n_r_obs_evaluated: int | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -814,6 +954,16 @@ class RefinementStep:
             values["n_wr2_evaluated"] = float(self.n_wr2_evaluated)
         if self.n_r_obs_evaluated is not None:
             values["n_r_obs_evaluated"] = float(self.n_r_obs_evaluated)
+        if self.val_wr2 is not None:
+            values["val_wr2"] = self.val_wr2
+        if self.val_r_obs is not None:
+            values["val_r_obs"] = self.val_r_obs
+        if self.val_n_rotations is not None:
+            values["val_n_rotations"] = float(self.val_n_rotations)
+        if self.val_n_wr2_evaluated is not None:
+            values["val_n_wr2_evaluated"] = float(self.val_n_wr2_evaluated)
+        if self.val_n_r_obs_evaluated is not None:
+            values["val_n_r_obs_evaluated"] = float(self.val_n_r_obs_evaluated)
         for term, entries in self.components.items():
             for name, value in entries.items():
                 values[f"{term}/{name}"] = value
