@@ -41,8 +41,11 @@ from diffBloch.observability import (
     OrientationOptimized,
     PlanSeeded,
     PlanStepCompleted,
+    PreprocessCompleted,
     RefinedRotationMetrics,
+    RefinementCompleted,
     RefinementOrientationStep,
+    RefinementOutputsWritten,
     RefinementStarted,
     RefinementStep,
     ThicknessOptimizationStarted,
@@ -56,6 +59,7 @@ __all__ = [
     "FitAbortedError",
     "format_measurements",
     "namespaced_measurements",
+    "print_summary_box",
     "residual_label",
 ]
 
@@ -161,6 +165,29 @@ def _render_progress_bar(current: int, total: int, elapsed: float, suffix: str) 
         sys.stdout.write("\n")
 
 
+def print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
+    """Print a consistently aligned 62-column completion summary.
+
+    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
+    not truncate, so a longer label silently pushes its value past the box border and misaligns that
+    row against every other. Every "... COMPLETE" box in a run goes through here, so they all look
+    the same regardless of which phase printed it.
+
+    Flushed on completion: the diagnostics log goes to stderr while these go to stdout, and stdout
+    is block-buffered whenever it is not a terminal. Without the flush a redirected run (CI, a SLURM
+    job file) shows the preprocess box far below the refinement lines it actually preceded, since it
+    is emitted mid-run rather than at exit.
+    """
+    width = 62
+    label_width = 26
+    value_width = width - label_width - 3
+    heading = f" {title} "
+    print(f"╭{heading:─^{width}}╮")
+    for label, value in rows:
+        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
+    print(f"╰{'─' * width}╯", flush=True)
+
+
 @dataclass
 class ConsoleLogger:
     """Log each event to stdlib ``logging`` at ``level`` (console/file handlers attached by app).
@@ -194,8 +221,25 @@ class ConsoleLogger:
     _thickness_total: int = field(default=0, init=False, repr=False)
     _thickness_seen: int = field(default=0, init=False, repr=False)
     _thickness_started_at: float = field(default=0.0, init=False, repr=False)
+    # Accumulated for the PREPROCESS COMPLETE box: the orientation search's mean settled score and
+    # the residual it was scored under. Empty when the run reused a checkpoint and ran no search.
+    _orientation_scores: list[float] = field(default_factory=list, init=False, repr=False)
+    _orientation_residual: str | None = field(default=None, init=False, repr=False)
+    # Accumulated for the REFINEMENT COMPLETE box: every epoch's headline numbers, keyed by
+    # iteration, so RefinementCompleted's best_step can name the epoch whose row to print.
+    _epochs: dict[int, RefinementStep] = field(default_factory=dict, init=False, repr=False)
+    _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
 
     def report(self, event: Event) -> None:
+        if isinstance(event, PreprocessCompleted):
+            self._print_preprocess_box(event)
+            return
+        if isinstance(event, RefinementCompleted):
+            self._completed = event
+            return
+        if isinstance(event, RefinementOutputsWritten):
+            self._print_refinement_box(event)
+            return
         if isinstance(event, DeviceSelected):
             _log.log(self.level, _format_device_selection(event))
             return
@@ -265,7 +309,17 @@ class ConsoleLogger:
             self._refinement_started_at = time.perf_counter()
             return
         if isinstance(event, OrientationOptimizationStarted):
-            _log.log(self.level, "Orientation optimization │ %d rotation(s)", event.total_rotations)
+            if event.dataset:
+                _log.log(
+                    self.level,
+                    "Orientation optimization │ %s │ %d rotation(s)",
+                    event.dataset,
+                    event.total_rotations,
+                )
+            else:
+                _log.log(
+                    self.level, "Orientation optimization │ %d rotation(s)", event.total_rotations
+                )
             self._orientation_total = event.total_rotations
             self._orientation_seen = 0
             self._orientation_started_at = time.perf_counter()
@@ -285,7 +339,17 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, ThicknessOptimizationStarted):
-            _log.log(self.level, "Thickness optimization │ %d rotation(s)", event.total_rotations)
+            if event.dataset:
+                _log.log(
+                    self.level,
+                    "Thickness optimization │ %s │ %d rotation(s)",
+                    event.dataset,
+                    event.total_rotations,
+                )
+            else:
+                _log.log(
+                    self.level, "Thickness optimization │ %d rotation(s)", event.total_rotations
+                )
             self._thickness_total = event.total_rotations
             self._thickness_seen = 0
             self._thickness_started_at = time.perf_counter()
@@ -308,6 +372,14 @@ class ConsoleLogger:
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             suffix = f"epoch │ wR2 {wr2} │ R_obs {r_obs}"
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                suffix += f" │ val wR2 {val_wr2} │ val R_obs {val_r_obs}"
             # The bar owns its line (``\r``, no newline), so penalties ride in the suffix rather
             # than as extra log lines that would overwrite it.
             for term, values in _penalty_components(event):
@@ -360,10 +432,13 @@ class ConsoleLogger:
             )
             return
         if isinstance(event, OrientationOptimized):
+            self._orientation_scores.append(event.score)
+            self._orientation_residual = event.residual
             label = f"orientation optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, ThicknessOptimized):
             label = f"thickness optimization[rotation_index={event.rotation_index}]"
         elif isinstance(event, RefinementStep):
+            self._epochs[event.iteration] = event
             wr2 = _mean_over(event.wr2, event.n_wr2_evaluated, event.n_rotations)
             r_obs = _mean_over(event.r_obs, event.n_r_obs_evaluated, event.n_rotations)
             diff_loss = "n/a" if event.diff_loss is None else f"{event.diff_loss:.6f}"
@@ -375,6 +450,19 @@ class ConsoleLogger:
                 r_obs,
                 diff_loss,
             )
+            if event.val_wr2 is not None:
+                val_wr2 = _mean_over(
+                    event.val_wr2, event.val_n_wr2_evaluated, event.val_n_rotations
+                )
+                val_r_obs = _mean_over(
+                    event.val_r_obs, event.val_n_r_obs_evaluated, event.val_n_rotations
+                )
+                _log.log(
+                    self.level,
+                    "  validation      │ wR2 %s │ R_obs %s",
+                    val_wr2,
+                    val_r_obs,
+                )
             for term, values in _penalty_components(event):
                 _log.log(
                     self.level,
@@ -420,6 +508,78 @@ class ConsoleLogger:
         else:
             label = event.channel if event.step is None else f"{event.channel}[{event.step}]"
         _log.log(self.level, "%s %s", label, format_measurements(event))
+
+    def _print_preprocess_box(self, event: PreprocessCompleted) -> None:
+        """Render "PREPROCESS COMPLETE" -- every entry point's preprocessing, not just the command.
+
+        Driven entirely by the event, so ``infer`` and ``refine`` (which swallow preprocessing
+        internally and go straight into their next phase) get the same box a standalone
+        ``preprocess`` run does, from the same sink, with no per-command wiring.
+        """
+        mean_label = (
+            f"Mean {residual_label(self._orientation_residual)}"
+            if self._orientation_residual
+            else "Mean score"
+        )
+        mean_value = (
+            f"{sum(self._orientation_scores) / len(self._orientation_scores):.6g}"
+            if self._orientation_scores
+            # No OrientationOptimized events means no search ran -- the settled orientations came
+            # back off a checkpoint, so there is no mean to report rather than a mean of zero.
+            else "n/a (checkpoint reused)"
+        )
+        print()
+        print_summary_box(
+            "PREPROCESS COMPLETE",
+            (
+                ("Rotations", str(event.n_rotations)),
+                ("Stages", str(event.n_stages)),
+                ("Total HKLs", str(event.total_hkl)),
+                ("Matched HKLs", str(event.matched_hkl)),
+                ("Solve beams (max/rotation)", str(event.max_solve_beams)),
+                (mean_label, mean_value),
+            ),
+        )
+        self._orientation_scores = []
+        self._orientation_residual = None
+
+    def _print_refinement_box(self, event: RefinementOutputsWritten) -> None:
+        """Render "REFINEMENT COMPLETE" + the written artifacts, on the run's terminal event.
+
+        ``RefinementOutputsWritten`` is deliberately the trigger rather than ``RefinementCompleted``:
+        the box lists the files, so it must not print until they exist. The numbers come from the
+        epoch this run selected (``RefinementCompleted.best_step`` indexing the remembered
+        ``RefinementStep`` stream), which is why both events are tracked rather than one.
+        """
+        completed = self._completed
+        best = None if completed is None else self._epochs.get(completed.best_step)
+        if completed is not None and best is not None:
+            counts = completed.reflection_counts
+
+            def cell(value: float | None) -> str:
+                return "n/a" if value is None else f"{value:.6g}"
+
+            print()
+            print_summary_box(
+                "REFINEMENT COMPLETE",
+                (
+                    ("Best epoch", str(completed.best_step + 1)),
+                    ("Objective", f"{completed.best_loss:.6g}"),
+                    ("wR2", cell(best.wr2)),
+                    ("R_obs", cell(best.r_obs)),
+                    ("Diffraction loss", cell(best.diff_loss)),
+                    (
+                        "HKLs (Observed/total)",
+                        f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
+                    ),
+                ),
+            )
+        print()
+        print("Output files")
+        for name, path in event.artifacts.items():
+            print(f"  • {name.replace('_', ' ').title():<20} {path}")
+        self._epochs = {}
+        self._completed = None
 
 
 @dataclass

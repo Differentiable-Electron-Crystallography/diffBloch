@@ -247,12 +247,21 @@ class PatternBatch:
 
     Build with :meth:`from_experimental_record` from a validated ``io.ExperimentalRecord`` (optionally
     restricted to one PETS zone-axis row).
+
+    ``dataset`` is the ``inputs.exp_data`` ref this rotation was measured in, stamped once at
+    :func:`~diffBloch.preprocess.setup_datasets` where the ref and the rotations are both in hand.
+    It rides *with* the rotation rather than being looked up from a table of index ranges, so it
+    survives multi-dataset pooling (which renumbers ``rotation_index`` into a global space), the
+    train/validation subsetting in ``refine_experiment``, and any future filtering or reordering --
+    nothing downstream has to re-derive dataset membership from cumulative offsets. Empty only for
+    a directly constructed batch outside the experiment loader (tests, ad hoc API use).
     """
 
     hkl: Tensor
     intensities: Tensor
     sigmas: Tensor
     rotation_index: int = 0
+    dataset: str = ""
 
     @classmethod
     def from_experimental_record(
@@ -261,6 +270,7 @@ class PatternBatch:
         *,
         zone_axis_id: int | None = None,
         rotation_index: int = 0,
+        dataset: str = "",
     ) -> Self:
         """Tensorise observed reflections, optionally filtering to one ``zone_axis_id``."""
         select = slice(None)
@@ -276,6 +286,7 @@ class PatternBatch:
             intensities=torch.as_tensor(select_i, dtype=torch.float64),
             sigmas=torch.as_tensor(select_s, dtype=torch.float64),
             rotation_index=rotation_index,
+            dataset=dataset,
         )
 
 

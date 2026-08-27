@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from diffBloch.app.program import (
     _LARGE_CELL_THRESHOLD_A3,
+    PreprocessOutcome,
     _preprocess,
     _recipe_steps,
     _select_device,
@@ -73,11 +75,15 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
     seen: dict[str, object] = {}
     plan = SimpleNamespace()
 
-    def fake_preprocess(
-        *args: object, **kwargs: object
-    ) -> tuple[object, object, object, object, object]:
+    def fake_preprocess(*args: object, **kwargs: object) -> PreprocessOutcome:
         seen["device"] = kwargs["device"]
-        return object(), object(), plan, object(), None
+        return PreprocessOutcome(
+            refinement=cast(Any, object()),
+            integrations=(),
+            plan=cast(Any, plan),
+            validation_rotation_indices=frozenset(),
+            plan_lock_sha256s=None,
+        )
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
     monkeypatch.setattr(
@@ -233,7 +239,7 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
     )
     plot_dir = tmp_path / "thickness_optim"
 
-    refinement, _integrations, plan, _validation_rotation_indices, _plan_lock_sha256s = _preprocess(
+    outcome = _preprocess(
         root,
         cfg,
         logger=NULL_LOGGER,
@@ -246,11 +252,123 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
         plot_thickness_dir=plot_dir,
     )
 
-    assert plan.orientations  # the geometry build actually ran
-    assert refinement is not None
+    assert outcome.plan.orientations  # the geometry build actually ran
+    assert outcome.refinement is not None
     # no thickness fit ran, so no PNG was written -- but the branch itself (directory resolution +
     # MultiLogger composition) executed without error, which is what this test pins.
     assert plot_dir.is_dir()
+
+
+def test_preprocess_gives_each_dataset_its_own_thickness_plot_subdirectory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two datasets must not share a ``ThicknessPlotLogger`` output directory.
+
+    Regression for https://github.com/Differentiable-Electron-Crystallography/diffBloch/issues/147
+    (bug 1): a single ``ThicknessPlotLogger`` reused across datasets names files by
+    ``rotation_index`` alone, which is file-local -- so dataset 2's rotation 0 silently overwrites
+    dataset 1's. Each dataset must get its own subdirectory (keyed by
+    :func:`~diffBloch.config.schema.dataset_checkpoint_stem`) under ``plot_thickness_dir``.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    (tmp_path / "a.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "b.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "q.cif").write_bytes((root / cfg.inputs.structure).read_bytes())
+    cfg = cfg.model_copy(
+        update={
+            "inputs": cfg.inputs.model_copy(
+                update={
+                    "structure": "q.cif",
+                    "exp_data": ["a.cif_pets", "b.cif_pets"],
+                    "multi_dataset": True,
+                }
+            ),
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            ),
+        }
+    )
+    plot_dir = tmp_path / "thickness_optim"
+
+    created_dirs: list[Path] = []
+
+    class _SpyThicknessPlotLogger:
+        def __init__(self, output_dir: Path) -> None:
+            self.output_dir = Path(output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            created_dirs.append(self.output_dir)
+
+        def report(self, event: object) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "diffBloch.app.loggers.plotting.ThicknessPlotLogger", _SpyThicknessPlotLogger
+    )
+
+    _preprocess(
+        tmp_path,
+        cfg,
+        logger=NULL_LOGGER,
+        checkpoint=False,
+        refresh=False,
+        device=None,
+        workers=1,
+        max_batch=None,
+        plot_thickness=True,
+        plot_thickness_dir=plot_dir,
+    )
+
+    assert len(created_dirs) == 2
+    assert created_dirs[0] != created_dirs[1]
+    assert all(d.parent == plot_dir for d in created_dirs)
+
+
+def test_preprocess_logs_which_dataset_it_is_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The dataset loop must announce each dataset before running its recipe.
+
+    Regression for https://github.com/Differentiable-Electron-Crystallography/diffBloch/issues/147
+    (bug 2): "Preprocess seed" / "Preprocess stage N" console lines carried no dataset reference,
+    so a multi-dataset run's log couldn't be attributed to a dataset except by matching timestamps.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    (tmp_path / "a.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "b.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "q.cif").write_bytes((root / cfg.inputs.structure).read_bytes())
+    cfg = cfg.model_copy(
+        update={
+            "inputs": cfg.inputs.model_copy(
+                update={
+                    "structure": "q.cif",
+                    "exp_data": ["a.cif_pets", "b.cif_pets"],
+                    "multi_dataset": True,
+                }
+            ),
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            ),
+        }
+    )
+
+    with caplog.at_level("INFO", logger="diffBloch.app.program"):
+        _preprocess(
+            tmp_path,
+            cfg,
+            logger=NULL_LOGGER,
+            checkpoint=False,
+            refresh=False,
+            device=None,
+            workers=1,
+            max_batch=None,
+        )
+
+    dataset_lines = [r.message for r in caplog.records if "a.cif_pets" in r.message]
+    assert dataset_lines, "expected a log line naming dataset 'a.cif_pets'"
+    dataset_lines = [r.message for r in caplog.records if "b.cif_pets" in r.message]
+    assert dataset_lines, "expected a log line naming dataset 'b.cif_pets'"
 
 
 def test_fit_stages_can_be_enabled_independently() -> None:

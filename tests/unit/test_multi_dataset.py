@@ -28,10 +28,24 @@ FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURE_ROOT / "quartz_anchor"
 
 
-def _quartz_inputs():
+def _quartz_inputs(n_datasets: int = 1):
+    """Quartz structure + record, with a config naming ``n_datasets`` exp_data refs.
+
+    ``setup_datasets`` requires ``records`` to correspond one-to-one with ``inputs.exp_data``, so a
+    test feeding it the same record N times must widen the config to match -- exactly what a real
+    multi-dataset experiment.yaml does.
+    """
     structure = read_structure(QUARTZ / "enantiomer_1.cif")
     record = read_experimental_data(QUARTZ / "exp_data.cif_pets")
     config = load_config(QUARTZ / "experiment.yaml")
+    if n_datasets > 1:
+        raw = config.model_dump(mode="python")
+        raw["inputs"] = {
+            **raw["inputs"],
+            "exp_data": [f"dataset_{i}.cif_pets" for i in range(n_datasets)],
+            "multi_dataset": True,
+        }
+        config = ExperimentConfig.model_validate(raw)
     return structure, record, config
 
 
@@ -77,7 +91,7 @@ def test_setup_datasets_rejects_empty_records() -> None:
 
 
 def test_setup_datasets_keeps_file_local_indices_and_shares_the_grid() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     _, datasets = setup_datasets(structure, (record, record), config)
     for dataset in datasets:
         assert [op.pattern.rotation_index for op in dataset.plan.orientations] == list(
@@ -90,7 +104,7 @@ def test_setup_datasets_keeps_file_local_indices_and_shares_the_grid() -> None:
 
 def test_setup_datasets_gives_each_dataset_its_own_integration_geometry() -> None:
     """The old shared-semiangle restriction is gone: pooled precession angles may differ."""
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     other_angle = record.model_copy(
         update={"precession_angles": np.full_like(np.asarray(record.precession_angles), 2.0)}
     )
@@ -100,7 +114,7 @@ def test_setup_datasets_gives_each_dataset_its_own_integration_geometry() -> Non
 
 
 def test_setup_datasets_preserves_each_dataset_collection_geometry() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     precession = record.model_copy(update={"data_collection_geometry": "precession"})
     _, datasets = setup_datasets(structure, (record, precession), config)
     assert datasets[0].integration.geometry == "continuous_rotation"
@@ -108,7 +122,7 @@ def test_setup_datasets_preserves_each_dataset_collection_geometry() -> None:
 
 
 def test_setup_datasets_seeds_each_dataset_with_its_configured_mean_thickness() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     raw = config.model_dump(mode="python")
     raw["inputs"] = {
         **raw["inputs"],
@@ -131,7 +145,7 @@ def test_setup_datasets_seeds_each_dataset_with_its_configured_mean_thickness() 
 
 
 def test_setup_datasets_translates_global_ignore_to_file_local_slices() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     n = record.n_rotations
     ignoring = config.model_copy(
         update={
@@ -149,7 +163,7 @@ def test_setup_datasets_translates_global_ignore_to_file_local_slices() -> None:
 
 
 def test_setup_datasets_rejects_out_of_range_and_fully_ignored() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     n = record.n_rotations
     out_of_range = config.model_copy(
         update={"blochwave": config.blochwave.model_copy(update={"ignore_orientations": (2 * n,)})}
@@ -171,7 +185,7 @@ def test_setup_datasets_rejects_out_of_range_and_fully_ignored() -> None:
 def test_setup_datasets_computes_u0_once_per_distinct_energy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(3)
     calls: list[float] = []
 
     def counting(*args, **kwargs):
@@ -186,7 +200,7 @@ def test_setup_datasets_computes_u0_once_per_distinct_energy(
 def test_multi_dataset_second_file_checked_against_first_not_structure(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     cell = np.asarray(record.cell_parameters, dtype=np.float64)
     second = record.model_copy(
         update={
@@ -210,7 +224,7 @@ def test_multi_dataset_second_file_checked_against_first_not_structure(
 
 
 def test_multi_dataset_over_5pct_between_combined_files_raises() -> None:
-    structure, record, config = _quartz_inputs()
+    structure, record, config = _quartz_inputs(2)
     second = record.model_copy(
         update={
             "cell_parameters": record.cell_parameters * np.array([1.08, 1.0, 1.0, 1.0, 1.0, 1.0]),

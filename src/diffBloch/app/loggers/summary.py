@@ -43,6 +43,7 @@ from diffBloch.observability import (
     ExperimentDeclared,
     IsotropicMosaicityRefined,
     ObjectiveManifest,
+    OrientationOptimized,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -69,6 +70,18 @@ def ascii_table(headers: list[str], rows: list[list[str]]) -> str:
     lines = [fmt(headers), "  ".join("-" * width for width in widths)]
     lines.extend(fmt(row) for row in rows)
     return "\n".join(lines)
+
+
+def _finite_mean_cell(values: Sequence[float]) -> str:
+    """A compact ``mean [n_finite/n_total]`` cell, ``n/a [0/n_total]`` when nothing was finite.
+
+    Every mean in the report states the denominator it was taken over: a mean that covers fewer
+    rotations is a different quantity, not a better one.
+    """
+    finite = [value for value in values if math.isfinite(value)]
+    if not finite:
+        return f"n/a [0/{len(values)}]"
+    return f"{sum(finite) / len(finite):.6f} [{len(finite)}/{len(values)}]"
 
 
 def _cif_loop_as_table(block: gemmi.cif.Block, first_tag: str) -> str | None:
@@ -109,6 +122,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
+    _orientations: list[OrientationOptimized] = field(default_factory=list, init=False, repr=False)
     _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
     _mosaicities: dict[str, IsotropicMosaicityRefined] = field(
         default_factory=dict, init=False, repr=False
@@ -132,6 +146,8 @@ class SummaryLogger:
             self._completed = event
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
+        elif isinstance(event, OrientationOptimized):
+            self._orientations.append(event)
         elif isinstance(event, ThicknessProfile):
             # Keyed by dataset so a re-reported profile replaces its section (last event wins),
             # while insertion order keeps sections in exp_data order.
@@ -164,8 +180,11 @@ class SummaryLogger:
         self._simulation_parameters(lines, rule)
         self._crystallographic_parameters(lines, rule, Path(outputs.structure))
         self._objective_terms(lines, rule)
+        self._orientation_optimization(lines, rule)
         self._objective_components(lines, rule)
+        self._epoch_curve(lines, rule)
         self._rotation_metrics(lines, rule)
+        self._per_dataset_summary(lines, rule)
         self._thickness_profile(lines, rule)
         self._mosaicity(lines, rule)
         self._refined_structure(lines, rule, Path(outputs.structure))
@@ -282,6 +301,38 @@ class SummaryLogger:
         lines.append(f" constraints: {', '.join(manifest.constraints) or 'none'}")
         lines.append(f" components : {', '.join(manifest.components) or 'none'}")
 
+    def _orientation_optimization(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Orientation optimization")
+        if not self._orientations:
+            lines.append(" enabled: no (orientation search was not part of this run)")
+            return
+        residual = self._orientations[0].residual
+        lines.append(
+            ascii_table(
+                [
+                    "Dataset",
+                    "Rotation",
+                    "delta alpha (deg)",
+                    "delta beta (deg)",
+                    "delta omega (deg)",
+                    f"seed {residual}",
+                    f"final {residual}",
+                ],
+                [
+                    [
+                        event.dataset,
+                        str(event.rotation_index),
+                        f"{event.alpha:.4f}",
+                        f"{event.beta:.4f}",
+                        f"{event.omega:.4f}",
+                        f"{event.seed_score:.6f}",
+                        f"{event.score:.6f}",
+                    ]
+                    for event in self._orientations
+                ],
+            )
+        )
+
     def _objective_components(self, lines: list[str], rule: Callable[[str], None]) -> None:
         rule("Objective components (best epoch)")
         best = self._best
@@ -309,6 +360,31 @@ class SummaryLogger:
         # has no row, so this table never reports an inactive term as a satisfied zero.
         lines.append(" (terms not composed into the objective have no row)")
 
+    def _epoch_curve(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Epoch curve")
+        if not self._steps:
+            lines.append(" n/a (no recorded refinement steps)")
+            return
+
+        def cell(value: float | None) -> str:
+            return "n/a" if value is None or not math.isfinite(value) else f"{value:.6f}"
+
+        # val_wr2/val_r_obs are populated only when refinement.split.train_test held out a
+        # validation set (see RefinementStep) -- included here whenever any step carries them, so
+        # the train/validation curves sit side by side rather than validation only ever surfacing
+        # once, in the final "Validation set" table.
+        has_validation = any(step.val_wr2 is not None for step in self._steps)
+        headers = ["Epoch", "wR2", "R_obs"]
+        if has_validation:
+            headers += ["Val wR2", "Val R_obs"]
+        rows = []
+        for step in self._steps:
+            row = [str(step.iteration + 1), cell(step.wr2), cell(step.r_obs)]
+            if has_validation:
+                row += [cell(step.val_wr2), cell(step.val_r_obs)]
+            rows.append(row)
+        lines.append(ascii_table(headers, rows))
+
     def _rotation_metrics(self, lines: list[str], rule: Callable[[str], None]) -> None:
         def block(rows: Sequence[RefinedRotationMetrics]) -> None:
             lines.append(
@@ -325,21 +401,9 @@ class SummaryLogger:
                     ],
                 )
             )
-            finite_wr2 = [row.wr2 for row in rows if math.isfinite(row.wr2)]
-            finite_r_obs = [row.r_obs for row in rows if math.isfinite(row.r_obs)]
             lines.append("")
-
-            def mean_line(label: str, finite: list[float]) -> str:
-                # Each mean states the denominator it was taken over: a mean that covers fewer
-                # rotations is a different quantity, not a better one.
-                if not finite:
-                    return f" mean {label} = n/a [0/{len(rows)}]"
-                return (
-                    f" mean {label} = {sum(finite) / len(finite):.6f} [{len(finite)}/{len(rows)}]"
-                )
-
-            lines.append(mean_line("wR2  ", finite_wr2))
-            lines.append(mean_line("R_obs", finite_r_obs))
+            lines.append(f" mean wR2   = {_finite_mean_cell([row.wr2 for row in rows])}")
+            lines.append(f" mean R_obs = {_finite_mean_cell([row.r_obs for row in rows])}")
 
         rule("Per-rotation wR2 / R_obs (final refined model)")
         block(self._rotations)
@@ -349,6 +413,53 @@ class SummaryLogger:
             lines.append(f" n_rotations = {len(validation)}")
             lines.append("")
             block(validation)
+
+    def _per_dataset_summary(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        # Distinct datasets, in first-seen (exp_data) order -- a single-dataset run has nothing a
+        # per-dataset breakdown would add over the table above, so the section is omitted entirely.
+        labels: list[str] = []
+        for row in self._rotations:
+            if row.dataset not in labels:
+                labels.append(row.dataset)
+        if len(labels) < 2:
+            return
+
+        rule("Per-dataset summary")
+
+        def dataset_row(name: str, rows: Sequence[RefinedRotationMetrics]) -> list[str]:
+            train = [row for row in rows if not row.is_validation]
+            validation = [row for row in rows if row.is_validation]
+            return [
+                name,
+                f"{len(train)}/{len(validation)}",
+                _finite_mean_cell([row.wr2 for row in train]),
+                _finite_mean_cell([row.r_obs for row in train]),
+                _finite_mean_cell([row.wr2 for row in validation]),
+                _finite_mean_cell([row.r_obs for row in validation]),
+                _finite_mean_cell([row.wr2 for row in rows]),
+                _finite_mean_cell([row.r_obs for row in rows]),
+            ]
+
+        rows = [
+            dataset_row(label, [row for row in self._rotations if row.dataset == label])
+            for label in labels
+        ]
+        rows.append(dataset_row("All datasets", self._rotations))
+        lines.append(
+            ascii_table(
+                [
+                    "Dataset",
+                    "N (train/val)",
+                    "Train wR2",
+                    "Train R_obs",
+                    "Val wR2",
+                    "Val R_obs",
+                    "Total wR2",
+                    "Total R_obs",
+                ],
+                rows,
+            )
+        )
 
     def _thickness_profile(self, lines: list[str], rule: Callable[[str], None]) -> None:
         if not self._profiles:
