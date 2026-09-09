@@ -114,8 +114,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.exp_data.npz",
-    "sha256": "605244a47e1988e6b2bd9edad52af21d94f295a076a204092eabc559fb4b838c",
-    "bytes": 584390,
+    "sha256": "2445de089aa6b9b2772ea41c8df2b4922f8851e538cbf8fa68f5e100d01c7869",
+    "bytes": 584464,
     "media_type": "application/octet-stream"
   }
 }

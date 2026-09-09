@@ -290,6 +290,15 @@ def setup_datasets(
         if isinstance(config.inputs.exp_data, list)
         else (config.inputs.exp_data,)
     )
+    # ``records`` is read *from* ``inputs.exp_data``, so they correspond one-to-one by construction.
+    # Stated rather than assumed: two call sites index refs by dataset position (the per-dataset
+    # seed thickness and each rotation's dataset label), and a silent mismatch would mislabel every
+    # rotation of the extra datasets instead of failing.
+    if len(records) != len(dataset_refs):
+        raise ValueError(
+            f"setup_datasets got {len(records)} experimental record(s) but inputs.exp_data names "
+            f"{len(dataset_refs)} ({', '.join(dataset_refs)}); they must correspond one-to-one"
+        )
     datasets: list[DatasetSetup] = []
     offset = 0
     for dataset_index, record in enumerate(records):
@@ -328,6 +337,10 @@ def setup_datasets(
                     record,
                     zone_axis_id=int(zone_id),
                     rotation_index=local_index,
+                    # Stamped here, the one place the exp_data ref and the rotations are both in
+                    # hand: from here on the rotation carries its own dataset identity, so pooling,
+                    # the train/val split, and the report never re-derive it from index offsets.
+                    dataset=dataset_refs[dataset_index],
                 ),
                 energy=energy,
                 thickness=seed_thicknesses,

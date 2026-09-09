@@ -555,6 +555,35 @@ def test_refine_best_params_can_track_a_selection_engine() -> None:
     steps_reported = [e.loss for e in recorder.events if isinstance(e, RefinementStep)]
     assert steps_reported == [float(x) for x in result.losses]
 
+    # The validation scoring already happens every epoch purely to pick best_model -- reporting it
+    # on the same RefinementStep must not cost an extra evaluation or ever surface as unevaluated.
+    step_events = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    assert len(step_events) == 8
+    assert all(e.val_wr2 is not None and e.val_r_obs is not None for e in step_events)
+    assert all(e.val_n_rotations == 1 for e in step_events)
+
+
+def test_refinement_step_omits_validation_fields_without_a_selection_engine() -> None:
+    """No selection_engine -> no val_* fields, not zeros or NaNs standing in for "not scored"."""
+    engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
+    recorder = RecordingLogger()
+
+    run_refinement_model(
+        engine,
+        build_refinement_model(initial=_params(occupancy_logit=0.0)),
+        RefinementProblem(),
+        trainable=TrainableSpec(occupancy=AtomSelection.all()),
+        steps=3,
+        optimizer="adam",
+        lr=0.2,
+        logger=recorder,
+    )
+
+    step_events = [e for e in recorder.events if isinstance(e, RefinementStep)]
+    assert len(step_events) == 3
+    assert all(e.val_wr2 is None and e.val_r_obs is None for e in step_events)
+    assert all("val_wr2" not in e.measurements for e in step_events)
+
 
 def test_refine_emits_a_step_stream_and_a_completion_event() -> None:
     engine = _engine(loss=mse_loss, pattern=_observed_pattern(_params(occupancy_logit=2.2)))
@@ -723,3 +752,91 @@ def test_refine_rejects_unknown_optimizer() -> None:
             trainable=TrainableSpec(adp=AtomSelection.all()),
             optimizer="sgd",
         )
+
+
+def _rotation_observing(
+    engine: RefinementEngine, hkl: list[list[int]], intensities: list[float]
+) -> OrientationPlan:
+    """One rotation of ``engine``'s system observing exactly ``hkl``.
+
+    sigma is 0.01 throughout, so an intensity above 0.03 is "strong" under the I > 3 sigma split
+    ``refinement_metrics`` applies.
+    """
+    pattern = PatternBatch(
+        hkl=torch.tensor(hkl, dtype=torch.int64),
+        intensities=torch.tensor(intensities, dtype=torch.float64),
+        sigmas=torch.full((len(hkl),), 0.01, dtype=torch.float64),
+    )
+    return OrientationPlan.build(
+        engine.grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,)
+    )
+
+
+def test_refinement_metrics_counts_a_reflection_re_observed_across_rotations_once() -> None:
+    """Counts are unique (h, k, l) triples, not raw PETS rows.
+
+    Rotation electron diffraction frames overlap in angle, so the same reciprocal-lattice point is
+    routinely re-observed in several consecutive rotations. Summing per-rotation row counts inflates
+    every total by exactly those overlaps -- here 100 is seen in both rotations, so a row sum would
+    report 3 matched where there are only 2 distinct reflections.
+    """
+    base = _engine()
+    engine = dataclasses.replace(
+        base,
+        orientations=(
+            _rotation_observing(base, [[0, 0, 0], [1, 0, 0]], [0.9, 0.05]),
+            _rotation_observing(base, [[1, 0, 0]], [0.05]),
+        ),
+    )
+
+    _, n_matched, _, _, _ = engine.refinement_metrics(build_refinement_model(initial=_params()))
+
+    assert n_matched == 2  # {000, 100}; the raw row sum would be 3
+
+
+def test_refinement_metrics_splits_strong_and_weak_over_the_same_unique_set() -> None:
+    """strong + weak must equal matched, with each triple landing in exactly one bucket.
+
+    A triple is strong if *any* of its matched measurements clears I > 3 sigma, so 100 -- weak in
+    the first rotation and strong in the second -- is strong once, never counted in both buckets.
+    """
+    base = _engine()
+    engine = dataclasses.replace(
+        base,
+        orientations=(
+            _rotation_observing(base, [[0, 0, 0], [1, 0, 0]], [0.9, 0.01]),
+            _rotation_observing(base, [[1, 0, 0], [-1, 0, 0]], [0.9, 0.01]),
+        ),
+    )
+
+    _, n_matched, n_strong, n_weak, _ = engine.refinement_metrics(
+        build_refinement_model(initial=_params())
+    )
+
+    assert n_matched == 3  # {000, 100, -100}
+    assert n_strong == 2  # 000 always strong; 100 strong via the second rotation
+    assert n_weak == 1  # -100 only ever weak
+    assert n_strong + n_weak == n_matched
+
+
+def test_refinement_metrics_counts_an_unmatched_reflection_once_not_per_rotation() -> None:
+    """Observed-but-never-matched triples deduplicate the same way the matched ones do.
+
+    200 is outside the solve beam set, so it never enters the alignment. Observed in both rotations,
+    it is one unmatched reflection, not two.
+    """
+    base = _engine()
+    engine = dataclasses.replace(
+        base,
+        orientations=(
+            _rotation_observing(base, [[0, 0, 0], [2, 0, 0]], [0.9, 0.05]),
+            _rotation_observing(base, [[0, 0, 0], [2, 0, 0]], [0.9, 0.05]),
+        ),
+    )
+
+    _, n_matched, _, _, n_unmatched = engine.refinement_metrics(
+        build_refinement_model(initial=_params())
+    )
+
+    assert n_matched == 1  # only 000 is in the beam set
+    assert n_unmatched == 1  # 200, once -- not once per rotation
