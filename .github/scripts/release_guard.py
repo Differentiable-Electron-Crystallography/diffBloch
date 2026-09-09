@@ -9,7 +9,10 @@ cannot reproduce.
 
 Covers the e2e fixture as well as the examples. Its plan lock and ``.npz`` are committed on purpose
 (see .gitignore) so the anchor job can skip the expensive fit; left stale after a bump, that job
-recomputes the plan on every run from then on, not just once.
+recomputes the plan on every run from then on, not just once. Note that the fixture is refreshed by
+``diffbloch preprocess --refresh``, NOT by running the e2e suite: the only e2e test loads the
+fixture and compares inference against ``reference_results.json``, so it never writes a plan lock
+and can never clear this check.
 
 Runs on every PR and no-ops when ``__version__`` is untouched -- it is a required status check, so
 it must always report rather than be skipped by a ``paths:`` filter.
@@ -32,7 +35,10 @@ INIT = "src/diffBloch/__init__.py"
 # Where committed locks live, and the command that regenerates each family's.
 LOCK_ROOTS = {
     "examples": "uv run diffbloch refine <experiment_dir> --refresh",
-    "tests/fixtures": "uv run pytest -m e2e",
+    # NOT `pytest -m e2e` -- that suite only reads the fixture (see module docstring). Only the
+    # preprocess stage writes plan.<stem>.npz/.lock, and only --refresh rebuilds them; `refine`
+    # would also work but would leave refinement artifacts the fixture is not supposed to carry.
+    "tests/fixtures": "uv run diffbloch preprocess tests/fixtures/quartz_anchor --refresh",
 }
 VERSION_RE = re.compile(r'^__version__ = "([^"]+)"', re.MULTILINE)
 
