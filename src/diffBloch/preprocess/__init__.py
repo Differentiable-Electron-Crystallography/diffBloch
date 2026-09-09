@@ -20,6 +20,7 @@ from diffBloch.preprocess.experiment import (
     RefinementSetup,
     from_experiment,
     resolve_dataset_mosaicity,
+    resolve_dataset_orientations,
     setup_datasets,
     validation_mask,
 )
@@ -34,6 +35,7 @@ from diffBloch.preprocess.orientation import (
     hexagonal_tilt,
     orientation_basis,
     orientation_matrices,
+    rotation_axis_correction,
     u_matrix,
 )
 from diffBloch.preprocess.pipeline import (
@@ -58,13 +60,14 @@ from diffBloch.preprocess.pipeline import (
 from diffBloch.preprocess.plan import (
     CandidatePlan,
     Plan,
+    dataset_of,
     require_built_plans,
     require_candidate_plans,
     require_orientation_plans,
 )
 from diffBloch.preprocess.pool import pool
 from diffBloch.preprocess.scoring import build_engine, score_orientations
-from diffBloch.preprocess.serialize import read_plan, write_plan
+from diffBloch.preprocess.serialize import plan_is_readable, read_plan, write_plan
 from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
     klar_beam_mask,
@@ -141,17 +144,21 @@ __all__ = [
     "klar_beam_mask",
     "maximize_scalar",
     "couple_beams",
+    "dataset_of",
     "orientation_basis",
     "orientation_matrices",
+    "rotation_axis_correction",
     "pipeline",
     "plan_coverage",
     "pool",
     "report_coupling",
+    "plan_is_readable",
     "read_plan",
     "require_built_plans",
     "require_candidate_plans",
     "require_orientation_plans",
     "resolve_dataset_mosaicity",
+    "resolve_dataset_orientations",
     "resolve_recipe",
     "run_inference",
     "score_orientations",

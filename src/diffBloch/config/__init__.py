@@ -18,6 +18,7 @@ from diffBloch.config.manifest import (
     read_refinement_lock,
     refinement_config_digest,
     sha256_file,
+    write_experiment_lock,
     write_preprocess_lock,
     write_refinement_lock,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "read_refinement_lock",
     "refinement_config_digest",
     "sha256_file",
+    "write_experiment_lock",
     "write_preprocess_lock",
     "write_refinement_lock",
 ]

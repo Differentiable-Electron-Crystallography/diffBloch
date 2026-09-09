@@ -16,6 +16,29 @@ are stored in the experiment directory under `reproducibility/`.
 file change. This prevents a calculation from using input files that differ from those recorded for
 the experiment.
 
+`experiment.lock` is a raw-input blessing gate. It is created automatically, from the current input
+files, the first time any command (`converge`, `preprocess`, `infer`, `refine`) runs against an
+experiment directory that doesn't have one yet. After that, if an input file's contents change, the
+lock is not rewritten automatically. The mismatch is exactly the drift this file exists to catch, so
+the command fails instead.
+
+To create the lock explicitly for a new experiment, run:
+
+```bash
+uv run diffbloch lock-experiment <experiment_dir>
+```
+
+This command fails if `reproducibility/experiment.lock` already exists. When a CIF or `.cif_pets`
+input change is intentional, either delete `experiment.lock` and rerun, or force a rewrite:
+
+```bash
+uv run diffbloch lock-experiment --force <experiment_dir>
+```
+
+Warning: accepting changed input bytes invalidates existing `plan.<stem>.lock` files and any
+`refinement.lock` chained to them. The next checkpointed preprocessing run will regenerate stale
+plan checkpoints; refinement outputs must be regenerated against the new plans.
+
 ## Preprocessing
 
 Preprocessing results are saved under `reproducibility/` so they can be reused. Combined experiments

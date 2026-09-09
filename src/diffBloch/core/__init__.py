@@ -7,6 +7,7 @@ from diffBloch.core.adp import (
     cif_adp_to_star,
     equivalent_isotropic_adp,
     isotropic_adp,
+    ueq_from_cif_uij,
 )
 from diffBloch.core.constraints import (
     apply_adp_constraints,
@@ -130,6 +131,7 @@ __all__ = [
     "structure_factors",
     "structure_matrix",
     "structure_matrix_prefactor",
+    "ueq_from_cif_uij",
     "unit_interval",
     "w_rbragg",
     "wavelength2energy",

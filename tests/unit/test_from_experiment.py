@@ -8,12 +8,17 @@ import pytest
 import torch
 
 from diffBloch.config import load_config
+from diffBloch.core.adp import ueq_from_cif_uij
 from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.io import read_experimental_data, read_structure
 from diffBloch.io.record import AdpRecord, StructureRecord
 from diffBloch.params import constrain
-from diffBloch.preprocess import RefinementSetup, from_experiment, orientation_matrices
+from diffBloch.preprocess import (
+    RefinementSetup,
+    from_experiment,
+    resolve_dataset_orientations,
+)
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures"
 QUARTZ = FIXTURE_ROOT / "quartz_anchor"
@@ -170,13 +175,9 @@ def test_from_experiment_ignores_original_pets_indices_before_split() -> None:
     # Raw index 9 remains a validation member when removed; later rotations are not renumbered.
     assert len(setup.plans.train.orientations) == 88
     assert len(setup.plans.validation.orientations) == 8
-    expected = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
+    # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
+    # records a nonzero goniometer-axis azimuth for quartz, so these differ.
+    expected = resolve_dataset_orientations(experimental_data)
     assert np.allclose(setup.plans.train.orientations[0].orientation, expected[1])
     assert setup.plans.train.orientations[0].pattern.rotation_index == 1
     assert [op.pattern.rotation_index for op in setup.plans.validation.orientations[:2]] == [19, 29]
@@ -213,13 +214,9 @@ def test_from_experiment_rejects_invalid_data_dependent_ignore_selection() -> No
 
 def test_from_experiment_seeds_native_orientation_and_000_beam() -> None:
     structure, experimental_data, config, setup = _quartz_setup()
-    expected = orientation_matrices(
-        experimental_data.ub_matrix,
-        experimental_data.cell_parameters,
-        experimental_data.alphas,
-        experimental_data.betas,
-        experimental_data.omegas,
-    )
+    # The seeded orientation is the axis-corrected one, not the as-collected derivation: PETS
+    # records a nonzero goniometer-axis azimuth for quartz, so these differ.
+    expected = resolve_dataset_orientations(experimental_data)
 
     # First train rotation is rotation index 0 (index 9 is the first validation pick). The candidate
     # phase carries plain-numpy source (orientation / beam_hkl), built into tensors later.
@@ -457,3 +454,129 @@ def test_refinement_setup_mixed_uani_uiso_constrains_each_atom_by_kind() -> None
 def _setup_state(structure: StructureRecord) -> tuple:
     setup = RefinementSetup.from_structure(structure)
     return setup.params, setup.spec
+
+
+# --- inputs.isotropic_displacements_only override --------------------------------------------
+
+
+def _oblique_structure(kinds: tuple[str, ...]) -> StructureRecord:
+    """A P1 monoclinic (beta = 100 degrees) variant of :func:`_ortho_structure`.
+
+    An orthorhombic cell's off-diagonal direct-metric terms vanish, so Ueq degenerates to
+    ``trace(Uij) / 3`` there and cannot distinguish the correct metric-tensor contraction from the
+    naive shortcut. The non-90-degree ``beta`` here keeps the metric tensor's off-diagonal term
+    non-zero, so the two routes give observably different answers.
+    """
+    n = len(kinds)
+    uij_cif = np.stack([_UANI if k == "Uani" else np.full((3, 3), np.nan) for k in kinds])
+    u_iso = np.array([_UISO if k == "Uiso" else np.nan for k in kinds])
+    cell_parameters = np.array([5.0, 6.0, 7.0, 90.0, 100.0, 90.0])
+    return StructureRecord(
+        unit_cell=cell_matrix_from_parameters(cell_parameters),
+        cell_parameters=cell_parameters,
+        cell_parameters_su=np.full((6,), np.nan),
+        spacegroup_hm="P1",
+        symops_R=np.eye(3)[None, :, :],
+        symops_t=np.zeros((1, 3)),
+        labels=tuple(f"A{i}" for i in range(n)),
+        numbers=np.array([14] * n),
+        frac_positions=np.linspace(0.1, 0.6, n * 3).reshape(n, 3),
+        frac_positions_su=np.full((n, 3), np.nan),
+        occupancies=np.ones(n),
+        occupancies_su=np.full((n,), np.nan),
+        adp=AdpRecord(
+            kind=kinds,
+            u_iso=u_iso,
+            u_iso_su=np.full((n,), np.nan),
+            uij_cif=uij_cif,
+            uij_cif_su=np.full((n, 3, 3), np.nan),
+        ),
+    )
+
+
+def test_isotropic_displacements_only_forces_uani_to_uiso_seeded_from_cif_ueq() -> None:
+    structure = _oblique_structure(("Uani", "Uiso"))
+
+    setup = RefinementSetup.from_structure(structure, isotropic_displacements_only=True)
+
+    # Every atom refines as Uiso now, including the one that was Uani in the CIF -- and the
+    # override never touched the CIF-parsed record itself.
+    assert setup.spec.adp_kind == ("Uiso", "Uiso")
+    assert structure.adp.kind == ("Uani", "Uiso")
+    assert setup.params.uij_raw is None
+    assert setup.params.u_iso_raw is not None and setup.params.u_iso_raw.shape == (2,)
+
+    unit_cell = cell_matrix_from_parameters(structure.cell_parameters)
+    reciprocal_basis = reciprocal_cell(unit_cell)
+    reciprocal_lengths = torch.tensor(np.linalg.norm(reciprocal_basis, axis=1))
+    metric_tensor = torch.tensor(unit_cell @ unit_cell.T)
+    expected_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64), reciprocal_lengths, metric_tensor
+    ).item()
+    # The naive trace(Uij)/3 shortcut disagrees on this non-cubic (5, 6, 7) cell -- confirming the
+    # seed genuinely comes from the metric-tensor contraction, not the wrong shortcut.
+    assert expected_ueq != pytest.approx(float(np.trace(_UANI) / 3.0), rel=1e-3)
+
+    state = constrain(setup.params, setup.spec)
+    reciprocal_metric = reciprocal_basis @ reciprocal_basis.T
+    # Both atoms are now genuinely isotropic: uij_star = Uiso * G* exactly, so Uiso is recoverable.
+    seeded_uiso = [
+        float(torch.sum(state.uij_star[i] * torch.tensor(reciprocal_metric)))
+        / float(np.sum(reciprocal_metric * reciprocal_metric))
+        for i in range(2)
+    ]
+    assert seeded_uiso[0] == pytest.approx(expected_ueq)
+    # The atom that was already Uiso in the CIF keeps its own CIF value, untouched by the override.
+    assert seeded_uiso[1] == pytest.approx(_UISO)
+
+
+def test_isotropic_displacements_only_uses_pets_authoritative_cell_for_ueq() -> None:
+    structure = _oblique_structure(("Uani",))
+    experimental_data = read_experimental_data(QUARTZ / "exp_data.cif_pets")
+    pets_cell = structure.cell_parameters.copy()
+    pets_cell[4] = 104.0  # below the 5% mismatch guard, but enough to change oblique-cell Ueq
+    experimental_data = experimental_data.model_copy(update={"cell_parameters": pets_cell})
+    base = load_config(QUARTZ / "experiment.yaml")
+    config = base.model_copy(
+        update={
+            "inputs": base.inputs.model_copy(update={"isotropic_displacements_only": True}),
+            "blochwave": base.blochwave.model_copy(update={"mosaicity": False}),
+        }
+    )
+
+    setup = from_experiment(structure, experimental_data, config)
+
+    state = constrain(setup.refinement.params, setup.refinement.spec)
+    pets_unit_cell = cell_matrix_from_parameters(pets_cell)
+    pets_reciprocal_basis = reciprocal_cell(pets_unit_cell)
+    pets_reciprocal_metric = pets_reciprocal_basis @ pets_reciprocal_basis.T
+    seeded_uiso = float(
+        torch.sum(state.uij_star[0] * torch.tensor(pets_reciprocal_metric))
+    ) / float(np.sum(pets_reciprocal_metric * pets_reciprocal_metric))
+    expected_pets_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64),
+        torch.tensor(np.linalg.norm(pets_reciprocal_basis, axis=1), dtype=torch.float64),
+        torch.tensor(pets_unit_cell @ pets_unit_cell.T, dtype=torch.float64),
+    ).item()
+
+    cif_unit_cell = cell_matrix_from_parameters(structure.cell_parameters)
+    cif_reciprocal_basis = reciprocal_cell(cif_unit_cell)
+    cif_ueq = ueq_from_cif_uij(
+        torch.tensor(_UANI, dtype=torch.float64),
+        torch.tensor(np.linalg.norm(cif_reciprocal_basis, axis=1), dtype=torch.float64),
+        torch.tensor(cif_unit_cell @ cif_unit_cell.T, dtype=torch.float64),
+    ).item()
+
+    assert setup.refinement.spec.adp_kind == ("Uiso",)
+    assert setup.refinement.cell_parameters is not None
+    np.testing.assert_allclose(setup.refinement.cell_parameters, pets_cell)
+    assert seeded_uiso == pytest.approx(expected_pets_ueq)
+    assert seeded_uiso != pytest.approx(cif_ueq, rel=1e-4)
+
+
+def test_isotropic_displacements_only_defaults_to_off() -> None:
+    structure = _ortho_structure(("Uani", "Uiso"))
+
+    setup = RefinementSetup.from_structure(structure)
+
+    assert setup.spec.adp_kind == structure.adp.kind

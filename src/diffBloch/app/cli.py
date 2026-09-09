@@ -11,13 +11,12 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import cast
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, residual_label
+from diffBloch.app.loggers import ConsoleLogger, CSVLogger, print_summary_box
 from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
@@ -25,43 +24,13 @@ from diffBloch.app.program import (
     refine_experiment,
     run_experiment,
 )
-from diffBloch.config import load_config
-from diffBloch.engine.plan import OrientationPlanLike
-from diffBloch.observability import (
-    NULL_LOGGER,
-    Logger,
-    MultiLogger,
-    OrientationOptimized,
-    RecordingLogger,
-)
-
-
-def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
-    """Print a consistently aligned 62-column completion summary.
-
-    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
-    not truncate, so a longer label silently pushes its value past the box border and misaligns that
-    row against every other.
-    """
-    width = 62
-    label_width = 26
-    value_width = width - label_width - 3
-    heading = f" {title} "
-    print(f"╭{heading:─^{width}}╮")
-    for label, value in rows:
-        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
-    print(f"╰{'─' * width}╯")
+from diffBloch.config import load_config, write_experiment_lock
+from diffBloch.observability import Logger, MultiLogger
 
 
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-step / per-rotation observation stream (console logging is on by "
-        "default; the run summary line still prints)",
-    )
     parser.add_argument(
         "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
     )
@@ -130,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             "  diffbloch preprocess experiment/\n"
             "  diffbloch refine experiment/\n"
             "\n"
-            "Each command has its own flags; see e.g. 'diffbloch refine --help'."
+            "Each command has its own flags; see e.g. 'diffbloch refine --help'. "
+            "reproducibility/experiment.lock is created automatically on first run; "
+            "use 'diffbloch lock-experiment --force experiment/' to refresh it after inputs "
+            "intentionally change."
         ),
     )
     parser.add_argument("--version", action="version", version=f"diffbloch {__version__}")
@@ -140,6 +112,19 @@ def main(argv: list[str] | None = None) -> int:
     # Registered in typical workflow order so the --help listing reads as the pipeline.
     p_validate = sub.add_parser("validate", help="Validate an experiment.yaml and report")
     p_validate.add_argument("config", help="Path to experiment.yaml")
+
+    p_lock_experiment = sub.add_parser(
+        "lock-experiment",
+        help="Create reproducibility/experiment.lock from the current input files (other commands "
+        "create it automatically on first run; existing locks require --force)",
+    )
+    p_lock_experiment.add_argument(
+        "--force",
+        action="store_true",
+        help="rewrite an existing experiment.lock after an intentional input change; this "
+        "invalidates existing plan and refinement locks",
+    )
+    p_lock_experiment.add_argument("experiment_directory", help="Path to the experiment directory")
 
     p_converge = sub.add_parser(
         "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
@@ -157,11 +142,6 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
-    )
-    p_converge.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-trial observation stream (the settled result still prints)",
     )
     p_converge.add_argument(
         "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
@@ -212,15 +192,42 @@ def main(argv: list[str] | None = None) -> int:
         print(f"OK: experiment '{cfg.name}' validated.")
         return 0
 
-    if args.command == "infer":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+    if args.command == "lock-experiment":
+        lock_path = (
+            Path(args.experiment_directory) / "reproducibility" / "experiment.lock"
+        ).resolve()
+        replacing = lock_path.exists()
         try:
-            result = run_experiment(
+            experiment_lock = write_experiment_lock(args.experiment_directory, force=args.force)
+        except (FileExistsError, FileNotFoundError, ValidationError, yaml.YAMLError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        refs = (
+            [entry.ref for entry in experiment_lock.experimental_data]
+            if isinstance(experiment_lock.experimental_data, list)
+            else [experiment_lock.experimental_data.ref]
+        )
+        print(f"{'rewrote' if replacing else 'wrote'} {lock_path}")
+        if replacing:
+            print(
+                "warning: if this accepts changed input bytes, existing plan and refinement locks "
+                "are invalid and must be regenerated"
+            )
+        print(f"  - {'Structure':<20} {experiment_lock.structure.ref}")
+        for ref in refs:
+            print(f"  - {'Experimental data':<20} {ref}")
+        return 0
+
+    if args.command == "infer":
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
+        try:
+            run_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=_build_logger(csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -234,25 +241,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
         return 0
 
     if args.command == "preprocess":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
-            progress_logger = _build_logger(console=not args.quiet, csv=args.csv)
-            summary_logger = RecordingLogger()
-            logger: Logger = (
-                summary_logger
-                if progress_logger is NULL_LOGGER
-                else MultiLogger((progress_logger, summary_logger))
-            )
             plan = preprocess_experiment(
                 args.experiment_directory,
-                logger=logger,
+                logger=_build_logger(csv=args.csv),
                 checkpoint=not args.no_checkpoint,
                 refresh=args.refresh,
                 device=args.device,
@@ -266,30 +264,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print()
-        built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
-        total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
-        matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
-        fitted = [
-            event for event in summary_logger.events if isinstance(event, OrientationOptimized)
-        ]
-        mean_loss = (
-            f"{sum(event.score for event in fitted) / len(fitted):.6g}"
-            if fitted
-            else "n/a (checkpoint reused)"
-        )
-        mean_label = f"Mean {residual_label(fitted[0].residual)}" if fitted else "Mean score"
-        _print_summary_box(
-            "PREPROCESS COMPLETE",
-            (
-                ("Rotations", str(len(plan.orientations))),
-                ("Stages", str(len(plan.provenance))),
-                ("Total HKLs", str(total_hkl)),
-                ("Matched HKLs", str(matched_hkl)),
-                ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
-                (mean_label, mean_loss),
-            ),
-        )
+        # ConsoleLogger printed "PREPROCESS COMPLETE" the moment preprocessing settled -- the same
+        # box a refine/infer run gets, from the same sink.
         print()
         print("Pipeline")
         for index, record in enumerate(plan.provenance, start=1):
@@ -310,20 +286,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "refine":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
             # The written summary is one more sink on the run's event stream, chosen here beside
             # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
             # not) for themselves instead of having a file appear as a side effect of refining.
             report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
             refine_sinks: tuple[Logger, ...] = (
-                _build_logger(console=not args.quiet, csv=args.csv),
+                _build_logger(csv=args.csv),
                 SummaryLogger(report_path),
             )
-            refined = refine_experiment(
+            refine_experiment(
                 args.experiment_directory,
                 logger=MultiLogger(refine_sinks),
                 checkpoint=not args.no_checkpoint,
@@ -342,30 +317,9 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        best = refined.history[refined.best_step]
-        wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
-        r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
-        diff_loss = "n/a" if best.diff_loss is None else f"{best.diff_loss:.6g}"
-        counts = refined.reflection_counts
-        print()
-        _print_summary_box(
-            "REFINEMENT COMPLETE",
-            (
-                ("Best epoch", str(refined.best_step + 1)),
-                ("Objective", f"{refined.best_loss:.6g}"),
-                ("wR2", wr2),
-                ("R_obs", r_obs),
-                ("Diffraction loss", diff_loss),
-                (
-                    "HKLs (Observed/total)",
-                    f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
-                ),
-            ),
-        )
-        print()
-        print("Output files")
-        for name, path in refined.artifacts.items():
-            print(f"  • {name.replace('_', ' ').title():<20} {path}")
+        # ConsoleLogger printed "REFINEMENT COMPLETE" and the artifact list off the run's terminal
+        # event. The report is the one output this file chose the location of, so it is also the
+        # one line this file still prints.
         print(f"  • {'Refinement Report':<20} {report_path}")
         return 0
 
@@ -376,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             settled = converge_experiment(
                 args.experiment_directory,
-                logger=_build_logger(console=not args.quiet, csv=args.csv),
+                logger=_build_logger(csv=args.csv),
                 device=args.device,
                 n_orientations=args.orientations,
             )
@@ -385,15 +339,14 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             print(f"error: {exc}", file=sys.stderr)
             return 1
-        print("========================================")
-        print("HYPERPARAMETER OPTIMIZATION RESULT")
-        print(f"gmax: {settled.g_max:g}")
-        print(f"sgmax: {settled.sg_max:g}")
-        print(f"tilt_steps: {settled.tilt_steps}")
-        print("========================================")
-        print(
-            f"optimized_hyperparams gmax={settled.g_max:g} "
-            f"sgmax={settled.sg_max:g} tilt_steps={settled.tilt_steps}"
+        print()
+        print_summary_box(
+            "CONVERGENCE COMPLETE",
+            (
+                ("g_max", f"{settled.g_max:g}"),
+                ("sg_max", f"{settled.sg_max:g}"),
+                ("Tilt steps", str(settled.tilt_steps)),
+            ),
         )
         return 0
 
@@ -401,21 +354,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _build_logger(*, console: bool, csv: str | None, per_rotation: bool = True) -> Logger:
-    """Combine the requested observation sinks (none => the null logger that discards events).
+def _build_logger(*, csv: str | None, per_rotation: bool = True) -> Logger:
+    """Combine the observation sinks every command gets: the console, plus a CSV log if asked.
 
-    ``per_rotation`` opts the console into the settled per-rotation stream.
+    The single place a CLI run's sinks are assembled, so a newly observable phase is rendered by
+    teaching :class:`~diffBloch.app.loggers.ConsoleLogger` its event rather than by wiring another
+    sink into each command. ``per_rotation`` opts the console into the settled per-rotation stream.
     """
-    sinks: list[Logger] = []
-    if console:
-        sinks.append(ConsoleLogger(per_rotation=per_rotation))
-    if csv is not None:
-        sinks.append(CSVLogger(Path(csv)))
-    if not sinks:
-        return NULL_LOGGER
-    if len(sinks) == 1:
-        return sinks[0]
-    return MultiLogger(tuple(sinks))
+    console = ConsoleLogger(per_rotation=per_rotation)
+    if csv is None:
+        return console
+    return MultiLogger((console, CSVLogger(Path(csv))))
 
 
 if __name__ == "__main__":

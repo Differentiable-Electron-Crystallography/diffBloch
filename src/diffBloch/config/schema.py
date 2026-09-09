@@ -449,6 +449,8 @@ class Inputs(_StrictConfig):
     # solves the whole pooled experiment at one energy (see preprocess.pool).
     multi_dataset: bool = False
     load_hydrogens: bool = False  # include hydrogen atom sites (molecular crystals; off by default)
+    # Force every atom onto Uiso even if the CIF marks it Uani (seeded from the CIF Ueq).
+    isotropic_displacements_only: bool = False
 
     @field_validator("structure")
     @classmethod

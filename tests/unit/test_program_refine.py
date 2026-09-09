@@ -129,14 +129,24 @@ def _refinement_result_for(
     tmp_path: Path,
     *,
     cell_parameters: np.ndarray | None = None,
+    isotropic_displacements_only: bool = False,
 ) -> tuple[ExperimentConfig, RefinementSetup, ModelRefinementResult]:
     source = tmp_path / "q.cif"
     source.write_text(_MINIMAL_CIF)
     cfg = ExperimentConfig.model_validate(
-        {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+        {
+            "name": "q",
+            "inputs": {
+                "structure": "q.cif",
+                "exp_data": "q.cif_pets",
+                "isotropic_displacements_only": isotropic_displacements_only,
+            },
+        }
     )
     refinement = RefinementSetup.from_structure(
-        read_structure(source), cell_parameters=cell_parameters
+        read_structure(source),
+        cell_parameters=cell_parameters,
+        isotropic_displacements_only=isotropic_displacements_only,
     )
     params = replace(
         refinement.params,
@@ -202,6 +212,27 @@ def test_write_refinement_outputs_persists_best_cif_and_params(tmp_path: Path) -
         assert params_file["asu_positions"].shape == (2, 3)
         assert params_file["occupancy_raw"].shape == (2,)
     assert not (tmp_path / "refinement_summary.json").exists()  # superseded by the .txt report
+
+
+def test_write_refinement_outputs_strips_stale_aniso_row_when_forced_isotropic(
+    tmp_path: Path,
+) -> None:
+    """``inputs.isotropic_displacements_only`` forces O1 (Uani in the CIF) onto Uiso; its
+    ``_atom_site_aniso_*`` row must be removed, not left stale or refreshed with new anisotropic
+    values -- otherwise re-reading the file classifies O1 back to Uani (io.cif._adp_for_site keys
+    purely on aniso-row presence) and silently loses the override."""
+    cfg, refinement, result = _refinement_result_for(tmp_path, isotropic_displacements_only=True)
+    assert refinement.spec.adp_kind == ("Uiso", "Uiso")
+
+    _write_refinement_outputs(tmp_path, cfg, refinement, result, plan_lock_sha256s=("ab" * 32,))
+
+    text = (tmp_path / "refined_structure.cif").read_text()
+    assert "_atom_site_aniso" not in text  # the whole now-empty aniso loop is gone
+
+    refined = read_structure(tmp_path / "refined_structure.cif")
+    assert refined.adp.kind == ("Uiso", "Uiso")
+    assert np.all(np.isfinite(refined.adp.u_iso))
+    assert np.all(np.isnan(refined.adp.uij_cif))
 
 
 def test_write_refinement_outputs_rewrites_the_refined_cif_cell_header(tmp_path: Path) -> None:

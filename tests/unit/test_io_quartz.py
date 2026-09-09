@@ -15,6 +15,7 @@ from diffBloch.io import (
     symmetry_constraints,
 )
 from diffBloch.io._cifio import read_document, read_document_with_diagnostics
+from diffBloch.io.pets import _rotation_axis_position
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
 
@@ -321,6 +322,7 @@ _diffrn_reflns_reduction_process
 data collection geometry: precession
 dstarmax:  1.400
 mosaicity:  0.100
+rotation axis position:  272.994
 ;
 loop_
 _diffrn_zone_axis_id
@@ -349,6 +351,34 @@ _refln_zone_axis_id
     assert record.data_collection_geometry == "precession"
     assert record.dstar_max == pytest.approx(1.4)
     assert record.mosaicity_degrees == pytest.approx(0.1)
+    assert record.rotation_axis_position_degrees == pytest.approx(272.994)
+
+
+def test_rotation_axis_position_is_read_from_a_real_pets_file() -> None:
+    """The regression guard: assert against a committed file, not a synthetic block.
+
+    The field was originally matched as `tilt axis position`, which no PETS file writes, so the
+    correction it drives was silently disabled everywhere while a hand-written test block kept
+    passing. Only a real file catches that.
+    """
+    record = read_experimental_data(FIXTURE_ROOT / "exp_data.cif_pets")
+
+    assert record.rotation_axis_position_degrees == pytest.approx(0.484)
+
+
+@pytest.mark.parametrize("spelling", ["rotation axis position", "tilt axis position"])
+def test_both_pets_spellings_of_the_axis_position_parse(spelling: str) -> None:
+    """PETS writes `rotation axis position`; `tilt axis position` is accepted as a newer name."""
+    text = f"""data_pets
+_cell_length_a 5.0
+_diffrn_measurement_details
+;
+{spelling}:  272.994
+;
+"""
+    block = gemmi.cif.read_string(text).sole_block()
+
+    assert _rotation_axis_position(block) == pytest.approx(272.994)
 
 
 def test_read_pets_reports_summary_source_diagnostics(tmp_path: Path) -> None:

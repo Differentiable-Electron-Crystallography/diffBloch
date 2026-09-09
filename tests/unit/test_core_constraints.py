@@ -6,6 +6,7 @@ from diffBloch.core import (
     apply_adp_constraints,
     apply_symmetry_projection,
     cartesian_adp_to_star,
+    cell_matrix_from_parameters,
     cholesky_adp,
     cholesky_raw_from_adp,
     cif_adp_to_star,
@@ -13,6 +14,8 @@ from diffBloch.core import (
     equivalent_isotropic_adp,
     isotropic_adp,
     positive,
+    reciprocal_cell,
+    ueq_from_cif_uij,
     unit_interval,
 )
 from diffBloch.params import ConstraintSpec, RefinableParams, constrain
@@ -126,6 +129,49 @@ def test_equivalent_isotropic_adp_uses_trace_average() -> None:
     )
 
     assert equivalent_isotropic_adp(uij).tolist() == pytest.approx([0.05])
+
+
+def test_ueq_from_cif_uij_matches_trace_average_for_a_cubic_cell() -> None:
+    # Cubic cell: the CIF Uij frame is already orthonormal (up to a uniform scale), so Ueq must
+    # coincide with the plain trace/3 that only holds in an orthonormal frame.
+    a = 5.0
+    reciprocal_lengths = torch.full((3,), 1.0 / a, dtype=torch.float64)
+    metric_tensor = torch.eye(3, dtype=torch.float64) * a**2
+    uij = torch.tensor(
+        [[0.06, 0.01, 0.0], [0.01, 0.04, 0.0], [0.0, 0.0, 0.05]], dtype=torch.float64
+    )
+
+    ueq = ueq_from_cif_uij(uij, reciprocal_lengths, metric_tensor)
+
+    assert ueq.item() == pytest.approx(0.05)
+    assert ueq.item() == pytest.approx(equivalent_isotropic_adp(uij).item())
+
+
+def test_ueq_from_cif_uij_matches_an_independent_cartesian_route_for_an_oblique_cell() -> None:
+    # Monoclinic cell (beta != 90): the naive trace(Uij_cif)/3 is wrong here because the CIF Uij
+    # frame is oblique. Cross-check ueq_from_cif_uij against a route that never uses it: expand
+    # Uij_cif into the genuine orthonormal Cartesian frame (Ucart = cell.T @ U* @ cell, the inverse
+    # of cartesian_adp_to_star) and take the plain trace/3 there, which *is* valid in that frame.
+    cell_parameters = torch.tensor([5.0, 6.0, 7.0, 90.0, 100.0, 90.0], dtype=torch.float64)
+    cell = torch.tensor(cell_matrix_from_parameters(cell_parameters.numpy()), dtype=torch.float64)
+    reciprocal_basis = torch.tensor(reciprocal_cell(cell.numpy()), dtype=torch.float64)
+    reciprocal_lengths = torch.linalg.norm(reciprocal_basis, dim=1)
+    metric_tensor = cell @ cell.T
+
+    uij = torch.tensor(
+        [[0.020, 0.0010, 0.0005], [0.0010, 0.030, 0.0002], [0.0005, 0.0002, 0.025]],
+        dtype=torch.float64,
+    )
+
+    ueq = ueq_from_cif_uij(uij, reciprocal_lengths, metric_tensor)
+
+    star = cif_adp_to_star(uij, reciprocal_lengths)
+    u_cart = cell.T @ star @ cell
+    expected = equivalent_isotropic_adp(u_cart)
+
+    assert ueq.item() == pytest.approx(expected.item())
+    # The point of the function: the naive shortcut disagrees measurably on this oblique cell.
+    assert ueq.item() != pytest.approx(torch.trace(uij).item() / 3.0, rel=1e-3)
 
 
 def test_isotropic_adp_expands_to_scaled_identity() -> None:

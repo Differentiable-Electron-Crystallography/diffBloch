@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import mimetypes
 import subprocess
 from pathlib import Path
@@ -21,6 +22,8 @@ from diffBloch import __version__
 from diffBloch.config.schema import ExperimentConfig, load_config
 
 type CellParameters = tuple[float, float, float, float, float, float]
+
+_log = logging.getLogger(__name__)
 
 
 class InputLock(BaseModel):
@@ -147,15 +150,68 @@ def artifact_hash_for(path: str | Path, *, root: str | Path) -> ArtifactHash:
 
 
 def load_experiment(directory: str | Path) -> tuple[ExperimentConfig, ExperimentLock]:
-    """Load ``experiment.yaml`` and verify ``experiment.lock`` (in ``reproducibility/``) against
-    input bytes."""
+    """Load ``experiment.yaml``, verifying ``experiment.lock`` (in ``reproducibility/``) against
+    input bytes, creating that lock first from the current input bytes if it doesn't exist yet.
+
+    First-run convenience: a brand-new experiment directory has no lock to verify against, so there
+    is nothing to protect by refusing to proceed. The lock is created here instead, exactly as
+    :func:`write_experiment_lock` would. An *existing* lock that no longer matches the input bytes
+    still raises (see :func:`_verify_input`): that mismatch is the drift this file exists to catch,
+    and silently rewriting it on every run would defeat the purpose. Delete the lock and rerun, or
+    use ``diffbloch lock-experiment --force`` (or
+    ``write_experiment_lock(..., force=True)``), to update it after an intentional input change.
+    """
     root = Path(directory)
     cfg = load_config(root / "experiment.yaml")
     lock_path = root / "reproducibility" / "experiment.lock"
+    if not lock_path.exists():
+        lock = _build_experiment_lock(root, cfg)
+        _write_experiment_lock_file(lock_path, lock)
+        _log.info("created %s (no existing lock found)", lock_path)
+        return cfg, lock
     lock = ExperimentLock.model_validate(yaml.safe_load(lock_path.read_text()))
     _verify_input(root, cfg.inputs.structure, lock.structure)
     _verify_experimental_data(root, cfg.inputs.exp_data, lock.experimental_data)
     return cfg, lock
+
+
+def write_experiment_lock(directory: str | Path, *, force: bool = False) -> ExperimentLock:
+    """Hash ``inputs.structure`` and every ``inputs.exp_data`` file and write
+    ``reproducibility/experiment.lock`` (creating that directory if needed).
+
+    The ``diffbloch lock-experiment`` CLI command's implementation. By default this creates a lock
+    only when none exists yet: an existing lock is the experiment's accepted input baseline, so
+    replacing it requires ``force=True``. Use ``force=True`` only after an intentional input change.
+    With unchanged inputs, a forced rewrite reproduces the lock byte-for-byte. If the input bytes
+    changed, replacing the experiment lock invalidates existing plan and refinement locks.
+    """
+    root = Path(directory)
+    cfg = load_config(root / "experiment.yaml")
+    lock_path = root / "reproducibility" / "experiment.lock"
+    if lock_path.exists() and not force:
+        raise FileExistsError(
+            f"{lock_path} already exists; remove it or rerun with --force to replace it "
+            "(replacing it after input changes invalidates existing plan and refinement locks)"
+        )
+    lock = _build_experiment_lock(root, cfg)
+    _write_experiment_lock_file(lock_path, lock)
+    return lock
+
+
+def _build_experiment_lock(root: Path, cfg: ExperimentConfig) -> ExperimentLock:
+    """Hash ``cfg.inputs.structure`` and every ``cfg.inputs.exp_data`` file under ``root``."""
+    structure = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
+    experimental_data: InputLock | list[InputLock]
+    if isinstance(cfg.inputs.exp_data, list):
+        experimental_data = [input_lock_for(root / ref, ref=ref) for ref in cfg.inputs.exp_data]
+    else:
+        experimental_data = input_lock_for(root / cfg.inputs.exp_data, ref=cfg.inputs.exp_data)
+    return ExperimentLock(structure=structure, experimental_data=experimental_data)
+
+
+def _write_experiment_lock_file(lock_path: Path, lock: ExperimentLock) -> None:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(lock.model_dump_json(indent=2) + "\n")
 
 
 def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
@@ -206,6 +262,7 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
             "structure": dump["inputs"]["structure"],
             "exp_data": exp_data,
             "load_hydrogens": dump["inputs"]["load_hydrogens"],
+            "isotropic_displacements_only": dump["inputs"]["isotropic_displacements_only"],
         },
         # Resolve the optional per-dataset mapping to this Plan's effective seed. This keeps a
         # change for dataset B from invalidating dataset A's checkpoint.

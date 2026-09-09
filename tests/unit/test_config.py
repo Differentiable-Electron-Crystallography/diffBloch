@@ -596,6 +596,22 @@ def test_load_hydrogens_defaults_off_and_parses() -> None:
     assert withH.inputs.load_hydrogens is True
 
 
+def test_isotropic_displacements_only_defaults_off_and_parses() -> None:
+    base = {"name": "abi", "inputs": {"structure": "a.cif", "exp_data": "a.cif_pets"}}
+    assert ExperimentConfig.model_validate(base).inputs.isotropic_displacements_only is False
+    forced = ExperimentConfig.model_validate(
+        {
+            "name": "abi",
+            "inputs": {
+                "structure": "a.cif",
+                "exp_data": "a.cif_pets",
+                "isotropic_displacements_only": True,
+            },
+        }
+    )
+    assert forced.inputs.isotropic_displacements_only is True
+
+
 def test_refinement_rejects_hydrogen_mode_as_unknown_key() -> None:
     # H handling is scientific composition (Python/API via with_hydrogen_riding), not a config mode;
     # a strict config rejects the removed key rather than silently accepting a dead knob.
