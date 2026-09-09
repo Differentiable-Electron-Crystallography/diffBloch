@@ -6,6 +6,37 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
+# Who maintains the software, in README-citation order. Deliberately NOT the paper's author list:
+# Midgley is a co-author on the citation but not a maintainer of this package.
+authors = [
+    { name = "Tiarnan Doherty", email = "Td404@cam.ac.uk" },
+    { name = "Shreshth Malik", email = "shreshth_malik@yahoo.co.uk" },
+    { name = "Benjamin Colmey", email = "benjamincolmey@gmail.com" },
+    { name = "Iain Maitland", email = "iain@iainmaitland.com" },
+]
+# `crystallography` is a keyword rather than a classifier because the trove list has no
+# Crystallography entry (it stops at Chemistry/Physics) and PyPI rejects unknown classifiers.
+keywords = [
+    "electron-diffraction",
+    "electron-crystallography",
+    "crystallography",
+    "bloch-wave",
+    "structure-refinement",
+    "automatic-differentiation",
+    "pytorch",
+]
+# No `License ::` classifier: the SPDX `license` field above is PEP 639, and PyPI rejects an
+# upload that declares the licence both ways. Python is claimed only for 3.12 -- `requires-python`
+# admits 3.13+, but CI runs a single 3.12 job, so anything beyond that is untested.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
 dependencies = [
     "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
     "gemmi>=0.7.5",
@@ -22,6 +53,12 @@ dependencies = [
     # Scientific deps are added as their modules land:
     #   abtem -> core/scattering (electron form factors), wrapped behind a seam
 ]
+
+[project.urls]
+Homepage = "https://diffBloch.com"
+Documentation = "https://differentiable-electron-crystallography.github.io/diffBloch/"
+Source = "https://github.com/Differentiable-Electron-Crystallography/diffBloch"
+Issues = "https://github.com/Differentiable-Electron-Crystallography/diffBloch/issues"
 
 [project.optional-dependencies]
 # Logger backends confine their SDK to one module (diffBloch.app.loggers.*) and import it lazily;
@@ -49,6 +86,14 @@ path = "src/diffBloch/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/diffBloch"]
+
+# Without an explicit sdist target hatchling ships the whole repo. That is not just bloat: every
+# Git LFS path (*.npz, *.cif_pets per .gitattributes) lives under tests/ and examples/, and an
+# sdist built from a shallow or pointer-only checkout would carry ~130-byte stubs in their place
+# -- a distribution that installs cleanly and then fails at read time. The release workflow
+# asserts this file list rather than trusting the config.
+[tool.hatch.build.targets.sdist]
+only-include = ["src/diffBloch", "README.md", "LICENSE", "REFERENCES.md"]
 
 [dependency-groups]
 dev = [

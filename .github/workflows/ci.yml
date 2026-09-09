@@ -61,6 +61,36 @@ jobs:
       - name: Build package (wheel + sdist)
         run: uv build
 
+  # A release is an ordinary PR: bumping __version__ in src/diffBloch/__init__.py is the whole
+  # signal, and merging it publishes to PyPI. This job is what makes that safe -- the committed
+  # locks under examples/ record the code version their results came from, so a bump without
+  # refreshed locks would ship a release advertising results it cannot reproduce.
+  #
+  # Deliberately no `paths:` filter: this is a required status check, and a job that skips on some
+  # PRs leaves the context unreported, blocking those PRs forever. The no-op case (no version
+  # change) is handled inside the script instead.
+  release-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Needs origin/<base> to read the previous __version__, and the tag list to refuse a
+          # version that was already released.
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+
+      # No `uv sync`: the guard reads files and shells out to git, so it stays seconds rather than
+      # paying for the project's full dependency tree.
+      - name: Check version bump against committed locks
+        env:
+          BASE: ${{ github.base_ref }}
+        run: uv run --no-project --with packaging --with pyyaml python .github/scripts/release_guard.py
+
   # Publish the docsite to GitHub Pages on every green main push (repo Pages source must be
   # "GitHub Actions"). PRs still validate the build via the check job's strict `sphinx-build -W`.
   docs-deploy:
@@ -90,11 +120,10 @@ jobs:
       - name: Build docs
         run: uv run sphinx-build -W -b html docs docs/_build/html
 
-      # The docsite is the PUBLIC host for badge data while the repo is private: shields.io
-      # (coverage badge) and camo (README trend embed) can fetch Pages but not the private
-      # `badges` branch. The trend SVGs come from `badges` as of the previous publish -- this
-      # job runs before the current merge's row lands there (one-merge lag, invisible on a
-      # flatline).
+      # The docsite is the public host for badge data: shields.io (coverage badge) and camo
+      # (README trend embed) fetch it from Pages rather than from the orphan `badges` branch.
+      # The trend SVGs come from `badges` as of the previous publish -- this job runs before the
+      # current merge's row lands there (one-merge lag, invisible on a flatline).
       - name: Download coverage JSON
         uses: actions/download-artifact@v8
         with:
