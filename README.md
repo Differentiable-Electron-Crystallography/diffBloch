@@ -23,7 +23,7 @@ be the first stable public release. Install [uv](https://docs.astral.sh/uv/getti
 then:
 
 ```bash
-uv tool install 'diffBloch>=0.2.0rc1'
+uv tool install diffBloch
 ```
 
 Avoid `--pre`: it allows pre-releases for every package in the resolution, not just diffBloch.

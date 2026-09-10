@@ -9,11 +9,13 @@ also work (`pip install` and equivalents), but uv is what these guides use.
 ## From PyPI
 
 ```bash
-uv tool install 'diffBloch>=0.2.0rc1'
+uv tool install diffBloch
 ```
 
-The requirement names the candidate explicitly. Avoid `--pre`: it allows pre-releases for every
-package in the resolution, not just diffBloch, and installs beta builds of pydantic and SQLAlchemy.
+The candidate is the only published release, so a plain install resolves to it. Avoid `--pre`: it
+allows pre-releases for every package in the resolution, not just diffBloch, and installs beta
+builds of pydantic and SQLAlchemy. Once `v0.2.0` ships, a plain install resolves to the stable
+release; `uv tool install 'diffBloch==0.2.0rc1'` pins a candidate.
 
 The `diffbloch` CLI is then on `PATH`:
 
@@ -28,14 +30,14 @@ To import diffBloch from your own Python, install it into a virtual environment 
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
-uv pip install 'diffBloch>=0.2.0rc1'
+uv pip install diffBloch
 ```
 
 Installation pulls `torch>=2.13`, which is a large download. `--torch-backend=auto` selects the
 build matching the host accelerator.
 
 The logging backends are optional extras, and the core never imports them:
-`uv tool install 'diffBloch[wandb]>=0.2.0rc1'`, likewise `comet`.
+`uv tool install 'diffBloch[wandb]'`, likewise `comet`.
 
 ## Running your own data
 
