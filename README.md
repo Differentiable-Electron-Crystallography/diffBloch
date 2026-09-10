@@ -35,10 +35,6 @@ git lfs pull
 uv sync --dev
 ```
 
-The [installation guide](https://differentiable-electron-crystallography.github.io/diffBloch/installation.html)
-is canonical for both paths and covers the optional extras, the `torch` download, and why the wheel
-carries no example data. Keep this section a summary of it rather than a second source of truth.
-
 Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
 on your shell `PATH`.
 
