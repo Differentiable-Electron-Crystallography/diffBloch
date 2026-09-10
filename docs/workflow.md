@@ -153,3 +153,65 @@ A completed refinement writes the main results beside the inputs and under `repr
 summarizes the run. The `experiment.yaml`, `.cif`, `.cif_pets`, and complete `reproducibility/` directory form the record associated with a reported result. The locks verify the inputs and preprocessed starting point; they do not guarantee identical floating-point optimizer trajectories on different hardware. 
 
 For more information, see [Reproducibility](reproducibility.md).
+
+## Installing from PyPI (pre-release)
+
+diffBloch is published to PyPI as a release candidate, so `pip install` needs `--pre`.
+
+### Install
+
+```bash
+# throwaway venv (Python >=3.12 required)
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install --pre diffBloch
+```
+
+Or with uv:
+
+```bash
+uv pip install --pre diffBloch            # into a project/venv
+uv tool install --pre diffBloch           # just the `diffbloch` CLI on PATH
+uvx --prerelease=allow --from diffBloch diffbloch --version   # no install at all
+```
+
+Optional logger backends: `pip install --pre 'diffBloch[wandb]'` or `'diffBloch[comet]'`.
+
+Verify:
+
+```bash
+diffbloch --version    # diffbloch 0.2.0rc1
+diffbloch --help
+```
+
+Note it pulls `torch>=2.13`, so expect a large download; on Linux/CUDA you may want to pre-install
+the torch build you want from the PyTorch index first, then `pip install --pre diffBloch`.
+
+### Get an experiment to run
+
+The wheel/sdist only ship `src/diffBloch` (deliberately — the LFS data would arrive as pointer
+stubs). So there is no bundled example: either point the CLI at your own experiment directory
+(`experiment.yaml` + structure `.cif` + `.cif_pets` data, see [Inputs](inputs.md)), or clone the
+repo for the quartz example:
+
+```bash
+git lfs install
+git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch
+cd diffBloch && git lfs pull
+```
+
+### Run
+
+```bash
+EXP=examples/Colmey_et_al_2026/data/quartz-no-abs
+
+diffbloch validate $EXP/experiment.yaml     # config check, no compute
+diffbloch converge   $EXP --device cpu      # g_max / sg_max / tilt-step convergence
+diffbloch preprocess $EXP --device cpu      # settle the Plan, write plan checkpoint
+diffbloch refine     $EXP --device cpu      # gradient refinement
+```
+
+`--device` defaults to **`cuda`**, so pass `--device cpu` on a Mac or any CPU-only box. Useful
+extras: `--workers N` (with `OMP_NUM_THREADS=1` to stop BLAS oversubscription), `--max-batch` to
+fill a bigger GPU, `--refresh` to discard stale checkpoints. `reproducibility/experiment.lock` is
+written on first run; after intentionally changing inputs,
+`diffbloch lock-experiment --force $EXP`.

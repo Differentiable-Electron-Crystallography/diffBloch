@@ -28,12 +28,22 @@ git lfs pull
 uv sync --dev
 ```
 
+To use the released package instead of a checkout, install it from PyPI. diffBloch is currently a
+release candidate, so `--pre` is required:
+
+```bash
+pip install --pre diffBloch     # or: uv tool install --pre diffBloch
+```
+
+See [Installing from PyPI](https://differentiable-electron-crystallography.github.io/diffBloch/workflow.html#installing-from-pypi-pre-release)
+for the full walkthrough; note the wheel ships only the package, not the bundled example data.
+
 Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
 on your shell `PATH`.
 
 ```bash
 # Run the optimizer and update trainable structural parameters:
-uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-no-abs
+uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-no-abs
 ```
 
 ## For Developers
