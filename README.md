@@ -28,8 +28,8 @@ git lfs pull
 uv sync --dev
 ```
 
-To use the released package instead of a checkout, install it from PyPI. diffBloch is currently a
-release candidate, so `--pre` is required:
+To use the released package instead of a checkout, install it from PyPI. Release candidates are
+published there, so `--pre` is required to install one:
 
 ```bash
 pip install --pre diffBloch     # or: uv tool install --pre diffBloch

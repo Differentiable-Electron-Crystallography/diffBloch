@@ -156,42 +156,50 @@ For more information, see [Reproducibility](reproducibility.md).
 
 ## Installing from PyPI (pre-release)
 
-diffBloch is published to PyPI as a release candidate, so `pip install` needs `--pre`.
+diffBloch is published to PyPI as a release candidate. `pip` installs a pre-release only when asked
+for one, so `--pre` is required.
 
 ### Install
 
+diffBloch requires Python 3.12 or newer. Check the interpreter with `python3 --version` before
+creating the virtual environment.
+
 ```bash
-# throwaway venv (Python >=3.12 required)
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install --pre diffBloch
 ```
 
-Or with uv:
+uv fetches a suitable interpreter when the host has none:
 
 ```bash
-uv pip install --pre diffBloch            # into a project/venv
-uv tool install --pre diffBloch           # just the `diffbloch` CLI on PATH
-uvx --prerelease=allow --from diffBloch diffbloch --version   # no install at all
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install --pre diffBloch
 ```
 
-Optional logger backends: `pip install --pre 'diffBloch[wandb]'` or `'diffBloch[comet]'`.
-
-Verify:
+Two further forms install the command-line entry point without a project environment:
 
 ```bash
-diffbloch --version    # diffbloch 0.2.0rc1
-diffbloch --help
+uv tool install --pre diffBloch                              # console script on PATH
+uvx --prerelease=allow --from diffBloch diffbloch --version   # run without installing
 ```
 
-Note it pulls `torch>=2.13`, so expect a large download; on Linux/CUDA you may want to pre-install
-the torch build you want from the PyTorch index first, then `pip install --pre diffBloch`.
+The logger backends are optional extras: `pip install --pre 'diffBloch[wandb]'` or
+`pip install --pre 'diffBloch[comet]'`.
 
-### Get an experiment to run
+Installation pulls `torch>=2.13`, which is a large download. On Linux with CUDA, install the
+required torch build from the PyTorch index first, then install diffBloch.
 
-The wheel/sdist only ship `src/diffBloch` (deliberately — the LFS data would arrive as pointer
-stubs). So there is no bundled example: either point the CLI at your own experiment directory
-(`experiment.yaml` + structure `.cif` + `.cif_pets` data, see [Inputs](inputs.md)), or clone the
-repo for the quartz example:
+`diffbloch --version` reports the installed version, {{ version }} for the release these docs
+describe. `diffbloch --help` lists the available subcommands.
+
+### Obtaining an experiment directory
+
+The wheel and sdist contain the package only. Example data is excluded because every Git LFS path
+lives under `tests/` and `examples/`; an sdist built from a pointer-only checkout would carry LFS
+stubs that install cleanly and then fail when read.
+
+Either point the CLI at an experiment directory of your own, described in
+[Inputs and outputs](inputs.md), or clone the repository to obtain the quartz example:
 
 ```bash
 git lfs install
@@ -199,18 +207,20 @@ git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch
 cd diffBloch && git lfs pull
 ```
 
-### Run
+### Running the installed CLI
+
+The console script runs the same pipeline as the `uv run` commands used elsewhere on this page:
 
 ```bash
 EXP=examples/Colmey_et_al_2026/data/quartz-no-abs
 
-diffbloch validate $EXP/experiment.yaml     # config check, no compute
-diffbloch converge   $EXP --device cpu      # g_max / sg_max / tilt-step convergence
-diffbloch preprocess $EXP --device cpu      # settle the Plan, write plan checkpoint
-diffbloch refine     $EXP --device cpu      # gradient refinement
+diffbloch validate $EXP/experiment.yaml     # configuration check, no calculation
+diffbloch converge $EXP --device cpu        # convergence testing
+diffbloch preprocess $EXP --device cpu      # settle the Plan and write the checkpoint
+diffbloch refine $EXP --device cpu          # gradient refinement
 ```
 
-`--device` defaults to **`cuda`**, so pass `--device cpu` on a Mac or any CPU-only box. Useful
-extras: `--max-batch` to fill a bigger GPU, `--refresh` to discard stale checkpoints.
-`reproducibility/experiment.lock` is written on first run; after intentionally changing inputs,
-`diffbloch lock-experiment --force $EXP`.
+`--device` defaults to `cuda`, so a machine without CUDA requires `--device cpu`. `--max-batch`
+raises the propagator block size on a larger GPU, and `--refresh` discards existing preprocess
+checkpoints. `reproducibility/experiment.lock` is written on the first run; after an intentional
+change to the inputs, refresh it with `diffbloch lock-experiment --force $EXP`.
