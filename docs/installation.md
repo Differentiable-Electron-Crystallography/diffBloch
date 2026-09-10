@@ -10,37 +10,36 @@ develop diffBloch or to run the bundled examples.
 diffBloch is published to PyPI as a release candidate. uv installs a pre-release only when asked for
 one, so `--pre` is required.
 
-`uv venv` fetches a suitable interpreter when the host has none, so no separate Python installation
-is needed:
+For command-line use, install the `diffbloch` console script onto `PATH` in its own environment:
+
+```bash
+uv tool install --pre diffBloch
+```
+
+To import diffBloch from your own Python instead, install it into a virtual environment. `uv venv`
+fetches a suitable interpreter when the host has none, so no separate Python installation is needed:
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install --pre diffBloch
 ```
 
-Two further forms install the command-line entry point without a project environment:
-
-```bash
-uv tool install --pre diffBloch                               # console script on PATH
-uvx --prerelease=allow --from diffBloch diffbloch --version    # run without installing
-```
-
-Installation pulls `torch>=2.13`, which is a large download. `--torch-backend` selects the build
+Either form pulls `torch>=2.13`, which is a large download. `--torch-backend` selects the build
 matching the host accelerator rather than the default wheel:
 
 ```bash
-uv pip install --pre --torch-backend=auto diffBloch
+uv tool install --pre --torch-backend=auto diffBloch
 ```
 
 ### Optional extras
 
-The logging backends are optional extras. The core never imports them, and each confines its SDK to
-one module.
+The logging backends are optional extras: `wandb` for Weights & Biases, `comet` for Comet. The core
+never imports them, and each confines its SDK to a single module. Request them from either install
+form:
 
-| Extra | Command | Enables |
-|---|---|---|
-| `wandb` | `uv pip install --pre 'diffBloch[wandb]'` | Weights & Biases logging backend. |
-| `comet` | `uv pip install --pre 'diffBloch[comet]'` | Comet logging backend. |
+```bash
+uv tool install --pre 'diffBloch[wandb]'
+```
 
 ## From a checkout
 
