@@ -1,22 +1,17 @@
 # Installation
 
-diffBloch requires Python 3.12 or newer. Two installations are available: the package published on
-PyPI, and a development checkout of the repository. The checkout is required to develop diffBloch or
-to run the bundled examples.
+diffBloch requires Python 3.12 or newer and is installed with
+[uv](https://docs.astral.sh/uv/getting-started/installation/). Two installations are available: the
+package published on PyPI, and a development checkout of the repository. The checkout is required to
+develop diffBloch or to run the bundled examples.
 
 ## From PyPI
 
-diffBloch is published to PyPI as a release candidate. `pip` installs a pre-release only when asked
-for one, so `--pre` is required.
+diffBloch is published to PyPI as a release candidate. uv installs a pre-release only when asked for
+one, so `--pre` is required.
 
-Check the interpreter with `python3 --version`, then install into a virtual environment:
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install --pre diffBloch
-```
-
-uv fetches a suitable interpreter when the host has none:
+`uv venv` fetches a suitable interpreter when the host has none, so no separate Python installation
+is needed:
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
@@ -30,8 +25,12 @@ uv tool install --pre diffBloch                               # console script o
 uvx --prerelease=allow --from diffBloch diffbloch --version    # run without installing
 ```
 
-Installation pulls `torch>=2.13`, which is a large download. On Linux with CUDA, install the
-required torch build from the PyTorch index first, then install diffBloch.
+Installation pulls `torch>=2.13`, which is a large download. `--torch-backend` selects the build
+matching the host accelerator rather than the default wheel:
+
+```bash
+uv pip install --pre --torch-backend=auto diffBloch
+```
 
 ### Optional extras
 
@@ -40,8 +39,8 @@ one module.
 
 | Extra | Command | Enables |
 |---|---|---|
-| `wandb` | `pip install --pre 'diffBloch[wandb]'` | Weights & Biases logging backend. |
-| `comet` | `pip install --pre 'diffBloch[comet]'` | Comet logging backend. |
+| `wandb` | `uv pip install --pre 'diffBloch[wandb]'` | Weights & Biases logging backend. |
+| `comet` | `uv pip install --pre 'diffBloch[comet]'` | Comet logging backend. |
 
 ## From a checkout
 
