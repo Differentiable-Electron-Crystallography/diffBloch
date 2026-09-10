@@ -7,18 +7,18 @@ develop diffBloch or to run the bundled examples.
 
 ## From PyPI
 
-diffBloch is published to PyPI as a release candidate. uv installs a pre-release only when the
-requirement names one, so the commands below carry the version floor `diffBloch>=0.2.0rc1`.
+diffBloch's only published release is the candidate `0.2.0rc1`, and a plain install resolves to it:
+uv accepts a pre-release when no stable release satisfies the requirement.
 
-Do not substitute `--pre` or `--prerelease=allow`. Those apply to the whole resolution, not to
-diffBloch alone, and install pre-release builds of the dependencies as well: `uv pip install --pre
-diffBloch` resolves pydantic to `2.14.0b2` and SQLAlchemy to `2.1.0rc2`, where the floor form leaves
-both on their current stable releases.
+Do not add `--pre` or `--prerelease=allow`. Those apply to the whole resolution rather than to
+diffBloch, and install pre-release builds of the dependencies as well: `uv pip install --pre
+diffBloch` resolves pydantic to `2.14.0b2` and SQLAlchemy to `2.1.0rc2`, where the commands below
+leave both on their current stable releases.
 
 For command-line use, install the `diffbloch` console script onto `PATH` in its own environment:
 
 ```bash
-uv tool install 'diffBloch>=0.2.0rc1'
+uv tool install diffBloch
 ```
 
 To import diffBloch from your own Python instead, install it into a virtual environment. `uv venv`
@@ -26,14 +26,21 @@ fetches a suitable interpreter when the host has none, so no separate Python ins
 
 ```bash
 uv venv --python 3.12 && source .venv/bin/activate
-uv pip install 'diffBloch>=0.2.0rc1'
+uv pip install diffBloch
 ```
 
 Either form pulls `torch>=2.13`, which is a large download. `--torch-backend` selects the build
 matching the host accelerator rather than the default wheel:
 
 ```bash
-uv tool install --torch-backend=auto 'diffBloch>=0.2.0rc1'
+uv tool install --torch-backend=auto diffBloch
+```
+
+Once a stable release exists, a plain install prefers it over any candidate. Name the version to
+keep installing a specific candidate:
+
+```bash
+uv tool install 'diffBloch==0.2.0rc1'
 ```
 
 ### Optional extras
@@ -43,7 +50,7 @@ never imports them, and each confines its SDK to a single module. Request them f
 form:
 
 ```bash
-uv tool install 'diffBloch[wandb]>=0.2.0rc1'
+uv tool install 'diffBloch[wandb]'
 ```
 
 ## From a checkout
