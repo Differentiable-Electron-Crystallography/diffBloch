@@ -94,23 +94,6 @@ CPU execution is reasonable for small structure matrices. GPU acceleration becom
 important as the number of dynamically coupled beams increases, and so does the choice of
 `coupling_mode` and `solver`.
 
-## Threads and workers
-
-`--workers N` fans orientation-plan builds and per-rotation searches over N threads (default 1).
-The BLAS and torch pools size themselves to the whole node, so unless host threads are capped to 1
-those N workers oversubscribe the cores and the run is slower than with a single worker:
-
-```bash
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export TORCH_NUM_THREADS=1
-uv run diffbloch refine <experiment_dir> --device cpu --workers 8
-```
-
-`torch.set_num_threads(1)` has the same effect when diffBloch is driven from Python rather than the
-CLI. On GPU the solve itself is not affected, but the per-rotation searches still run on the host,
-so the caps apply there too.
-
 ## Profiling refinement
 
 `--profile` reports the time spent calculating structure factors, solving each rotation, computing
