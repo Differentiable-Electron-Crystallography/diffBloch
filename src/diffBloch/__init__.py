@@ -7,4 +7,4 @@ import logging as _logging
 # could be found" and no records surface unless the app (or a probe) configures a handler.
 _logging.getLogger("diffBloch").addHandler(_logging.NullHandler())
 
-__version__ = "0.2.0"
+__version__ = "0.2.0rc1"

@@ -1,25 +1,31 @@
-name: PyPI publish
+name: Release
 
-# Called by release.yml once a merge to main bumps __version__ in src/diffBloch/__init__.py.
-# Deliberately NOT triggered by a tag: release.yml creates the tag with GITHUB_TOKEN, and tags
-# pushed by that token never start a workflow run. Dropping the tag trigger also means a
-# hand-pushed v* tag publishes nothing, so releasing goes through a reviewed PR or not at all.
+# The whole release lives here: decide, build, publish, tag.
 #
-# There is nothing to run by hand for a normal release -- see release.yml.
+# Deliberately ONE workflow rather than a reusable pypi.yml called by a release.yml. PyPI's
+# Trusted Publishing authenticates on the `job_workflow_ref` claim (the *called* workflow), while
+# PEP 740 attestation verification checks the Sigstore certificate's Build Config URI, which
+# carries `workflow_ref` (the *calling* workflow). Across a reusable-workflow boundary those two
+# name different files; a PyPI publisher records only one workflow filename, so whichever you
+# register, the other check fails -- authentication with `invalid-publisher`, or the upload with
+# "Certificate's Build Config URI ... does not match expected Trusted Publisher". Collapsing the
+# two workflows into one makes the claims agree.
+# See https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github
+#
+# Keep this file named pypi.yml. That filename is what the PyPI trusted publisher is registered
+# against; renaming it breaks publishing until the publisher is edited to match.
+#
+# Releasing is an ordinary PR: bump __version__ in src/diffBloch/__init__.py, refresh the example
+# locks alongside it (ci.yml's release-guard enforces that pairing), get it approved, merge. There
+# is no command to run afterwards and no tag to push by hand.
+#
+# This fires on every push to main but only acts when __version__ names a version that has no tag
+# yet, so an ordinary merge is a clean no-op.
 on:
-  workflow_call:
-    inputs:
-      ref:
-        description: Commit (or tag) to build and publish.
-        required: true
-        type: string
-      version:
-        description: Version the caller expects that ref to build, e.g. 0.2.1.
-        required: true
-        type: string
+  push:
+    branches: [main]
   # Re-run path for a release whose publish failed after the fact. Name the commit and the version
-  # it carries; the check below refuses the pair if they disagree. Repeated in full rather than
-  # shared with an anchor -- GitHub Actions does not support YAML anchors.
+  # it carries; the build job refuses the pair if they disagree.
   workflow_dispatch:
     inputs:
       ref:
@@ -27,7 +33,7 @@ on:
         required: true
         type: string
       version:
-        description: Version the caller expects that ref to build, e.g. 0.2.1.
+        description: Version you expect that ref to build, e.g. 0.2.1.
         required: true
         type: string
 
@@ -35,12 +41,66 @@ permissions:
   contents: read
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.decide.outputs.sha }}
+      version: ${{ steps.decide.outputs.version }}
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # the tag list is the record of what has already been released
+          # `inputs` is empty on a push event, so this takes the dispatched ref when there is one
+          # and the pushed commit otherwise.
+          ref: ${{ inputs.ref || github.sha }}
+
+      # Keyed on "is this version already tagged" rather than on a HEAD^ diff: a merge that leaves
+      # the version alone is a no-op, and a re-run after a mid-flight failure resumes instead of
+      # deciding the release already happened. A workflow_dispatch is an explicit instruction to
+      # publish, so it skips that check and always proceeds.
+      - name: Decide whether this is a release
+        id: decide
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          # Resolve whatever was checked out to a full commit sha, so a dispatch naming a tag or
+          # an abbreviated sha still gives the build and tag jobs something unambiguous.
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$DISPATCH_VERSION" ]; then
+            # Manual re-run: take the operator's version at face value here. The build job's PEP
+            # 440 comparison against the built wheel is what refuses a ref/version pair that
+            # disagree, and it does so with proper normalisation.
+            echo "version=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "publishing $DISPATCH_VERSION from $sha (manual re-run)"
+            exit 0
+          fi
+
+          version=$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/diffBloch/__init__.py)
+          if [ -z "$version" ]; then
+            echo "::error::no __version__ assignment found in src/diffBloch/__init__.py"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is unreleased; publishing $version"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: decide
+    if: needs.decide.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.decide.outputs.sha }}
           lfs: true
 
       - name: Install uv
@@ -51,7 +111,7 @@ jobs:
       - name: Build package (wheel + sdist)
         run: uv build
 
-      # Two independent reads of __init__.py have to agree: the caller's (release.yml greps the
+      # Two independent reads of __init__.py have to agree: the decide job's (which greps the
       # line) and hatchling's (which builds the wheel from it). This is a weaker guarantee than the
       # tag-vs-metadata check it replaces -- the file is the only source of truth now, so there is
       # no second number to disagree with it -- but it still catches a bug in that grep and a
@@ -60,7 +120,7 @@ jobs:
       # 0.3.0-rc1 and 0.3.0rc1 are treated as equal.
       - name: Check expected version against built version
         env:
-          EXPECTED: ${{ inputs.version }}
+          EXPECTED: ${{ needs.decide.outputs.version }}
         run: |
           uv run --no-project --with packaging python - <<'PY'
           import os, pathlib, sys
@@ -127,7 +187,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      id-token: write  # PyPI Trusted Publishing
     environment:
       name: pypi
       url: https://pypi.org/p/diffBloch
@@ -138,3 +198,29 @@ jobs:
           path: dist
 
       - uses: pypa/gh-action-pypi-publish@v1.14.2
+
+  # The tag is created LAST, and only once PyPI has accepted the upload. `decide` reads tag
+  # existence as "already released", so tagging first would leave that marker behind on any publish
+  # failure -- a flaky test, twine check on a bad README, a PyPI outage -- and the re-run would
+  # silently skip. Tagging last means a failed release leaves no trace and re-running just works.
+  tag:
+    needs: [decide, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # POST /git/refs rather than `git push`: the endpoint is create-only (422 if the ref already
+      # exists), so a re-run can never force-move a published tag, and it needs no git identity on
+      # the runner. The tag is the record that makes a lock's `code_version: <version>+g<sha>`
+      # resolve back to source with `git checkout v<version>`.
+      - name: Record the release as a tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.decide.outputs.version }}
+          SHA: ${{ needs.decide.outputs.sha }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$SHA" \
+            --silent
+          echo "tagged $SHA as $TAG"
