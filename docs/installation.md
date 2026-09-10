@@ -1,93 +1,73 @@
 # Installation
 
-diffBloch requires Python 3.12 or newer and is installed with
-[uv](https://docs.astral.sh/uv/getting-started/installation/). Two installations are available: the
-package published on PyPI, and a development checkout of the repository. The checkout is required to
-develop diffBloch or to run the bundled examples.
+diffBloch is currently tagged as a release candidate and is under active development. The `v0.2.0`
+release will be the first stable public release.
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/). Other Python package managers
+also work (`pip install` and equivalents), but uv is what these guides use.
 
 ## From PyPI
 
-diffBloch's only published release is the candidate `0.2.0rc1`, and a plain install resolves to it:
-uv accepts a pre-release when no stable release satisfies the requirement.
-
-Do not add `--pre` or `--prerelease=allow`. Those apply to the whole resolution rather than to
-diffBloch, and install pre-release builds of the dependencies as well: `uv pip install --pre
-diffBloch` resolves pydantic to `2.14.0b2` and SQLAlchemy to `2.1.0rc2`, where the commands below
-leave both on their current stable releases.
-
-For command-line use, install the `diffbloch` console script onto `PATH` in its own environment:
-
 ```bash
-uv tool install diffBloch
+uv tool install 'diffBloch>=0.2.0rc1'
 ```
 
-To import diffBloch from your own Python instead, install it into a virtual environment. `uv venv`
-fetches a suitable interpreter when the host has none, so no separate Python installation is needed:
+The requirement names the candidate explicitly. Avoid `--pre`: it allows pre-releases for every
+package in the resolution, not just diffBloch, and installs beta builds of pydantic and SQLAlchemy.
 
-```bash
-uv venv --python 3.12 && source .venv/bin/activate
-uv pip install diffBloch
-```
-
-Either form pulls `torch>=2.13`, which is a large download. `--torch-backend` selects the build
-matching the host accelerator rather than the default wheel:
-
-```bash
-uv tool install --torch-backend=auto diffBloch
-```
-
-Once a stable release exists, a plain install prefers it over any candidate. Name the version to
-keep installing a specific candidate:
-
-```bash
-uv tool install 'diffBloch==0.2.0rc1'
-```
-
-### Optional extras
-
-The logging backends are optional extras: `wandb` for Weights & Biases, `comet` for Comet. The core
-never imports them, and each confines its SDK to a single module. Request them from either install
-form:
-
-```bash
-uv tool install 'diffBloch[wandb]'
-```
-
-## From a checkout
-
-Git LFS supplies the experimental data and plan checkpoints stored in the repository. Without it
-those paths are pointer stubs rather than files.
-
-```bash
-git lfs install
-git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch
-cd diffBloch
-git lfs pull
-uv sync --dev
-```
-
-Commands then run inside the project environment as `uv run diffbloch ...`, which is the form used
-throughout these guides. An installed package provides the same commands as `diffbloch ...`.
-
-## Verifying the installation
+The `diffbloch` CLI is then on `PATH`:
 
 ```bash
 diffbloch --version
 diffbloch --help
 ```
 
-`diffbloch --version` reports the installed version, {{ version }} for the release these docs
-describe. `diffbloch --help` lists the available subcommands.
+`diffbloch --version` reports {{ version }} for the release these docs describe.
 
-## Experiment data
+To import diffBloch from your own Python, install it into a virtual environment instead:
 
-The wheel and sdist contain the package only. Example data is excluded because every Git LFS path
-lives under `tests/` and `examples/`; an sdist built from a pointer-only checkout would carry LFS
-stubs that install cleanly and then fail when read.
+```bash
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install 'diffBloch>=0.2.0rc1'
+```
 
-An installed package therefore requires an experiment directory of your own, described in
-[Inputs and outputs](inputs.md). The bundled experiments listed in [Examples](examples.md) require
-the checkout above.
+Installation pulls `torch>=2.13`, which is a large download. `--torch-backend=auto` selects the
+build matching the host accelerator.
 
-Once an experiment directory is available, [Workflow](workflow.md) covers the pipeline from input
-files to refined structure.
+The logging backends are optional extras, and the core never imports them:
+`uv tool install 'diffBloch[wandb]>=0.2.0rc1'`, likewise `comet`.
+
+## Running your own data
+
+[Understand how experiments are structured](inputs.md) first. A run needs a directory containing
+`experiment.yaml`, the starting structure CIF, and the experimental `.cif_pets` data. The
+[examples directory](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026)
+holds reference experiments against a variety of crystals.
+
+```bash
+diffbloch validate   my-experiment/experiment.yaml
+diffbloch preprocess my-experiment --device cpu
+diffbloch refine     my-experiment --device cpu
+```
+
+`--device` defaults to `cuda`, so a machine without CUDA requires `--device cpu`.
+
+## From a git clone
+
+A checkout is required to develop diffBloch and to run the bundled examples. Git LFS supplies the
+experimental data and plan checkpoints; without it those paths are pointer stubs rather than files.
+
+```bash
+git lfs install
+git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch
+cd diffBloch && git lfs pull && uv sync --dev
+
+EXP=examples/Colmey_et_al_2026/data/quartz-no-abs
+uv run diffbloch validate $EXP/experiment.yaml
+uv run diffbloch refine   $EXP --device cpu
+```
+
+The wheel and sdist contain the package only. Every Git LFS path lives under `tests/` and
+`examples/`, which the sdist excludes, so a clone is the only route to the bundled experiments.
+
+[Workflow](workflow.md) covers the pipeline from input files to refined structure.

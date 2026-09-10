@@ -18,13 +18,15 @@ Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
 ## Quickstart
 
-Requires Python 3.12 or newer and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-The only published release is the candidate `0.2.0rc1`, which a plain install resolves to. Do not
-add `--pre`: it applies to the whole resolution and pulls pre-release dependencies too.
+diffBloch is currently tagged as a release candidate and is under active development; `v0.2.0` will
+be the first stable public release. Install [uv](https://docs.astral.sh/uv/getting-started/installation/),
+then:
 
 ```bash
-uv tool install diffBloch     # or: uv pip install diffBloch
+uv tool install 'diffBloch>=0.2.0rc1'
 ```
+
+Avoid `--pre`: it allows pre-releases for every package in the resolution, not just diffBloch.
 
 To work from a checkout instead, install [Git LFS](https://git-lfs.com/) for the bundled `.cif_pets`
 experimental data and plan-checkpoint `.npz` checkpoints, then sync the project environment from the
