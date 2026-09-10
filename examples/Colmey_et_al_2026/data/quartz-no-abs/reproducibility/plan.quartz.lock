@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "1271f77c0d3f6d2708c8dc3d2815a83a3ecdcc2589c69d1b4bc2eb2d08124772",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "841d2d6356e9de744eee46f8ef2be6d758dad77cd49db15cd41c0141faee8964",
+  "code_version": "0.2.0rc1",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -99,8 +99,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.quartz.npz",
-    "sha256": "5e08bbc61121e8d77444365a559f26249119132c996f15a8201d5af7d1e7d8b3",
-    "bytes": 559303,
+    "sha256": "f975a030a5ba59b4c76ec02aec2d548046b89299399a567b9befcca00f92f973",
+    "bytes": 557560,
     "media_type": "application/octet-stream"
   }
 }

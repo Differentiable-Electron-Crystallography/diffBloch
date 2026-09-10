@@ -18,8 +18,8 @@
     90.00002
   ],
   "ignored_rotations": [],
-  "config_digest": "e27a8a5fe1c21c8369e37f17e9c03bd9d0738ce5cb0fbff267ded6ea1d4cb16e",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "8bd3bf8638736e9be0ea9ada71e4370bad50658ee4a63168da159db7e27caeaa",
+  "code_version": "0.2.0rc1",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -99,8 +99,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.CsPbBr_P67-crot-050_dyn.npz",
-    "sha256": "25d515646f21916a205d50e8e263e982010e7bdbbcae75756c865be72e8fb60f",
-    "bytes": 1140686,
+    "sha256": "b92e0fb5f7c9919c9f886d666e10d5295746907c29721d28c02700b6dbc076f2",
+    "bytes": 1140442,
     "media_type": "application/octet-stream"
   }
 }
