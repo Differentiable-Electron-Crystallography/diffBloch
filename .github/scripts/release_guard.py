@@ -9,7 +9,10 @@ cannot reproduce.
 
 Covers the e2e fixture as well as the examples. Its plan lock and ``.npz`` are committed on purpose
 (see .gitignore) so the anchor job can skip the expensive fit; left stale after a bump, that job
-recomputes the plan on every run from then on, not just once.
+recomputes the plan on every run from then on, not just once. Note that the fixture is refreshed by
+``diffbloch preprocess --refresh``, NOT by running the e2e suite: the only e2e test loads the
+fixture and compares inference against ``reference_results.json``, so it never writes a plan lock
+and can never clear this check.
 
 Runs on every PR and no-ops when ``__version__`` is untouched -- it is a required status check, so
 it must always report rather than be skipped by a ``paths:`` filter.
@@ -32,7 +35,10 @@ INIT = "src/diffBloch/__init__.py"
 # Where committed locks live, and the command that regenerates each family's.
 LOCK_ROOTS = {
     "examples": "uv run diffbloch refine <experiment_dir> --refresh",
-    "tests/fixtures": "uv run pytest -m e2e",
+    # NOT `pytest -m e2e` -- that suite only reads the fixture (see module docstring). Only the
+    # preprocess stage writes plan.<stem>.npz/.lock, and only --refresh rebuilds them; `refine`
+    # would also work but would leave refinement artifacts the fixture is not supposed to carry.
+    "tests/fixtures": "uv run diffbloch preprocess tests/fixtures/quartz_anchor --refresh",
 }
 VERSION_RE = re.compile(r'^__version__ = "([^"]+)"', re.MULTILINE)
 
@@ -95,6 +101,24 @@ def stale_locks(release: str, root: str) -> list[tuple[Path, str]]:
     return stale
 
 
+def highest_released() -> Version | None:
+    """The greatest version carried by a `v*` tag, or None when nothing has been released.
+
+    Tags that are not PEP 440 versions are ignored rather than fatal: the release path only ever
+    creates `v<version>`, but a hand-made tag like `v1-paper-submission` should not break the guard.
+    """
+    released = []
+    for line in git("tag", "--list", "v*").splitlines():
+        raw = line.strip().removeprefix("v")
+        if not raw:
+            continue
+        try:
+            released.append(Version(raw))
+        except InvalidVersion:
+            continue
+    return max(released, default=None)
+
+
 def summary(text: str) -> None:
     """Append to the job summary when running under Actions; harmless locally."""
     path = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -116,12 +140,19 @@ def main() -> None:
         return
 
     head_v = pep440(head, "__version__")
-    if head_v <= pep440(base, f"__version__ on {base_ref}"):
-        sys.exit(f"::error::__version__ moved backwards: {base} -> {head}")
 
     tag = f"v{head}"
     if git("tag", "--list", tag).strip():
         sys.exit(f"::error::{tag} already exists -- {head} has been released; choose a new version")
+
+    # Regression is measured against what has actually been RELEASED, not against the base branch's
+    # `__version__`. That line is only a draft until a release publishes it, and comparing to it
+    # forbids a legitimate move that PEP 440 orders downwards: an unreleased 0.2.0 becoming its own
+    # release candidate 0.2.0rc1, since rc sorts below the final. Tags are the record of what
+    # shipped (release.yml writes one only after PyPI accepts the upload), so with nothing released
+    # there is nothing to regress below.
+    if (highest := highest_released()) is not None and head_v <= highest:
+        sys.exit(f"::error::__version__ {head} is not above the last release {highest}")
 
     failed = False
     for root, remedy in LOCK_ROOTS.items():
