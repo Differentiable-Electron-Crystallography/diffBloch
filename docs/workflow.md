@@ -211,7 +211,7 @@ diffbloch refine     $EXP --device cpu      # gradient refinement
 ```
 
 `--device` defaults to **`cuda`**, so pass `--device cpu` on a Mac or any CPU-only box. Useful
-extras: `--workers N` (with `OMP_NUM_THREADS=1` to stop BLAS oversubscription), `--max-batch` to
-fill a bigger GPU, `--refresh` to discard stale checkpoints. `reproducibility/experiment.lock` is
-written on first run; after intentionally changing inputs,
+extras: `--workers N` (see [Threads and workers](devices-and-scaling.md#threads-and-workers) for
+the host-thread caps it needs), `--max-batch` to fill a bigger GPU, `--refresh` to discard stale
+checkpoints. `reproducibility/experiment.lock` is written on first run; after intentionally changing inputs,
 `diffbloch lock-experiment --force $EXP`.
