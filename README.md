@@ -18,9 +18,16 @@ Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
 ## Quickstart
 
-Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint `.npz`
-checkpoints, then sync the project environment from the repository root:
+Requires Python 3.12 or newer. Release candidates are published to PyPI, so `--pre` is required to
+install one:
+
+```bash
+pip install --pre diffBloch     # or: uv tool install --pre diffBloch
+```
+
+To work from a checkout instead, install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+and [Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint
+`.npz` checkpoints, then sync the project environment from the repository root:
 
 ```bash
 git lfs install
@@ -28,15 +35,9 @@ git lfs pull
 uv sync --dev
 ```
 
-To use the released package instead of a checkout, install it from PyPI. Release candidates are
-published there, so `--pre` is required to install one:
-
-```bash
-pip install --pre diffBloch     # or: uv tool install --pre diffBloch
-```
-
-See [Installing from PyPI](https://differentiable-electron-crystallography.github.io/diffBloch/workflow.html#installing-from-pypi-pre-release)
-for the full walkthrough; note the wheel ships only the package, not the bundled example data.
+The [installation guide](https://differentiable-electron-crystallography.github.io/diffBloch/installation.html)
+is canonical for both paths and covers the optional extras, the `torch` download, and why the wheel
+carries no example data. Keep this section a summary of it rather than a second source of truth.
 
 Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
 on your shell `PATH`.
