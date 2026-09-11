@@ -29,7 +29,7 @@ The schema default keeps positions and ADPs trainable, and leaves occupancies fr
 ## CLI example
 
 ```bash
-uv run diffbloch run refine <experiment_dir> --device cuda
+uv run diffbloch refine <experiment_dir> --device cuda
 ```
 
 Preprocesses (or reuses settled per-dataset plan checkpoints, see [Reproducibility](reproducibility.md)) and then

@@ -27,6 +27,7 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 
 | Guide | Contents |
 |---|---|
+| [Installation](installation.md) | Installing diffBloch from PyPI or from a repository checkout. |
 | [Workflow](workflow.md) | Refinement pipeline from input files to refined structure. |
 | [Inputs and outputs](inputs.md) | Files required for a refinement and files produced by diffBloch. |
 | [Hyperparameter selection](hyperparameter-selection.md) | Simulation, preprocessing, and refinement hyperparameters and their defaults. |
@@ -45,16 +46,8 @@ diffBloch performs the refinement as two complementary values: a crystal structu
 
 The command-line interface (CLI) runs diffBloch from a terminal. This is the standard way to run a complete experiment.
 
-`uv` installs the required Python packages and runs diffBloch inside the
-project environment. Git LFS downloads the larger experimental-data files stored in the repository.
-
-From the repository directory:
-
-```bash
-git lfs install
-git lfs pull
-uv sync --dev
-```
+[Installation](installation.md) covers both the published package and a development checkout. The
+commands in these guides use the checkout form, `uv run diffbloch ...`.
 
 Each diffBloch command takes the path to an experiment directory containing `experiment.yaml`, the
 starting CIF, and the `.cif_pets` data:
@@ -98,6 +91,7 @@ papers.
 :hidden:
 :caption: Guides
 
+installation.md
 workflow.md
 inputs.md
 hyperparameter-selection.md

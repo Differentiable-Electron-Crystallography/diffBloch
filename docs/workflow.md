@@ -10,7 +10,8 @@ specifies the simulation, preprocessing, and refinement settings that are not se
 input data. See [Hyperparameter selection](hyperparameter-selection.md) for the available settings
 and their defaults.
 
-Commands are run from the repository root with `uv run`. In the examples below,
+Commands are run from the repository root with `uv run`; an installed package provides the same
+commands as `diffbloch ...`, as described in [Installation](installation.md). In the examples below,
 `<experiment_dir>` denotes this directory.
 
 ## Experiment directory
