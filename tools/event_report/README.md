@@ -5,7 +5,7 @@ produced by CLI commands like `diffbloch refine`.
 
 | module | role |
 | --- | --- |
-| `reader.py` | find, parse, and slice a report |
+| `reader.py` | find, parse, and slice a report; `events_of` rebuilds records as the library's event dataclasses |
 | `style.py` | the shared palette and chrome; colour assigned by job, applied per figure |
 | `tables.py` | run-summary tables over the parsed records, rendered to Markdown |
 | `figures.py` | matplotlib figures over the parsed records, grouped into stage sections |
@@ -18,6 +18,20 @@ logic of its own, and its outputs are not committed.
 The notebook is the only rendering surface. The JSONL report itself is the machine-readable
 artifact — anything wanting a different presentation reads the report directly rather than going
 through a renderer here.
+
+## The contract
+
+A report line is an `EventRecord` envelope around one event from `diffBloch.observability`, and
+`series | payload` is exactly that event's fields. Readers here never index the payload dict:
+`reader.events_of(records, OrientationOptimized)` hands back real `OrientationOptimized` objects
+via `diffBloch.observability.event_from_record`, so field names are checked by the type checker,
+tuples come back as tuples, and JSON's `"NaN"` comes back as a float. A report that no longer fits
+the events this checkout defines — a required field renamed or removed, an unknown event type —
+raises `ReportSchemaError` naming the record and field, rather than a figure quietly going blank.
+Fields *added* by a newer writer are ignored, so an older reader survives additive changes.
+
+`diffBloch.observability.EVENT_TYPES` is the registry: every event class, keyed by the name
+`event_type` records. Defining an event registers it.
 
 ## Example workflow
 

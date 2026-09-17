@@ -7,7 +7,9 @@ loggers, and the two boundary backends. ``run_inference`` emission is covered in
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import math
 import re
 import sys
 import types
@@ -25,6 +27,7 @@ from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.io import ParseDiagnostic
 from diffBloch.observability import (
+    EVENT_TYPES,
     ConvergencePassStarted,
     ConvergenceTrial,
     CouplingSummary,
@@ -48,6 +51,7 @@ from diffBloch.observability import (
     RefinementOutputsWritten,
     RefinementStarted,
     RefinementStep,
+    ReportSchemaError,
     RotationCoupling,
     RotationCouplingSegments,
     RotationScored,
@@ -55,6 +59,7 @@ from diffBloch.observability import (
     RunStageStopped,
     ThicknessOptimizationStarted,
     ThicknessOptimized,
+    event_from_record,
     event_record_from_event,
 )
 
@@ -927,6 +932,110 @@ def test_event_record_is_one_maximal_schema_for_structured_events() -> None:
         "candidate_score",
         "dataset",
     }
+
+
+def test_event_types_registers_every_event_dataclass_in_the_module() -> None:
+    """The registry is derived, not hand-kept: defining an event *is* registering it."""
+    import diffBloch.observability as module
+
+    events = {
+        name
+        for name, value in vars(module).items()
+        if isinstance(value, type)
+        and dataclasses.is_dataclass(value)
+        and value not in (MultiLogger, ObjectiveTerm)  # a sink and a nested value: not events
+    }
+    assert set(EVENT_TYPES) == events
+    assert all(isinstance(cls(**_minimal(cls)), Event) for cls in EVENT_TYPES.values())
+
+
+def _minimal(cls: type) -> dict[str, object]:
+    """Constructor kwargs for one plausible instance of any event class, by field type."""
+    samples: dict[str, object] = {
+        "str": "x",
+        "int": 1,
+        "float": 0.5,
+        "bool": False,
+        "tuple[float, ...]": (0.5,),
+        "tuple[int, ...]": (1,),
+        "tuple[str, ...]": ("x",),
+        "tuple[tuple[str, tuple[float, ...]], ...]": (("x", (0.5,)),),
+        "tuple[tuple[str, dict[str, Any] | None], ...]": (("x", None),),
+        "tuple[ObjectiveTerm, ...]": (ObjectiveTerm(name="x", weight=1.0),),
+        "Mapping[str, float]": {"k": 0.5},
+        "Mapping[str, int]": {"k": 1},
+        "Mapping[str, str]": {"k": "v"},
+        "Mapping[str, Mapping[str, float]]": {"k": {"j": 0.5}},
+        "RunStage": "refine",
+        "RunStageStatus": "completed",
+        "Literal['training', 'validation']": "training",
+        "Literal['linear', 'sigmoid']": "linear",
+    }
+    kwargs: dict[str, object] = {}
+    for spec in dataclasses.fields(cls):
+        if (
+            spec.default is not dataclasses.MISSING
+            or spec.default_factory is not dataclasses.MISSING
+        ):
+            continue
+        annotation = str(spec.type).replace("typing.", "").replace("collections.abc.", "")
+        kwargs[spec.name] = samples[annotation.replace(" | None", "")]
+    return kwargs
+
+
+@pytest.mark.parametrize("cls", sorted(EVENT_TYPES.values(), key=lambda cls: cls.__name__))
+def test_every_event_round_trips_through_a_written_record(cls: type) -> None:
+    """``event_from_record`` is the exact inverse of the writer, through JSON, for every event.
+
+    Rebuilt as the real dataclass: tuples come back as tuples (JSON has only lists), ints stay
+    ints, nested value dataclasses are re-materialized. Equality is on the dataclass, so a field
+    that stopped round-tripping is named by the assertion rather than found as a blank figure.
+    """
+    event = cls(**_minimal(cls))
+    written = event_record_from_event(event, run_id="run", sequence=3).model_dump_json()
+
+    rebuilt = event_from_record(EventRecord.model_validate_json(written))
+
+    assert type(rebuilt) is cls
+    assert rebuilt == event
+    assert rebuilt.measurements == event.measurements
+
+
+def test_event_from_record_restores_non_finite_floats_from_their_json_spelling() -> None:
+    """JSON has no NaN: the record writes the string "NaN", and the rebuilt event has the float."""
+    event = RefinementStep(iteration=0, loss=1.0, wr2=float("nan"), r_obs=float("inf"))
+    written = event_record_from_event(event, run_id="run", sequence=0).model_dump_json()
+    assert '"wr2":"NaN"' in written
+
+    rebuilt = event_from_record(EventRecord.model_validate_json(written))
+
+    assert isinstance(rebuilt, RefinementStep)
+    assert rebuilt.wr2 is not None and math.isnan(rebuilt.wr2)
+    assert rebuilt.r_obs == float("inf")
+
+
+def test_event_from_record_fails_loudly_on_a_field_the_event_requires() -> None:
+    """A removed or renamed field must not degrade to ``None`` -- that is how schema drift hides."""
+    record = event_record_from_event(RefinementStarted(total_steps=4), run_id="run", sequence=7)
+    drifted = record.model_copy(update={"payload": {"n_steps": 4}})
+
+    with pytest.raises(ReportSchemaError, match=r"record 7 \(RefinementStarted\).*'total_steps'"):
+        event_from_record(drifted)
+
+
+def test_event_from_record_rejects_an_event_type_this_library_does_not_define() -> None:
+    record = event_record_from_event(RefinementStarted(total_steps=4), run_id="run", sequence=0)
+
+    with pytest.raises(ReportSchemaError, match="unknown event_type 'Bespoke'"):
+        event_from_record(record.model_copy(update={"event_type": "Bespoke"}))
+
+
+def test_event_from_record_tolerates_a_field_added_by_a_newer_writer() -> None:
+    """Additive schema changes keep an older reader working; only removals fail."""
+    record = event_record_from_event(RefinementStarted(total_steps=4), run_id="run", sequence=0)
+    newer = record.model_copy(update={"payload": {**record.payload, "budget_seconds": 60.0}})
+
+    assert event_from_record(newer) == RefinementStarted(total_steps=4)
 
 
 def test_report_logger_writes_versioned_jsonl_payloads(tmp_path: Path) -> None:

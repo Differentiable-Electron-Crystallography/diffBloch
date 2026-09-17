@@ -4,6 +4,11 @@ Each ``plot_*`` takes the parsed records and returns a ``Figure``, or ``None`` w
 carries no events of the kind it draws -- so a preprocess-only report simply yields fewer figures
 rather than erroring. :func:`build_figures` runs them all and drops the empty ones.
 
+Every figure reads its events through :func:`~tools.event_report.reader.events_of`, i.e. as the
+library's own event dataclasses, and never through the envelope's payload dict: the field names
+below are checked against :mod:`diffBloch.observability` by the type checker and by the golden
+report test, and a report that no longer fits fails at the read with the field named.
+
 These live in a module rather than in a notebook cell so they can be imported, diffed, and tested;
 ``event_report.ipynb`` is a thin driver over this file. Nothing here is imported by
 ``src/diffBloch``: rendering is a consumer concern, and matplotlib is a dev/tooling dependency.
@@ -17,11 +22,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from diffBloch.observability import EventRecord
+from diffBloch.observability import (
+    ConvergencePassStarted,
+    ConvergenceTrial,
+    EventRecord,
+    OrientationOptimized,
+    OrientationSearchTrace,
+    RefinedRotationMetrics,
+    RefinementStep,
+    RotationCoupling,
+    RotationCouplingSegments,
+    ThicknessOptimized,
+    ThicknessProfile,
+)
 
-from .reader import by_dataset, finite_mean, records_of, sorted_by_rotation
+from .reader import Positioned, by_dataset, events_of, finite_mean, sorted_by_rotation
 from .style import INK, MUTED, SERIES, styled
 
 __all__ = [
@@ -42,11 +60,11 @@ __all__ = [
 ]
 
 
-def _rotation_labels(records: Sequence[EventRecord]) -> list[str]:
-    return [f"{record.dataset or ''}:{record.rotation_index}" for record in records]
+def _rotation_labels(events: Sequence[Positioned]) -> list[str]:
+    return [f"{event.dataset or ''}:{event.rotation_index}" for event in events]
 
 
-def _thin_ticks(ax: plt.Axes, labels: Sequence[str], *, keep: int = 12) -> None:
+def _thin_ticks(ax: Axes, labels: Sequence[str], *, keep: int = 12) -> None:
     """Label at most ``keep`` x ticks -- a hundred rotations of text is unreadable overlap."""
     stride = max(1, len(labels) // keep)
     positions = list(range(len(labels)))[::stride]
@@ -77,24 +95,24 @@ def plot_convergence_sweeps(records: Sequence[EventRecord]) -> Figure | None:
     value, and a curve that never crosses is a sweep that ran out of range rather than one that
     converged.
     """
-    trials = records_of(records, "ConvergenceTrial")
+    trials = events_of(records, ConvergenceTrial)
     if not trials:
         return None
     thresholds = {
-        int(record.payload["pass_index"]): float(record.payload["r_factor_threshold"])
-        for record in records_of(records, "ConvergencePassStarted")
+        started.pass_index: started.r_factor_threshold
+        for started in events_of(records, ConvergencePassStarted)
     }
-    controls = sorted({str(record.payload["control"]) for record in trials}, key=_control_rank)
+    controls = sorted({trial.control for trial in trials}, key=_control_rank)
     fig, axes = plt.subplots(
         len(controls), 1, figsize=(9, 3.2 * len(controls)), squeeze=False, sharey=True
     )
-    positive = all(float(record.payload["r_factor"]) > 0.0 for record in trials)
+    positive = all(trial.r_factor > 0.0 for trial in trials)
     for ax, control in zip(axes[:, 0], controls, strict=True):
         labelled_settled = False
         for pass_index, group in sorted(_by_pass(trials, control).items()):
-            ordered = sorted(group, key=lambda record: int(record.payload["trial_index"]))
-            x = [float(record.payload["candidate"]) for record in ordered]
-            y = [float(record.payload["r_factor"]) for record in ordered]
+            ordered = sorted(group, key=lambda trial: trial.trial_index)
+            x = [trial.candidate for trial in ordered]
+            y = [trial.r_factor for trial in ordered]
             ax.plot(x, y, marker="o", linewidth=1.2, label=f"pass {pass_index}")
             threshold = thresholds.get(pass_index)
             if threshold is None:
@@ -129,32 +147,39 @@ def plot_convergence_sweeps(records: Sequence[EventRecord]) -> Figure | None:
     return fig
 
 
-def _by_pass(trials: Sequence[EventRecord], control: str) -> dict[int, list[EventRecord]]:
-    grouped: dict[int, list[EventRecord]] = {}
-    for record in trials:
-        if str(record.payload["control"]) != control:
-            continue
-        grouped.setdefault(int(record.payload["pass_index"]), []).append(record)
+def _by_pass(trials: Sequence[ConvergenceTrial], control: str) -> dict[int, list[ConvergenceTrial]]:
+    grouped: dict[int, list[ConvergenceTrial]] = {}
+    for trial in trials:
+        if trial.control == control:
+            grouped.setdefault(trial.pass_index, []).append(trial)
     return grouped
 
 
 @styled
 def plot_epoch_curve(records: Sequence[EventRecord]) -> Figure | None:
     """Train/validation wR2 and R_obs against refinement epoch."""
-    steps = records_of(records, "RefinementStep")
+    steps = events_of(records, RefinementStep)
     if not steps:
         return None
-    x = [record.payload["iteration"] + 1 for record in steps]
+    x = [step.iteration + 1 for step in steps]
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    for key, label in (
-        ("wr2", "train wR2"),
-        ("r_obs", "train R_obs"),
-        ("val_wr2", "validation wR2"),
-        ("val_r_obs", "validation R_obs"),
-    ):
-        y = [record.payload.get(key) for record in steps]
+    series: tuple[tuple[str, Callable[[RefinementStep], float | None]], ...] = (
+        ("train wR2", lambda step: step.wr2),
+        ("train R_obs", lambda step: step.r_obs),
+        ("validation wR2", lambda step: step.val_wr2),
+        ("validation R_obs", lambda step: step.val_r_obs),
+    )
+    for label, read in series:
+        y = [read(step) for step in steps]
         if any(value is not None for value in y):
-            ax.plot(x, y, marker="o", linewidth=1.5, label=label)
+            # An epoch that did not report the metric leaves a gap in the line, not a zero.
+            ax.plot(
+                x,
+                [math.nan if value is None else value for value in y],
+                marker="o",
+                linewidth=1.5,
+                label=label,
+            )
     ax.set_xlabel("epoch")
     ax.set_ylabel("score")
     ax.set_title("Epoch curve")
@@ -166,35 +191,37 @@ def plot_epoch_curve(records: Sequence[EventRecord]) -> Figure | None:
 @styled
 def plot_orientation_optimization(records: Sequence[EventRecord]) -> Figure | None:
     """Seed vs fitted score per rotation, with the fitted goniometer angle deltas beneath."""
-    fits = sorted_by_rotation(records_of(records, "OrientationOptimized"))
+    fits = sorted_by_rotation(events_of(records, OrientationOptimized))
     if not fits:
         return None
     x = range(len(fits))
     fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
-    axes[0].plot(
-        x,
-        [record.payload.get("seed_score") for record in fits],
-        marker="o",
-        linewidth=1,
-        label="before",
-    )
-    axes[0].plot(
-        x, [record.payload.get("score") for record in fits], marker="o", linewidth=1, label="after"
-    )
+    axes[0].plot(x, [fit.seed_score for fit in fits], marker="o", linewidth=1, label="before")
+    axes[0].plot(x, [fit.score for fit in fits], marker="o", linewidth=1, label="after")
     axes[0].set_ylabel("score")
     axes[0].set_title("Orientation optimization")
     axes[0].grid(True, alpha=0.25)
     axes[0].legend()
-    for key in ("alpha", "beta", "omega"):
-        axes[1].plot(
-            x, [record.payload.get(key) for record in fits], marker="o", linewidth=1, label=key
-        )
+    angles: tuple[tuple[str, Callable[[OrientationOptimized], float]], ...] = (
+        ("alpha", lambda fit: fit.alpha),
+        ("beta", lambda fit: fit.beta),
+        ("omega", lambda fit: fit.omega),
+    )
+    for label, read in angles:
+        axes[1].plot(x, [read(fit) for fit in fits], marker="o", linewidth=1, label=label)
     axes[1].set_ylabel("delta angle (deg)")
     axes[1].grid(True, alpha=0.25)
     axes[1].legend()
     _thin_ticks(axes[1], _rotation_labels(fits))
     fig.tight_layout()
     return fig
+
+
+# The two final-score metrics every per-rotation refinement figure draws, by name.
+_ROTATION_METRICS: tuple[tuple[str, Callable[[RefinedRotationMetrics], float]], ...] = (
+    ("wR2", lambda row: row.wr2),
+    ("R_obs", lambda row: row.r_obs),
+)
 
 
 @styled
@@ -207,24 +234,22 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
     out (``refinement.split.train_test``), and each tick states its ``train/validation`` rotation
     counts, since a mean over fewer rotations is a different quantity rather than a better one.
     """
-    metrics = [record for record in records_of(records, "RefinedRotationMetrics") if record.dataset]
+    metrics = [row for row in events_of(records, RefinedRotationMetrics) if row.dataset]
     grouped = by_dataset(metrics)
     datasets = sorted(grouped)
     if len(datasets) <= 1:
         return None
     splits = [("train", False)]
-    if any(record.payload.get("is_validation") for record in metrics):
+    if any(row.is_validation for row in metrics):
         splits.append(("validation", True))
     width = 0.8 / len(splits)
     x = range(len(datasets))
     fig, axes = plt.subplots(2, 1, figsize=(8, 6.5), sharex=True)
-    for ax, key, label in ((axes[0], "wr2", "wR2"), (axes[1], "r_obs", "R_obs")):
+    for ax, (label, read) in zip(axes, _ROTATION_METRICS, strict=True):
         for slot, (split, is_validation) in enumerate(splits):
             means = [
                 finite_mean(
-                    record.payload.get(key)
-                    for record in grouped[name]
-                    if bool(record.payload.get("is_validation")) == is_validation
+                    read(row) for row in grouped[name] if row.is_validation == is_validation
                 )
                 for name in datasets
             ]
@@ -240,8 +265,8 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
             ax.legend()
     counts = [
         (
-            sum(not record.payload.get("is_validation") for record in grouped[name]),
-            sum(bool(record.payload.get("is_validation")) for record in grouped[name]),
+            sum(not row.is_validation for row in grouped[name]),
+            sum(row.is_validation for row in grouped[name]),
         )
         for name in datasets
     ]
@@ -263,26 +288,26 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
 @styled
 def plot_refined_rotation_scores(records: Sequence[EventRecord]) -> Figure | None:
     """Final refined wR2 and R_obs per rotation, with held-out rotations marked."""
-    metrics = records_of(records, "RefinedRotationMetrics")
+    metrics = events_of(records, RefinedRotationMetrics)
     if not metrics:
         return None
     fig, axes = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
     for dataset, group in sorted(by_dataset(metrics).items()):
-        ordered = sorted(group, key=lambda record: record.rotation_index or -1)
-        x = [record.rotation_index for record in ordered]
-        held_out = [record for record in ordered if record.payload.get("is_validation")]
-        for ax, key, label in ((axes[0], "wr2", "wR2"), (axes[1], "r_obs", "R_obs")):
+        ordered = sorted(group, key=lambda row: row.rotation_index)
+        x = [row.rotation_index for row in ordered]
+        held_out = [row for row in ordered if row.is_validation]
+        for ax, (label, read) in zip(axes, _ROTATION_METRICS, strict=True):
             ax.plot(
                 x,
-                [record.payload.get(key) for record in ordered],
+                [read(row) for row in ordered],
                 marker="o",
                 linewidth=1,
                 label=dataset or "dataset",
             )
             if held_out:
                 ax.scatter(
-                    [record.rotation_index for record in held_out],
-                    [record.payload.get(key) for record in held_out],
+                    [row.rotation_index for row in held_out],
+                    [read(row) for row in held_out],
                     marker="x",
                     s=50,
                     linewidths=1.5,
@@ -300,22 +325,23 @@ def plot_refined_rotation_scores(records: Sequence[EventRecord]) -> Figure | Non
 @styled
 def plot_thickness_grids(records: Sequence[EventRecord]) -> Figure | None:
     """Every rotation's scored thickness grid, with the selected thickness marked."""
-    fits = records_of(records, "ThicknessOptimized")
+    fits = events_of(records, ThicknessOptimized)
     if not fits:
         return None
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    for record in fits:
-        x = record.series.get("candidate_thicknesses")
-        y = record.series.get("candidate_score")
-        if not x or not y:
+    for fit in fits:
+        if not fit.candidate_thicknesses or not fit.candidate_score:
             continue
         # Every curve is one colour on purpose. Letting the prop cycle run would paint a single
         # population of rotations in eight hues and imply a grouping that does not exist.
-        ax.plot(x, y, linewidth=0.8, alpha=0.35, color=SERIES[0])
-        selected = record.payload.get("thickness")
-        score = record.payload.get("score")
-        if selected is not None and score is not None:
-            ax.scatter([selected], [score], s=14, color=INK, alpha=0.55, zorder=3)
+        ax.plot(
+            fit.candidate_thicknesses,
+            fit.candidate_score,
+            linewidth=0.8,
+            alpha=0.35,
+            color=SERIES[0],
+        )
+        ax.scatter([fit.thickness], [fit.score], s=14, color=INK, alpha=0.55, zorder=3)
     ax.set_ylim(bottom=0)
     ax.set_xlabel("thickness")
     ax.set_ylabel("score")
@@ -346,19 +372,14 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
     thickness ranges. Rotations whose grid disagrees with the rest of their dataset are skipped
     rather than silently stretched onto the wrong axis.
     """
-    fits = records_of(records, "ThicknessOptimized")
+    fits = events_of(records, ThicknessOptimized)
     if not fits:
         return None
     panels = []
     for dataset, group in sorted(by_dataset(fits).items()):
-        ordered = sorted(group, key=lambda record: record.rotation_index or -1)
-        grid = ordered[0].series.get("candidate_thicknesses") or []
-        rows = [
-            record
-            for record in ordered
-            if record.series.get("candidate_thicknesses") == grid
-            and record.series.get("candidate_score")
-        ]
+        ordered = sorted(group, key=lambda fit: fit.rotation_index)
+        grid = ordered[0].candidate_thicknesses
+        rows = [fit for fit in ordered if fit.candidate_thicknesses == grid and fit.candidate_score]
         if len(grid) > 1 and rows:
             panels.append((dataset, grid, rows))
     if not panels:
@@ -368,7 +389,7 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
         len(panels), 1, figsize=(9, sum(heights)), squeeze=False, height_ratios=heights
     )
     for ax, (dataset, grid, rows) in zip(axes[:, 0], panels, strict=True):
-        matrix = [list(record.series["candidate_score"]) for record in rows]
+        matrix = [list(fit.candidate_score) for fit in rows]
         image = ax.imshow(
             matrix,
             aspect="auto",
@@ -380,11 +401,10 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
             # tone. Clipping at the 95th percentile keeps the scale in absolute score units.
             vmax=_percentile([value for row in matrix for value in row], 0.95),
         )
-        selected = [record.payload.get("thickness") for record in rows]
         # Dark ink, not white: the basin the trace runs through is the *light* end of a
         # lightness-monotonic ramp, so a white line would vanish exactly where it is read.
         ax.plot(
-            selected,
+            [fit.thickness for fit in rows],
             range(len(rows)),
             color=INK,
             linewidth=1.2,
@@ -392,7 +412,7 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
             markersize=3,
             label="fitted thickness",
         )
-        indices = [record.rotation_index for record in rows]
+        indices = [fit.rotation_index for fit in rows]
         stride = max(1, len(indices) // 15)
         ax.set_yticks(list(range(len(indices)))[::stride])
         ax.set_yticklabels([str(index) for index in indices[::stride]])
@@ -415,22 +435,20 @@ def plot_thickness_model(records: Sequence[EventRecord]) -> Figure | None:
     one per dataset, evaluated after the loop. Two different quantities from two different stages,
     which is why they carry different names and sit under separate headings.
     """
-    profiles = records_of(records, "ThicknessProfile")
+    profiles = events_of(records, ThicknessProfile)
     if not profiles:
         return None
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    for record in profiles:
-        alphas = record.series.get("alphas")
-        thicknesses = record.series.get("thicknesses")
-        if not alphas or not thicknesses:
+    for profile in profiles:
+        if not profile.alphas or not profile.thicknesses:
             continue
-        ordered = sorted(zip(alphas, thicknesses, strict=True))
+        ordered = sorted(zip(profile.alphas, profile.thicknesses, strict=True))
         ax.plot(
             [row[0] for row in ordered],
             [row[1] for row in ordered],
             marker="o",
             linewidth=1.5,
-            label=record.payload.get("label") or record.dataset or record.channel,
+            label=profile.label or profile.channel,
         )
     ax.set_xlabel("alpha (degrees)")
     ax.set_ylabel("predicted thickness")
@@ -443,20 +461,20 @@ def plot_thickness_model(records: Sequence[EventRecord]) -> Figure | None:
 @styled
 def plot_coupling_geometry(records: Sequence[EventRecord]) -> Figure | None:
     """Per-rotation coupled-solve shape: beam counts above, segment/tilt counts below."""
-    rows = sorted_by_rotation(records_of(records, "RotationCoupling"))
+    rows = sorted_by_rotation(events_of(records, RotationCoupling))
     if not rows:
         return None
     x = range(len(rows))
     fig, axes = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
-    for ax, key, label in (
-        (axes[0], "n_union_beams", "union beams"),
-        (axes[0], "max_beams_per_segment", "max beams/segment"),
-        (axes[1], "n_coupling_segments", "segments"),
-        (axes[1], "max_tilts_per_segment", "max tilts/segment"),
-    ):
-        ax.plot(
-            x, [record.payload.get(key) for record in rows], marker="o", linewidth=1, label=label
-        )
+    series: tuple[tuple[int, str, Callable[[RotationCoupling], int]], ...] = (
+        (0, "union beams", lambda row: row.n_union_beams),
+        (0, "max beams/segment", lambda row: row.max_beams_per_segment),
+        (1, "segments", lambda row: row.n_coupling_segments),
+        (1, "max tilts/segment", lambda row: row.max_tilts_per_segment),
+    )
+    for panel, label, read in series:
+        ax = axes[panel]
+        ax.plot(x, [read(row) for row in rows], marker="o", linewidth=1, label=label)
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize="small")
     axes[0].set_title("Coupled solve geometry")
@@ -473,22 +491,19 @@ def plot_orientation_search_trace(records: Sequence[EventRecord]) -> Figure | No
     One rotation, not all of them: the traces overlay into noise, and the longest search is the one
     worth inspecting. Row position is the trial index (the event stores no index column).
     """
-    traces = records_of(records, "OrientationSearchTrace")
+    traces = events_of(records, OrientationSearchTrace)
     if not traces:
         return None
-    trace = max(traces, key=lambda record: len(record.series.get("score", ())))
-    score = trace.series.get("score", [])
-    if not score:
+    trace = max(traces, key=lambda trace: len(trace.score))
+    if not trace.score:
         return None
-    trial = list(range(len(score)))
-    comparable = trace.series.get("comparable_score", [])
+    trial = list(range(len(trace.score)))
     fig, axes = plt.subplots(2, 1, figsize=(9, 6.5), sharex=True)
-    axes[0].plot(trial, score, linewidth=1.2, label=trace.payload.get("residual", "score"))
-    if comparable and comparable != score:
-        axes[0].plot(trial, comparable, linewidth=1.0, alpha=0.75, label="comparable")
-    for key, marker, label in (("is_seed", "o", "seed"), ("is_final", "x", "final")):
-        flags = trace.series.get(key, [])
-        marked = [(t, s) for t, s, flag in zip(trial, score, flags, strict=True) if flag]
+    axes[0].plot(trial, trace.score, linewidth=1.2, label=trace.residual)
+    if trace.comparable_score != trace.score:
+        axes[0].plot(trial, trace.comparable_score, linewidth=1.0, alpha=0.75, label="comparable")
+    for flags, marker, label in ((trace.is_seed, "o", "seed"), (trace.is_final, "x", "final")):
+        marked = [(t, s) for t, s, flag in zip(trial, trace.score, flags, strict=True) if flag]
         if marked:
             axes[0].scatter(
                 [point[0] for point in marked],
@@ -503,10 +518,8 @@ def plot_orientation_search_trace(records: Sequence[EventRecord]) -> Figure | No
     )
     axes[0].grid(True, alpha=0.25)
     axes[0].legend(fontsize="small")
-    for key in ("alpha", "beta", "omega"):
-        values = trace.series.get(key, [])
-        if values:
-            axes[1].plot(trial, values, linewidth=1.0, label=key)
+    for label, values in (("alpha", trace.alpha), ("beta", trace.beta), ("omega", trace.omega)):
+        axes[1].plot(trial, values, linewidth=1.0, label=label)
     axes[1].set_xlabel("trial")
     axes[1].set_ylabel("angle delta (deg)")
     axes[1].grid(True, alpha=0.25)
@@ -518,16 +531,16 @@ def plot_orientation_search_trace(records: Sequence[EventRecord]) -> Figure | No
 @styled
 def plot_coupling_segment_heatmap(records: Sequence[EventRecord]) -> Figure | None:
     """Per-rotation, per-segment beam counts as a heatmap (rows padded with NaN to the widest)."""
-    traces = sorted_by_rotation(records_of(records, "RotationCouplingSegments"))
+    traces = sorted_by_rotation(events_of(records, RotationCouplingSegments))
     if not traces:
         return None
-    widest = max(len(record.series.get("n_segment_beams", ())) for record in traces)
+    widest = max(len(trace.n_segment_beams) for trace in traces)
     if widest == 0:
         return None
-    matrix = []
-    for record in traces:
-        beams = list(record.series.get("n_segment_beams", ()))
-        matrix.append(beams + [math.nan] * (widest - len(beams)))
+    matrix = [
+        list(trace.n_segment_beams) + [math.nan] * (widest - len(trace.n_segment_beams))
+        for trace in traces
+    ]
     labels = _rotation_labels(traces)
     fig, ax = plt.subplots(figsize=(10, max(4.0, min(12.0, 0.25 * len(matrix) + 2.0))))
     image = ax.imshow(matrix, aspect="auto", interpolation="nearest")
@@ -549,7 +562,7 @@ class Section:
 
     title: str
     builders: tuple[tuple[str, Callable[[Sequence[EventRecord]], Figure | None]], ...]
-    event_types: tuple[str, ...]
+    event_types: tuple[type, ...]
 
 
 # Stage groups, each headed separately rather than pooled into one flat run of figures. Their
@@ -560,7 +573,7 @@ SECTIONS = (
     Section(
         "Convergence",
         (("convergence_sweeps", plot_convergence_sweeps),),
-        ("ConvergenceTrial",),
+        (ConvergenceTrial,),
     ),
     Section(
         "Preprocess — orientation optimization",
@@ -568,7 +581,7 @@ SECTIONS = (
             ("orientation_optimization", plot_orientation_optimization),
             ("orientation_search_trace", plot_orientation_search_trace),
         ),
-        ("OrientationOptimized", "OrientationSearchTrace"),
+        (OrientationOptimized, OrientationSearchTrace),
     ),
     Section(
         # "per-rotation" earns its place: the refinement stage has a thickness section too, and
@@ -578,7 +591,7 @@ SECTIONS = (
             ("thickness_grids", plot_thickness_grids),
             ("thickness_heatmap", plot_thickness_heatmap),
         ),
-        ("ThicknessOptimized",),
+        (ThicknessOptimized,),
     ),
     Section(
         "Preprocess — coupled solve geometry",
@@ -586,27 +599,27 @@ SECTIONS = (
             ("coupling_geometry", plot_coupling_geometry),
             ("coupling_segment_heatmap", plot_coupling_segment_heatmap),
         ),
-        ("RotationCoupling", "RotationCouplingSegments"),
+        (RotationCoupling, RotationCouplingSegments),
     ),
     Section(
         "Refinement — epoch history",
         (("epoch_curve", plot_epoch_curve),),
-        ("RefinementStep",),
+        (RefinementStep,),
     ),
     Section(
         "Refinement — per-rotation scores",
         (("refined_rotation_scores", plot_refined_rotation_scores),),
-        ("RefinedRotationMetrics",),
+        (RefinedRotationMetrics,),
     ),
     Section(
         "Refinement — datasets",
         (("per_dataset_summary", plot_dataset_summary),),
-        ("RefinedRotationMetrics",),
+        (RefinedRotationMetrics,),
     ),
     Section(
         "Refinement — learned thickness model",
         (("thickness_model", plot_thickness_model),),
-        ("ThicknessProfile",),
+        (ThicknessProfile,),
     ),
 )
 
@@ -626,7 +639,11 @@ def build_sections(records: Sequence[EventRecord]) -> list[tuple[str, dict[str, 
         enumerate(SECTIONS),
         key=lambda item: (
             min(
-                (first_seen[name] for name in item[1].event_types if name in first_seen),
+                (
+                    first_seen[cls.__name__]
+                    for cls in item[1].event_types
+                    if cls.__name__ in first_seen
+                ),
                 default=len(records),
             ),
             item[0],

@@ -7,18 +7,25 @@ kind -- the same contract as :mod:`tools.event_report.figures`. :func:`build_tab
 non-empty ones to Markdown for the notebook.
 
 Values are formatted here, not in the notebook, so the rendering is imported and tested rather than
-living in a cell nothing in CI runs.
+living in a cell nothing in CI runs. Like the figures, the tables read typed events
+(:func:`~tools.event_report.reader.events_of`), so a field this module names is one the event
+actually has.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import Any
 
-from diffBloch.observability import EventRecord
+from diffBloch.observability import (
+    EventRecord,
+    ExperimentDeclared,
+    PreprocessCompleted,
+    RefinementCompleted,
+    RefinementStep,
+)
 
-from .reader import records_of
+from .reader import events_of, records_of
 
 __all__ = ["build_tables", "markdown_table", "preprocess_table", "refinement_table"]
 
@@ -33,24 +40,9 @@ _FIT_STAGES = (
 )
 
 
-def _number(value: object) -> float | None:
-    """A payload number as a float. ``EventRecord`` writes non-finite floats as strings."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)  # "NaN" / "Infinity" / "-Infinity"
-        except ValueError:
-            return None
-    return None
-
-
-def _general(value: object) -> str:
+def _general(value: float | None) -> str:
     """A finite number to six significant figures, or ``n/a``."""
-    number = _number(value)
-    return "n/a" if number is None or not math.isfinite(number) else f"{number:.6g}"
+    return "n/a" if value is None or not math.isfinite(value) else f"{value:.6g}"
 
 
 def _leaf(value: object) -> str:
@@ -82,24 +74,22 @@ def preprocess_table(records: Sequence[EventRecord]) -> Rows | None:
     the report" must not look the same. For the same reason a report written before
     ``PreprocessCompleted`` carried ``steps`` gets one "not recorded" row, never a false "not run".
     """
-    completed = records_of(records, "PreprocessCompleted")
+    completed = events_of(records, PreprocessCompleted)
     if not completed:
         return None
-    payload = completed[-1].payload
-    # A count an older report never recorded is unknown ("n/a"), not a spec set to ``None``.
+    event = completed[-1]
     rows: Rows = [
-        (label, "n/a" if payload.get(key) is None else _leaf(payload[key]))
-        for label, key in (
-            ("Rotations", "n_rotations"),
-            ("Stages", "n_stages"),
-            ("Total HKLs", "total_hkl"),
-            ("Matched HKLs", "matched_hkl"),
-        )
+        ("Rotations", str(event.n_rotations)),
+        ("Stages", str(event.n_stages)),
+        ("Total HKLs", str(event.total_hkl)),
+        ("Matched HKLs", str(event.matched_hkl)),
     ]
-    if "steps" not in payload:
+    # ``steps`` defaults to () on the event, so once typed an absent key is indistinguishable
+    # from "no stage ran". The one place the envelope is consulted: was it written at all?
+    if "steps" not in records_of(records, "PreprocessCompleted")[-1].payload:
         rows.append(("Stage settings", "not recorded in this report"))
         return rows
-    steps: dict[str, Any] = {str(name): params for name, params in payload["steps"]}
+    steps = dict(event.steps)
     for label, step_name, own_key in _FIT_STAGES:
         if step_name not in steps:
             rows.append((label, "not run"))
@@ -111,19 +101,18 @@ def preprocess_table(records: Sequence[EventRecord]) -> Rows | None:
     return rows
 
 
-def _mean_percent(value: object, evaluated: object, total: object) -> str:
+def _mean_percent(value: float | None, evaluated: int | None, total: int | None) -> str:
     """A mean as a percentage with the rotation count it was taken over, e.g. ``4.21 [97/99]``.
 
     Every mean states its denominator: a mean over fewer rotations is a different quantity, not a
     better one. A non-finite mean means nothing was evaluated, which the count already says.
     """
-    number = _number(value)
-    if number is None:
+    if value is None:
         return "n/a"
-    rendered = f"{100.0 * number:.2f}" if math.isfinite(number) else "n/a"
+    rendered = f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
     if evaluated is None or total is None:
         return rendered
-    return f"{rendered} [{_leaf(evaluated)}/{_leaf(total)}]"
+    return f"{rendered} [{evaluated}/{total}]"
 
 
 def refinement_table(records: Sequence[EventRecord]) -> Rows | None:
@@ -132,64 +121,64 @@ def refinement_table(records: Sequence[EventRecord]) -> Rows | None:
     With a held-out validation set the training and validation means are reported side by side;
     without one there is a single population, so the rows carry no train/val prefix.
     """
-    completed_records = records_of(records, "RefinementCompleted")
-    if not completed_records:
+    completed_events = events_of(records, RefinementCompleted)
+    if not completed_events:
         return None
-    completed = completed_records[-1].payload
-    best_step = int(completed["best_step"])
+    completed = completed_events[-1]
     best = next(
         (
-            record.payload
-            for record in records_of(records, "RefinementStep")
-            if record.payload.get("iteration") == best_step
+            step
+            for step in events_of(records, RefinementStep)
+            if step.iteration == completed.best_step
         ),
-        {},
+        None,
     )
-    declared = records_of(records, "ExperimentDeclared")
-    experiment = declared[-1].payload if declared else {}
+    declared = events_of(records, ExperimentDeclared)
+    experiment = declared[-1] if declared else None
 
     rows: Rows = []
-    if experiment:
-        rows.append(("Experiment", _leaf(experiment.get("name"))))
+    if experiment is not None:
+        rows.append(("Experiment", experiment.name))
     rows += [
-        ("Best epoch", f"{best_step + 1} / {_leaf(completed.get('n_steps'))}"),
-        ("Selected on", _leaf(completed.get("selection", "training"))),
-        ("Objective", _general(completed.get("best_loss"))),
+        ("Best epoch", f"{completed.best_step + 1} / {completed.n_steps}"),
+        ("Selected on", completed.selection),
+        ("Objective", _general(completed.best_loss)),
     ]
-    if experiment:
+    if experiment is not None:
         rows += [
-            ("Optimizer", _leaf(experiment.get("optimizer"))),
-            ("Learning rate", _leaf(experiment.get("learning_rate"))),
+            ("Optimizer", experiment.optimizer),
+            ("Learning rate", _leaf(experiment.learning_rate)),
         ]
 
-    train = (
-        ("wR2 (%)", "wr2", "n_wr2_evaluated"),
-        ("R_obs (%)", "r_obs", "n_r_obs_evaluated"),
-    )
-    has_validation = best.get("val_wr2") is not None
+    has_validation = best is not None and best.val_wr2 is not None
     prefix = "Train " if has_validation else ""
-    for label, key, evaluated in train:
-        rows.append(
+    if best is None:
+        rows += [(f"{prefix}wR2 (%)", "n/a"), (f"{prefix}R_obs (%)", "n/a")]
+    else:
+        rows += [
             (
-                f"{prefix}{label}",
-                _mean_percent(best.get(key), best.get(evaluated), best.get("n_rotations")),
-            )
-        )
-    if has_validation:
-        for label, key, evaluated in train:
-            rows.append(
+                f"{prefix}wR2 (%)",
+                _mean_percent(best.wr2, best.n_wr2_evaluated, best.n_rotations),
+            ),
+            (
+                f"{prefix}R_obs (%)",
+                _mean_percent(best.r_obs, best.n_r_obs_evaluated, best.n_rotations),
+            ),
+        ]
+        if has_validation:
+            rows += [
                 (
-                    f"Val {label}",
-                    _mean_percent(
-                        best.get(f"val_{key}"),
-                        best.get(f"val_{evaluated}"),
-                        best.get("val_n_rotations"),
-                    ),
-                )
-            )
-    rows.append(("Diffraction loss", _general(best.get("diff_loss"))))
+                    "Val wR2 (%)",
+                    _mean_percent(best.val_wr2, best.val_n_wr2_evaluated, best.val_n_rotations),
+                ),
+                (
+                    "Val R_obs (%)",
+                    _mean_percent(best.val_r_obs, best.val_n_r_obs_evaluated, best.val_n_rotations),
+                ),
+            ]
+    rows.append(("Diffraction loss", _general(None if best is None else best.diff_loss)))
 
-    counts = completed.get("reflection_counts") or {}
+    counts = completed.reflection_counts
     matched = (
         f"{counts['matched_i_gt_3sigma']} / {counts['matched']}"
         if "matched_i_gt_3sigma" in counts and "matched" in counts

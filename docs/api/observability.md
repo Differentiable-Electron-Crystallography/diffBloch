@@ -41,6 +41,16 @@ rotation. Both store their columns in parallel evaluation order, so row position
 segment index and no `range(n)` column is written. Matplotlib rendering and optional figure export
 live in `tools/event_report/figures.py`, not in `src/diffBloch`.
 
+The consumer half of the contract lives here too. `EVENT_TYPES` is the registry of every event
+class keyed by the name `event_type` records, and `event_from_record` rebuilds a record into the
+event it was written from — tuples as tuples, JSON's `"NaN"` as the float, nested value dataclasses
+re-materialized — so a reader works with real events rather than a payload dict whose keys it has
+to know. A record that no longer fits (a required field renamed or removed, an unknown event type)
+raises `ReportSchemaError` naming the record and field; a field *added* by a newer writer is
+ignored, so an older reader survives additive changes. `RefinementOutputsWritten` carries its
+paths relative to the `experiment_directory` it also names, so a report copied elsewhere still says
+what was produced where.
+
 ```{eval-rst}
 .. automodule:: diffBloch.observability
 ```

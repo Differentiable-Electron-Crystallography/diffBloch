@@ -1,7 +1,11 @@
 """Load and index a diffBloch JSONL event report.
 
-The one place that knows how to find, parse, and slice a report; :mod:`tools.event_report.figures`
-and the notebook both read through it.
+The one place that knows how to find, parse, and slice a report; :mod:`tools.event_report.figures`,
+:mod:`tools.event_report.tables` and the notebook all read through it. Consumers take *events*
+(:func:`events_of`), rebuilt as the library's own dataclasses, not the envelope's payload dict: a
+renamed field then fails at the read with the event and field named
+(:class:`~diffBloch.observability.ReportSchemaError`), instead of ``payload.get`` quietly yielding
+``None`` and a figure going blank.
 
 This lives outside ``src/diffBloch`` on purpose: it consumes the event contract, it is not part of
 the refinement library.
@@ -15,12 +19,14 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from statistics import fmean
+from typing import Protocol, cast
 
-from diffBloch.observability import EventRecord
+from diffBloch.observability import Event, EventRecord, event_from_record
 
 __all__ = [
     "by_dataset",
     "default_event_log",
+    "events_of",
     "finite",
     "finite_mean",
     "read_records",
@@ -100,21 +106,44 @@ def read_records_text(text: str) -> list[EventRecord]:
 
 
 def records_of(records: Iterable[EventRecord], event_type: str) -> list[EventRecord]:
-    """Every record of one event type, in emission order."""
+    """Every record of one event type, in emission order -- the envelope, for callers that need
+    ``sequence`` or the raw payload. Rendering code wants :func:`events_of` instead."""
     return [record for record in records if record.event_type == event_type]
 
 
-def by_dataset(records: Iterable[EventRecord]) -> dict[str, list[EventRecord]]:
-    """Group records under their dataset label (unlabeled records under ``""``)."""
-    grouped: dict[str, list[EventRecord]] = defaultdict(list)
-    for record in records:
-        grouped[record.dataset or ""].append(record)
+def events_of[E: Event](records: Iterable[EventRecord], cls: type[E]) -> list[E]:
+    """Every ``cls`` event in the report, rebuilt as the dataclass itself, in emission order."""
+    return [
+        cast(E, event_from_record(record))
+        for record in records
+        if record.event_type == cls.__name__
+    ]
+
+
+class Positioned(Protocol):
+    """What the per-rotation helpers below need: a dataset label and a rotation index.
+
+    Satisfied by the envelope (``EventRecord``) and by every per-rotation event, so the same
+    grouping/sorting serves both.
+    """
+
+    @property
+    def dataset(self) -> str | None: ...
+    @property
+    def rotation_index(self) -> int | None: ...
+
+
+def by_dataset[P: Positioned](items: Iterable[P]) -> dict[str, list[P]]:
+    """Group under the dataset label (unlabeled items under ``""``)."""
+    grouped: dict[str, list[P]] = defaultdict(list)
+    for item in items:
+        grouped[item.dataset or ""].append(item)
     return dict(grouped)
 
 
-def sorted_by_rotation(records: Iterable[EventRecord]) -> list[EventRecord]:
-    """Records in ``(dataset, rotation_index)`` order -- the per-rotation plotting/table order."""
-    return sorted(records, key=lambda record: (record.dataset or "", record.rotation_index or -1))
+def sorted_by_rotation[P: Positioned](items: Iterable[P]) -> list[P]:
+    """In ``(dataset, rotation_index)`` order -- the per-rotation plotting/table order."""
+    return sorted(items, key=lambda item: (item.dataset or "", item.rotation_index or -1))
 
 
 def finite(values: Iterable[object]) -> list[float]:

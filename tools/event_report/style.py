@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import Any, cast
 
 from cycler import cycler
 
@@ -108,7 +108,7 @@ def styled[F: Callable[..., Any]](plot: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         import matplotlib.pyplot as plt
 
-        with plt.rc_context(REPORT_RC):
+        with plt.rc_context(cast(Any, REPORT_RC)):  # matplotlib's stub wants its Literal keys
             return plot(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]

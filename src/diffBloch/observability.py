@@ -21,12 +21,24 @@ aggregate* (:class:`InferenceCompleted`, :class:`RefinementCompleted` -- ``step`
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
+from types import MappingProxyType, UnionType
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    Protocol,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,8 +81,13 @@ __all__ = [
     "ThicknessOptimized",
     "ThicknessOptimizationStarted",
     "ThicknessProfile",
+    "EVENT_TYPES",
+    "ReportSchemaError",
+    "event_from_record",
     "event_record_from_event",
 ]
+
+_log = logging.getLogger(__name__)
 
 _EVENT_SCHEMA_VERSION: Literal[1] = 1
 RunStage = Literal["converge", "preprocess", "infer", "refine"]
@@ -193,6 +210,96 @@ def _jsonable(value: Any) -> Any:
         return [_jsonable(entry) for entry in value]
     if isinstance(value, Path):
         return str(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        # A nested value dataclass (ObjectiveManifest's ObjectiveTerm rows) becomes a plain dict,
+        # the shape event_from_record rebuilds it from.
+        return {field.name: _jsonable(getattr(value, field.name)) for field in fields(value)}
+    return value
+
+
+class ReportSchemaError(ValueError):
+    """A report record does not fit the event contract this library defines.
+
+    Raised by :func:`event_from_record` for an unknown ``event_type`` or a payload missing a field
+    the event requires. The failure is deliberately loud: a reader that fell back to ``None`` here
+    would render an empty figure and let a schema change go unnoticed for months.
+    """
+
+
+def event_from_record(record: EventRecord) -> Event:
+    """Rebuild the live event a report record was written from -- the inverse of
+    :func:`event_record_from_event`.
+
+    ``series | payload`` is the event dataclass's fields by construction, so this is a lookup of the
+    class by ``event_type`` (:data:`EVENT_TYPES`) and a type-directed rebuild of its values: JSON
+    has no tuples, no distinction between int and float, and no NaN (:class:`EventRecord` writes
+    non-finite floats as strings), so each field is coerced by its declared annotation. The result
+    is a real event -- attribute access, ``measurements``, equality -- rather than a dict of
+    strings a consumer has to know the keys of.
+
+    This is the consumer-side half of the report contract. Readers should build on it instead of
+    indexing ``payload`` so a renamed or removed field fails here, with the event and field named,
+    rather than yielding ``None`` downstream.
+    """
+    cls = EVENT_TYPES.get(record.event_type)
+    if cls is None:
+        raise ReportSchemaError(
+            f"report record {record.sequence} has unknown event_type {record.event_type!r}"
+        )
+    data = {**record.series, **record.payload}
+    try:
+        return cast(Event, _rebuild(cls, data))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ReportSchemaError(
+            f"report record {record.sequence} ({record.event_type}) does not fit "
+            f"{cls.__name__}: {error}"
+        ) from error
+
+
+def _rebuild(cls: type, data: Mapping[str, Any]) -> Any:
+    hints = get_type_hints(cls)
+    known = {spec.name for spec in fields(cls)}
+    values: dict[str, Any] = {}
+    for spec in fields(cls):
+        if spec.name in data:
+            values[spec.name] = _coerce(data[spec.name], hints[spec.name])
+        elif spec.default is MISSING and spec.default_factory is MISSING:
+            raise KeyError(f"missing required field {spec.name!r}")
+    unknown = set(data) - known
+    if unknown:
+        # An extra key is a *newer* writer, not a corrupt record: tolerated, so an older reader keeps
+        # working across an additive schema change. Removals and renames still fail above.
+        _log.debug("%s: ignoring fields not in this reader's contract: %s", cls.__name__, unknown)
+    return cls(**values)
+
+
+def _coerce(value: Any, hint: Any) -> Any:
+    """``value`` (as parsed from JSON) converted to the shape ``hint`` declares."""
+    origin = get_origin(hint)
+    args = get_args(hint)
+    if hint is Any:
+        return value
+    if origin is Union or origin is UnionType:
+        if value is None and type(None) in args:
+            return None
+        (arm,) = [arm for arm in args if arm is not type(None)] or (Any,)
+        return _coerce(value, arm)
+    if origin is Literal:
+        return value
+    if hint is float:
+        return float(value)  # int -> float; "NaN"/"Infinity"/"-Infinity" -> the float
+    if hint is int:
+        return int(value)
+    if hint is bool or hint is str:
+        return value
+    if origin is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(_coerce(entry, args[0]) for entry in value)
+        return tuple(_coerce(entry, arm) for entry, arm in zip(value, args, strict=True))
+    if origin in (dict, Mapping) or (origin is not None and issubclass(origin, Mapping)):
+        return {key: _coerce(entry, args[1]) for key, entry in value.items()}
+    if isinstance(hint, type) and is_dataclass(hint):
+        return _rebuild(hint, value)
     return value
 
 
@@ -1339,3 +1446,26 @@ class MultiLogger:
     def report(self, event: Event) -> None:
         for logger in self.loggers:
             logger.report(event)
+
+
+def _event_classes() -> dict[str, type]:
+    return {
+        name: value
+        for name, value in globals().items()
+        if isinstance(value, type) and is_dataclass(value) and _is_event_class(value)
+    }
+
+
+def _is_event_class(cls: type) -> bool:
+    # The Event protocol's surface, however each class provides it: a ClassVar (most), a
+    # per-instance property (ThicknessProfile.channel), or a plain field (PlanSeeded.measurements).
+    # A data protocol cannot be issubclass-checked, so this is the structural test by hand.
+    provided = set(dir(cls)) | {spec.name for spec in fields(cls)}
+    return {"channel", "step", "measurements"} <= provided
+
+
+# Every event class this module defines, keyed by the name EventRecord.event_type records. This is
+# the report's type registry: a new event is registered by being defined here, and a consumer
+# rebuilding events (event_from_record) or checking a report's coverage reads it rather than
+# keeping its own list.
+EVENT_TYPES: Mapping[str, type] = MappingProxyType(_event_classes())

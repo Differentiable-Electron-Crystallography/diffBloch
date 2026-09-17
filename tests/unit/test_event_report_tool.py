@@ -647,18 +647,19 @@ def test_preprocess_table_reports_each_fit_stage_and_its_own_settings() -> None:
 
 
 def test_preprocess_table_does_not_claim_stages_were_skipped_when_unrecorded() -> None:
-    """An older report has no ``steps`` at all -- that is unknown, not "not run"."""
+    """A report from before ``steps`` was recorded has no key at all -- unknown, not "not run".
+
+    ``steps`` defaults to ``()`` on the event, so a typed read alone cannot tell the two apart;
+    this is the one place the table consults the envelope.
+    """
     (record,) = _records(
         PreprocessCompleted(n_rotations=4, n_stages=3, total_hkl=100, matched_hkl=80)
     )
-    payload = {
-        key: value for key, value in record.payload.items() if key not in {"steps", "n_stages"}
-    }
+    payload = {key: value for key, value in record.payload.items() if key != "steps"}
     older = record.model_copy(update={"payload": payload})
 
     rows = preprocess_table([older]) or []
 
-    assert ("Stages", "n/a") in rows
     assert rows[-1] == ("Stage settings", "not recorded in this report")
     assert not any(value == "not run" for _, value in rows)
 
