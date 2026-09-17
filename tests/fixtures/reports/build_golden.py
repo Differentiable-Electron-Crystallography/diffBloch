@@ -111,7 +111,7 @@ def _preprocess_dataset(dataset: str, offset: int) -> Iterator[Event]:
             omega=(0.0, 0.05, 0.005),
             score=(0.061 + 0.004 * k, 0.09, 0.040 + 0.005 * k),
             comparable_score=(0.061 + 0.004 * k, 0.095, 0.040 + 0.005 * k),
-            n_matched_hkl=(40 - k, 38, 40 - k),
+            n_matched_hkl=(42, 38, 40 - k),
             is_seed=(1, 0, 0),
             is_final=(0, 0, 1),
             dataset=dataset,
@@ -297,7 +297,11 @@ def build_events() -> list[Event]:
             diff_loss=0.28 - 0.05 * i,
             objective_total=0.30 - 0.05 * i,
             components={
-                "diffraction": {"raw": 0.28 - 0.05 * i, "weight": 1.0, "contribution": 0.28},
+                "diffraction": {
+                    "raw": 0.28 - 0.05 * i,
+                    "weight": 1.0,
+                    "contribution": 0.28 - 0.05 * i,
+                },
                 "bond_length": {"raw": 0.01, "weight": 2.0, "contribution": 0.02},
             },
             n_rotations=3,
@@ -321,15 +325,29 @@ def build_events() -> list[Event]:
         ),
         RefinementStarted(total_steps=3),
         steps[0],
-        RefinementOrientationStep(
-            iteration=0,
-            rotation_index=0,
-            wr2=0.046,
-            r_obs=0.056,
-            diff_loss=0.28,
-            dataset="a.cif_pets",
+        *(
+            RefinementOrientationStep(
+                iteration=0,
+                rotation_index=k,
+                wr2=0.046 + 0.002 * k,
+                r_obs=0.056 + 0.002 * k,
+                diff_loss=0.28,
+                dataset="a.cif_pets",
+            )
+            for k in (0, 1)
         ),
         steps[1],
+        *(
+            RefinementOrientationStep(
+                iteration=1,
+                rotation_index=k,
+                wr2=0.043 + 0.002 * k,
+                r_obs=0.053 + 0.002 * k,
+                diff_loss=0.23,
+                dataset="a.cif_pets",
+            )
+            for k in (0, 1)
+        ),
         steps[2],
         RefinementCompleted(
             n_steps=3,

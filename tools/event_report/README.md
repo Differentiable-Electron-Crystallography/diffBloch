@@ -149,20 +149,37 @@ shown empty.
 | --- | --- | --- |
 | `convergence_sweeps` | `converge` | one panel per control, R-factor *between consecutive settings* against candidate value, with the pass threshold as a rule and the crossing marked |
 | `orientation_optimization` | `preprocess` | seed vs fitted score per rotation, with the fitted goniometer deltas |
+| `orientation_search_headroom` | `preprocess` | Nelder-Mead passes per rotation against `max_iterations`, rotations that ran to the cap flagged; matched-reflection count after (and, from the trace, before) the search |
 | `orientation_search_trace` | `preprocess` | the scored Nelder-Mead path of the longest search |
+| `angle_deltas_vs_tilt` | `preprocess` + `refine` | the fitted α/β/ω corrections against each rotation's tilt angle (needs a thickness-NN refinement, the one event carrying alpha per rotation) |
+| `rotation_cost` | `preprocess` | wall time per orientation search from the record timestamps, and time against the solve's union beam count |
 | `thickness_grids` | `preprocess` | every rotation's thickness-vs-score curve overlaid, selected thickness marked — shows the *shape* of each minimum |
 | `thickness_heatmap` | `preprocess` | the same grids as rotation × thickness → score, one panel per dataset, fitted thickness traced — shows whether the fit drifts smoothly with tilt or jumps between minima |
 | `coupling_geometry`, `coupling_segment_heatmap` | `preprocess` | coupled-solve shape per rotation and per segment |
 | `epoch_curve` | `refine` | train/validation wR2 and R_obs per epoch |
+| `objective_decomposition` | `refine` | the objective per epoch with the selected epoch marked, and each composed term's contribution stacked |
+| `rotation_epoch_heatmap` | `refine --verbose-refinement` | per-rotation wR2 across epochs, rotation × epoch |
 | `refined_rotation_scores` | `refine` | final per-rotation scores, held-out rotations marked |
+| `refinement_gain` | `preprocess` + `refine` | each rotation's score after the orientation search vs after refinement, under the residual the search used |
+| `score_distributions` | `refine` | empirical CDFs of final wR2 and R_obs, train vs validation per dataset |
 | `per_dataset_summary` | `refine` | mean final wR2/R_obs per dataset, train and validation rotations split, with their counts (pooled runs only) |
 | `thickness_model` | `refine` | the learned `ApparentThicknessNN` curve per dataset |
+| `thickness_grid_vs_model` | `preprocess` + `refine` | the grid-search thickness of each rotation drawn on the learned curve at its tilt angle |
 
 **The two thickness figures are different quantities.** `thickness_grids` / `thickness_heatmap` are
 the *preprocess* stage's per-rotation grid search — one fitted scalar per rotation, picked by argmin
 over a `linspace`. `thickness_model` is the *refinement* stage's `ApparentThicknessNN` — a trained
 function of tilt angle, one per dataset, evaluated after the loop. They carry different names and
-sit under separate headings for that reason.
+sit under separate headings for that reason; `thickness_grid_vs_model` is the one figure that puts
+them on the same axes, which is the check that the network learned what the search found.
+
+**Figures marked `preprocess` + `refine` pair events across the pooling boundary.** The
+preprocess fits (`OrientationOptimized`, `ThicknessOptimized`) carry *file-local* rotation indices
+because they run per dataset before pooling; every refinement event carries the *pooled* index.
+`RotationCoupling` fires on the settled pooled plan every run and lists each dataset's pooled
+indices, and pooling keeps a dataset's order, so the two sorted lists pair positionally. A report
+without the coupling events — or a dataset whose counts disagree — makes those figures decline
+rather than guess.
 
 The two coupling figures are emitted during **preprocess**, not refinement, even though what they
 describe is the geometry the refinement loop repeats every step. They fire on checkpoint-reuse runs
