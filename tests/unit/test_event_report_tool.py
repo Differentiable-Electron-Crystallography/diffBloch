@@ -374,6 +374,40 @@ def test_per_dataset_summary_needs_more_than_one_dataset() -> None:
     assert plot_dataset_summary(single) is None
 
 
+def test_per_dataset_summary_splits_train_from_validation() -> None:
+    """Held-out rotations get their own bars, so a dataset that generalizes badly is visible."""
+    report = _records(
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(1, "a.cif_pets", validation=True),
+        _refined(2, "b.cif_pets", validation=False),
+    )
+
+    figure = plot_dataset_summary(report)
+
+    assert figure is not None
+    wr2_panel, r_obs_panel = figure.axes
+    assert [text.get_text() for text in wr2_panel.get_legend().get_texts()] == [
+        "train",
+        "validation",
+    ]
+    assert len(wr2_panel.patches) == len(r_obs_panel.patches) == 4  # 2 datasets x 2 splits
+    labels = [label.get_text() for label in r_obs_panel.get_xticklabels()]
+    assert labels == ["a.cif_pets\n(1/1)", "b.cif_pets\n(1/0)"]
+
+
+def test_per_dataset_summary_draws_only_training_bars_without_a_split() -> None:
+    report = _records(
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(1, "b.cif_pets", validation=False),
+    )
+
+    figure = plot_dataset_summary(report)
+
+    assert figure is not None
+    assert len(figure.axes[0].patches) == 2
+    assert figure.axes[0].get_legend() is None  # one series needs no legend
+
+
 def test_orientation_search_trace_plots_the_longest_search() -> None:
     short = OrientationSearchTrace(
         rotation_index=1,

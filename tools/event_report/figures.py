@@ -199,24 +199,63 @@ def plot_orientation_optimization(records: Sequence[EventRecord]) -> Figure | No
 
 @styled
 def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
-    """Mean final wR2 / R_obs per dataset. Pooled experiments only -- one dataset has nothing to
-    compare against."""
+    """Mean final wR2 / R_obs per dataset, split into training and held-out validation rotations.
+
+    Pooled experiments only -- one dataset has nothing to compare against. The split matters because
+    a dataset whose training mean looks fine can still be the one that generalizes worst; averaging
+    the two together hides exactly that. The validation bars appear only when the run held rotations
+    out (``refinement.split.train_test``), and each tick states its ``train/validation`` rotation
+    counts, since a mean over fewer rotations is a different quantity rather than a better one.
+    """
     metrics = [record for record in records_of(records, "RefinedRotationMetrics") if record.dataset]
     grouped = by_dataset(metrics)
     datasets = sorted(grouped)
     if len(datasets) <= 1:
         return None
-    wr2 = [finite_mean(r.payload.get("wr2") for r in grouped[name]) for name in datasets]
-    r_obs = [finite_mean(r.payload.get("r_obs") for r in grouped[name]) for name in datasets]
+    splits = [("train", False)]
+    if any(record.payload.get("is_validation") for record in metrics):
+        splits.append(("validation", True))
+    width = 0.8 / len(splits)
     x = range(len(datasets))
-    width = 0.38
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.bar([value - width / 2 for value in x], wr2, width=width, label="wR2")
-    ax.bar([value + width / 2 for value in x], r_obs, width=width, label="R_obs")
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(datasets, rotation=30, ha="right")
-    ax.set_title("Per-dataset final scores")
-    ax.legend()
+    fig, axes = plt.subplots(2, 1, figsize=(8, 6.5), sharex=True)
+    for ax, key, label in ((axes[0], "wr2", "wR2"), (axes[1], "r_obs", "R_obs")):
+        for slot, (split, is_validation) in enumerate(splits):
+            means = [
+                finite_mean(
+                    record.payload.get(key)
+                    for record in grouped[name]
+                    if bool(record.payload.get("is_validation")) == is_validation
+                )
+                for name in datasets
+            ]
+            offset = (slot - (len(splits) - 1) / 2) * width
+            ax.bar(
+                [value + offset for value in x],
+                [math.nan if mean is None else mean for mean in means],
+                width=width,
+                label=split,
+            )
+        ax.set_ylabel(label)
+        if len(splits) > 1:
+            ax.legend()
+    counts = [
+        (
+            sum(not record.payload.get("is_validation") for record in grouped[name]),
+            sum(bool(record.payload.get("is_validation")) for record in grouped[name]),
+        )
+        for name in datasets
+    ]
+    axes[1].set_xticks(list(x))
+    axes[1].set_xticklabels(
+        [
+            f"{name}\n({train}/{held_out})"
+            for name, (train, held_out) in zip(datasets, counts, strict=True)
+        ],
+        rotation=30,
+        ha="right",
+    )
+    axes[1].set_xlabel("dataset (train/validation rotations)")
+    axes[0].set_title("Per-dataset final scores")
     fig.tight_layout()
     return fig
 

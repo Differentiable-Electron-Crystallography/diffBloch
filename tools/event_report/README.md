@@ -76,7 +76,7 @@ shown empty.
 | `coupling_geometry`, `coupling_segment_heatmap` | `preprocess` | coupled-solve shape per rotation and per segment |
 | `epoch_curve` | `refine` | train/validation wR2 and R_obs per epoch |
 | `refined_rotation_scores` | `refine` | final per-rotation scores, held-out rotations marked |
-| `per_dataset_summary` | `refine` | mean final scores per dataset (pooled runs only) |
+| `per_dataset_summary` | `refine` | mean final wR2/R_obs per dataset, train and validation rotations split, with their counts (pooled runs only) |
 | `thickness_model` | `refine` | the learned `ApparentThicknessNN` curve per dataset |
 
 **The two thickness figures are different quantities.** `thickness_grids` / `thickness_heatmap` are
