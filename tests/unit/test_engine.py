@@ -864,3 +864,32 @@ def test_refinement_metrics_counts_an_unmatched_reflection_once_not_per_rotation
 
     assert n_matched == 1  # only 000 is in the beam set
     assert n_unmatched == 1  # 200, once -- not once per rotation
+
+
+def test_per_rotation_metrics_carry_the_reflections_they_were_reduced_from() -> None:
+    """Each row's RotationReflections is the matched observed/calculated table behind its wR2.
+
+    Observed values are the pattern's own at the alignment's rows, calculated ones are already
+    scaled (so ``i_obs`` and ``i_calc`` are comparable), and the rotation is named the way every
+    event names it. On a self-consistent pattern at the true parameters the two columns agree.
+    """
+    true = _params(occupancy_logit=1.0)
+    engine = _engine(loss=wr2_loss, pattern=_observed_pattern(true))
+    (orientation,) = engine.orientations
+
+    (row,) = engine.per_rotation_metrics(build_refinement_model(initial=true))
+
+    table = row.reflections
+    assert (table.dataset, table.rotation_index) == (
+        orientation.pattern.dataset,
+        orientation.pattern.dataset_rotation_index,
+    )
+    assert len(table.i_obs) == row.n_matched == len(table.h)
+    expected_obs = orientation.pattern.intensities[orientation.alignment.pattern_index]
+    assert table.i_obs == tuple(float(v) for v in expected_obs)
+    assert [list(row) for row in zip(table.h, table.k, table.l, strict=True)] == (
+        orientation.alignment.hkl.tolist()
+    )
+    assert all(d > 0.0 for d in table.d_spacing)
+    assert table.scale > 0.0 and table.thickness > 0.0
+    assert np.allclose(table.i_calc, table.i_obs, rtol=1e-3, atol=1e-9)

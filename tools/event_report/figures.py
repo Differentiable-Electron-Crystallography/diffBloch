@@ -40,6 +40,7 @@ from diffBloch.observability import (
     RefinementStep,
     RotationCoupling,
     RotationCouplingSegments,
+    RotationReflections,
     ThicknessOptimized,
     ThicknessProfile,
     event_from_record,
@@ -59,11 +60,13 @@ __all__ = [
     "plot_dataset_summary",
     "plot_epoch_curve",
     "plot_objective_decomposition",
+    "plot_observed_vs_calculated",
     "plot_orientation_optimization",
     "plot_orientation_search_headroom",
     "plot_orientation_search_trace",
     "plot_refined_rotation_scores",
     "plot_refinement_gain",
+    "plot_residuals_by_resolution",
     "plot_rotation_cost",
     "plot_rotation_epoch_heatmap",
     "plot_score_distributions",
@@ -984,6 +987,142 @@ def plot_rotation_cost(records: Sequence[EventRecord]) -> Figure | None:
     return fig
 
 
+@styled
+def plot_observed_vs_calculated(records: Sequence[EventRecord]) -> Figure | None:
+    """Observed against calculated intensity for every matched reflection of the best model.
+
+    The crystallographer's first diagnostic: on log axes a good model hugs the identity line
+    across the whole intensity range; a bow means the scale or the thickness is wrong, a fan at the
+    weak end means the weak reflections are not being fit (or are noise), and a cloud far off the
+    line is a rotation to look at. Reflections below ``I > 3 sigma`` are drawn muted -- they enter
+    wR2 but not R_obs, and they are where the scatter is expected. Non-positive intensities cannot
+    be shown on a log axis; how many were left out is stated in the title so a plot of half the
+    data cannot pass for one of all of it.
+    """
+    tables = events_of(records, RotationReflections)
+    if not tables:
+        return None
+    strong: list[tuple[float, float]] = []
+    weak: list[tuple[float, float]] = []
+    dropped = 0
+    for table in tables:
+        for obs, sigma, calc in zip(table.i_obs, table.sigma, table.i_calc, strict=True):
+            if obs <= 0.0 or calc <= 0.0:
+                dropped += 1
+                continue
+            (strong if obs > 3.0 * sigma else weak).append((obs, calc))
+    if not strong and not weak:
+        return None
+    fig, ax = plt.subplots(figsize=(6.5, 6.5))
+    if weak:
+        ax.scatter(
+            [p[0] for p in weak],
+            [p[1] for p in weak],
+            s=8,
+            color=MUTED,
+            alpha=0.5,
+            label=f"I ≤ 3σ (n={len(weak)})",
+        )
+    if strong:
+        ax.scatter(
+            [p[0] for p in strong],
+            [p[1] for p in strong],
+            s=10,
+            color=SERIES[0],
+            alpha=0.7,
+            label=f"I > 3σ (n={len(strong)})",
+        )
+    values = [v for pair in (*strong, *weak) for v in pair]
+    low, high = min(values), max(values)
+    ax.plot(
+        [low, high], [low, high], linestyle="--", linewidth=1.0, color=INK, label="I_calc = I_obs"
+    )
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("I_obs")
+    ax.set_ylabel("I_calc (scaled)")
+    n_rotations = len(tables)
+    title = f"Observed vs calculated ({n_rotations} rotations)"
+    if dropped:
+        title += f" — {dropped} non-positive not shown"
+    ax.set_title(title)
+    ax.legend(fontsize="small")
+    return fig
+
+
+def _shells(d_spacings: Sequence[float], n_shells: int) -> list[tuple[float, float]]:
+    """Equal-count resolution shells as ``(d_low, d_high)`` bounds, high resolution first.
+
+    Bounds are quantiles of the *distinct* d-spacings: a symmetry-related or repeated reflection
+    shares its resolution exactly, and tied values would otherwise produce empty shells beside
+    over-full ones.
+    """
+    distinct = sorted(set(d_spacings))
+    if len(distinct) < 2:
+        return [(distinct[0], distinct[0])] if distinct else []
+    n_shells = max(1, min(n_shells, len(distinct) - 1))
+    edges = [distinct[(len(distinct) - 1) * i // n_shells] for i in range(n_shells)]
+    edges.append(distinct[-1])
+    return [(edges[i], edges[i + 1]) for i in range(n_shells) if edges[i] < edges[i + 1]]
+
+
+@styled
+def plot_residuals_by_resolution(records: Sequence[EventRecord]) -> Figure | None:
+    """R_obs per resolution shell, and how many reflections each shell holds.
+
+    The residual as a function of resolution answers a question the single number cannot: whether
+    the model fails at high resolution (atomic displacement / thickness), at low resolution
+    (dynamical scaling, missing strong beams), or evenly. Shells hold equal counts of ``I > 3σ``
+    reflections rather than equal widths in *d*, so a shell's R is never a statement about three
+    reflections. R_obs here is ``Σ|√I_obs − √I_calc| / Σ√I_obs`` over the shell, the same
+    definition the per-rotation R_obs uses.
+    """
+    tables = events_of(records, RotationReflections)
+    if not tables:
+        return None
+    rows = [
+        (d, obs, calc)
+        for table in tables
+        for d, obs, sigma, calc in zip(
+            table.d_spacing, table.i_obs, table.sigma, table.i_calc, strict=True
+        )
+        if obs > 3.0 * sigma and obs > 0.0 and calc >= 0.0
+    ]
+    if len(rows) < 2:
+        return None
+    shells = _shells([d for d, _, _ in rows], n_shells=8)
+    labels: list[str] = []
+    residuals: list[float] = []
+    counts: list[int] = []
+    for i, (d_low, d_high) in enumerate(shells):
+        last = i == len(shells) - 1
+        members = [
+            (obs, calc)
+            for d, obs, calc in rows
+            if (d_low <= d < d_high) or (last and d_low <= d <= d_high)
+        ]
+        if not members:
+            continue
+        numerator = sum(abs(math.sqrt(obs) - math.sqrt(calc)) for obs, calc in members)
+        denominator = sum(math.sqrt(obs) for obs, _ in members)
+        labels.append(f"{d_low:.2f}–{d_high:.2f}")
+        residuals.append(numerator / denominator if denominator else math.nan)
+        counts.append(len(members))
+    fig, axes = plt.subplots(2, 1, figsize=(8, 6.5), sharex=True, height_ratios=(3, 1))
+    x = range(len(labels))
+    axes[0].plot(x, residuals, marker="o", linewidth=1.5, color=SERIES[0])
+    axes[0].set_ylabel("R_obs in shell")
+    axes[0].set_ylim(bottom=0)
+    axes[0].set_title("Residual by resolution shell (I > 3σ)")
+    axes[1].bar(x, counts, color=SERIES[0])
+    axes[1].set_ylabel("reflections")
+    axes[1].set_xticks(list(x))
+    axes[1].set_xticklabels(labels, rotation=45, ha="right")
+    axes[1].set_xlabel("d-spacing shell (Å), high resolution → low")
+    fig.tight_layout()
+    return fig
+
+
 @dataclass(frozen=True)
 class Section:
     """One headed group of figures, and the event types that place it in the run."""
@@ -1049,6 +1188,14 @@ SECTIONS = (
             ("score_distributions", plot_score_distributions),
         ),
         (RefinedRotationMetrics,),
+    ),
+    Section(
+        "Refinement — reflections",
+        (
+            ("observed_vs_calculated", plot_observed_vs_calculated),
+            ("residuals_by_resolution", plot_residuals_by_resolution),
+        ),
+        (RotationReflections,),
     ),
     Section(
         "Refinement — datasets",

@@ -96,6 +96,9 @@ REPORT_RC: dict[str, Any] = {
     "font.size": 8,
     "font.family": "sans-serif",
     "figure.dpi": 110,
+    # A full report is more than matplotlib's default 20-figure warning threshold; the notebook
+    # displays and the tests close every one, so the count is not a leak.
+    "figure.max_open_warning": 0,
     "savefig.dpi": 300,  # the print floor; SVG export ignores it and stays vector
     "savefig.bbox": "tight",
 }

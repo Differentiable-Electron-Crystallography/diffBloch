@@ -41,6 +41,7 @@ from diffBloch.core.products import (
     intensities,
     reduce_tilts,
 )
+from diffBloch.core.reciprocal import g_vector_lengths
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import (
     SolverMethod,
@@ -77,6 +78,7 @@ from diffBloch.observability import (
     RefinementOrientationStep,
     RefinementStarted,
     RefinementStep,
+    RotationReflections,
 )
 from diffBloch.params import ConstraintSpec, PhysicalState, RefinableParams, constrain
 from diffBloch.specs import Absorption
@@ -161,6 +163,7 @@ class RotationMetrics:
 
     rotation_index: int
     dataset_rotation_index: int
+    reflections: RotationReflections
     wr2: float
     r_obs: float
     n_matched: int
@@ -404,12 +407,16 @@ class RefinementEngine:
         Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
         rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
         is reported but never optimised), returning every rotation's pair instead of an aggregate.
+        Each row also carries its :class:`~diffBloch.observability.RotationReflections` -- the
+        matched observed/calculated rows the pair was reduced from -- computed in the same pass, so
+        a report gets both for one solve per rotation.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
             for constraint in model.structure.constraints:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
+            reciprocal_basis = self.grid.reciprocal_basis.detach().cpu().numpy()
             rows = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
@@ -423,17 +430,15 @@ class RefinementEngine:
                     orientation.pattern,
                     orientation.alignment,
                 )
-                wr2_scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t],
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                            metric=w_rbragg,
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
+                wr2_fits = [
+                    optimal_scale(
+                        aligned.calculated[t],
+                        aligned.observed[t],
+                        aligned.sigmas[t],
+                        metric=w_rbragg,
+                    )
+                    for t in range(aligned.calculated.shape[0])
+                ]
                 r_obs_scores = torch.stack(
                     [
                         optimal_scale(
@@ -445,7 +450,29 @@ class RefinementEngine:
                         for t in range(aligned.calculated.shape[0])
                     ]
                 )
+                wr2_scores = torch.stack([score for _, score in wr2_fits])
                 best_t = int(torch.argmin(wr2_scores))
+                scale = wr2_fits[best_t][0]
+                hkl = orientation.alignment.hkl.detach().cpu().numpy()
+                # The scaled model intensity at the wR2-best thickness is the number ``wr2`` was
+                # scored against, so observed and calculated are comparable row by row.
+                reflections = RotationReflections(
+                    rotation_index=orientation.pattern.dataset_rotation_index,
+                    dataset=orientation.pattern.dataset,
+                    h=tuple(int(v) for v in hkl[:, 0]),
+                    k=tuple(int(v) for v in hkl[:, 1]),
+                    l=tuple(int(v) for v in hkl[:, 2]),
+                    i_obs=tuple(float(v) for v in aligned.observed[best_t].detach().cpu()),
+                    sigma=tuple(float(v) for v in aligned.sigmas[best_t].detach().cpu()),
+                    i_calc=tuple(
+                        float(v) for v in (scale * aligned.calculated[best_t]).detach().cpu()
+                    ),
+                    d_spacing=tuple(
+                        float(v) for v in 1.0 / g_vector_lengths(hkl, reciprocal_basis)
+                    ),
+                    scale=float(scale),
+                    thickness=float(torch.as_tensor(thickness).reshape(-1)[best_t]),
+                )
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
@@ -454,6 +481,7 @@ class RefinementEngine:
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
                         dataset=orientation.pattern.dataset,
+                        reflections=reflections,
                     )
                 )
         return tuple(rows)

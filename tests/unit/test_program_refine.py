@@ -30,6 +30,7 @@ from diffBloch.observability import (
     ObjectiveManifest,
     ObjectiveTerm,
     RefinementStep,
+    RotationReflections,
 )
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
@@ -375,6 +376,19 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
         r_obs=0.05,
         n_matched=30,
         dataset="b.cif_pets",
+        reflections=RotationReflections(
+            rotation_index=2,
+            dataset="b.cif_pets",
+            h=(1,),
+            k=(0,),
+            l=(0,),
+            i_obs=(10.0,),
+            sigma=(1.0,),
+            i_calc=(9.5,),
+            d_spacing=(2.5,),
+            scale=1.2,
+            thickness=1000.0,
+        ),
     )
     engine = SimpleNamespace(per_rotation_metrics=lambda _model: [row], orientations=())
     path = tmp_path / "report.jsonl"
@@ -389,12 +403,16 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
         raw_alphas=None,
     )
 
-    metrics, record = [
+    metrics, reflections, record = [
         EventRecord.model_validate_json(line) for line in path.read_text().splitlines()
     ]
     assert metrics.event_type == "RefinedRotationMetrics"
     assert (metrics.dataset, metrics.rotation_index) == ("b.cif_pets", 2)
     assert metrics.payload["is_validation"] is True
+    # The per-reflection rows follow every rotation's summary, keyed the same way.
+    assert reflections.event_type == "RotationReflections"
+    assert (reflections.dataset, reflections.rotation_index) == ("b.cif_pets", 2)
+    assert reflections.series["i_calc"] == [9.5]
     assert record.event_type == "RefinementOutputsWritten"
     assert record.payload["experiment_directory"] == str(root.resolve())
     assert record.payload["structure"] == "refined_structure.cif"

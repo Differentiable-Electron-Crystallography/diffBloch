@@ -88,6 +88,7 @@ def test_golden_report_renders_every_table_and_figure(golden: list[EventRecord])
         "Refinement — epoch history",
         "Refinement — per-rotation scores",
         "Refinement — datasets",
+        "Refinement — reflections",
         "Refinement — learned thickness model",
     ]
     tables = dict(build_tables(golden))

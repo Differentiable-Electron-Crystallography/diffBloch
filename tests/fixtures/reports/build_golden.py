@@ -51,6 +51,7 @@ from diffBloch.observability import (
     RefinementStep,
     RotationCoupling,
     RotationCouplingSegments,
+    RotationReflections,
     RotationScored,
     RunStageStarted,
     RunStageStopped,
@@ -365,6 +366,22 @@ def build_events() -> list[Event]:
                 n_matched=35,
                 is_validation=(k == 3),
                 dataset=DATASETS[k // 2],
+            )
+            for k in range(4)
+        ),
+        *(
+            RotationReflections(
+                rotation_index=k % 2,
+                dataset=DATASETS[k // 2],
+                h=(1, 1, 2, 0, 3),
+                k=(0, 1, 0, 2, 1),
+                l=(0, 0, 1, 1, 1),
+                i_obs=(120.0, 40.0, 9.0, 2.0 + k, -1.0),
+                sigma=(4.0, 3.0, 2.0, 1.5, 1.0),
+                i_calc=(118.0 + k, 43.0, 8.0, 3.0, 0.5),
+                d_spacing=(4.91, 3.47, 2.46, 2.13, 1.54),
+                scale=0.8 + 0.05 * k,
+                thickness=1000.0,
             )
             for k in range(4)
         ),
