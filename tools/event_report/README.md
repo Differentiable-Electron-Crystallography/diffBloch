@@ -75,8 +75,8 @@ DIFFBLOCH_EVENT_LOG="$REPORT" \
   uv run jupyter lab tools/event_report/event_report.ipynb
 ```
 
-Inside the notebook you can edit the JSONL path field or, when `ipywidgets` is available, use the
-upload control that accepts a picked or dragged `.jsonl` file.
+Inside the notebook, `REPORT` in the setup cell is the path being rendered; edit it and re-run
+the render cell to look at another report.
 
 ## Tables
 

@@ -101,7 +101,7 @@ def read_records(path: Path | str) -> list[EventRecord]:
 
 
 def read_records_text(text: str) -> list[EventRecord]:
-    """Parse JSONL report *content* -- the upload path, where there is no file on disk."""
+    """Parse JSONL report *content* rather than a file -- for a report already read into memory."""
     return [EventRecord.model_validate_json(line) for line in text.splitlines() if line.strip()]
 
 
