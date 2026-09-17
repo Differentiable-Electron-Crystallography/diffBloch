@@ -7,16 +7,17 @@ produced by CLI commands like `diffbloch refine`.
 | --- | --- |
 | `reader.py` | find, parse, and slice a report |
 | `style.py` | the shared palette and chrome; colour assigned by job, applied per figure |
+| `tables.py` | run-summary tables over the parsed records, rendered to Markdown |
 | `figures.py` | matplotlib figures over the parsed records, grouped into stage sections |
-| `event_report.ipynb` | interactive viewer; a thin driver over `reader` + `figures` |
+| `event_report.ipynb` | interactive viewer; a thin driver over `reader` + `tables` + `figures` |
 
-Plotting logic lives in `figures.py` rather than in notebook cells so it can be imported and tested
-(`tests/unit/test_event_report_tool.py`). The notebook holds no rendering logic of its own, and its
-outputs are not committed.
+Table and plotting logic live in `tables.py` / `figures.py` rather than in notebook cells so they can
+be imported and tested (`tests/unit/test_event_report_tool.py`). The notebook holds no rendering
+logic of its own, and its outputs are not committed.
 
 The notebook is the only rendering surface. The JSONL report itself is the machine-readable
-artifact — anything wanting tables or a different presentation reads the report directly rather
-than going through a renderer here.
+artifact — anything wanting a different presentation reads the report directly rather than going
+through a renderer here.
 
 ## Example workflow
 
@@ -56,6 +57,20 @@ DIFFBLOCH_EVENT_LOG="$REPORT" \
 
 Inside the notebook you can edit the JSONL path field or, when `ipywidgets` is available, use the
 upload control that accepts a picked or dragged `.jsonl` file.
+
+## Tables
+
+`tables.build_tables(records)` returns `(title, markdown)` pairs, shown above the figures. Like the
+figures, a table whose events are absent is dropped rather than shown empty.
+
+| table | from | shows |
+| --- | --- | --- |
+| Preprocess | `PreprocessCompleted` | rotation/stage/HKL counts, and whether orientation and thickness optimization ran with their own settings (`search.*`, `grid.*`) |
+| Refinement summary | `ExperimentDeclared`, `RefinementStep`, `RefinementCompleted` | the selected epoch, the objective it was selected on, optimizer settings, train (and validation) wR2/R_obs means with their `[evaluated/total]` counts, diffraction loss, matched HKLs (I>3σ/total) |
+
+Every mean carries the rotation count it was taken over, because a mean over fewer rotations is a
+different quantity rather than a better one. A report written before `PreprocessCompleted` recorded
+its `steps` says the stage settings were *not recorded*, never that the stages did not run.
 
 ## Figures
 

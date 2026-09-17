@@ -31,6 +31,12 @@ from tools.event_report.figures import (  # noqa: E402
     plot_thickness_heatmap,
     plot_thickness_model,
 )
+from tools.event_report.tables import (  # noqa: E402
+    build_tables,
+    markdown_table,
+    preprocess_table,
+    refinement_table,
+)
 
 from diffBloch.observability import (  # noqa: E402
     ConvergencePassStarted,
@@ -597,3 +603,133 @@ def test_export_figures_writes_one_file_per_figure_and_format(tmp_path: Path) ->
 
     assert len(written) == 2 * len(built)
     assert all(path.exists() and path.stat().st_size > 0 for path in written)
+
+
+# --- tables ---------------------------------------------------------------------------------
+
+
+def test_tables_are_absent_without_their_events() -> None:
+    assert preprocess_table([]) is None
+    assert refinement_table([]) is None
+    assert build_tables([]) == []
+
+
+def test_preprocess_table_reports_each_fit_stage_and_its_own_settings() -> None:
+    steps = (
+        ("build_orientation_plans", {"rocking": {"__type__": "RockingCurve", "sampling": 42}}),
+        (
+            "optimize_orientation",
+            {
+                "search": {"__type__": "NelderMeadSearch", "step_size": 0.05, "max_iterations": 60},
+                "absorption": {"__type__": "Absorption", "enabled": False},
+            },
+        ),
+    )
+    rows = preprocess_table(
+        _records(
+            PreprocessCompleted(
+                n_rotations=4, n_stages=2, total_hkl=100, matched_hkl=80, steps=steps
+            )
+        )
+    )
+
+    assert rows == [
+        ("Rotations", "4"),
+        ("Stages", "2"),
+        ("Total HKLs", "100"),
+        ("Matched HKLs", "80"),
+        ("Orientation optimization", "ran"),
+        ("search.step_size", "0.05"),
+        ("search.max_iterations", "60"),
+        # a stage absent from the recipe says so instead of silently missing
+        ("Thickness optimization", "not run"),
+    ]
+
+
+def test_preprocess_table_does_not_claim_stages_were_skipped_when_unrecorded() -> None:
+    """An older report has no ``steps`` at all -- that is unknown, not "not run"."""
+    (record,) = _records(
+        PreprocessCompleted(n_rotations=4, n_stages=3, total_hkl=100, matched_hkl=80)
+    )
+    payload = {
+        key: value for key, value in record.payload.items() if key not in {"steps", "n_stages"}
+    }
+    older = record.model_copy(update={"payload": payload})
+
+    rows = preprocess_table([older]) or []
+
+    assert ("Stages", "n/a") in rows
+    assert rows[-1] == ("Stage settings", "not recorded in this report")
+    assert not any(value == "not run" for _, value in rows)
+
+
+def test_refinement_table_reports_the_selected_epoch_with_its_denominators() -> None:
+    report = _records(
+        ExperimentDeclared(
+            name="quartz",
+            structure="structure.cif",
+            experimental_data="exp_data.cif_pets",
+            optimizer="adam",
+            seed_thicknesses_by_dataset=(("exp_data.cif_pets", (1000.0,)),),
+            integration_semiangles=(0.01,),
+            rocking_curve_sampling=21,
+            dsg=0.1,
+            rsg=0.1,
+            solve_g_max=0.7,
+            sg_max=1.4,
+            absorption=False,
+            steps=2,
+            learning_rate=0.001,
+        ),
+        _refinement_step(0, validation=True),
+        _refinement_step(1, validation=True),
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.9,
+            selection="validation",
+            reflection_counts={"matched": 12, "matched_i_gt_3sigma": 8},
+        ),
+    )
+
+    rows = dict(refinement_table(report) or [])
+
+    assert rows["Experiment"] == "quartz"
+    assert rows["Best epoch"] == "2 / 2"
+    assert rows["Selected on"] == "validation"
+    assert rows["Objective"] == "0.9"
+    assert rows["Optimizer"] == "adam"
+    assert rows["Train wR2 (%)"] == "4.90 [3/3]"  # epoch 2's numbers, not epoch 1's
+    assert rows["Train R_obs (%)"] == "6.00 [2/3]"
+    assert rows["Val wR2 (%)"] == "7.00 [1/1]"
+    assert rows["Val R_obs (%)"] == "8.00 [1/1]"
+    assert rows["Matched HKLs (I>3σ/total)"] == "8 / 12"
+
+
+def test_refinement_table_drops_the_train_prefix_and_survives_a_nan_mean() -> None:
+    """No validation split -> one population, so no Train/Val labels. A NaN mean round-trips through
+    the JSONL as the string "NaN" and must still render as n/a with its count."""
+    step = RefinementStep(
+        iteration=0, loss=1.0, wr2=float("nan"), r_obs=0.06, n_rotations=3, n_wr2_evaluated=0
+    )
+    written = _records(step, RefinementCompleted(n_steps=1, best_step=0, best_loss=1.0))
+    report = reader.read_records_text("".join(r.model_dump_json() + "\n" for r in written))
+
+    rows = dict(refinement_table(report) or [])
+
+    assert rows["wR2 (%)"] == "n/a [0/3]"
+    assert rows["R_obs (%)"] == "6.00"  # no evaluated count reported -> no denominator
+    assert not any(label.startswith(("Train", "Val")) for label in rows)
+    assert rows["Matched HKLs (I>3σ/total)"] == "n/a"
+
+
+def test_build_tables_renders_markdown_in_run_order() -> None:
+    tables = build_tables(_full_report())
+
+    assert [title for title, _ in tables] == ["Preprocess", "Refinement summary"]
+    preprocess = tables[0][1].splitlines()
+    assert preprocess[:3] == ["| Parameter | Value |", "| --- | --- |", "| Rotations | 4 |"]
+
+
+def test_markdown_table_escapes_pipes() -> None:
+    assert markdown_table([("a|b", "c")]).splitlines()[-1] == "| a\\|b | c |"
