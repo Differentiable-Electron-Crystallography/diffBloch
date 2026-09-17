@@ -33,6 +33,12 @@ Fields *added* by a newer writer are ignored, so an older reader survives additi
 `diffBloch.observability.EVENT_TYPES` is the registry: every event class, keyed by the name
 `event_type` records. Defining an event registers it.
 
+The contract is pinned to disk as `tests/fixtures/reports/golden-v1.jsonl`, a small run carrying
+every event type; `tests/unit/test_golden_report.py` reads it with the current code and renders
+every table and figure from it. After a deliberate schema change, regenerate it with
+`uv run python tests/fixtures/reports/build_golden.py` and commit the diff — that diff is the
+review of the change.
+
 ## Example workflow
 
 Install the project with dev/tooling dependencies:
