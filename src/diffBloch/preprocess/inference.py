@@ -149,7 +149,7 @@ def run_inference(
                 wr2=row.wr2,
                 n_matched=row.n_matched,
                 dataset=orientation.pattern.dataset,
-                rotation_index=int(orientation.pattern.rotation_index),
+                rotation_index=int(orientation.pattern.dataset_rotation_index),
             )
         )
     result = InferenceResult(per_rotation=rows)

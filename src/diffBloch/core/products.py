@@ -222,6 +222,16 @@ class PatternBatch:
     train/validation subsetting in ``refine_experiment``, and any future filtering or reordering --
     nothing downstream has to re-derive dataset membership from cumulative offsets. Empty only for
     a directly constructed batch outside the experiment loader (tests, ad hoc API use).
+
+    ``pool_offset`` is what multi-dataset pooling added to ``rotation_index`` to place it in the
+    global space the engine, the train/validation split and the thickness networks index by -- zero
+    until :func:`~diffBloch.preprocess.pool` runs, and zero forever for a single dataset.
+    :attr:`dataset_rotation_index` subtracts it back off: the rotation's zero-based index *within
+    its dataset file*, the PETS frame a user can look up. Observability events name a rotation by
+    ``(dataset, dataset_rotation_index)``, the one identity that means the same thing before and
+    after pooling; the pooled ``rotation_index`` is an engine-internal label. Storing the offset
+    rather than a second index means a pattern built by hand with ``rotation_index=42`` reports
+    frame 42 without anyone having to remember a second field.
     """
 
     hkl: Tensor
@@ -229,6 +239,12 @@ class PatternBatch:
     sigmas: Tensor
     rotation_index: int = 0
     dataset: str = ""
+    pool_offset: int = 0
+
+    @property
+    def dataset_rotation_index(self) -> int:
+        """This rotation's index within its own dataset file (``rotation_index`` before pooling)."""
+        return self.rotation_index - self.pool_offset
 
     @classmethod
     def from_experimental_record(

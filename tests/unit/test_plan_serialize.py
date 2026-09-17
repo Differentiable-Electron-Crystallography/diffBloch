@@ -146,7 +146,7 @@ def test_dataset_label_survives_the_round_trip(tmp_path) -> None:
     op = OrientationPlan.build(
         grid,
         _BEAM_HKL,
-        replace(_pattern(), dataset="a.cif_pets"),
+        replace(_pattern(), dataset="a.cif_pets", rotation_index=7, pool_offset=4),
         energy=_ENERGY,
         thickness=(300.0,),
     )
@@ -155,6 +155,8 @@ def test_dataset_label_survives_the_round_trip(tmp_path) -> None:
 
     (loaded,) = read_plan(path).orientations
     assert loaded.pattern.dataset == "a.cif_pets"
+    # The within-dataset index is checkpoint state for the same reason.
+    assert (loaded.pattern.rotation_index, loaded.pattern.dataset_rotation_index) == (7, 3)
 
 
 def test_plan_is_readable_accepts_what_this_build_wrote(tmp_path) -> None:

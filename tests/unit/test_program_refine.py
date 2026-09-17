@@ -366,7 +366,17 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
         "stray": str(elsewhere.resolve()),
     }
     result = SimpleNamespace(artifacts=artifacts, best_model=object())
-    engine = SimpleNamespace(per_rotation_metrics=lambda _model: [], orientations=())
+    # One pooled rotation (global 5) that is rotation 2 of dataset b: the event must name it the
+    # within-dataset way, while validation membership is still decided on the pooled index.
+    row = SimpleNamespace(
+        rotation_index=5,
+        dataset_rotation_index=2,
+        wr2=0.04,
+        r_obs=0.05,
+        n_matched=30,
+        dataset="b.cif_pets",
+    )
+    engine = SimpleNamespace(per_rotation_metrics=lambda _model: [row], orientations=())
     path = tmp_path / "report.jsonl"
 
     _report_refinement_outcome(
@@ -374,12 +384,17 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
         cast(Any, engine),
         cast(Any, result),
         root=root,
-        validation_rotation_indices=frozenset(),
+        validation_rotation_indices=frozenset({5}),
         thickness_nns=(),
         raw_alphas=None,
     )
 
-    (record,) = [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
+    metrics, record = [
+        EventRecord.model_validate_json(line) for line in path.read_text().splitlines()
+    ]
+    assert metrics.event_type == "RefinedRotationMetrics"
+    assert (metrics.dataset, metrics.rotation_index) == ("b.cif_pets", 2)
+    assert metrics.payload["is_validation"] is True
     assert record.event_type == "RefinementOutputsWritten"
     assert record.payload["experiment_directory"] == str(root.resolve())
     assert record.payload["structure"] == "refined_structure.cif"

@@ -51,6 +51,13 @@ ignored, so an older reader survives additive changes. `RefinementOutputsWritten
 paths relative to the `experiment_directory` it also names, so a report copied elsewhere still says
 what was produced where.
 
+Every event names a rotation the same way: `(dataset, rotation_index)`, where the index is the
+rotation's position within its own dataset file. A multi-dataset run pools its datasets onto one
+global index space for the engine, the train/validation split and the thickness networks, but the
+pattern records the offset pooling added (`PatternBatch.pool_offset`) and every emitter reports
+`pattern.dataset_rotation_index`, so the pooled index never reaches the report and consumers pair
+preprocess and refinement events by key with no mapping between stages.
+
 ```{eval-rst}
 .. automodule:: diffBloch.observability
 ```

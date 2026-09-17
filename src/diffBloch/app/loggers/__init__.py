@@ -309,8 +309,9 @@ class ConsoleLogger:
             if self.per_rotation:
                 _log.log(
                     self.level,
-                    "  rotation %3d │ wR2 %.6f │ R_obs %.6f │ %d matched%s",
+                    "  rotation %3d%s │ wR2 %.6f │ R_obs %.6f │ %d matched%s",
                     event.rotation_index,
+                    f" ({event.dataset})" if event.dataset else "",
                     event.wr2,
                     event.r_obs,
                     event.n_matched,

@@ -49,6 +49,11 @@ def test_pool_renumbers_with_file_offsets_preserving_ignore_gaps() -> None:
 
     indices = [op.pattern.rotation_index for op in pooled.orientations]
     assert indices == sorted(set(range(2 * n)) - {1, n})
+    # Pooling moves only the global label: the within-dataset index stamped by setup_datasets
+    # rides through, so the second dataset's rotations still say where they sit in *their* file.
+    assert [op.pattern.dataset_rotation_index for op in pooled.orientations] == [
+        index - (0 if index < n else n) for index in indices
+    ]
 
 
 def test_pool_single_plan_is_identity_on_indices() -> None:

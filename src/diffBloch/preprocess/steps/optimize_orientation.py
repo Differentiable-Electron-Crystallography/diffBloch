@@ -251,7 +251,7 @@ def optimize_orientation(
             n_matched = int(pattern_index.shape[0])
             logger.report(
                 OrientationOptimized(
-                    rotation_index=result.plan.pattern.rotation_index,
+                    rotation_index=result.plan.pattern.dataset_rotation_index,
                     score=result.score,
                     seed_score=result.seed_score,
                     alpha=result.alpha,
@@ -267,7 +267,7 @@ def optimize_orientation(
             )
             logger.report(
                 OrientationSearchTrace(
-                    rotation_index=result.plan.pattern.rotation_index,
+                    rotation_index=result.plan.pattern.dataset_rotation_index,
                     residual=residual,
                     alpha=result.trial_alpha,
                     beta=result.trial_beta,

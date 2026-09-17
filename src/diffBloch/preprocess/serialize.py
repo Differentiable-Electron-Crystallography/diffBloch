@@ -66,6 +66,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
             "u0": op.u0,
             "rotation_index": op.pattern.rotation_index,
             "dataset": op.pattern.dataset,
+            "pool_offset": op.pattern.pool_offset,
             "tilt_reduction": _dump_reduction(op.tilt_reduction),
         }
         if isinstance(op, CoupledOrientationPlan):
@@ -140,6 +141,9 @@ def _read_orientation(
         sigmas=torch.as_tensor(data[f"pat_sig_{i}"]),
         rotation_index=int(entry["rotation_index"]),
         dataset=str(entry["dataset"]),
+        # A checkpoint is written per dataset, before pooling, so a file from before this key
+        # existed was written with the offset at zero.
+        pool_offset=int(entry.get("pool_offset", 0)),
     )
     energy = float(entry["energy"])
     thickness = torch.as_tensor(data[f"thickness_{i}"])

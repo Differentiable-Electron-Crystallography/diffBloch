@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Protocol
+from typing import Any, Protocol
 
 import torch
 from torch import Tensor
@@ -151,13 +151,16 @@ class RotationMetrics:
     Report/plot use (:meth:`RefinementEngine.per_rotation_metrics`), not the objective: each metric
     independently re-optimises its own intensity scale (:func:`diffBloch.core.losses.optimal_scale`),
     exactly as ``refinement_metrics``/the training objective do, so ``wr2``/``r_obs`` here match what
-    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index (the
-    *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
-    came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
-    never re-derives dataset membership from index offsets.
+    those report elsewhere. ``rotation_index`` is the *pooled* index (what
+    ``validation_rotation_indices`` and the thickness networks are keyed on), ``dataset`` the
+    ``inputs.exp_data`` ref the rotation came from, and ``dataset_rotation_index`` its index within
+    that file -- all read straight off the rotation's own ``pattern``, so a per-dataset breakdown
+    never re-derives dataset membership from index offsets, and the report names the rotation the
+    way the preprocess events do.
     """
 
     rotation_index: int
+    dataset_rotation_index: int
     wr2: float
     r_obs: float
     n_matched: int
@@ -446,6 +449,7 @@ class RefinementEngine:
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
+                        dataset_rotation_index=orientation.pattern.dataset_rotation_index,
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
@@ -475,7 +479,7 @@ class RefinementEngine:
         total = params.asu_positions.new_zeros(())
         wr2_values: list[float] = []
         r_obs_values: list[float] = []
-        per_rotation: list[dict[str, float]] = []
+        per_rotation: list[dict[str, Any]] = []
         for rotation_index, orientation in enumerate(self.orientations):
             context = (
                 ForwardContext()
@@ -525,6 +529,8 @@ class RefinementEngine:
             per_rotation.append(
                 {
                     "rotation_index": float(rotation_index),
+                    "dataset": orientation.pattern.dataset,
+                    "dataset_rotation_index": orientation.pattern.dataset_rotation_index,
                     "wr2": rotation_wr2,
                     "r_obs": rotation_r_obs,
                     "diff_loss": float(term.detach()),
@@ -1128,10 +1134,11 @@ def run_refinement_model(
                 logger.report(
                     RefinementOrientationStep(
                         iteration=step,
-                        rotation_index=int(entry["rotation_index"]),
+                        rotation_index=int(entry["dataset_rotation_index"]),
                         wr2=entry["wr2"],
                         r_obs=entry["r_obs"],
                         diff_loss=entry["diff_loss"],
+                        dataset=str(entry["dataset"]),
                     )
                 )
         if selection_loss < best_loss:
