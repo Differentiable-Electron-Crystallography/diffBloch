@@ -25,6 +25,7 @@ from diffBloch.observability import Event, EventRecord, event_from_record
 
 __all__ = [
     "by_dataset",
+    "EXAMPLE_REPORT",
     "default_event_log",
     "events_of",
     "finite",
@@ -70,29 +71,23 @@ def resolve_event_log_path(path: Path | str) -> Path:
     raise FileNotFoundError(f"Event log not found. Tried:\n  {tried}")
 
 
-def default_event_log() -> Path:
-    """The newest report to open when the caller named none.
+# A real report, committed beside the tool: `diffbloch refine` on the bundled quartz-no-abs example
+# (checkpoint reused, so it carries the refine stage but no orientation/thickness search). The
+# notebook opens it when nothing else is named, so a first run always has something to show.
+EXAMPLE_REPORT = Path(__file__).with_name("example_report.jsonl")
 
-    ``DIFFBLOCH_EVENT_LOG`` wins; otherwise the most recently modified report under the working
-    directory's ``reproducibility/`` or any bundled example's.
+
+def default_event_log() -> Path:
+    """The report to open when the caller named none: ``DIFFBLOCH_EVENT_LOG``, else the example.
+
+    Deterministic on purpose -- an earlier version hunted for the most recently modified report
+    under the working directory and the examples, which made "what am I looking at?" depend on the
+    launch directory and on file timestamps.
     """
     from_environment = os.environ.get("DIFFBLOCH_EVENT_LOG")
     if from_environment:
         return Path(from_environment)
-    root = repository_root()
-    reports = sorted(
-        (
-            *Path("reproducibility/reports").glob("report-*.jsonl"),
-            *Path("reproducibility").glob("report-*.jsonl"),
-            *root.glob("examples/*/data/*/reproducibility/reports/report-*.jsonl"),
-            *root.glob("examples/*/data/*/reproducibility/report-*.jsonl"),
-        ),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if reports:
-        return reports[0]
-    return Path("reproducibility/reports")
+    return EXAMPLE_REPORT
 
 
 def read_records(path: Path | str) -> list[EventRecord]:

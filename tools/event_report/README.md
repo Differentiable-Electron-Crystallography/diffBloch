@@ -10,6 +10,7 @@ produced by CLI commands like `diffbloch refine`.
 | `tables.py` | run-summary tables over the parsed records, rendered to Markdown |
 | `figures.py` | matplotlib figures over the parsed records, grouped into stage sections |
 | `event_report.ipynb` | interactive viewer; a thin driver over `reader` + `tables` + `figures` |
+| `example_report.jsonl` | a real `diffbloch refine` report of the bundled quartz-no-abs example; the notebook's default input |
 
 Table and plotting logic live in `tables.py` / `figures.py` rather than in notebook cells so they can
 be imported and tested (`tests/unit/test_event_report_tool.py`). The notebook holds no rendering
@@ -80,7 +81,14 @@ report to render, and does nothing else.
 1. edit the `REPORT = ...` line to any path (absolute, or relative to the working directory or the
    checkout root — both are tried);
 2. otherwise the `DIFFBLOCH_EVENT_LOG` environment variable, if set when Jupyter was launched;
-3. otherwise the newest `report-*.jsonl` under `./reproducibility/` or any bundled example.
+3. otherwise `example_report.jsonl` beside the notebook — a real refine of the bundled quartz
+   example, so a first open always renders something.
+
+The example was written with the checkpoint reused, so it has the refinement sections and the
+coupling geometry but no orientation or thickness search figures. It is a real report, not a
+generated one, so a schema change that stops it reading is fixed by re-running
+`diffbloch refine examples/Colmey_et_al_2026/data/quartz-no-abs` and copying the new report over
+it; `tests/unit/test_event_report_tool.py` checks it still renders.
 
 The cell prints the path it settled on. To look at a different report, change `REPORT` and re-run
 the render cell.
