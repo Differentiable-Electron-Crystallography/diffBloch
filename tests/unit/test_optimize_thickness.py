@@ -175,6 +175,30 @@ def test_fit_thickness_emits_one_thicknessfitted_per_rotation(tmp_path: Path) ->
         assert event.payload["thickness"] == float(fitted.orientations[index].thickness[0])
 
 
+def test_fit_thickness_reads_the_dataset_label_off_the_plan(tmp_path: Path) -> None:
+    """The label comes from the rotations' own pattern.dataset, mirroring optimize_orientation, so
+    a pooled multi-dataset console log can tell which dataset a "N rotation(s)" announcement
+    belongs to without the step taking a dataset argument."""
+    grid, asu_plan, spec, numbers = _silicon()
+    observed = _observed_at(grid, asu_plan, spec, numbers, _TRUE_THICKNESS)
+    labelled = replace(observed, dataset="a.cif_pets")
+    op = OrientationPlan.build(grid, _BEAM_HKL, labelled, energy=_ENERGY, thickness=(900.0,))
+    plan = Plan(structure_factor_grid=grid, orientations=(op,))
+
+    path = tmp_path / "report.jsonl"
+    optimize_thickness(
+        _refinement(asu_plan, spec, numbers),
+        ThicknessGrid(min_thickness=200.0, max_thickness=400.0, n_steps=5),
+        logger=ReportLogger(path),
+    )(plan)
+
+    records = _records(path)
+    (started,) = [e for e in records if e.event_type == "ThicknessOptimizationStarted"]
+    assert started.payload["dataset"] == "a.cif_pets"
+    (fitted,) = [e for e in records if e.event_type == "ThicknessOptimized"]
+    assert fitted.dataset == "a.cif_pets"
+
+
 # --- device knob (the grid search runs on the accelerator; params.device is authoritative) --------
 
 

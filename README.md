@@ -18,23 +18,37 @@ Differentiable Bloch-wave structure refinement for 3D electron diffraction.
 
 ## Quickstart
 
-Prerequisite: install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
-[Git LFS](https://git-lfs.com/) for the bundled `.cif_pets` experimental data and plan-checkpoint `.npz`
-checkpoints, then sync the project environment from the repository root:
+diffBloch is currently tagged as a release candidate and is under active development; `v0.2.0` will
+be the first stable public release. Install [uv](https://docs.astral.sh/uv/getting-started/installation/),
+then:
 
 ```bash
+uv tool install diffBloch
+```
+
+Installing using `uv tool` makes diffBloch available as a CLI command on the system, to get started try:
+
+```bash
+diffBloch --help
+```
+
+Running diffBloch requires an experiment directory consisting of `.cif`, `.cif_pets` and `experiment.yml`, take a look at the [`/examples`](/examples) directory with some easy to run sample experiments, and refer to the documentation on [required inputs](https://diffbloch.com/inputs.html)
+
+If you plan on exploring diffBloch more thoroughly, using features that are under development and have not been published to pypi, or developing/contributing, we recommend working from a git checkout instead.
+
+To run diffBloch locally using the git repo, copy and past this into your terminal:
+
+```bash
+git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch.git
+cd ./diffBloch
 git lfs install
 git lfs pull
 uv sync --dev
+uv run diffBloch --help
 ```
 
-Run CLI commands through `uv run` unless you have separately installed the `diffbloch` console script
-on your shell `PATH`.
-
-```bash
-# Run the optimizer and update trainable structural parameters:
-uv run diffbloch run refine examples/Colmey_et_al_2026/data/quartz-no-abs
-```
+[Installation](https://differentiable-electron-crystallography.github.io/diffBloch/installation.html)
+covers installation beyond quickstart.
 
 ## For Developers
 

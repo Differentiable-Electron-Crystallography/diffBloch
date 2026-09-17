@@ -28,22 +28,23 @@ def _records(path: Path) -> list[EventRecord]:
     return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
-def _pattern() -> PatternBatch:
+def _pattern(dataset: str = "") -> PatternBatch:
     return PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=torch.zeros(len(_BEAM_HKL), dtype=torch.float64),
         sigmas=torch.full((len(_BEAM_HKL),), 0.01, dtype=torch.float64),
+        dataset=dataset,
     )
 
 
-def _segmented(grid: object) -> CoupledOrientationPlan:
+def _segmented(grid: object, dataset: str = "") -> CoupledOrientationPlan:
     # Two chunks (2 beams each, one shared 000) over 4 tilts -> union of 3 beams, 2 tilts/segment.
     chunk_a = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
     chunk_b = np.array([[0, 0, 0], [-1, 0, 0]], dtype=np.int64)
     return CoupledOrientationPlan.build(
         grid,
         [(chunk_a, (0, 1)), (chunk_b, (2, 3))],
-        _pattern(),
+        _pattern(dataset),
         energy=_ENERGY,
         thickness=(300.0,),
         u0=0.0,
@@ -84,17 +85,20 @@ def test_coupling_stats_reads_each_plan_phase() -> None:
 
 def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary(tmp_path: Path) -> None:
     grid, *_ = _silicon()
-    segmented = _segmented(grid)
+    segmented = _segmented(grid, dataset="a.cif_pets")
     tilt_independent = OrientationPlan.build(
-        grid, _BEAM_HKL, _pattern(), energy=_ENERGY, thickness=(300.0,), tilts=_TILTS
+        grid,
+        _BEAM_HKL,
+        _pattern("b.cif_pets"),
+        energy=_ENERGY,
+        thickness=(300.0,),
+        tilts=_TILTS,
     )
     plan = Plan(structure_factor_grid=grid, orientations=(segmented, tilt_independent))
 
     path = tmp_path / "report.jsonl"
     log = ReportLogger(path)
-    out = report_coupling(
-        log, dataset_for_rotation=lambda rotation_index: f"dataset-{rotation_index}"
-    )(plan)
+    out = report_coupling(log)(plan)
 
     assert out is plan  # identity: a boundary observation, not a transform
     records = _records(path)
@@ -103,7 +107,7 @@ def test_report_coupling_is_identity_and_emits_per_rotation_plus_a_summary(tmp_p
     summaries = [event for event in records if event.event_type == "CouplingSummary"]
     assert [event.payload["index"] for event in rotations] == [0, 1]
     assert [event.payload["rotation_index"] for event in rotations] == [0, 0]
-    assert [event.dataset for event in rotations] == ["dataset-0", "dataset-0"]
+    assert [event.dataset for event in rotations] == ["a.cif_pets", "b.cif_pets"]
     assert (
         rotations[0].payload["n_coupling_segments"] == 2
         and rotations[0].payload["max_beams_per_segment"] == 2

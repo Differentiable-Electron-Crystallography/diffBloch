@@ -29,7 +29,7 @@ The schema default keeps positions and ADPs trainable, and leaves occupancies fr
 ## CLI example
 
 ```bash
-uv run diffbloch run refine <experiment_dir> --device cuda
+uv run diffbloch refine <experiment_dir> --device cuda
 ```
 
 Preprocesses (or reuses settled per-dataset plan checkpoints, see [Reproducibility](reproducibility.md)) and then
@@ -45,8 +45,7 @@ refinement:
 
 Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
 at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
-`HKLs (Observed/total): X / Y` means matched observed reflections / all matched reflections, where
-the observed classification uses the conventional `I > 3 sigma` test internally.
+`Matched HKLs (I>3σ/total): X / Y` means matched reflections with `I > 3 sigma` / all matched reflections.
 
 ## Refinement outputs
 

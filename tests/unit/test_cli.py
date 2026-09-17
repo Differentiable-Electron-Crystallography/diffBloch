@@ -9,12 +9,24 @@ import torch
 from pydantic import ValidationError
 
 from diffBloch.app.cli import _reported_run, main
-from diffBloch.app.loggers import ReportLogger
-from diffBloch.observability import MultiLogger, OrientationOptimized, RotationScored
+from diffBloch.observability import (
+    InferenceCompleted,
+    Logger,
+    MultiLogger,
+    OrientationOptimized,
+    PreprocessCompleted,
+    RefinementCompleted,
+    RefinementOutputsWritten,
+    RefinementStep,
+    RotationScored,
+)
 from diffBloch.preprocess.inference import InferenceResult, RotationInference
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "quartz_min" / "experiment.yaml"
 LOCKED = Path(__file__).parent.parent / "fixtures" / "locked_min"
+# A real file on disk, so the artifact path a fake emits on the terminal event names something that
+# exists.
+REFINED_CIF = Path(__file__).parent.parent / "fixtures" / "quartz_anchor" / "enantiomer_1.cif"
 
 
 def _summary_row(out: str, label: str, value: str) -> bool:
@@ -40,7 +52,7 @@ def test_reported_run_promotes_into_the_reports_subdirectory(tmp_path: Path) -> 
     experiment = tmp_path / "experiment"
     experiment.mkdir()
 
-    with _reported_run(experiment, console=False) as run:
+    with _reported_run(experiment) as run:
         path = run.report_path
         assert path.parent == experiment / "reproducibility" / "reports"
         assert path.name.startswith("report-")
@@ -61,8 +73,8 @@ def test_reported_run_keeps_the_report_when_the_command_raises(
     experiment = tmp_path / "experiment"
     experiment.mkdir()
 
-    with pytest.raises(KeyboardInterrupt), _reported_run(experiment, console=False) as run:
-        run.logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    with pytest.raises(KeyboardInterrupt), _reported_run(experiment) as run:
+        run.logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
         raise KeyboardInterrupt
 
     reports = sorted((experiment / "reproducibility" / "reports").glob("*.jsonl"))
@@ -175,7 +187,7 @@ def test_infer_delegates_to_run_experiment_and_reports(
     def fake_run_experiment(
         experiment_dir: str,
         *,
-        logger: object,
+        logger: Logger,
         checkpoint: bool = True,
         refresh: bool = False,
         device: object = None,
@@ -188,8 +200,19 @@ def test_infer_delegates_to_run_experiment_and_reports(
         captured["checkpoint"] = checkpoint
         captured["refresh"] = refresh
         captured["workers"] = workers
-        rotation = RotationInference(r_obs=0.05, wr2=0.06, n_observed=9, n_beams=20)
-        return InferenceResult(per_rotation=(rotation,))
+        rotation = RotationInference(r_obs=0.05, wr2=0.06, n_matched=9)
+        result = InferenceResult(per_rotation=(rotation,))
+        # _preprocess()/run_inference() emit this once settled; the fake must too, since ConsoleLogger
+        # (not the CLI) renders the INFER COMPLETE box off the event.
+        logger.report(
+            InferenceCompleted(
+                n_rotations=1,
+                n_evaluated=result.n_evaluated,
+                mean_r_obs=result.mean_r_obs,
+                mean_wr2=result.mean_wr2,
+            )
+        )
+        return result
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
     rc = main(["infer", str(experiment_dir)])
@@ -203,8 +226,9 @@ def test_infer_delegates_to_run_experiment_and_reports(
     assert captured["refresh"] is False
     assert captured["workers"] == 1  # sequential by default
     out = capsys.readouterr().out
-    assert "evaluated 1 rotations" in out
-    assert "mean R_obs = 0.0500" in out
+    assert "INFER COMPLETE" in out
+    assert _summary_row(out, "Evaluated", "1")
+    assert _summary_row(out, "Mean R_obs", "0.05")
     assert "report:" in out
     assert len(list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
@@ -262,38 +286,12 @@ def test_infer_builds_event_sink_by_default(
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
 
-    assert main(["infer", str(experiment_dir), "--quiet"]) == 0
+    assert main(["infer", str(experiment_dir)]) == 0
 
     logger = seen["logger"]
-    assert isinstance(logger, ReportLogger)
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
     assert len(list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
-
-
-def test_infer_quiet_silences_only_the_console(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """``--quiet`` opts out of console logging, but the JSONL report remains on."""
-    seen: dict[str, object] = {}
-    experiment_dir = tmp_path / "experiment"
-    experiment_dir.mkdir()
-
-    def fake_run_experiment(
-        experiment_dir: str,
-        *,
-        logger: object,
-        checkpoint: bool = True,
-        refresh: bool = False,
-        device: object = None,
-        workers: int = 1,
-        max_batch: object = None,
-        **_kwargs: object,
-    ) -> InferenceResult:
-        seen["logger"] = logger
-        return InferenceResult(per_rotation=())
-
-    monkeypatch.setattr("diffBloch.app.cli.run_experiment", fake_run_experiment)
-    assert main(["infer", str(experiment_dir), "--quiet"]) == 0
-    assert isinstance(seen["logger"], ReportLogger)
 
 
 def test_infer_missing_experiment_reports_concise_error(
@@ -323,7 +321,7 @@ def test_infer_failure_keeps_the_report_under_the_failed_name(
 
     monkeypatch.setattr("diffBloch.app.cli.run_experiment", fail_run_experiment)
 
-    assert main(["infer", str(experiment_dir), "--quiet"]) == 1
+    assert main(["infer", str(experiment_dir)]) == 1
 
     err = capsys.readouterr().err
     assert "error: bad input" in err
@@ -355,15 +353,10 @@ def test_converge_delegates_and_reports(
 
     assert main(["converge", str(exp_dir)]) == 0
     out = capsys.readouterr().out
-    assert out.startswith(
-        "========================================\n"
-        "HYPERPARAMETER OPTIMIZATION RESULT\n"
-        "gmax: 2.5\n"
-        "sgmax: 0.02\n"
-        "tilt_steps: 46\n"
-        "========================================\n"
-        "optimized_hyperparams gmax=2.5 sgmax=0.02 tilt_steps=46\n"
-    )
+    assert "CONVERGENCE COMPLETE" in out
+    assert _summary_row(out, "g_max", "2.5")
+    assert _summary_row(out, "sg_max", "0.02")
+    assert _summary_row(out, "Tilt steps", "46")
     assert "report:" in out
     assert len(list((exp_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
@@ -418,24 +411,37 @@ def test_preprocess_delegates_and_reports_without_scoring(
             OrientationOptimized(
                 rotation_index=3,
                 score=0.25,
+                seed_score=0.4,
+                alpha=0.1,
+                beta=0.0,
+                omega=-0.1,
                 residual="wr2",
                 n_matched_hkl=2,
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
         logger.report(
             OrientationOptimized(
                 rotation_index=8,
                 score=0.5,
+                seed_score=0.6,
+                alpha=0.05,
+                beta=-0.05,
+                omega=0.0,
                 residual="wr2",
                 n_matched_hkl=3,
                 n_trials=10,
                 n_passes=3,
                 pass_cap=2000,
+                dataset="q.cif_pets",
             )
         )
+        # _preprocess() itself emits this once preprocessing settles; ConsoleLogger is what turns
+        # it into the PREPROCESS COMPLETE box, so the fake must emit it too.
+        logger.report(PreprocessCompleted(n_rotations=2, n_stages=3, total_hkl=7, matched_hkl=5))
         return _FakePlan()
 
     monkeypatch.setattr("diffBloch.app.cli.preprocess_experiment", fake_preprocess_experiment)
@@ -451,6 +457,7 @@ def test_preprocess_delegates_and_reports_without_scoring(
     out = capsys.readouterr().out
     assert "PREPROCESS COMPLETE" in out
     assert _summary_row(out, "Rotations", "2")
+    assert _summary_row(out, "Stages", "3")
     assert _summary_row(out, "Total HKLs", "7")
     assert _summary_row(out, "Matched HKLs", "5")
     assert "Optimize Orientation" in out
@@ -534,13 +541,15 @@ def _fake_refinement_result() -> SimpleNamespace:
             "matched_i_le_3sigma": 4,
             "unmatched_observed": 3,
         },
-        artifacts={"refined_structure": "/tmp/refined_structure.cif"},
+        artifacts={"refined_structure": str(REFINED_CIF)},
     )
 
 
 def test_refine_delegates_and_reports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
+    # A real directory: the fake emits the terminal event, so ReportLogger actually promotes its
+    # report under it -- the same fan-out a real run does.
     captured: dict[str, object] = {}
     experiment_dir = tmp_path / "experiment"
     experiment_dir.mkdir()
@@ -562,7 +571,35 @@ def test_refine_delegates_and_reports(
         captured["dir"] = experiment_dir
         captured["logger"] = logger
         captured["checkpoint"] = checkpoint
-        return _fake_refinement_result()
+        result = _fake_refinement_result()
+        # The box now comes off the event stream rather than off this return value, so the fake
+        # emits what a real refine_experiment emits: the per-epoch steps, then the run summary,
+        # then the terminal outputs event the box and the file list print on.
+        assert isinstance(logger, Logger)
+        for iteration, step in enumerate(result.history):
+            logger.report(
+                RefinementStep(
+                    iteration=iteration,
+                    loss=float(result.losses[iteration]),
+                    wr2=step.wr2,
+                    r_obs=step.r_obs,
+                    diff_loss=step.diff_loss,
+                )
+            )
+        logger.report(
+            RefinementCompleted(
+                n_steps=len(result.history),
+                best_step=result.best_step,
+                best_loss=result.best_loss,
+                reflection_counts=result.reflection_counts,
+            )
+        )
+        logger.report(
+            RefinementOutputsWritten(
+                structure=result.artifacts["refined_structure"], artifacts=result.artifacts
+            )
+        )
+        return result
 
     monkeypatch.setattr("diffBloch.app.cli.refine_experiment", fake_refine_experiment)
     rc = main(["refine", str(experiment_dir)])
@@ -582,9 +619,9 @@ def test_refine_delegates_and_reports(
     assert _summary_row(out, "wR2", "0.1")
     assert _summary_row(out, "R_obs", "0.2")
     assert _summary_row(out, "Diffraction loss", "1")
-    assert _summary_row(out, "HKLs (Observed/total)", "8 / 12")
+    assert _summary_row(out, "Matched HKLs (I>3σ/total)", "8 / 12")
     assert "Refined Structure" in out
-    assert "/tmp/refined_structure.cif" in out
+    assert str(REFINED_CIF) in out
     assert "Report" in out
     assert reports[0].name in out
 
@@ -645,10 +682,10 @@ def test_refine_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_quiet_silences_only_the_console(
+def test_converge_builds_console_and_report_sinks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """converge emits JSONL reports by default even when console output is quiet."""
+    """converge renders to the console and emits a JSONL report, like every other command."""
     seen: dict[str, object] = {}
     exp_dir = tmp_path / "experiment"
     exp_dir.mkdir()
@@ -660,5 +697,7 @@ def test_converge_quiet_silences_only_the_console(
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
     monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["converge", str(exp_dir), "--quiet"]) == 0
-    assert isinstance(seen["logger"], ReportLogger)
+    assert main(["converge", str(exp_dir)]) == 0
+    logger = seen["logger"]
+    assert isinstance(logger, MultiLogger)
+    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]

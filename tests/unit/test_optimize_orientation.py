@@ -11,14 +11,19 @@ is deferred to the real quartz e2e.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
+from diffBloch.observability import EventRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, hexagonal_tilt, optimize_orientation
 from diffBloch.preprocess.orientation import rocking_curve_tilts
@@ -34,6 +39,10 @@ from diffBloch.specs import (
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 # --- hexagonal_tilt (pure) ------------------------------------------------------------------------
@@ -149,6 +158,45 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
 
     # Already optimal: the search must not wander it away from the seed.
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
+
+
+def test_fit_orientation_reads_the_dataset_label_off_the_plan(tmp_path: Path) -> None:
+    """The label comes from the rotations' own pattern.dataset, not from a step argument, so a
+    pooled multi-dataset console log can tell which dataset a "N rotation(s)" announcement belongs
+    to without the app boundary threading a label into the recipe."""
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    labelled = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets"))
+    refinement = _refinement(asu_plan, spec, numbers)
+    path = tmp_path / "report.jsonl"
+
+    optimize_orientation(refinement, NelderMeadSearch(), logger=ReportLogger(path))(
+        Plan(structure_factor_grid=grid, orientations=(labelled,))
+    )
+
+    records = _records(path)
+    (started,) = [e for e in records if e.event_type == "OrientationOptimizationStarted"]
+    assert started.payload["dataset"] == "a.cif_pets"
+    (fitted,) = [e for e in records if e.event_type == "OrientationOptimized"]
+    assert fitted.dataset == "a.cif_pets"
+
+
+def test_fit_orientation_leaves_the_label_empty_for_a_mixed_dataset_plan(tmp_path: Path) -> None:
+    """A pooled plan names no single dataset, so the label is empty rather than an arbitrary pick
+    from whichever rotation happened to be first."""
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
+    a = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets", rotation_index=0))
+    b = replace(matched, pattern=replace(matched.pattern, dataset="b.cif_pets", rotation_index=1))
+    refinement = _refinement(asu_plan, spec, numbers)
+    path = tmp_path / "report.jsonl"
+
+    optimize_orientation(refinement, NelderMeadSearch(), logger=ReportLogger(path))(
+        Plan(structure_factor_grid=grid, orientations=(a, b))
+    )
+
+    (started,) = [e for e in _records(path) if e.event_type == "OrientationOptimizationStarted"]
+    assert started.payload["dataset"] == ""
 
 
 def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() -> None:

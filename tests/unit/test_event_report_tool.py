@@ -190,7 +190,7 @@ def _full_report() -> list[EventRecord]:
             experiment_directory="/tmp/quartz-no-abs",
         ),
         RunStageStarted(stage="preprocess", experiment_directory="/tmp/quartz-no-abs"),
-        PreprocessCompleted(n_rotations=4, total_hkl=100, matched_hkl=80),
+        PreprocessCompleted(n_rotations=4, n_stages=3, total_hkl=100, matched_hkl=80),
         _orientation(0),
         _orientation(1),
         _trace(0),
@@ -204,7 +204,7 @@ def _full_report() -> list[EventRecord]:
             experiment_directory="/tmp/quartz-no-abs",
         ),
         RunStageStarted(stage="infer", experiment_directory="/tmp/quartz-no-abs"),
-        RotationScored(index=0, r_obs=0.05, n_observed=20, n_beams=64),
+        RotationScored(index=0, r_obs=0.05, wr2=0.04, n_matched=20),
         RunStageStopped(
             stage="infer",
             status="completed",

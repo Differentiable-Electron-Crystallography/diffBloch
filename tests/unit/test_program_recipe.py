@@ -11,12 +11,15 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from diffBloch.app.loggers import ReportLogger
 from diffBloch.app.program import (
     _LARGE_CELL_THRESHOLD_A3,
+    PreprocessOutcome,
+    _preprocess,
     _recipe_steps,
     _select_device,
     preprocess_experiment,
@@ -84,11 +87,15 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
     seen: dict[str, object] = {}
     plan = SimpleNamespace()
 
-    def fake_preprocess(
-        *args: object, **kwargs: object
-    ) -> tuple[object, object, object, object, object, object]:
+    def fake_preprocess(*args: object, **kwargs: object) -> PreprocessOutcome:
         seen["device"] = kwargs["device"]
-        return object(), object(), plan, object(), object(), None
+        return PreprocessOutcome(
+            refinement=cast(Any, object()),
+            integrations=(),
+            plan=cast(Any, plan),
+            validation_rotation_indices=frozenset(),
+            plan_lock_sha256s=None,
+        )
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
@@ -113,7 +120,13 @@ def test_run_experiment_declares_infer_stage(
     monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (fake_cfg, object()))
     monkeypatch.setattr(
         "diffBloch.app.program._preprocess",
-        lambda *args, **kwargs: (refinement, object(), plan, frozenset(), (), None),
+        lambda *args, **kwargs: PreprocessOutcome(
+            refinement=cast(Any, refinement),
+            integrations=(),
+            plan=cast(Any, plan),
+            validation_rotation_indices=frozenset(),
+            plan_lock_sha256s=None,
+        ),
     )
     monkeypatch.setattr("diffBloch.app.program.run_inference", lambda *args, **kwargs: result)
 
@@ -279,6 +292,53 @@ def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None
         "optimize_thickness",
         "optimize_orientation",
     ]
+
+
+def test_preprocess_logs_which_dataset_it_is_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The dataset loop must announce each dataset before running its recipe.
+
+    Regression for https://github.com/Differentiable-Electron-Crystallography/diffBloch/issues/147
+    (bug 2): "Preprocess seed" / "Preprocess stage N" console lines carried no dataset reference,
+    so a multi-dataset run's log couldn't be attributed to a dataset except by matching timestamps.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    (tmp_path / "a.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "b.cif_pets").write_bytes((root / cfg.inputs.exp_data).read_bytes())
+    (tmp_path / "q.cif").write_bytes((root / cfg.inputs.structure).read_bytes())
+    cfg = cfg.model_copy(
+        update={
+            "inputs": cfg.inputs.model_copy(
+                update={
+                    "structure": "q.cif",
+                    "exp_data": ["a.cif_pets", "b.cif_pets"],
+                    "multi_dataset": True,
+                }
+            ),
+            "preprocess": cfg.preprocess.model_copy(
+                update={"optimize_orientation": False, "optimize_thickness": False}
+            ),
+        }
+    )
+
+    with caplog.at_level("INFO", logger="diffBloch.app.program"):
+        _preprocess(
+            tmp_path,
+            cfg,
+            logger=NULL_LOGGER,
+            checkpoint=False,
+            refresh=False,
+            device=None,
+            workers=1,
+            max_batch=None,
+        )
+
+    dataset_lines = [r.message for r in caplog.records if "a.cif_pets" in r.message]
+    assert dataset_lines, "expected a log line naming dataset 'a.cif_pets'"
+    dataset_lines = [r.message for r in caplog.records if "b.cif_pets" in r.message]
+    assert dataset_lines, "expected a log line naming dataset 'b.cif_pets'"
 
 
 def test_fit_stages_can_be_enabled_independently() -> None:

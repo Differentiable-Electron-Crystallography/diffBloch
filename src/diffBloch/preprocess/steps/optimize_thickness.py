@@ -42,7 +42,7 @@ from diffBloch.observability import (
 from diffBloch.params import Device
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan, require_built_plans
+from diffBloch.preprocess.plan import Plan, dataset_of, require_built_plans
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import NO_ABSORPTION, Absorption, ThicknessGrid
 
@@ -60,7 +60,6 @@ def optimize_thickness(
     absorption: Absorption = NO_ABSORPTION,
     scores: ScoresFn = wr2_scores,
     residual: str = "wr2",
-    dataset_label: str = "",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step optimizing each rotation's thickness by grid search.
 
@@ -113,9 +112,10 @@ def optimize_thickness(
         )
         candidate_thicknesses = tuple(float(value) for value in candidates.tolist())
         built = require_built_plans(plan)
-        logger.report(
-            ThicknessOptimizationStarted(total_rotations=len(built), dataset=dataset_label)
-        )
+        # The exp_data ref rides on each rotation's own pattern (see optimize_orientation), so this
+        # step takes no dataset argument either.
+        dataset = dataset_of(built)
+        logger.report(ThicknessOptimizationStarted(total_rotations=len(built), dataset=dataset))
         fitted = []
         for op in built:
             orientation, score, thickness, candidate_scores = _fit_one(engine, fgb, op, candidates)
@@ -127,7 +127,7 @@ def optimize_thickness(
                     thickness=thickness,
                     candidate_thicknesses=candidate_thicknesses,
                     candidate_score=candidate_scores,
-                    dataset=dataset_label,
+                    dataset=dataset,
                 )
             )
             fitted.append(orientation)

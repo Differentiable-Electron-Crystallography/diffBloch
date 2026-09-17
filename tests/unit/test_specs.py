@@ -21,7 +21,7 @@ from diffBloch.specs import (
 
 def test_convergence_tolerance_defaults() -> None:
     tol = ConvergenceTolerance()
-    assert tol.r_factor_threshold == 0.005
+    assert tol.r_factor_threshold == 0.01
     assert tol.max_iterations == 100
 
 

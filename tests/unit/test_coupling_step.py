@@ -465,6 +465,10 @@ def test_fit_orientation_emits_progress_events(tmp_path: Path) -> None:
     assert all(e.series["is_seed"][0] == 1.0 for e in traces)
     assert all(e.series["is_final"][-1] == 1.0 for e in traces)
     assert all(len(e.series["score"]) == e.measurements["n_trials"] for e in traces)
+    # seed_score is a real evaluation (not a placeholder), and the search actually moved the
+    # orientation away from the unsearched seed on at least one of its three degrees of freedom.
+    assert all(e.payload["seed_score"] >= 0.0 for e in fits)
+    assert all(any((e.payload["alpha"], e.payload["beta"], e.payload["omega"])) for e in fits)
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:

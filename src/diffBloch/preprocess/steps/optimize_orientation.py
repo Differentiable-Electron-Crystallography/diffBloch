@@ -76,7 +76,12 @@ from diffBloch.preprocess.coupling import build_coupling_segments
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import goniometer_rotation
 from diffBloch.preprocess.pipeline import PlanStep, as_step
-from diffBloch.preprocess.plan import Plan, require_built_plans, unique_hkl_count
+from diffBloch.preprocess.plan import (
+    Plan,
+    dataset_of,
+    require_built_plans,
+    unique_hkl_count,
+)
 from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
 from diffBloch.preprocess.steps.beams import klar_beam_mask
 from diffBloch.specs import (
@@ -104,7 +109,6 @@ def optimize_orientation(
     absorption: Absorption = NO_ABSORPTION,
     scores: ScoresFn = wr2_scores,
     residual: str = "wr2",
-    dataset_label: str = "",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by orientation search.
 
@@ -232,9 +236,12 @@ def optimize_orientation(
             )
 
         built = require_built_plans(plan)
-        logger.report(
-            OrientationOptimizationStarted(total_rotations=len(built), dataset=dataset_label)
-        )
+        # This step runs once per dataset, before a multi-dataset pool renumbers anything, so its
+        # rotation_index is file-local and cannot disambiguate a pooled report on its own. The ref
+        # rides on each rotation's own pattern (stamped at setup_datasets), so it is read off the
+        # plan rather than passed in -- a recipe step takes no dataset argument.
+        dataset = dataset_of(built)
+        logger.report(OrientationOptimizationStarted(total_rotations=len(built), dataset=dataset))
         results_by_index: dict[int, _FitResult] = {}
         cap = search.max_iterations
 
@@ -246,16 +253,16 @@ def optimize_orientation(
                 OrientationOptimized(
                     rotation_index=result.plan.pattern.rotation_index,
                     score=result.score,
+                    seed_score=result.seed_score,
+                    alpha=result.alpha,
+                    beta=result.beta,
+                    omega=result.omega,
                     residual=residual,
                     n_matched_hkl=n_matched,
                     n_trials=result.n_trials,
                     n_passes=result.n_passes,
                     pass_cap=cap,
-                    dataset=dataset_label,
-                    seed_score=result.seed_score,
-                    alpha=result.alpha,
-                    beta=result.beta,
-                    omega=result.omega,
+                    dataset=dataset,
                 )
             )
             logger.report(
@@ -270,7 +277,7 @@ def optimize_orientation(
                     n_matched_hkl=result.trial_n_matched_hkl,
                     is_seed=result.trial_is_seed,
                     is_final=result.trial_is_final,
-                    dataset=dataset_label,
+                    dataset=dataset,
                 )
             )
 
@@ -381,6 +388,11 @@ def _refine_one(
     ``method="Nelder-Mead"`` from a fixed initial simplex of edge length ``search.step_size``
     around ``(alpha, beta, omega) = (0, 0, 0)``, exactly mirroring the reference implementation
     this port is checked against. ``n_passes`` is scipy's reported iteration count (``result.nit``).
+
+    ``seed_score`` is the same metric at the unsearched seed orientation (``alpha = beta = omega =
+    0``), so the report can state what the search actually bought (``seed_score - score``) instead of
+    only the post-search value. It costs no extra solve: the seed leads the simplex, so it is the
+    search's own first scored trial.
     """
     grid = plan.structure_factor_grid
     n_trials = 0

@@ -33,8 +33,9 @@ import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 import gemmi
 import numpy as np
@@ -72,6 +73,7 @@ from diffBloch.engine import (
     build_refinement_problem,
     run_refinement_model,
 )
+from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.io import (
     ExperimentalRecord,
     StructureRecord,
@@ -102,10 +104,10 @@ from diffBloch.preprocess import (
     optimize_orientation,
     optimize_thickness,
     pipeline,
+    plan_is_readable,
     pool,
     read_plan,
     report_coupling,
-    require_built_plans,
     resolve_recipe,
     run_inference,
     select_beams,
@@ -117,6 +119,7 @@ from diffBloch.preprocess import (
 from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.inference import InferenceResult
+from diffBloch.preprocess.plan import unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
@@ -408,14 +411,7 @@ def preprocess_experiment(
     root = Path(experiment_dir)
     device = _select_device(device, logger=logger)
     cfg, _lock = load_experiment(root)
-    (
-        _refinement,
-        _integrations,
-        prepared,
-        _validation_rotation_indices,
-        _dataset_ranges,
-        _plan_lock_sha256s,
-    ) = _preprocess(
+    return _preprocess(
         root,
         cfg,
         logger=logger,
@@ -424,8 +420,7 @@ def preprocess_experiment(
         device=device,
         workers=workers,
         max_batch=max_batch,
-    )
-    return prepared
+    ).plan
 
 
 def run_experiment(
@@ -451,14 +446,7 @@ def run_experiment(
         root = Path(experiment_dir)
         device = _select_device(device, logger=logger)
         cfg, _lock = load_experiment(root)
-        (
-            refinement,
-            _integrations,
-            prepared,
-            _validation_rotation_indices,
-            _dataset_ranges,
-            _plan_lock_sha256s,
-        ) = _preprocess(
+        outcome = _preprocess(
             root,
             cfg,
             logger=logger,
@@ -469,16 +457,13 @@ def run_experiment(
             max_batch=max_batch,
         )
         return run_inference(
-            prepared,
-            refinement,
+            outcome.plan,
+            outcome.refinement,
             method=cfg.blochwave.solver,
             device=device,
             max_batch=max_batch,
             logger=logger,
             absorption=cfg.blochwave.to_absorption(),
-            dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
-                _dataset_ranges, rotation_index
-            ),
         )
 
 
@@ -536,14 +521,7 @@ def refine_experiment(
         root = Path(experiment_dir)
         device = _select_device(device, logger=logger)
         cfg, _lock = load_experiment(root)
-        (
-            refinement,
-            integrations,
-            prepared,
-            validation_rotation_indices,
-            dataset_ranges,
-            plan_lock_sha256s,
-        ) = _preprocess(
+        outcome = _preprocess(
             root,
             cfg,
             logger=logger,
@@ -553,6 +531,9 @@ def refine_experiment(
             workers=workers,
             max_batch=max_batch,
         )
+        refinement, prepared = outcome.refinement, outcome.plan
+        validation_rotation_indices = outcome.validation_rotation_indices
+        plan_lock_sha256s = outcome.plan_lock_sha256s
         # `engine` covers every rotation (train + validation) -- reporting always scores the whole
         # experiment, e.g. the thickness-NN shape table below evaluates the trained curve at
         # validation angles it never saw, which is the point. Only the *training* engine, built
@@ -648,7 +629,6 @@ def refine_experiment(
             engine,
             result,
             validation_rotation_indices=validation_rotation_indices,
-            dataset_ranges=dataset_ranges,
             thickness_nns=thickness_nns,
             raw_alphas=raw_alphas,
         )
@@ -661,7 +641,6 @@ def _report_refinement_outcome(
     result: ModelRefinementResult,
     *,
     validation_rotation_indices: frozenset[int],
-    dataset_ranges: tuple[tuple[str, range], ...],
     thickness_nns: tuple[ApparentThicknessNN, ...],
     raw_alphas: np.ndarray | None,
 ) -> None:
@@ -670,7 +649,9 @@ def _report_refinement_outcome(
     ``run_refinement_model`` only ever sees the *training* engine, so the final per-rotation scores
     (which cover held-out rotations too) and the trained thickness curve have to be emitted here,
     where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`
-    goes last and carries the output artifact manifest for post-run tools.
+    goes last and carries the output artifact manifest for post-run tools. Each row already knows
+    its dataset ref (``RotationMetrics.dataset``, read off the rotation's own ``pattern``), so the
+    per-dataset breakdown costs nothing here.
     """
     for row in engine.per_rotation_metrics(result.best_model):
         logger.report(
@@ -680,7 +661,7 @@ def _report_refinement_outcome(
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,
                 is_validation=row.rotation_index in validation_rotation_indices,
-                dataset=_dataset_for_rotation(dataset_ranges, row.rotation_index),
+                dataset=row.dataset,
             )
         )
     if raw_alphas is not None:
@@ -710,7 +691,12 @@ def _thickness_networks(
     Ranges follow the cumulative pre-ignore rotation counts in ``inputs.exp_data`` order --
     exactly how :func:`~diffBloch.preprocess.pool` numbers the pooled ``rotation_index`` space --
     so the networks partition that space and composition finds exactly one thickness per
-    orientation. Alphas are normalized independently per dataset so overlapping tilt ranges do
+    orientation. This offset arithmetic looks like the dataset attribution a rotation now carries on
+    its own ``pattern.dataset``, but it is a different quantity and cannot be replaced by it:
+    ``ApparentThicknessNN`` indexes ``normalized_alphas`` by ``rotation_index - start`` and requires
+    the range to be exactly the alphas wide, so the range must span the dataset's *pre-ignore* block.
+    Grouping the settled plan by dataset label would yield the narrower observed span and misalign
+    every alpha lookup. Alphas are normalized independently per dataset so overlapping tilt ranges do
     not share one thickness-vs-alpha curve. A single dataset is simply the N=1 case.
     """
     bounds = ThicknessBounds(spec.min_thickness, spec.max_thickness)
@@ -920,6 +906,27 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
+@dataclass(frozen=True)
+class PreprocessOutcome:
+    """Everything :func:`_preprocess` settles, named rather than positional.
+
+    A plain tuple return made every field addition churn all three entry points at once, since each
+    had to restructure its unpacking to keep the underscore-prefixed elements it ignores. Fields:
+    ``refinement`` the structure-side :class:`~diffBloch.preprocess.experiment.RefinementSetup`,
+    ``integrations`` the per-dataset :class:`~diffBloch.specs.IntegrationGeometry` in
+    ``inputs.exp_data`` order, ``plan`` the pooled settled ``Plan``,
+    ``validation_rotation_indices`` the held-out pooled indices (empty when ``train_test`` is off),
+    and ``plan_lock_sha256s`` the locks this run verified or wrote (``None`` when it didn't
+    checkpoint). See :func:`_preprocess` for what each one means in full.
+    """
+
+    refinement: RefinementSetup
+    integrations: tuple[IntegrationGeometry, ...]
+    plan: Plan
+    validation_rotation_indices: frozenset[int]
+    plan_lock_sha256s: tuple[str, ...] | None
+
+
 def _preprocess(
     root: Path,
     cfg: ExperimentConfig,
@@ -930,14 +937,7 @@ def _preprocess(
     device: Device | None,
     workers: int,
     max_batch: int | None,
-) -> tuple[
-    RefinementSetup,
-    tuple[IntegrationGeometry, ...],
-    Plan,
-    frozenset[int],
-    tuple[tuple[str, range], ...],
-    tuple[str, ...] | None,
-]:
+) -> PreprocessOutcome:
     """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
     Runs :func:`~diffBloch.preprocess.setup_datasets` over every ``inputs.exp_data`` file, then --
@@ -953,7 +953,9 @@ def _preprocess(
     stable under ignore edits), and the sha256s of the plan locks this run verified or wrote (in
     ``exp_data`` order) -- ``None`` when the run didn't checkpoint, so ``refinement.lock`` never
     chains to a leftover lock this run never validated. Hydrogen sites are loaded per
-    ``inputs.load_hydrogens``.
+    ``inputs.load_hydrogens``. Dataset attribution is *not* returned alongside: each rotation
+    already carries its own ``pattern.dataset`` from :func:`~diffBloch.preprocess.setup_datasets`,
+    which survives the pooled renumbering.
 
     Progress and diagnostic data are emitted as events; callers attach loggers explicitly for any
     desired persistence.
@@ -977,7 +979,8 @@ def _preprocess(
         structure_lock = input_lock_for(root / cfg.inputs.structure, ref=cfg.inputs.structure)
         prepared_plans: list[Plan] = []
         lock_sha256s: list[str | None] = []
-        for ref, dataset in zip(refs, datasets, strict=True):
+        for i, (ref, dataset) in enumerate(zip(refs, datasets, strict=True)):
+            _log.info("preprocessing dataset %r (%d/%d)", ref, i + 1, len(refs))
             steps = _recipe_steps(
                 cfg,
                 refinement_setup,
@@ -987,7 +990,6 @@ def _preprocess(
                 device=device,
                 workers=workers,
                 max_batch=max_batch,
-                dataset_label=ref,
             )
             prepared, lock_sha256 = _prepare(
                 dataset.plan,
@@ -1014,52 +1016,35 @@ def _preprocess(
             offsets.append(offset)
             offset += dataset.n_rotations
         pooled = pool(prepared_plans, offsets=offsets)
-        dataset_ranges = tuple(
-            (ref, range(dataset_offset, dataset_offset + dataset.n_rotations))
-            for ref, dataset, dataset_offset in zip(refs, datasets, offsets, strict=True)
-        )
         mask = validation_mask(offset, cfg.refinement.split)
         validation_rotation_indices = frozenset(
             op.pattern.rotation_index
             for op in pooled.orientations
             if mask[op.pattern.rotation_index]
         )
-        built_pooled = require_built_plans(pooled)
         plan_lock_sha256s = (
             None
             if any(sha is None for sha in lock_sha256s)
             else tuple(sha for sha in lock_sha256s if sha is not None)
         )
-        report_coupling(
-            logger,
-            dataset_for_rotation=lambda rotation_index: _dataset_for_rotation(
-                dataset_ranges, rotation_index
-            ),
-        )(pooled)
+        report_coupling(logger)(pooled)
+        built = cast(tuple[OrientationPlanLike, ...], pooled.orientations)
         logger.report(
             PreprocessCompleted(
-                n_rotations=len(built_pooled),
-                total_hkl=sum(len(op.pattern.hkl) for op in built_pooled),
-                matched_hkl=sum(len(op.alignment.pattern_index) for op in built_pooled),
+                n_rotations=len(built),
+                n_stages=len(pooled.provenance),
+                total_hkl=unique_hkl_count(op.pattern.hkl for op in built),
+                matched_hkl=unique_hkl_count(op.alignment.hkl for op in built),
+                steps=tuple((record.name, record.params) for record in pooled.provenance),
             )
         )
-        return (
-            refinement_setup,
-            integrations,
-            pooled,
-            validation_rotation_indices,
-            dataset_ranges,
-            plan_lock_sha256s,
+        return PreprocessOutcome(
+            refinement=refinement_setup,
+            integrations=integrations,
+            plan=pooled,
+            validation_rotation_indices=validation_rotation_indices,
+            plan_lock_sha256s=plan_lock_sha256s,
         )
-
-
-def _dataset_for_rotation(
-    dataset_ranges: tuple[tuple[str, range], ...], rotation_index: int
-) -> str:
-    for label, rotation_range in dataset_ranges:
-        if rotation_index in rotation_range:
-            return label
-    return ""
 
 
 def _prune_stale_dataset_checkpoints(reproducibility_dir: Path, refs: tuple[str, ...]) -> None:
@@ -1088,7 +1073,6 @@ def _recipe_steps(
     device: Device | None = None,
     workers: int = 1,
     max_batch: int | None = None,
-    dataset_label: str = "",
 ) -> list[PlanStep]:
     """The default recipe as an inspectable step list (its provenance keys the lock).
 
@@ -1133,7 +1117,6 @@ def _recipe_steps(
             absorption=cfg.blochwave.to_absorption(),
             scores=cfg.loss_metrics.to_scores(),
             residual=cfg.loss_metrics.residual,
-            dataset_label=dataset_label,
         )
 
     def thickness_fit() -> PlanStep:
@@ -1147,7 +1130,6 @@ def _recipe_steps(
             absorption=cfg.blochwave.to_absorption(),
             scores=cfg.loss_metrics.to_scores(),
             residual=cfg.loss_metrics.residual,
-            dataset_label=dataset_label,
         )
 
     steps: list[PlanStep] = []
@@ -1243,7 +1225,7 @@ def _prepare(
         lock = _read_lock_or_none(lock_path)
         status = (
             "stale"
-            if lock is None
+            if lock is None or not plan_is_readable(npz)
             else preprocess_lock_status(
                 lock,
                 structure=structure_lock,

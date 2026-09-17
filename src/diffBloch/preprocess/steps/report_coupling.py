@@ -9,8 +9,6 @@ every step -- the unions, their tilt covers, and their beam counts -- is legible
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan
 from diffBloch.observability import (
     CouplingSummary,
@@ -24,9 +22,7 @@ from diffBloch.preprocess.plan import Plan, coupling_stats, summarize_plan
 __all__ = ["report_coupling"]
 
 
-def report_coupling(
-    logger: Logger, *, dataset_for_rotation: Callable[[int], str] | None = None
-) -> PlanStep:
+def report_coupling(logger: Logger) -> PlanStep:
     """Return an identity ``Plan -> Plan`` step emitting the plan's coupling geometry to ``logger``.
 
     One :class:`~diffBloch.observability.RotationCoupling` per rotation (its unions /
@@ -41,7 +37,7 @@ def report_coupling(
     def run(plan: Plan) -> Plan:
         for index, op in enumerate(plan.orientations):
             rotation_index = int(op.pattern.rotation_index)
-            dataset = "" if dataset_for_rotation is None else dataset_for_rotation(rotation_index)
+            dataset = op.pattern.dataset
             logger.report(
                 RotationCoupling(
                     index=index,

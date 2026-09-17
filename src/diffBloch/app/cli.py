@@ -14,13 +14,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, ReportLogger
+from diffBloch.app.loggers import ConsoleLogger, ReportLogger, print_summary_box
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -28,7 +27,6 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config, write_experiment_lock
-from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
     Logger,
     MultiLogger,
@@ -40,32 +38,9 @@ from diffBloch.observability import (
 _COMMAND_ERRORS = (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError)
 
 
-def _print_summary_box(title: str, rows: tuple[tuple[str, str], ...]) -> None:
-    """Print a consistently aligned 62-column completion summary.
-
-    ``label_width`` must exceed the longest label any caller passes: the format spec pads but does
-    not truncate, so a longer label silently pushes its value past the box border and misaligns that
-    row against every other.
-    """
-    width = 62
-    label_width = 26
-    value_width = width - label_width - 3
-    heading = f" {title} "
-    print(f"╭{heading:─^{width}}╮")
-    for label, value in rows:
-        print(f"│ {label:<{label_width}} {value:<{value_width}} │")
-    print(f"╰{'─' * width}╯")
-
-
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-step / per-rotation observation stream (console logging is on by "
-        "default; the run summary line still prints)",
-    )
     parser.add_argument(
         "--refresh",
         action="store_true",
@@ -160,11 +135,6 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
     )
-    p_converge.add_argument(
-        "--quiet",
-        action="store_true",
-        help="silence the per-trial observation stream (the settled result still prints)",
-    )
     p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
     )
@@ -240,13 +210,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "infer":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
-            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
-                result = run_experiment(
+            with _reported_run(args.experiment_directory) as run:
+                run_experiment(
                     args.experiment_directory,
                     logger=run.logger,
                     checkpoint=not args.no_checkpoint,
@@ -259,17 +228,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.debug:
                 raise
             return _error(exc)
-        print(f"evaluated {result.n_evaluated} rotations; mean R_obs = {result.mean_r_obs:.4f}")
+        # ConsoleLogger printed "INFER COMPLETE" off the run's terminal event.
         print(f"report: {run.report_path}")
         return 0
 
     if args.command == "preprocess":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
-            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+            with _reported_run(args.experiment_directory) as run:
                 plan = preprocess_experiment(
                     args.experiment_directory,
                     logger=run.logger,
@@ -283,20 +251,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.debug:
                 raise
             return _error(exc)
-        print()
-        built = cast(tuple[OrientationPlanLike, ...], plan.orientations)
-        total_hkl = sum(int(op.pattern.hkl.shape[0]) for op in built)
-        matched_hkl = sum(int(op.alignment.hkl.shape[0]) for op in built)
-        _print_summary_box(
-            "PREPROCESS COMPLETE",
-            (
-                ("Rotations", str(len(plan.orientations))),
-                ("Stages", str(len(plan.provenance))),
-                ("Total HKLs", str(total_hkl)),
-                ("Matched HKLs", str(matched_hkl)),
-                ("Solve beams (max/rotation)", str(max(int(op.beam_hkl.shape[0]) for op in built))),
-            ),
-        )
+        # ConsoleLogger printed "PREPROCESS COMPLETE" the moment preprocessing settled -- the same
+        # box a refine/infer run gets, from the same sink.
         print()
         print("Pipeline")
         for index, record in enumerate(plan.provenance, start=1):
@@ -320,13 +276,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "refine":
-        if not args.quiet:
-            logging.basicConfig(
-                level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
-            )
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
         try:
-            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
-                refined = refine_experiment(
+            with _reported_run(args.experiment_directory) as run:
+                refine_experiment(
                     args.experiment_directory,
                     logger=run.logger,
                     checkpoint=not args.no_checkpoint,
@@ -342,30 +297,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.debug:
                 raise
             return _error(exc)
-        best = refined.history[refined.best_step]
-        wr2 = "n/a" if best.wr2 is None else f"{best.wr2:.6g}"
-        r_obs = "n/a" if best.r_obs is None else f"{best.r_obs:.6g}"
-        diff_loss = "n/a" if best.diff_loss is None else f"{best.diff_loss:.6g}"
-        counts = refined.reflection_counts
-        print()
-        _print_summary_box(
-            "REFINEMENT COMPLETE",
-            (
-                ("Best epoch", str(refined.best_step + 1)),
-                ("Objective", f"{refined.best_loss:.6g}"),
-                ("wR2", wr2),
-                ("R_obs", r_obs),
-                ("Diffraction loss", diff_loss),
-                (
-                    "HKLs (Observed/total)",
-                    f"{counts['matched_i_gt_3sigma']} / {counts['matched']}",
-                ),
-            ),
-        )
-        print()
-        print("Output files")
-        for name, path in refined.artifacts.items():
-            print(f"  • {name.replace('_', ' ').title():<20} {path}")
+        # ConsoleLogger printed "REFINEMENT COMPLETE" and the artifact list off the run's terminal
+        # event. The report is the one output this file chose the location of, so it is also the
+        # one line this file still prints.
         print(f"  • {'Report':<20} {run.report_path}")
         return 0
 
@@ -374,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            with _reported_run(args.experiment_directory, console=not args.quiet) as run:
+            with _reported_run(args.experiment_directory) as run:
                 settled = converge_experiment(
                     args.experiment_directory,
                     logger=run.logger,
@@ -385,15 +319,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.debug:
                 raise
             return _error(exc)
-        print("========================================")
-        print("HYPERPARAMETER OPTIMIZATION RESULT")
-        print(f"gmax: {settled.g_max:g}")
-        print(f"sgmax: {settled.sg_max:g}")
-        print(f"tilt_steps: {settled.tilt_steps}")
-        print("========================================")
-        print(
-            f"optimized_hyperparams gmax={settled.g_max:g} "
-            f"sgmax={settled.sg_max:g} tilt_steps={settled.tilt_steps}"
+        print()
+        print_summary_box(
+            "CONVERGENCE COMPLETE",
+            (
+                ("g_max", f"{settled.g_max:g}"),
+                ("sg_max", f"{settled.sg_max:g}"),
+                ("Tilt steps", str(settled.tilt_steps)),
+            ),
         )
         print(f"report: {run.report_path}")
         return 0
@@ -411,7 +344,7 @@ class _ReportedRun:
 
 
 @contextmanager
-def _reported_run(experiment_directory: str | Path, *, console: bool) -> Iterator[_ReportedRun]:
+def _reported_run(experiment_directory: str | Path) -> Iterator[_ReportedRun]:
     """Attach the console and canonical-report sinks for one command.
 
     The report is promoted on the way out whatever happened -- under its declared name on a clean
@@ -426,8 +359,7 @@ def _reported_run(experiment_directory: str | Path, *, console: bool) -> Iterato
         ReportLogger.timestamped_path(root / "reproducibility" / "reports").resolve(),
         completed_only=True,
     )
-    sinks: tuple[Logger, ...] = ((ConsoleLogger(),) if console else ()) + (report,)
-    logger: Logger = sinks[0] if len(sinks) == 1 else MultiLogger(sinks)
+    logger = MultiLogger((ConsoleLogger(), report))
     try:
         with report:
             yield _ReportedRun(logger=logger, report_path=report.path)

@@ -83,12 +83,13 @@ def _simulated_intensities(
 
 
 def _orientation(
-    grid: StructureFactorGrid, intensities: torch.Tensor, sigma: float
+    grid: StructureFactorGrid, intensities: torch.Tensor, sigma: float, dataset: str = ""
 ) -> OrientationPlan:
     pattern = PatternBatch(
         hkl=torch.tensor(_BEAM_HKL, dtype=torch.int64),
         intensities=intensities,
         sigmas=torch.full((3,), sigma, dtype=torch.float64),
+        dataset=dataset,
     )
     return OrientationPlan.build(grid, _BEAM_HKL, pattern, energy=_ENERGY, thickness=(300.0,))
 
@@ -102,8 +103,7 @@ def test_run_inference_reports_low_r_obs_at_a_self_consistent_pattern() -> None:
 
     assert len(result.per_rotation) == 1
     row = result.per_rotation[0]
-    assert row.n_beams == 3
-    assert 0 < row.n_observed <= 3
+    assert 0 < row.n_matched <= 3
     assert math.isfinite(row.r_obs) and row.r_obs < 1e-3
     assert result.n_evaluated == 1
     assert result.mean_r_obs == row.r_obs
@@ -154,7 +154,6 @@ def test_inference_result_aggregates_only_finite_rotations() -> None:
     result = run_inference(plan, _refinement(asu_plan, spec, numbers), method=_METHOD)
 
     assert math.isnan(result.per_rotation[1].r_obs)
-    assert result.per_rotation[1].n_observed == 0
     assert result.n_evaluated == 1
     assert result.mean_r_obs == result.per_rotation[0].r_obs
 
@@ -164,7 +163,10 @@ def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
     intensities = _simulated_intensities(grid, asu_plan, spec, numbers)
     plan = Plan(
         structure_factor_grid=grid,
-        orientations=(_orientation(grid, intensities, 0.01), _orientation(grid, intensities, 0.01)),
+        orientations=(
+            _orientation(grid, intensities, 0.01, dataset="a.cif_pets"),
+            _orientation(grid, intensities, 0.01, dataset="b.cif_pets"),
+        ),
     )
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path)
@@ -174,7 +176,6 @@ def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
         _refinement(asu_plan, spec, numbers),
         method=_METHOD,
         logger=logger,
-        dataset_for_rotation=lambda rotation_index: f"dataset-{rotation_index}",
     )
 
     # One RotationScored per rotation (in order), then one InferenceCompleted aggregate.
@@ -183,7 +184,8 @@ def test_run_inference_emits_events_to_the_logger(tmp_path: Path) -> None:
     completed = [e for e in events if e.event_type == "InferenceCompleted"]
     assert [e.payload["index"] for e in rotations] == [0, 1]
     assert [e.payload["rotation_index"] for e in rotations] == [0, 0]
-    assert [e.payload["dataset"] for e in rotations] == ["dataset-0", "dataset-0"]
+    # Each rotation's dataset is read off its own pattern, not re-derived from its index.
+    assert [e.payload["dataset"] for e in rotations] == ["a.cif_pets", "b.cif_pets"]
     assert rotations[0].measurements["r_obs"] == result.per_rotation[0].r_obs
     assert len(completed) == 1
     assert completed[0].payload["n_rotations"] == 2

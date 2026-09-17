@@ -45,6 +45,7 @@ from diffBloch.observability import (
     PreprocessCompleted,
     RefinementCompleted,
     RefinementOrientationStep,
+    RefinementOutputsWritten,
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
@@ -66,11 +67,16 @@ def _fitted(index: int, score: float, residual: str = "wr2") -> OrientationOptim
     return OrientationOptimized(
         rotation_index=index,
         score=score,
+        seed_score=score + 0.1,
+        alpha=0.05,
+        beta=-0.02,
+        omega=0.01,
         residual=residual,
         n_matched_hkl=42,
         n_trials=10,
         n_passes=3,
         pass_cap=2000,
+        dataset="q.cif_pets",
     )
 
 
@@ -96,18 +102,19 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert stage_stopped.step is None
     assert stage_stopped.measurements == {"elapsed_seconds": 1.25, "failed": 0.0}
 
-    rotation = RotationScored(index=3, r_obs=0.42, n_observed=12, n_beams=20)
+    rotation = RotationScored(index=3, r_obs=0.42, wr2=0.38, n_matched=12)
     assert rotation.channel == "rotation"
     assert rotation.step == 3  # a rotation's step is its index
-    assert rotation.measurements == {"r_obs": 0.42, "n_observed": 12.0, "n_beams": 20.0}
+    assert rotation.measurements == {"r_obs": 0.42, "wr2": 0.38, "n_matched": 12.0}
 
-    completed = InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.065)
+    completed = InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.065, mean_wr2=0.05)
     assert completed.channel == "inference"
     assert completed.step is None  # a run-level aggregate has no per-rotation position
     assert completed.measurements == {
         "n_rotations": 99.0,
         "n_evaluated": 97.0,
         "mean_r_obs": 0.065,
+        "mean_wr2": 0.05,
     }
 
     thickness = ThicknessOptimized(
@@ -193,11 +200,14 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
     assert orientation_started.measurements == {"total_rotations": 52.0}
     assert orientation_started.channel != _fitted(index=0, score=0.0).channel
 
-    preprocess_completed = PreprocessCompleted(n_rotations=52, total_hkl=1200, matched_hkl=800)
+    preprocess_completed = PreprocessCompleted(
+        n_rotations=52, n_stages=3, total_hkl=1200, matched_hkl=800
+    )
     assert preprocess_completed.channel == "preprocess"
     assert preprocess_completed.step is None
     assert preprocess_completed.measurements == {
         "n_rotations": 52.0,
+        "n_stages": 3.0,
         "total_hkl": 1200.0,
         "matched_hkl": 800.0,
     }
@@ -308,14 +318,14 @@ def test_events_expose_a_uniform_channel_and_measurements_surface() -> None:
 
 
 def test_events_and_loggers_satisfy_the_protocols_structurally(tmp_path: Path) -> None:
-    assert isinstance(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2), Event)
+    assert isinstance(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=1), Event)
     assert isinstance(NullLogger(), Logger)
     assert isinstance(ReportLogger(tmp_path / "report.jsonl"), Logger)
 
 
 def test_null_logger_discards_events() -> None:
     logger = NullLogger()
-    assert logger.report(RotationScored(index=0, r_obs=0.1, n_observed=1, n_beams=2)) is None
+    assert logger.report(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=1)) is None
 
 
 def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> None:
@@ -323,7 +333,7 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
     b_path = tmp_path / "b.jsonl"
     a, b = ReportLogger(a_path), ReportLogger(b_path)
     fanout = MultiLogger(loggers=(a, b))
-    event = RotationScored(index=1, r_obs=0.2, n_observed=3, n_beams=5)
+    event = RotationScored(index=1, r_obs=0.2, wr2=0.2, n_matched=3)
 
     fanout.report(event)
 
@@ -331,8 +341,8 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
         {
             "index": 1,
             "r_obs": 0.2,
-            "n_observed": 3,
-            "n_beams": 5,
+            "wr2": 0.2,
+            "n_matched": 3,
             "dataset": "",
             "rotation_index": None,
         }
@@ -341,8 +351,8 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
         {
             "index": 1,
             "r_obs": 0.2,
-            "n_observed": 3,
-            "n_beams": 5,
+            "wr2": 0.2,
+            "n_matched": 3,
             "dataset": "",
             "rotation_index": None,
         }
@@ -354,13 +364,27 @@ def test_console_logger_logs_channel_step_and_measurements(
 ) -> None:
     logger = ConsoleLogger(level=logging.INFO)
     with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
-        logger.report(RotationScored(index=47, r_obs=0.5, n_observed=4, n_beams=7))
-        logger.report(InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.06))
+        logger.report(RotationScored(index=47, r_obs=0.5, wr2=0.5, n_matched=4))
 
-    rotation_msg, inference_msg = (r.getMessage() for r in caplog.records)
+    [rotation_msg] = (r.getMessage() for r in caplog.records)
     assert "rotation[47]" in rotation_msg  # the step pins the line to a rotation
     assert "r_obs=0.5" in rotation_msg
-    assert inference_msg.startswith("inference ")  # aggregate has no step bracket
+
+
+def test_console_logger_prints_the_infer_box_on_inference_completed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    logger = ConsoleLogger()
+    logger.report(
+        InferenceCompleted(n_rotations=99, n_evaluated=97, mean_r_obs=0.06, mean_wr2=0.05)
+    )
+
+    out = capsys.readouterr().out
+    assert "INFER COMPLETE" in out
+    assert re.search(r"Rotations\s+99", out)
+    assert re.search(r"Evaluated\s+97", out)
+    assert re.search(r"Mean R_obs\s+0\.06", out)
+    assert re.search(r"Mean wR2\s+0\.05", out)
 
 
 def test_console_logger_formats_device_selection(caplog: pytest.LogCaptureFixture) -> None:
@@ -417,6 +441,40 @@ def test_console_logger_formats_refinement_epoch_metrics(
     assert caplog.records[-1].getMessage() == (
         "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a"
     )
+
+
+def test_console_logger_prints_validation_metrics_when_a_selection_engine_ran(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            RefinementStep(
+                iteration=7,
+                loss=4.95,
+                wr2=0.05,
+                val_wr2=0.09,
+                val_r_obs=0.07,
+                val_n_rotations=10,
+                val_n_wr2_evaluated=9,
+                val_n_r_obs_evaluated=8,
+            )
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Refinement epoch   8 │ wR2 0.050000 │ R_obs n/a │ diffraction loss n/a" in messages
+    assert "  validation      │ wR2 0.090000 [9/10] │ R_obs 0.070000 [8/10]" in messages
+
+
+def test_console_logger_omits_validation_line_without_a_selection_engine(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No val_wr2 on the event -> no validation line, not one printed with placeholder values."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.1))
+
+    assert not any("validation" in record.getMessage() for record in caplog.records)
 
 
 def test_objective_manifest_declares_composition_including_the_empty_case() -> None:
@@ -501,11 +559,12 @@ def test_console_logger_prints_the_epoch_mean_denominators(
             )
         )
 
-    assert caplog.records[-1].getMessage() == (
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages[-2:] == [
         "Refinement epoch   1 │ wR2 0.050000 [97/99] │ R_obs 0.070000 [95/99] │ "
-        "val wR2 0.080000 [7/8] │ val R_obs 0.090000 [6/8] │ "
-        "diffraction loss n/a"
-    )
+        "diffraction loss n/a",
+        "  validation      │ wR2 0.080000 [7/8] │ R_obs 0.090000 [6/8]",
+    ]
 
 
 def test_mean_over_renders_a_non_finite_mean_as_na_with_its_denominator() -> None:
@@ -606,7 +665,7 @@ def test_console_logger_labels_orientation_refinement_index(
     assert (
         caplog.records[-1]
         .getMessage()
-        .startswith("orientation optimization[rotation_index=10] wr2=0.025 n_matched_hkl=42")
+        .startswith("orientation optimization[rotation_index=10] wr2=0.025")
     )
 
 
@@ -660,6 +719,37 @@ def test_console_logger_renders_a_refinement_progress_bar_on_a_tty(
     assert out.count("\r") == 2  # one write per RefinementStep, no per-event logging fallback
     assert out.endswith("\n")  # the completed (current >= total) bar ends the line
     assert "eta" not in out.rsplit("\r", 1)[-1]  # the final (4/4, complete) line has none
+
+
+def test_console_logger_still_prints_the_refinement_box_after_a_tty_progress_bar(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The tty progress-bar branch must record epochs too, not only the non-tty fallback.
+
+    Regression: RefinementStep events on a real terminal took the live-progress-bar branch and
+    returned before ``_epochs`` was populated, so the REFINEMENT COMPLETE box's lookup of the
+    selected epoch's numbers (``self._epochs.get(completed.best_step)``) silently found nothing and
+    the whole box vanished -- on every real terminal run, working only when stdout was piped.
+    """
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    logger = ConsoleLogger(level=logging.INFO)
+
+    logger.report(RefinementStarted(total_steps=2))
+    logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.05, r_obs=0.06))
+    logger.report(RefinementStep(iteration=1, loss=0.5, wr2=0.03, r_obs=0.04))
+    logger.report(
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.5,
+            reflection_counts={"matched": 10, "matched_i_gt_3sigma": 7},
+        )
+    )
+    logger.report(RefinementOutputsWritten(structure="/out/refined_structure.cif", artifacts={}))
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" in out
+    assert re.search(r"wR2\s+0\.03", out)
 
 
 def test_console_logger_renders_an_orientation_progress_bar_on_a_tty(
@@ -753,6 +843,39 @@ def test_console_logger_renders_a_thickness_progress_bar_on_a_tty(
     assert out.endswith("\n")
 
 
+def test_console_logger_names_the_dataset_on_orientation_and_thickness_started(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression for #140-adjacent multi-dataset log readability: previously these two lines
+    carried only a rotation count, with no way to tell which dataset a pooled run's announcement
+    belonged to."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(
+            OrientationOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets")
+        )
+        logger.report(ThicknessOptimizationStarted(total_rotations=32, dataset="174_dyn.cif_pets"))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+    assert "Thickness optimization │ 174_dyn.cif_pets │ 32 rotation(s)" in messages
+
+
+def test_console_logger_omits_the_dataset_segment_when_unlabeled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A direct API caller outside the multi-dataset preprocess loop passes no dataset_label -- the
+    line must fall back to its original plain form, not print an empty "│  │" segment."""
+    logger = ConsoleLogger(level=logging.INFO)
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        logger.report(OrientationOptimizationStarted(total_rotations=52))
+        logger.report(ThicknessOptimizationStarted(total_rotations=52))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Orientation optimization │ 52 rotation(s)" in messages
+    assert "Thickness optimization │ 52 rotation(s)" in messages
+
+
 def test_console_logger_falls_back_to_plain_lines_off_a_tty(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -809,7 +932,7 @@ def test_event_record_is_one_maximal_schema_for_structured_events() -> None:
 def test_report_logger_writes_versioned_jsonl_payloads(tmp_path: Path) -> None:
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, run_id="fixed")
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
     logger.report(
         ThicknessOptimized(
             rotation_index=1,
@@ -832,7 +955,7 @@ def test_report_logger_can_defer_the_declared_artifact_until_finalize(tmp_path: 
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, run_id="fixed", completed_only=True)
 
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
 
     assert not path.exists()
     logger.finalize()
@@ -845,7 +968,7 @@ def test_deferred_report_logger_promotes_a_failed_run_under_the_failed_name(
     """A failed run keeps its report, beside the successful name rather than under it."""
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, completed_only=True)
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
 
     landed = logger.finalize(failed=True)
 
@@ -860,7 +983,7 @@ def test_report_logger_as_a_context_manager_promotes_on_the_way_out(tmp_path: Pa
     logger = ReportLogger(path=path, completed_only=True)
 
     with pytest.raises(KeyboardInterrupt), logger:
-        logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+        logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
         raise KeyboardInterrupt
 
     assert not path.exists()
@@ -872,7 +995,7 @@ def test_report_logger_finalize_is_idempotent(tmp_path: Path) -> None:
     """A ``finally`` block and an explicit call must not fight over the artifact."""
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, completed_only=True)
-    logger.report(RotationScored(index=0, r_obs=0.5, n_observed=4, n_beams=7))
+    logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
 
     assert logger.finalize() == path
     assert logger.finalize(failed=True) == path  # the first call settled where it landed
@@ -894,11 +1017,9 @@ def test_wandb_logger_maps_measurements_to_a_namespaced_payload(
     fake_wandb.log = lambda payload, step=None: logged.append((payload, step))  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
 
-    WandbLogger().report(RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7))
+    WandbLogger().report(RotationScored(index=5, r_obs=0.5, wr2=0.5, n_matched=4))
 
-    assert logged == [
-        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
-    ]
+    assert logged == [({"rotation/r_obs": 0.5, "rotation/wr2": 0.5, "rotation/n_matched": 4.0}, 5)]
 
 
 def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
@@ -909,12 +1030,10 @@ def test_comet_logger_forwards_namespaced_metrics_to_the_experiment() -> None:
             logged.append((metrics, step))
 
     CometLogger(experiment=_FakeExperiment()).report(
-        RotationScored(index=5, r_obs=0.5, n_observed=4, n_beams=7)
+        RotationScored(index=5, r_obs=0.5, wr2=0.5, n_matched=4)
     )
 
-    assert logged == [
-        ({"rotation/r_obs": 0.5, "rotation/n_observed": 4.0, "rotation/n_beams": 7.0}, 5)
-    ]
+    assert logged == [({"rotation/r_obs": 0.5, "rotation/wr2": 0.5, "rotation/n_matched": 4.0}, 5)]
 
 
 def test_console_logger_marks_the_trial_that_cleared_the_threshold(
@@ -957,3 +1076,106 @@ def test_console_logger_omits_the_marker_without_a_pass_header() -> None:
     """No announced threshold means no claim about settling, rather than a guess."""
     logger = ConsoleLogger(level=logging.INFO)
     assert logger._r_factor_threshold is None
+
+
+# --- ConsoleLogger completion boxes ------------------------------------------------------------
+
+
+def _preprocess_completed(**overrides: int) -> PreprocessCompleted:
+    fields = {
+        "n_rotations": 2,
+        "n_stages": 3,
+        "total_hkl": 100,
+        "matched_hkl": 80,
+    }
+    return PreprocessCompleted(**{**fields, **overrides})
+
+
+def test_console_logger_prints_the_preprocess_box_on_preprocess_completed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The box prints from the event stream alone -- the same way whether the caller is
+    preprocess_experiment, run_experiment, or refine_experiment, since all three funnel through
+    the shared _preprocess spine that emits PreprocessCompleted."""
+    logger = ConsoleLogger()
+    logger.report(_fitted(index=0, score=0.4, residual="wr2"))
+    logger.report(_fitted(index=1, score=0.2, residual="wr2"))
+    logger.report(_preprocess_completed())
+
+    out = capsys.readouterr().out
+    assert "PREPROCESS COMPLETE" in out
+    assert re.search(r"Rotations\s+2", out)
+    assert re.search(r"Stages\s+3", out)
+    assert re.search(r"Total HKLs\s+100", out)
+    assert re.search(r"Matched HKLs\s+80", out)
+    assert re.search(r"Mean wR2\s+0\.3", out)  # mean of 0.4 and 0.2
+
+
+def test_console_logger_preprocess_box_states_checkpoint_reuse_with_no_orientation_events(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A reused checkpoint runs no orientation search -- the box must say so, not claim a mean."""
+    logger = ConsoleLogger()
+    logger.report(_preprocess_completed(n_rotations=5, total_hkl=50, matched_hkl=40))
+
+    out = capsys.readouterr().out
+    assert re.search(r"Mean score\s+n/a \(checkpoint reused\)", out)
+
+
+def test_console_logger_preprocess_box_resets_between_completions() -> None:
+    """A logger instance reused across two settle events must not leak the first run's scores into
+    the second's mean."""
+    logger = ConsoleLogger()
+    logger.report(_fitted(index=0, score=0.9, residual="wr2"))
+    logger.report(_preprocess_completed())
+    logger.report(_preprocess_completed())
+
+    assert logger._orientation_scores == []
+    assert logger._orientation_residual is None
+
+
+def test_console_logger_prints_the_refinement_box_on_outputs_written(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The box reports the *selected* epoch's numbers, so it needs both the step stream (for the
+    per-epoch values) and RefinementCompleted (for which epoch was selected); it prints on
+    RefinementOutputsWritten because it also lists files that must exist by then."""
+    logger = ConsoleLogger()
+    logger.report(RefinementStep(iteration=0, loss=1.0, wr2=0.5, r_obs=0.4, diff_loss=0.3))
+    logger.report(RefinementStep(iteration=1, loss=0.5, wr2=0.2, r_obs=0.1, diff_loss=0.05))
+    logger.report(
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.5,
+            reflection_counts={"matched": 90, "matched_i_gt_3sigma": 60},
+        )
+    )
+    logger.report(
+        RefinementOutputsWritten(
+            structure="/out/refined_structure.cif",
+            artifacts={"refined_structure": "/out/refined_structure.cif"},
+        )
+    )
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" in out
+    assert re.search(r"Best epoch\s+2", out)  # 1-based, from best_step=1
+    assert re.search(r"wR2\s+0\.2", out)  # epoch 2's value, not epoch 1's
+    assert re.search(r"Matched HKLs \(I>3σ/total\)\s+60 / 90", out)
+    assert "Refined Structure" in out and "/out/refined_structure.cif" in out
+
+
+def test_console_logger_lists_outputs_even_without_a_refinement_summary(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """RefinementOutputsWritten is emitted by paths that never ran a refinement loop, so the file
+    list must not depend on a RefinementCompleted that never arrives."""
+    logger = ConsoleLogger()
+    logger.report(
+        RefinementOutputsWritten(structure="/out/s.cif", artifacts={"structure": "/out/s.cif"})
+    )
+
+    out = capsys.readouterr().out
+    assert "REFINEMENT COMPLETE" not in out
+    assert "Output files" in out
