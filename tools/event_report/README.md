@@ -57,8 +57,10 @@ REPORT=$(ls -t "$EXPERIMENT"/reproducibility/reports/report-*.jsonl | head -n 1)
 ```
 
 The report path is also printed in the command's output. The `REPORT=$(...)` line just captures the
-newest timestamped report for the commands below. The same pattern works for
-preprocess/infer/converge:
+newest timestamped report for the commands below. `--refresh` matters for what the report can show:
+without it a valid checkpoint is reused, no orientation or thickness search runs, and the report
+carries no events for those figures — the preprocess sections are simply absent. The same pattern
+works for preprocess/infer/converge:
 
 ```bash
 uv run diffbloch infer "$EXPERIMENT"
@@ -68,15 +70,49 @@ REPORT=$(ls -t "$EXPERIMENT"/reproducibility/reports/report-*.jsonl | head -n 1)
 A command that *fails* still leaves its report, under `report-<stamp>-failed.jsonl` — the stage
 events in it are how you see where the run stopped.
 
-Open the notebook with that JSONL preselected:
+## The notebook
+
+`event_report.ipynb` has three cells: setup, render, export. It takes one input, the path of the
+report to render, and does nothing else.
+
+**Choosing the report.** The setup cell sets `REPORT`, in this order of precedence:
+
+1. edit the `REPORT = ...` line to any path (absolute, or relative to the working directory or the
+   checkout root — both are tried);
+2. otherwise the `DIFFBLOCH_EVENT_LOG` environment variable, if set when Jupyter was launched;
+3. otherwise the newest `report-*.jsonl` under `./reproducibility/` or any bundled example.
+
+The cell prints the path it settled on. To look at a different report, change `REPORT` and re-run
+the render cell.
 
 ```bash
 DIFFBLOCH_EVENT_LOG="$REPORT" \
   uv run jupyter lab tools/event_report/event_report.ipynb
 ```
 
-Inside the notebook, `REPORT` in the setup cell is the path being rendered; edit it and re-run
-the render cell to look at another report.
+**Rendering.** The render cell reads the report, prints how many records, tables and figures it
+found, then shows the summary tables followed by the figures under one heading per stage, in the
+order the run produced them. A report from a run that never entered a stage (an `infer` run, a
+checkpoint-reuse `refine`) has fewer sections, not empty ones. A report written by an older
+checkout whose events no longer fit the current ones stops here with a `ReportSchemaError` naming
+the record and field — see *The contract* above.
+
+**Exporting.** The export cell is opt-in: set `EXPORT_FIGURES = True` and re-run it to write every
+figure to `EXPORT_DIR` (default `event_report_figures/` beside the notebook) in each of
+`EXPORT_FORMATS` (default SVG, which stays vector; add `"png"` for a raster copy at 300 dpi). The
+file names are the figure names in the table below. This is the only place the tool writes images.
+
+**Headless.** The notebook needs no interaction, so it also runs unattended — a SLURM post-step, or
+a quick check that a report renders:
+
+```bash
+DIFFBLOCH_EVENT_LOG="$REPORT" MPLBACKEND=Agg \
+  uv run jupyter nbconvert --to html --execute tools/event_report/event_report.ipynb \
+  --output-dir "$EXPERIMENT/reproducibility/reports"
+```
+
+That leaves a self-contained `event_report.html` beside the report. Executed notebooks and their
+outputs are not committed.
 
 ## Tables
 
