@@ -636,7 +636,12 @@ class ConsoleLogger:
         print()
         print("Output files")
         for name, path in event.artifacts.items():
-            print(f"  • {name.replace('_', ' ').title():<20} {path}")
+            # The event carries paths relative to the experiment directory (portable report);
+            # the terminal wants something it can open, so rejoin them. Joining an absolute path
+            # onto the directory leaves it absolute, so a bare path still prints as-is.
+            print(
+                f"  • {name.replace('_', ' ').title():<20} {Path(event.experiment_directory, path)}"
+            )
         self._epochs = {}
         self._completed = None
 

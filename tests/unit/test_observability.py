@@ -1153,8 +1153,9 @@ def test_console_logger_prints_the_refinement_box_on_outputs_written(
     )
     logger.report(
         RefinementOutputsWritten(
-            structure="/out/refined_structure.cif",
-            artifacts={"refined_structure": "/out/refined_structure.cif"},
+            structure="refined_structure.cif",
+            artifacts={"refined_structure": "refined_structure.cif"},
+            experiment_directory="/out",
         )
     )
 
@@ -1163,6 +1164,7 @@ def test_console_logger_prints_the_refinement_box_on_outputs_written(
     assert re.search(r"Best epoch\s+2", out)  # 1-based, from best_step=1
     assert re.search(r"wR2\s+0\.2", out)  # epoch 2's value, not epoch 1's
     assert re.search(r"Matched HKLs \(I>3σ/total\)\s+60 / 90", out)
+    # The event's paths are relative (a portable report); the terminal shows them rejoined.
     assert "Refined Structure" in out and "/out/refined_structure.cif" in out
 
 

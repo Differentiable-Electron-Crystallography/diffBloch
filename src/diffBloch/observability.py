@@ -1043,12 +1043,18 @@ class RefinementOutputsWritten:
     readers and notebook visualizers can use it as the artifact manifest without the refinement
     runner needing a separate summary-writing side effect.
 
-    ``structure`` is the path to the written ``refined_structure.cif``.
+    ``structure`` is the path to the written ``refined_structure.cif`` and ``artifacts`` maps each
+    output's name to its path. Both are *relative to* ``experiment_directory`` (itself absolute, as
+    on :class:`RunStageStarted`), so a report copied off the machine that wrote it still names its
+    files: joining the two recovers the absolute path, and a reader that only has the report can
+    still see what was produced where. A path outside the experiment directory cannot be
+    relativized and is carried absolute.
     """
 
     channel: ClassVar[str] = "outputs"
     structure: str
     artifacts: Mapping[str, str] = field(default_factory=dict)
+    experiment_directory: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "artifacts", MappingProxyType(dict(self.artifacts)))

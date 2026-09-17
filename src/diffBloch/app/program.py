@@ -628,6 +628,7 @@ def refine_experiment(
             logger,
             engine,
             result,
+            root=root,
             validation_rotation_indices=validation_rotation_indices,
             thickness_nns=thickness_nns,
             raw_alphas=raw_alphas,
@@ -640,6 +641,7 @@ def _report_refinement_outcome(
     engine: RefinementEngine,
     result: ModelRefinementResult,
     *,
+    root: Path,
     validation_rotation_indices: frozenset[int],
     thickness_nns: tuple[ApparentThicknessNN, ...],
     raw_alphas: np.ndarray | None,
@@ -649,7 +651,9 @@ def _report_refinement_outcome(
     ``run_refinement_model`` only ever sees the *training* engine, so the final per-rotation scores
     (which cover held-out rotations too) and the trained thickness curve have to be emitted here,
     where the reporting engine and the split are both in scope. :class:`RefinementOutputsWritten`
-    goes last and carries the output artifact manifest for post-run tools. Each row already knows
+    goes last and carries the output artifact manifest for post-run tools -- with each path made
+    relative to ``root``, so the report stays meaningful once copied elsewhere (``result.artifacts``
+    itself keeps the absolute paths an API caller wants to open directly). Each row already knows
     its dataset ref (``RotationMetrics.dataset``, read off the rotation's own ``pattern``), so the
     per-dataset breakdown costs nothing here.
     """
@@ -676,7 +680,9 @@ def _report_refinement_outcome(
             )
     logger.report(
         RefinementOutputsWritten(
-            structure=result.artifacts["refined_structure"], artifacts=result.artifacts
+            structure=_relative_to(result.artifacts["refined_structure"], root),
+            artifacts={name: _relative_to(path, root) for name, path in result.artifacts.items()},
+            experiment_directory=str(root.resolve()),
         )
     )
 
@@ -730,6 +736,14 @@ def _normalized_pets_alphas(alphas: np.ndarray) -> tuple[float, ...]:
         return tuple(-1.0 for _ in values)
     normalized = -1.0 + 2.0 * (values - minimum) / span
     return tuple(float(value) for value in normalized)
+
+
+def _relative_to(path: str, root: Path) -> str:
+    """``path`` relative to ``root`` when it lies inside it; unchanged (absolute) otherwise."""
+    try:
+        return str(Path(path).resolve().relative_to(root.resolve()))
+    except ValueError:
+        return path
 
 
 def _write_refinement_outputs(
