@@ -209,6 +209,12 @@ belongs here, never in the core library or the runtime loggers.
   have. [Crameri's scientific colour maps](https://www.fabiocrameri.ch/colourmaps/) are the other
   defensible family if these figures ever go into a manuscript that cites them.
 
+Rotation axes name **every** rotation by its exact index — never a thinned subset or
+matplotlib's round numbers — because the index on the axis is what you look a frame up by. A
+single-dataset report reads as bare frame numbers (`0, 1, 2, …`); several datasets get a
+`dataset:index` prefix. The figure grows with the run (0.16 in per rotation) so the labels fit:
+at 99 rotations a per-rotation plot is about 18 in wide, and a rotation heatmap about 18 in tall.
+
 Chrome is recessive: solid hairline gridlines, muted axis ink, thin marks, no top/right spines.
 Dashes mean *threshold* and nothing else. Type stays at or above 7pt — the figure-text floor Nature
 and Science set — and `savefig.dpi` is 300, so an exported panel is legible at print scale. SVG

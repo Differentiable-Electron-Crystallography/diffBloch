@@ -983,3 +983,48 @@ def test_rotation_cost_reads_wall_time_off_the_envelope_timestamps() -> None:
     assert [patch.get_height() for patch in bars.patches] == [5.0, 7.0]
     assert scatter.get_xlabel() == "union beams in the solve"
     assert plot_rotation_cost(_records(_coupling(0))) is None
+
+
+def test_rotation_axes_name_every_rotation_by_its_exact_index() -> None:
+    """No thinning to round numbers: a reader looks a rotation up by the index on the axis.
+
+    One dataset reads as bare frame numbers; several get the dataset prefix. The figure widens
+    with the run so every label fits.
+    """
+    indices = [3, 7, 8, 12, 40, 41] + list(range(50, 80))  # 36 rotations, gaps included
+    single = plot_orientation_optimization(_records(*(_orientation(i) for i in indices)))
+
+    assert single is not None
+    labels = [t.get_text() for t in single.axes[1].get_xticklabels()]
+    assert labels == [str(i) for i in indices]
+    assert (
+        single.get_size_inches()[0]
+        < plot_orientation_optimization(
+            _records(*(_orientation(i) for i in range(120)))
+        ).get_size_inches()[0]
+    )
+
+    pooled = plot_orientation_optimization(
+        _records(_orientation(0, "a.cif_pets"), _orientation(0, "b.cif_pets"))
+    )
+    assert pooled is not None
+    assert [t.get_text() for t in pooled.axes[1].get_xticklabels()] == [
+        "a.cif_pets:0",
+        "b.cif_pets:0",
+    ]
+
+
+def test_refined_rotation_scores_tick_each_rotation_index_that_exists() -> None:
+    report = _records(*(_refined(i, "a.cif_pets", validation=False) for i in (0, 1, 2, 5, 9, 33)))
+
+    figure = plot_refined_rotation_scores(report)
+
+    assert figure is not None
+    assert [t.get_text() for t in figure.axes[1].get_xticklabels()] == [
+        "0",
+        "1",
+        "2",
+        "5",
+        "9",
+        "33",
+    ]

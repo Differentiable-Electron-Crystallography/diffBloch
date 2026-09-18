@@ -75,15 +75,38 @@ __all__ = [
 
 
 def _rotation_labels(events: Sequence[Positioned]) -> list[str]:
+    """One label per rotation: its exact index, prefixed by the dataset only when there are several.
+
+    A single-dataset report (the common case) reads ``0, 1, 2, ...`` -- the PETS frame numbers
+    themselves -- rather than repeating one file name a hundred times.
+    """
+    datasets = {event.dataset or "" for event in events}
+    if len(datasets) <= 1:
+        return [str(event.rotation_index) for event in events]
     return [f"{event.dataset or ''}:{event.rotation_index}" for event in events]
 
 
-def _thin_ticks(ax: Axes, labels: Sequence[str], *, keep: int = 12) -> None:
-    """Label at most ``keep`` x ticks -- a hundred rotations of text is unreadable overlap."""
-    stride = max(1, len(labels) // keep)
-    positions = list(range(len(labels)))[::stride]
-    ax.set_xticks(positions)
-    ax.set_xticklabels(labels[::stride], rotation=45, ha="right")
+def _rotation_axis_title(events: Sequence[Positioned]) -> str:
+    """The axis title matching :func:`_rotation_labels`: plain ``rotation`` for one dataset."""
+    return "rotation" if len({event.dataset or "" for event in events}) <= 1 else "dataset:rotation"
+
+
+# Inches per rotation label: a 7pt label turned on its side needs about this much room, so a
+# rotation axis can name *every* rotation. The figure grows with the run instead of the labels
+# being thinned to round numbers nobody can look up.
+_INCHES_PER_ROTATION = 0.16
+
+
+def _rotation_extent(n_rotations: int, *, minimum: float) -> float:
+    """The figure width (or height) that fits one label per rotation."""
+    return max(minimum, _INCHES_PER_ROTATION * n_rotations + 2.0)
+
+
+def _label_every_rotation(ax: Axes, labels: Sequence[str]) -> None:
+    """Tick and name every rotation on the x axis -- exact indices, never a thinned subset."""
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=90, ha="center", fontsize=7)
+    ax.set_xlim(-0.75, len(labels) - 0.25)
 
 
 # Panel order for the convergence sweep; anything else follows, alphabetically.
@@ -209,7 +232,9 @@ def plot_orientation_optimization(records: Sequence[EventRecord]) -> Figure | No
     if not fits:
         return None
     x = range(len(fits))
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=(_rotation_extent(len(fits), minimum=10.0), 7), sharex=True
+    )
     axes[0].plot(x, [fit.seed_score for fit in fits], marker="o", linewidth=1, label="before")
     axes[0].plot(x, [fit.score for fit in fits], marker="o", linewidth=1, label="after")
     axes[0].set_ylabel("score")
@@ -226,7 +251,7 @@ def plot_orientation_optimization(records: Sequence[EventRecord]) -> Figure | No
     axes[1].set_ylabel("delta angle (deg)")
     axes[1].grid(True, alpha=0.25)
     axes[1].legend()
-    _thin_ticks(axes[1], _rotation_labels(fits))
+    _label_every_rotation(axes[1], _rotation_labels(fits))
     fig.tight_layout()
     return fig
 
@@ -305,7 +330,9 @@ def plot_refined_rotation_scores(records: Sequence[EventRecord]) -> Figure | Non
     metrics = events_of(records, RefinedRotationMetrics)
     if not metrics:
         return None
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=(_rotation_extent(len(metrics), minimum=10.0), 6.5), sharex=True
+    )
     for dataset, group in sorted(by_dataset(metrics).items()):
         ordered = sorted(group, key=lambda row: row.rotation_index)
         x = [row.rotation_index for row in ordered]
@@ -331,6 +358,11 @@ def plot_refined_rotation_scores(records: Sequence[EventRecord]) -> Figure | Non
             ax.grid(True, alpha=0.25)
     axes[0].set_title("Final refined per-rotation scores")
     axes[1].set_xlabel("rotation")
+    # The x axis is the rotation index itself here, so tick each one that exists rather than
+    # matplotlib's round numbers.
+    indices = sorted({row.rotation_index for row in metrics})
+    axes[1].set_xticks(indices)
+    axes[1].set_xticklabels([str(index) for index in indices], rotation=90, fontsize=7)
     axes[0].legend(fontsize="small", ncols=2)
     fig.tight_layout()
     return fig
@@ -398,7 +430,7 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
             panels.append((dataset, grid, rows))
     if not panels:
         return None
-    heights = [max(3.0, min(10.0, 0.12 * len(rows) + 2.0)) for _, _, rows in panels]
+    heights = [_rotation_extent(len(rows), minimum=3.0) for _, _, rows in panels]
     fig, axes = plt.subplots(
         len(panels), 1, figsize=(9, sum(heights)), squeeze=False, height_ratios=heights
     )
@@ -428,9 +460,8 @@ def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
             label="fitted thickness",
         )
         indices = [fit.rotation_index for fit in rows]
-        stride = max(1, len(indices) // 15)
-        ax.set_yticks(list(range(len(indices)))[::stride])
-        ax.set_yticklabels([str(index) for index in indices[::stride]])
+        ax.set_yticks(range(len(indices)))
+        ax.set_yticklabels([str(index) for index in indices], fontsize=7)
         ax.set_ylabel("rotation")
         ax.set_title(f"Thickness score grid: {dataset or 'dataset'}")
         ax.legend(fontsize="small", loc="upper right")
@@ -480,7 +511,9 @@ def plot_coupling_geometry(records: Sequence[EventRecord]) -> Figure | None:
     if not rows:
         return None
     x = range(len(rows))
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6.5), sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=(_rotation_extent(len(rows), minimum=10.0), 6.5), sharex=True
+    )
     series: tuple[tuple[int, str, Callable[[RotationCoupling], int]], ...] = (
         (0, "union beams", lambda row: row.n_union_beams),
         (0, "max beams/segment", lambda row: row.max_beams_per_segment),
@@ -493,8 +526,8 @@ def plot_coupling_geometry(records: Sequence[EventRecord]) -> Figure | None:
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize="small")
     axes[0].set_title("Coupled solve geometry")
-    axes[1].set_xlabel("dataset:rotation")
-    _thin_ticks(axes[1], _rotation_labels(rows))
+    axes[1].set_xlabel(_rotation_axis_title(rows))
+    _label_every_rotation(axes[1], _rotation_labels(rows))
     fig.tight_layout()
     return fig
 
@@ -557,16 +590,15 @@ def plot_coupling_segment_heatmap(records: Sequence[EventRecord]) -> Figure | No
         for trace in traces
     ]
     labels = _rotation_labels(traces)
-    fig, ax = plt.subplots(figsize=(10, max(4.0, min(12.0, 0.25 * len(matrix) + 2.0))))
+    fig, ax = plt.subplots(figsize=(10, _rotation_extent(len(matrix), minimum=4.0)))
     ax.grid(False)  # the house gridlines would draw over the image
     image = ax.imshow(matrix, aspect="auto", interpolation="nearest")
     ax.set_xlabel("segment")
-    ax.set_ylabel("dataset:rotation")
+    ax.set_ylabel(_rotation_axis_title(traces))
     ax.set_title("Coupling segment beam counts")
     ax.set_xticks(range(widest))
-    stride = max(1, len(labels) // 20)
-    ax.set_yticks(range(len(labels))[::stride])
-    ax.set_yticklabels(labels[::stride])
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels, fontsize=7)
     fig.colorbar(image, ax=ax, label="segment beams")
     fig.tight_layout()
     return fig
@@ -683,7 +715,9 @@ def plot_orientation_search_headroom(records: Sequence[EventRecord]) -> Figure |
             seed_matched[trace.dataset, trace.rotation_index] = seeds[0]
     x = list(range(len(fits)))
     capped = [fit.n_passes >= fit.pass_cap for fit in fits]
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    fig, axes = plt.subplots(
+        2, 1, figsize=(_rotation_extent(len(fits), minimum=10.0), 7), sharex=True
+    )
     axes[0].bar(
         x,
         [fit.n_passes for fit in fits],
@@ -709,7 +743,7 @@ def plot_orientation_search_headroom(records: Sequence[EventRecord]) -> Figure |
         )
     axes[1].set_ylabel("matched reflections")
     axes[1].legend(fontsize="small")
-    _thin_ticks(axes[1], _rotation_labels(fits))
+    _label_every_rotation(axes[1], _rotation_labels(fits))
     fig.tight_layout()
     return fig
 
@@ -791,16 +825,18 @@ def plot_rotation_epoch_heatmap(records: Sequence[EventRecord]) -> Figure | None
         matrix[position[step.dataset, step.rotation_index]][column[step.iteration]] = (
             math.nan if value is None else value
         )
-    fig, ax = plt.subplots(figsize=(9, max(3.5, min(12.0, 0.2 * len(rows) + 2.0))))
+    fig, ax = plt.subplots(figsize=(9, _rotation_extent(len(rows), minimum=3.5)))
     ax.grid(False)  # the house gridlines would draw over the image
     image = ax.imshow(matrix, aspect="auto", interpolation="nearest")
     ax.set_xticks(range(len(epochs)))
     ax.set_xticklabels([str(epoch + 1) for epoch in epochs])
-    stride = max(1, len(rows) // 20)
-    ax.set_yticks(range(len(rows))[::stride])
-    ax.set_yticklabels([f"{dataset}:{index}" for dataset, index in rows][::stride])
+    single = len({dataset for dataset, _ in rows}) <= 1
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels(
+        [str(index) if single else f"{dataset}:{index}" for dataset, index in rows], fontsize=7
+    )
     ax.set_xlabel("epoch")
-    ax.set_ylabel("dataset:rotation")
+    ax.set_ylabel("rotation" if single else "dataset:rotation")
     ax.set_title("Per-rotation wR2 across epochs")
     fig.colorbar(image, ax=ax, label="wR2")
     fig.tight_layout()
@@ -833,7 +869,7 @@ def plot_refinement_gain(records: Sequence[EventRecord]) -> Figure | None:
     residual = pairs[0][0].residual
     after = [(row.r_obs if residual == "robs" else row.wr2) for _, row in pairs]
     x = list(range(len(pairs)))
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=(_rotation_extent(len(pairs), minimum=10.0), 4.5))
     ax.plot(
         x,
         [fit.score for fit, _ in pairs],
@@ -860,7 +896,7 @@ def plot_refinement_gain(records: Sequence[EventRecord]) -> Figure | None:
     ax.set_ylabel("R_obs" if residual == "robs" else "wR2")
     ax.set_title("What refinement bought, per rotation")
     ax.legend(fontsize="small")
-    _thin_ticks(ax, _rotation_labels([fit for fit, _ in pairs]))
+    _label_every_rotation(ax, _rotation_labels([fit for fit, _ in pairs]))
     fig.tight_layout()
     return fig
 
@@ -1001,12 +1037,19 @@ def plot_rotation_cost(records: Sequence[EventRecord]) -> Figure | None:
         if (fit.dataset, fit.rotation_index) in pooled
         and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in beams
     ]
-    fig, axes = plt.subplots(1, 2 if sized else 1, figsize=(12 if sized else 8, 4.2), squeeze=False)
+    bar_width = _rotation_extent(len(costs), minimum=8.0)
+    fig, axes = plt.subplots(
+        1,
+        2 if sized else 1,
+        figsize=(bar_width + (5.0 if sized else 0.0), 4.2),
+        squeeze=False,
+        width_ratios=(bar_width, 5.0) if sized else None,
+    )
     bars = axes[0, 0]
     bars.bar(range(len(costs)), [seconds for _, seconds in costs], color=SERIES[0])
     bars.set_ylabel("seconds")
     bars.set_title(f"Orientation search time per rotation (total {sum(s for _, s in costs):.0f} s)")
-    _thin_ticks(bars, _rotation_labels([fit for fit, _ in costs]))
+    _label_every_rotation(bars, _rotation_labels([fit for fit, _ in costs]))
     if sized:
         scatter = axes[0, 1]
         scatter.scatter([b for b, _ in sized], [s for _, s in sized], s=18, color=SERIES[0])
