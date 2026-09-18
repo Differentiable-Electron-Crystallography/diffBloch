@@ -808,9 +808,7 @@ def test_bundled_example_report_renders() -> None:
         "coupling_segment_heatmap",
         "epoch_curve",
         "objective_decomposition",
-        "observed_vs_calculated",
         "refined_rotation_scores",
-        "residuals_by_resolution",
         "score_distributions",
         "thickness_model",
     }

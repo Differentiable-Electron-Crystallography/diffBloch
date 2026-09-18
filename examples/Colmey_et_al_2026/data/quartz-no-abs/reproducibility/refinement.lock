@@ -3,7 +3,7 @@
     "3873d88a67225c9d3281a99e8d5c8b73ec12b069906038ab3f1a4bba464ef910"
   ],
   "refinement_config_digest": "a243b2754e5901dd2142ef6ed0748e1368137c502c177a28c63e4004f9c686f5",
-  "code_version": "0.2.0rc1+g0b78a62",
+  "code_version": "0.2.0rc1+g1d2b877.dirty",
   "refined_structure": {
     "path": "refined_structure.cif",
     "sha256": "cc9e4a1cfccea7e49154e9b1e723b08c9002880056be2d9a832aa45f56189399",
