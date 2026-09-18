@@ -10,14 +10,16 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, print_summary_box
-from diffBloch.app.loggers.summary import SummaryLogger
+from diffBloch.app.loggers import ConsoleLogger, ReportLogger, print_summary_box
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -25,15 +27,20 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config, write_experiment_lock
-from diffBloch.observability import Logger, MultiLogger
+from diffBloch.observability import (
+    Logger,
+    MultiLogger,
+)
+
+# The input/config failures a command reports as a one-line `error:` instead of a traceback.
+# Anything else is a bug or an interrupt and propagates -- `_reported_run` still promotes the
+# partial report on the way out.
+_COMMAND_ERRORS = (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError)
 
 
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
-    parser.add_argument(
-        "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
-    )
     parser.add_argument(
         "--refresh",
         action="store_true",
@@ -68,21 +75,6 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
-    )
-    parser.add_argument(
-        "--plot-thickness",
-        action="store_true",
-        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search; ORs with "
-        "preprocess.thickness.plot in experiment.yaml, so "
-        "either turns it on. Defaults to '<inputs.structure's directory>/thickness_optim', "
-        "override with --plot-thickness-dir",
-    )
-    parser.add_argument(
-        "--plot-thickness-dir",
-        metavar="PATH",
-        default=None,
-        help="override the output directory for thickness plots; only takes effect when plotting "
-        "is on (--plot-thickness or preprocess.thickness.plot)",
     )
 
 
@@ -142,9 +134,6 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
-    )
-    p_converge.add_argument(
-        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
     )
     p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
@@ -225,22 +214,22 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            run_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                run_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
+        # ConsoleLogger printed "INFER COMPLETE" off the run's terminal event.
+        print(f"report: {run.report_path}")
         return 0
 
     if args.command == "preprocess":
@@ -248,22 +237,20 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            plan = preprocess_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                plan = preprocess_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         # ConsoleLogger printed "PREPROCESS COMPLETE" the moment preprocessing settled -- the same
         # box a refine/infer run gets, from the same sink.
         print()
@@ -283,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
                 lock = npz.with_suffix(".lock")
                 if lock.exists():
                     print(f"  • {'Plan Lock':<20} {lock.resolve()}")
+        else:
+            print("Output files")
+        print(f"  • {'Report':<20} {run.report_path}")
         return 0
 
     if args.command == "refine":
@@ -290,37 +280,27 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            # The written summary is one more sink on the run's event stream, chosen here beside
-            # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
-            # not) for themselves instead of having a file appear as a side effect of refining.
-            report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
-            refine_sinks: tuple[Logger, ...] = (
-                _build_logger(csv=args.csv),
-                SummaryLogger(report_path),
-            )
-            refine_experiment(
-                args.experiment_directory,
-                logger=MultiLogger(refine_sinks),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                verbose=args.verbose_refinement,
-                profile=args.profile,
-                checkpoint_activations=not args.no_checkpoint_activations,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                refine_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                    verbose=args.verbose_refinement,
+                    profile=args.profile,
+                    checkpoint_activations=not args.no_checkpoint_activations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         # ConsoleLogger printed "REFINEMENT COMPLETE" and the artifact list off the run's terminal
         # event. The report is the one output this file chose the location of, so it is also the
         # one line this file still prints.
-        print(f"  • {'Refinement Report':<20} {report_path}")
+        print(f"  • {'Report':<20} {run.report_path}")
         return 0
 
     if args.command == "converge":
@@ -328,17 +308,17 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            settled = converge_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                device=args.device,
-                n_orientations=args.orientations,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                settled = converge_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    device=args.device,
+                    n_orientations=args.orientations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         print()
         print_summary_box(
             "CONVERGENCE COMPLETE",
@@ -348,23 +328,51 @@ def main(argv: list[str] | None = None) -> int:
                 ("Tilt steps", str(settled.tilt_steps)),
             ),
         )
+        print(f"report: {run.report_path}")
         return 0
 
     parser.print_help()
     return 0
 
 
-def _build_logger(*, csv: str | None, per_rotation: bool = True) -> Logger:
-    """Combine the observation sinks every command gets: the console, plus a CSV log if asked.
+@dataclass(frozen=True)
+class _ReportedRun:
+    """The sinks one command runs against, plus where its report will land."""
 
-    The single place a CLI run's sinks are assembled, so a newly observable phase is rendered by
-    teaching :class:`~diffBloch.app.loggers.ConsoleLogger` its event rather than by wiring another
-    sink into each command. ``per_rotation`` opts the console into the settled per-rotation stream.
+    logger: Logger
+    report_path: Path
+
+
+@contextmanager
+def _reported_run(experiment_directory: str | Path) -> Iterator[_ReportedRun]:
+    """Attach the console and canonical-report sinks for one command.
+
+    The report is promoted on the way out whatever happened -- under its declared name on a clean
+    exit, under the ``-failed`` name on any exception, *including* the ones :func:`main` does not
+    catch. The ``ReportLogger`` is held directly rather than recovered from the composed sink, so
+    finalizing needs no ``isinstance`` walk back through the logger tree.
     """
-    console = ConsoleLogger(per_rotation=per_rotation)
-    if csv is None:
-        return console
-    return MultiLogger((console, CSVLogger(Path(csv))))
+    root = Path(experiment_directory)
+    if not root.exists():
+        raise FileNotFoundError(root)
+    report = ReportLogger(
+        ReportLogger.timestamped_path(root / "reproducibility" / "reports").resolve(),
+        completed_only=True,
+    )
+    logger = MultiLogger((ConsoleLogger(), report))
+    try:
+        with report:
+            yield _ReportedRun(logger=logger, report_path=report.path)
+    except BaseException:
+        # The failed report is the run's only structured record of what went wrong, so say where
+        # it is -- the success paths print their own path beside the rest of the output files.
+        print(f"report: {report.failed_path}", file=sys.stderr)
+        raise
+
+
+def _error(exc: Exception) -> int:
+    print(f"error: {exc}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

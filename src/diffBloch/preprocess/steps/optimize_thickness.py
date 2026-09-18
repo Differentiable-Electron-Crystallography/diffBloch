@@ -114,9 +114,8 @@ def optimize_thickness(
         built = require_built_plans(plan)
         # The exp_data ref rides on each rotation's own pattern (see optimize_orientation), so this
         # step takes no dataset argument either.
-        logger.report(
-            ThicknessOptimizationStarted(total_rotations=len(built), dataset=dataset_of(built))
-        )
+        dataset = dataset_of(built)
+        logger.report(ThicknessOptimizationStarted(total_rotations=len(built), dataset=dataset))
         fitted = []
         for op in built:
             orientation, score, thickness, candidate_scores = _fit_one(engine, fgb, op, candidates)
@@ -128,6 +127,7 @@ def optimize_thickness(
                     thickness=thickness,
                     candidate_thicknesses=candidate_thicknesses,
                     candidate_score=candidate_scores,
+                    dataset=dataset,
                 )
             )
             fitted.append(orientation)

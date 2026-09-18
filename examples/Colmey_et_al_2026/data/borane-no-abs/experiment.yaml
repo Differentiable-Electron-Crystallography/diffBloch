@@ -29,7 +29,6 @@ preprocess:
     min_thickness: 100.0
     max_thickness: 2500.0
     n_steps: 100
-    plot: false
 
 loss_metrics:
   residual: wr2

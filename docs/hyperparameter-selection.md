@@ -153,7 +153,6 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 | `min_thickness` | `5.0` | Lower bound, Å. |
 | `max_thickness` | `2000.0` | Upper bound, Å. |
 | `n_steps` | `100` | Number of evenly-spaced grid candidates. |
-| `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
 
 ## `loss_metrics`
 

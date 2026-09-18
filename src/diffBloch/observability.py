@@ -1,15 +1,15 @@
 """Domain-observation events and the pluggable logger sink (effects-as-data observability).
 
 This is the *domain observations* channel -- distinct from stdlib ``logging``, which carries
-solver *diagnostics*. The pure core **emits** typed
-events as plain values; a :class:`Logger` attached at the ``app/`` boundary interprets them. The
+solver *diagnostics*. The pure core **emits** typed events as plain values; a :class:`Logger`
+attached at the ``app/`` boundary interprets them. The
 core installs no sink and runs correctly with the :data:`NULL_LOGGER` default, so it stays pure,
-testable, and vendor-free: Weights & Biases / Comet ML / CSV live only in logger *backends* at the
-boundary (``diffBloch.app.loggers``), never in the maths.
+testable, and vendor-free: file/vendor sinks live only in logger *backends* at the boundary
+(``diffBloch.app.loggers``), never in the maths.
 
-The name follows the PyTorch-Lightning convention (``WandbLogger`` / ``CometLogger`` / ``CSVLogger``
-plug into a common ``Logger``); it is the experiment-tracking sink, orthogonal to the stdlib
-``logging.Logger`` used for diagnostics. Every :class:`Event` exposes a uniform
+The name follows the PyTorch-Lightning convention (``WandbLogger`` / ``CometLogger`` /
+``ReportLogger`` plug into a common ``Logger``); it is the experiment-tracking sink, orthogonal to
+the stdlib ``logging.Logger`` used for diagnostics. Every :class:`Event` exposes a uniform
 ``(channel, measurements)`` surface -- the Phoenix ``:telemetry`` "named event + measurements" idea
 -- so a generic logger consumes *any* event without knowing its concrete type; adding an event never
 touches a logger. Callers wanting richer handling can still pattern-match the concrete dataclass.
@@ -21,10 +21,26 @@ aggregate* (:class:`InferenceCompleted`, :class:`RefinementCompleted` -- ``step`
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from types import MappingProxyType
-from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from types import MappingProxyType, UnionType
+from typing import (
+    Any,
+    ClassVar,
+    Literal,
+    Protocol,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
+
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "NULL_LOGGER",
@@ -34,6 +50,7 @@ __all__ = [
     "ConvergenceSweepStarted",
     "DeviceSelected",
     "Event",
+    "EventRecord",
     "ExperimentDeclared",
     "InferenceCompleted",
     "Logger",
@@ -44,22 +61,37 @@ __all__ = [
     "OrientationOptimized",
     "OrientationOptimizationStarted",
     "OrientationOptimizationSummary",
+    "OrientationSearchTrace",
     "PlanSeeded",
     "PlanStepCompleted",
     "PreprocessCompleted",
-    "RecordingLogger",
     "RefinedRotationMetrics",
     "RefinementCompleted",
     "RefinementOrientationStep",
     "RefinementOutputsWritten",
     "RefinementStarted",
     "RefinementStep",
+    "RotationCouplingSegments",
     "RotationCoupling",
     "RotationScored",
+    "RunStage",
+    "RunStageStarted",
+    "RunStageStopped",
+    "RunStageStatus",
     "ThicknessOptimized",
     "ThicknessOptimizationStarted",
     "ThicknessProfile",
+    "EVENT_TYPES",
+    "ReportSchemaError",
+    "event_from_record",
+    "event_record_from_event",
 ]
+
+_log = logging.getLogger(__name__)
+
+_EVENT_SCHEMA_VERSION: Literal[1] = 1
+RunStage = Literal["converge", "preprocess", "infer", "refine"]
+RunStageStatus = Literal["completed", "failed"]
 
 
 @runtime_checkable
@@ -87,7 +119,7 @@ class Event(Protocol):
 class Logger(Protocol):
     """A sink for domain-observation events, attached at the app boundary.
 
-    A logger performs I/O (print, CSV row, ``wandb.log``); the core only hands it values. The core
+    A logger performs I/O (print, JSONL row, ``wandb.log``); the core only hands it values. The core
     defaults to :data:`NULL_LOGGER` so it installs no sink and can run with none attached. Implement
     a single method to add a backend -- see ``diffBloch.app.loggers``.
     """
@@ -95,12 +127,227 @@ class Logger(Protocol):
     def report(self, event: Event) -> None: ...
 
 
+class EventRecord(BaseModel):
+    """Versioned, durable event-log envelope for visualizers and post-run tools.
+
+    The live :class:`Event` protocol stays deliberately small: ``channel`` + ``step`` +
+    scalar ``measurements`` are enough for console, W&B, and Comet sinks. Post-run
+    visualizers need the richer concrete event data too, such as
+    :class:`ThicknessOptimized`'s full thickness grid or :class:`ThicknessProfile`'s curve. This
+    envelope preserves both: generic scalar measurements for easy pivoting, and the event
+    dataclass's fields for type-aware renderers.
+
+    Those fields are split across two keys rather than repeated in both: every numeric array lands
+    in ``series`` (plot-ready, no type-awareness needed) and ``payload`` carries the remaining
+    fields. ``series | payload`` is therefore exactly the dataclass, with no key in both -- writing
+    the arrays twice doubled the artifact for nothing (they were ~half of every report's bytes).
+
+    This is a data contract only. File writing, WebSocket broadcasting, notebooks, and plotting live
+    outside the functional core.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, ser_json_inf_nan="strings")
+
+    schema_version: Literal[1] = _EVENT_SCHEMA_VERSION
+    run_id: str
+    sequence: int = Field(ge=0)
+    timestamp_utc: str
+    event_type: str
+    channel: str
+    step: int | None
+    dataset: str | None = None
+    rotation_index: int | None = None
+    measurements: dict[str, float]
+    series: dict[str, list[float]] = Field(default_factory=dict)
+    artifacts: dict[str, str] = Field(default_factory=dict)
+    payload: dict[str, Any]
+
+
+def event_record_from_event(
+    event: Event,
+    *,
+    run_id: str,
+    sequence: int,
+    timestamp: datetime | None = None,
+) -> EventRecord:
+    """Wrap one live event in the durable event-log schema.
+
+    ``sequence`` is assigned by the sink, not by the event producer, so multiple sinks can consume
+    the same pure event stream without sharing mutable state. ``timestamp`` is injectable for tests;
+    callers normally let it default to the current UTC time.
+    """
+    emitted = datetime.now(UTC) if timestamp is None else timestamp.astimezone(UTC)
+    fields_ = _event_payload(event)
+    series = _numeric_series(fields_)
+    return EventRecord(
+        run_id=run_id,
+        sequence=sequence,
+        timestamp_utc=emitted.isoformat(),
+        event_type=type(event).__name__,
+        channel=event.channel,
+        step=event.step,
+        dataset=_optional_str(_first_present(fields_, "dataset", "label")),
+        rotation_index=_optional_int(_first_present(fields_, "rotation_index", "index")),
+        measurements=dict(event.measurements),
+        series=series,
+        artifacts=_artifact_paths(fields_),
+        # The arrays live in `series` alone: a key promoted there is dropped here rather than
+        # written a second time. `series | payload` reconstructs the whole dataclass.
+        payload={name: value for name, value in fields_.items() if name not in series},
+    )
+
+
+def _event_payload(event: Event) -> dict[str, Any]:
+    if not is_dataclass(event):
+        return {}
+    return {field.name: _jsonable(getattr(event, field.name)) for field in fields(event)}
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(entry) for key, entry in value.items()}
+    if isinstance(value, tuple | list):
+        return [_jsonable(entry) for entry in value]
+    if isinstance(value, Path):
+        return str(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        # A nested value dataclass (ObjectiveManifest's ObjectiveTerm rows) becomes a plain dict,
+        # the shape event_from_record rebuilds it from.
+        return {field.name: _jsonable(getattr(value, field.name)) for field in fields(value)}
+    return value
+
+
+class ReportSchemaError(ValueError):
+    """A report record does not fit the event contract this library defines.
+
+    Raised by :func:`event_from_record` for an unknown ``event_type`` or a payload missing a field
+    the event requires. The failure is deliberately loud: a reader that fell back to ``None`` here
+    would render an empty figure and let a schema change go unnoticed for months.
+    """
+
+
+def event_from_record(record: EventRecord) -> Event:
+    """Rebuild the live event a report record was written from -- the inverse of
+    :func:`event_record_from_event`.
+
+    ``series | payload`` is the event dataclass's fields by construction, so this is a lookup of the
+    class by ``event_type`` (:data:`EVENT_TYPES`) and a type-directed rebuild of its values: JSON
+    has no tuples, no distinction between int and float, and no NaN (:class:`EventRecord` writes
+    non-finite floats as strings), so each field is coerced by its declared annotation. The result
+    is a real event -- attribute access, ``measurements``, equality -- rather than a dict of
+    strings a consumer has to know the keys of.
+
+    This is the consumer-side half of the report contract. Readers should build on it instead of
+    indexing ``payload`` so a renamed or removed field fails here, with the event and field named,
+    rather than yielding ``None`` downstream.
+    """
+    cls = EVENT_TYPES.get(record.event_type)
+    if cls is None:
+        raise ReportSchemaError(
+            f"report record {record.sequence} has unknown event_type {record.event_type!r}"
+        )
+    data = {**record.series, **record.payload}
+    try:
+        return cast(Event, _rebuild(cls, data))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ReportSchemaError(
+            f"report record {record.sequence} ({record.event_type}) does not fit "
+            f"{cls.__name__}: {error}"
+        ) from error
+
+
+def _rebuild(cls: type, data: Mapping[str, Any]) -> Any:
+    hints = get_type_hints(cls)
+    known = {spec.name for spec in fields(cls)}
+    values: dict[str, Any] = {}
+    for spec in fields(cls):
+        if spec.name in data:
+            values[spec.name] = _coerce(data[spec.name], hints[spec.name])
+        elif spec.default is MISSING and spec.default_factory is MISSING:
+            raise KeyError(f"missing required field {spec.name!r}")
+    unknown = set(data) - known
+    if unknown:
+        # An extra key is a *newer* writer, not a corrupt record: tolerated, so an older reader keeps
+        # working across an additive schema change. Removals and renames still fail above.
+        _log.debug("%s: ignoring fields not in this reader's contract: %s", cls.__name__, unknown)
+    return cls(**values)
+
+
+def _coerce(value: Any, hint: Any) -> Any:
+    """``value`` (as parsed from JSON) converted to the shape ``hint`` declares."""
+    origin = get_origin(hint)
+    args = get_args(hint)
+    if hint is Any:
+        return value
+    if origin is Union or origin is UnionType:
+        if value is None and type(None) in args:
+            return None
+        (arm,) = [arm for arm in args if arm is not type(None)] or (Any,)
+        return _coerce(value, arm)
+    if origin is Literal:
+        return value
+    if hint is float:
+        return float(value)  # int -> float; "NaN"/"Infinity"/"-Infinity" -> the float
+    if hint is int:
+        return int(value)
+    if hint is bool or hint is str:
+        return value
+    if origin is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(_coerce(entry, args[0]) for entry in value)
+        return tuple(_coerce(entry, arm) for entry, arm in zip(value, args, strict=True))
+    if origin in (dict, Mapping) or (origin is not None and issubclass(origin, Mapping)):
+        return {key: _coerce(entry, args[1]) for key, entry in value.items()}
+    if isinstance(hint, type) and is_dataclass(hint):
+        return _rebuild(hint, value)
+    return value
+
+
+def _optional_str(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _optional_int(value: Any) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _first_present(payload: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+def _numeric_series(payload: Mapping[str, Any]) -> dict[str, list[float]]:
+    """Extract plot-ready numeric arrays from the full payload."""
+    out: dict[str, list[float]] = {}
+    for key, value in payload.items():
+        if (
+            isinstance(value, list)
+            and value
+            and all(isinstance(item, int | float) for item in value)
+        ):
+            out[key] = [float(item) for item in value]
+    return out
+
+
+def _artifact_paths(payload: Mapping[str, Any]) -> dict[str, str]:
+    value = payload.get("artifacts")
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key): str(path)
+        for key, path in value.items()
+        if isinstance(key, str) and isinstance(path, str)
+    }
+
+
 @dataclass(frozen=True)
 class DeviceSelected:
     """Execution-device selection for an app run.
 
     Device placement is an execution knob, not scientific provenance. This run-level event makes the
-    selected backend visible to console/CSV/vendor sinks without entering config or checkpoint
+    selected backend visible to console/event/vendor sinks without entering config or checkpoint
     identity. Presentation wording stays with concrete logger backends; this event carries only
     stable selection data plus numeric measurements for generic metric sinks.
     """
@@ -120,6 +367,60 @@ class DeviceSelected:
         return {
             "cuda_available": float(self.cuda_available),
             "selected_cuda": float(self.selected.startswith("cuda")),
+        }
+
+
+@dataclass(frozen=True)
+class RunStageStarted:
+    """A declared app-stage boundary before work starts.
+
+    Report visualizers should use these lifecycle events to create command/stage sections rather
+    than inferring boundaries from whichever result events happened to be emitted. The stage is an
+    app-level workflow name, not a scientific knob, so it is report payload only and never part of
+    config or lock identity.
+    """
+
+    stage: RunStage
+    experiment_directory: str = ""
+
+    channel: ClassVar[str] = "run_stage"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {}
+
+
+@dataclass(frozen=True)
+class RunStageStopped:
+    """A declared app-stage boundary after work stops.
+
+    ``status`` records whether the stage completed normally or stopped because an exception was
+    raised. The optional error fields stay in the structured payload; scalar measurements carry only
+    machine-friendly timing and status flags for generic sinks.
+    """
+
+    stage: RunStage
+    status: RunStageStatus
+    elapsed_seconds: float
+    experiment_directory: str = ""
+    error_type: str = ""
+    error_message: str = ""
+
+    channel: ClassVar[str] = "run_stage"
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "elapsed_seconds": self.elapsed_seconds,
+            "failed": float(self.status == "failed"),
         }
 
 
@@ -213,10 +514,12 @@ class RotationScored:
     r_obs: float
     wr2: float
     n_matched: int
+    dataset: str = ""
+    rotation_index: int | None = None
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index if self.rotation_index is not None else self.index
 
     @property
     def measurements(self) -> Mapping[str, float]:
@@ -234,9 +537,8 @@ class OrientationOptimizationStarted:
     Exists so a progress display can show a countdown (``n_seen / total_rotations``) against
     :class:`OrientationOptimized` without needing to know the plan size in advance -- the plan is
     only assembled deep inside the step itself. Deliberately a distinct channel from
-    ``OrientationOptimized`` (not merely a different type) -- a consumer such as
-    :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    ``OrientationOptimized`` (not merely a different type), so channel-filtering consumers do not
+    mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
     search is fitting, read off the plan's own rotations
     (:func:`~diffBloch.preprocess.dataset_of`) -- without it, a pooled multi-dataset run's console
     log cannot tell which dataset a "N rotation(s)" announcement belongs to. It is ``""`` only when
@@ -358,15 +660,72 @@ class OrientationOptimizationSummary:
 
 
 @dataclass(frozen=True)
+class OrientationSearchTrace:
+    """The scored orientation-search path for one rotation, batched for post-run visualization.
+
+    ``OrientationOptimized`` is the progress/result event. This trace is the richer notebook
+    contract: a compact numeric table of the seed, every scipy objective evaluation, and the final
+    best point. The event is emitted once per rotation, after the search completes, to avoid calling
+    logger backends inside the objective's hot loop.
+
+    The columns are parallel and in evaluation order, so row position *is* the trial index; an
+    explicit index column would be ``range(n)`` stored verbatim in the largest event in the report.
+    """
+
+    channel: ClassVar[str] = "orientation trace"
+    rotation_index: int
+    residual: str
+    alpha: tuple[float, ...]
+    beta: tuple[float, ...]
+    omega: tuple[float, ...]
+    score: tuple[float, ...]
+    comparable_score: tuple[float, ...]
+    n_matched_hkl: tuple[int, ...]
+    is_seed: tuple[int, ...]
+    is_final: tuple[int, ...]
+    dataset: str = ""
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.alpha),
+            len(self.beta),
+            len(self.omega),
+            len(self.score),
+            len(self.comparable_score),
+            len(self.n_matched_hkl),
+            len(self.is_seed),
+            len(self.is_final),
+        }
+        if len(lengths) != 1:
+            raise ValueError("orientation trace columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        values = {
+            "n_trials": float(len(self.score)),
+            f"best_{self.residual}": min(self.score) if self.score else float("nan"),
+        }
+        final_scores = [
+            value for value, is_final in zip(self.score, self.is_final, strict=True) if is_final
+        ]
+        if final_scores:
+            values[f"final_{self.residual}"] = final_scores[-1]
+        return values
+
+
+@dataclass(frozen=True)
 class ThicknessOptimizationStarted:
     """The rotation count ``optimize_thickness`` is about to grid-search, emitted once up front.
 
     Exists so a progress display can show a countdown (``n_seen / total_rotations``) against
     :class:`ThicknessOptimized` without needing to know the plan size in advance -- mirrors
     :class:`OrientationOptimizationStarted`. Deliberately a distinct channel from
-    ``ThicknessOptimized`` (not merely a different type) -- a consumer such as
-    :class:`~diffBloch.app.loggers.EarlyAbortLogger` that filters by ``event.channel`` alone must
-    not mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
+    ``ThicknessOptimized`` (not merely a different type), so channel-filtering consumers do not
+    mistake this for a per-rotation result. ``dataset`` is the ``inputs.exp_data`` ref this
     grid search is fitting, mirroring :attr:`OrientationOptimizationStarted.dataset`.
     """
 
@@ -397,9 +756,8 @@ class ThicknessOptimized:
     under a different residual, and ``thickness`` that winning candidate (Angstrom).
     ``candidate_thicknesses``/``candidate_score`` carry the whole scored grid (same order, one
     entry per :class:`~diffBloch.specs.ThicknessGrid` step) -- deliberately excluded from
-    ``measurements`` (which stays flat-scalar for the generic console/CSV/wandb/comet backends); a
-    plotting backend such as :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger`
-    pattern-matches the concrete dataclass to read them. Emitted in plan order (the fit is
+    ``measurements`` (which stays flat-scalar for the generic console/wandb/comet backends) and
+    preserved by :class:`EventRecord` for post-run visualizers. Emitted in plan order (the fit is
     sequential).
     """
 
@@ -410,6 +768,7 @@ class ThicknessOptimized:
     thickness: float
     candidate_thicknesses: tuple[float, ...]
     candidate_score: tuple[float, ...]
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -483,10 +842,12 @@ class RotationCoupling:
     max_tilts_per_segment: int
     n_union_beams: int
     max_beams_per_segment: int
+    dataset: str = ""
+    rotation_index: int | None = None
 
     @property
     def step(self) -> int | None:
-        return self.index
+        return self.rotation_index if self.rotation_index is not None else self.index
 
     @property
     def measurements(self) -> Mapping[str, float]:
@@ -496,6 +857,49 @@ class RotationCoupling:
             "max_tilts_per_segment": float(self.max_tilts_per_segment),
             "n_union_beams": float(self.n_union_beams),
             "max_beams_per_segment": float(self.max_beams_per_segment),
+        }
+
+
+@dataclass(frozen=True)
+class RotationCouplingSegments:
+    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers.
+
+    The columns are parallel and in segment order, so row position *is* the segment index -- the
+    same convention as :class:`OrientationSearchTrace`.
+    """
+
+    channel: ClassVar[str] = "coupling segments"
+    rotation_index: int
+    first_tilt_index: tuple[int, ...]
+    last_tilt_index: tuple[int, ...]
+    n_tilts: tuple[int, ...]
+    n_segment_beams: tuple[int, ...]
+    n_union_beams: int
+    n_total_tilts: int
+    dataset: str = ""
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.first_tilt_index),
+            len(self.last_tilt_index),
+            len(self.n_tilts),
+            len(self.n_segment_beams),
+        }
+        if len(lengths) != 1:
+            raise ValueError("coupling segment columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_segments": float(len(self.n_segment_beams)),
+            "n_union_beams": float(self.n_union_beams),
+            "n_total_tilts": float(self.n_total_tilts),
+            "max_segment_beams": float(max(self.n_segment_beams, default=0)),
+            "max_segment_tilts": float(max(self.n_tilts, default=0)),
         }
 
 
@@ -623,6 +1027,7 @@ class ExperimentDeclared:
     absorption: bool
     steps: int
     learning_rate: float
+    experiment_directory: str = ""
 
     @property
     def step(self) -> int | None:
@@ -741,19 +1146,22 @@ class ThicknessProfile:
 class RefinementOutputsWritten:
     """The refined artifacts are on disk -- the run's terminal event.
 
-    This is what lets a report be a plain :class:`Logger` despite having to be written exactly once,
-    after everything else, without adding a ``close``/``finalize`` method to the protocol: a sink that
-    must finish at the end simply acts on this event. Putting the lifecycle in the stream keeps it
-    observable (a :class:`RecordingLogger` shows it) instead of implicit in a call order.
+    The event closes the refinement event stream with the files the run produced. JSONL report
+    readers and notebook visualizers can use it as the artifact manifest without the refinement
+    runner needing a separate summary-writing side effect.
 
-    ``structure`` is the path to the written ``refined_structure.cif``. A sink reads it back rather
-    than being handed parsed values, so anything it reports about the structure is byte-consistent
-    with the committed file by construction.
+    ``structure`` is the path to the written ``refined_structure.cif`` and ``artifacts`` maps each
+    output's name to its path. Both are *relative to* ``experiment_directory`` (itself absolute, as
+    on :class:`RunStageStarted`), so a report copied off the machine that wrote it still names its
+    files: joining the two recovers the absolute path, and a reader that only has the report can
+    still see what was produced where. A path outside the experiment directory cannot be
+    relativized and is carried absolute.
     """
 
     channel: ClassVar[str] = "outputs"
     structure: str
     artifacts: Mapping[str, str] = field(default_factory=dict)
+    experiment_directory: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "artifacts", MappingProxyType(dict(self.artifacts)))
@@ -852,8 +1260,8 @@ class RefinementStep:
 
     ``components`` carries each named objective term's ``raw`` scientific diagnostic, its
     ``weight``, and the ``contribution`` that weight produces, and :attr:`measurements` flattens
-    every one of them to a ``"{term}/{field}"`` key so the generic backends (console, CSV, W&B,
-    Comet) report a restraint's state without knowing any term by name. A term that was never
+    every one of them to a ``"{term}/{field}"`` key so the generic backends (console, W&B, Comet)
+    report a restraint's state without knowing any term by name. A term that was never
     composed into the objective has **no entry**, so it cannot surface as a satisfied ``0.0``; that
     absence is the reportable fact, and it is why the flattening is unconditional rather than keyed
     on a fixed term list.
@@ -951,6 +1359,7 @@ class RefinementOrientationStep:
     wr2: float | None = None
     r_obs: float | None = None
     diff_loss: float | None = None
+    dataset: str = ""
 
     @property
     def step(self) -> int | None:
@@ -1039,16 +1448,24 @@ class MultiLogger:
             logger.report(event)
 
 
-@dataclass
-class RecordingLogger:
-    """An in-memory logger that keeps every event (the doc's "in-memory history" sink).
+def _event_classes() -> dict[str, type]:
+    return {
+        name: value
+        for name, value in globals().items()
+        if isinstance(value, type) and is_dataclass(value) and _is_event_class(value)
+    }
 
-    A shippable backend -- useful for post-hoc inspection of a run and as the natural test double
-    (assert on ``events`` instead of scraping a console). Unlike the vendor backends it performs no
-    external I/O, so it stays vendor-free here beside :class:`NullLogger` / :class:`MultiLogger`.
-    """
 
-    events: list[Event] = field(default_factory=list)
+def _is_event_class(cls: type) -> bool:
+    # The Event protocol's surface, however each class provides it: a ClassVar (most), a
+    # per-instance property (ThicknessProfile.channel), or a plain field (PlanSeeded.measurements).
+    # A data protocol cannot be issubclass-checked, so this is the structural test by hand.
+    provided = set(dir(cls)) | {spec.name for spec in fields(cls)}
+    return {"channel", "step", "measurements"} <= provided
 
-    def report(self, event: Event) -> None:
-        self.events.append(event)
+
+# Every event class this module defines, keyed by the name EventRecord.event_type records. This is
+# the report's type registry: a new event is registered by being defined here, and a consumer
+# rebuilding events (event_from_record) or checking a report's coverage reads it rather than
+# keeping its own list.
+EVENT_TYPES: Mapping[str, type] = MappingProxyType(_event_classes())

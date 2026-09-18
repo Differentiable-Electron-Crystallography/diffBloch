@@ -236,9 +236,7 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
       only when the matching ``optimize_orientation``/``optimize_thickness`` flag enables that step
       (the step's own params already ride in the recipe axis whenever it actually runs -- see
       :func:`~diffBloch.preprocess.pipeline.as_step` -- so including them here unconditionally would
-      restale a checkpoint over config that provably never touched it), and always excluding
-      ``thickness.plot`` (reporting-only, never touches the Plan even when ``thickness`` is in
-      scope);
+      restale a checkpoint over config that provably never touched it);
     - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search
       minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
 
@@ -254,9 +252,6 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
         preprocess.pop("orientation", None)
     if not preprocess["optimize_thickness"]:
         preprocess.pop("thickness", None)
-    elif "thickness" in preprocess:
-        # thickness.plot only selects whether a PNG gets written; it never touches the Plan.
-        preprocess["thickness"] = {k: v for k, v in preprocess["thickness"].items() if k != "plot"}
     dataset_identity = {
         "inputs": {
             "structure": dump["inputs"]["structure"],

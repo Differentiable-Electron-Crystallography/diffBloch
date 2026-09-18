@@ -13,9 +13,10 @@ from dataclasses import replace
 import numpy as np
 from tests.unit.synthetic import seed_system
 
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import StructureFactorGrid
-from diffBloch.observability import PlanSeeded, PlanStepCompleted, RecordingLogger
+from diffBloch.observability import EventRecord
 from diffBloch.preprocess import (
     build_orientation_plans,
     select_beams,
@@ -55,43 +56,45 @@ def _tag(name: str) -> Step:
     return as_step(name, None, lambda plan: plan)
 
 
-def test_pipeline_emits_plan_step_completed_per_step_with_the_step_name() -> None:
+def _records(path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
+
+
+def test_pipeline_emits_plan_step_completed_per_step_with_the_step_name(tmp_path) -> None:
     """With a real sink, each step emits a PlanStepCompleted whose channel is the step name."""
     grid = StructureFactorGrid.from_cell(np.eye(3) * 5.0, g_max=0.45)
     plan = Plan(
         structure_factor_grid=grid, orientations=()
     )  # summarize_plan needs a real grid (empty is fine)
-    rec = RecordingLogger()
+    path = tmp_path / "report.jsonl"
 
-    pipeline([_tag("select_beams"), _tag("fit_orientation")], logger=rec)(plan)
+    pipeline([_tag("select_beams"), _tag("fit_orientation")], logger=ReportLogger(path))(plan)
 
-    events = [event for event in rec.events if isinstance(event, PlanStepCompleted)]
-    assert [event.channel for event in events] == ["select_beams", "fit_orientation"]
-    assert [event.step for event in events] == [0, 1]
-    assert events[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
+    report = [event for event in _records(path) if event.event_type == "PlanStepCompleted"]
+    assert [event.channel for event in report] == ["select_beams", "fit_orientation"]
+    assert [event.step for event in report] == [0, 1]
+    assert report[0].measurements["n_grid_hkl"] == float(grid.structure_factor_hkl.shape[0])
 
 
-def test_pipeline_emits_a_seed_baseline_before_the_first_step() -> None:
+def test_pipeline_emits_a_seed_baseline_before_the_first_step(tmp_path) -> None:
     """Without a baseline, a step's counts are absolutes; with one they are survival counts."""
     grid = StructureFactorGrid.from_cell(np.eye(3) * 5.0, g_max=0.45)
     plan = Plan(structure_factor_grid=grid, orientations=())
-    rec = RecordingLogger()
+    path = tmp_path / "report.jsonl"
 
-    pipeline([_tag("select_beams")], logger=rec)(plan)
+    pipeline([_tag("select_beams")], logger=ReportLogger(path))(plan)
 
-    seeded, completed = rec.events
-    assert isinstance(seeded, PlanSeeded)
+    seeded, completed = _records(path)
+    assert seeded.event_type == "PlanSeeded"
     assert seeded.step is None  # the baseline sits before the recipe's x-axis, not on it
     assert seeded.channel != completed.channel  # a channel filter cannot confuse the two
     assert seeded.measurements == summarize_plan(plan)
 
 
 def test_pipeline_default_logger_emits_nothing_and_skips_summary() -> None:
-    """The null default path emits no events and never calls summarize_plan (grid=None is safe)."""
-    rec = RecordingLogger()
+    """The null default path emits no report and never calls summarize_plan (grid=None is safe)."""
     out = pipeline([_tag("select_beams")])(_plan())  # _plan() has grid=None
     assert len(out.provenance) == 1  # provenance still stamped
-    assert rec.events == []  # nothing routed to a sink
 
 
 def test_spec_to_params_tags_nested_specs_and_union_arms() -> None:
