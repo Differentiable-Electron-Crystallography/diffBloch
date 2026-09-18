@@ -268,7 +268,7 @@ class ApparentThicknessNN:
             for orientation in orientations
             if start <= orientation.pattern.rotation_index < end
         ]
-        indices = [orientation.pattern.rotation_index for orientation in in_range]  # pooled: alphas
+        indices = [orientation.pattern.rotation_index for orientation in in_range]
         thicknesses: list[float] = []
         for index, orientation in zip(indices, in_range, strict=True):
             context = self.forward_context(params, rotation_index=index, orientation=orientation)
@@ -279,11 +279,7 @@ class ApparentThicknessNN:
             form=self.form,
             min_thickness=self.bounds.min_angstrom,
             max_thickness=self.bounds.max_angstrom,
-            # Reported by the within-dataset index, like every other event; the pooled ``indices``
-            # above are only the key into ``raw_alphas``.
-            rotation_indices=tuple(
-                orientation.pattern.dataset_rotation_index for orientation in in_range
-            ),
+            rotation_indices=tuple(indices),
             alphas=tuple(float(raw_alphas[index]) for index in indices),
             thicknesses=tuple(thicknesses),
             label=self.label,

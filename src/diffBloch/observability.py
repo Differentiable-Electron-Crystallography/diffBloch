@@ -507,10 +507,6 @@ class RotationScored:
 
     ``n_matched`` is the rotation's full matched-reflection count (observed and calculated both, no
     intensity cut) -- not the ``I > 3*sigma`` subset ``r_obs`` is itself scored over.
-
-    ``rotation_index`` (and any per-rotation index tuple) is the rotation's index *within its
-    dataset*, the ``(dataset, rotation_index)`` identity shared by every event -- never the pooled
-    engine index.
     """
 
     channel: ClassVar[str] = "rotation"
@@ -568,10 +564,11 @@ class OrientationOptimized:
 
     The fit is the long phase of a run (a coupled search solves ~100+ trials per rotation), so this
     is the progress stream that makes it observable: ``rotation_index`` is the original zero-based
-    PETS rotation index within ``dataset`` (the raw ``inputs.exp_data`` ref this search ran
-    against, read off the rotation's own ``pattern``) -- the ``(dataset, rotation_index)`` identity
-    every event uses, so a report pairs this with the refinement-side events by that key and never
-    needs the pooled engine index. ``score`` the final orientation's value
+    PETS rotation index -- *file-local* to ``dataset`` (the raw ``inputs.exp_data`` ref this search
+    ran against, matching :attr:`ThicknessProfile.label`'s convention, and read off the rotation's
+    own ``pattern``), since ``optimize_orientation`` runs once per dataset, before a multi-dataset
+    pool renumbers anything -- so a rotation index alone cannot disambiguate a pooled run; pair it
+    with ``dataset``. ``score`` the final orientation's value
     under ``residual`` -- the :class:`~diffBloch.config.schema.LossMetricsConfig` name
     (``"wr2"``/``"robs"``) that produced it, carried alongside so a consumer can label the number
     correctly (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``)
@@ -1070,11 +1067,11 @@ class RefinedRotationMetrics:
     is the settled result, scored once on the best model by the *reporting* engine, so it covers
     every rotation including the held-out ones (``is_validation`` marks those). The refinement loop
     cannot emit it -- the loop only ever sees the training engine -- so the app boundary emits it
-    once the run has finished. ``rotation_index`` is the rotation's index *within* ``dataset`` (the
-    raw ``inputs.exp_data`` ref), the same ``(dataset, rotation_index)`` identity every other event
-    uses -- not the pooled engine index, which a multi-dataset run renumbers and which nothing in a
-    report needs. Both ride on the rotation's own ``pattern`` from
-    :func:`~diffBloch.preprocess.setup_datasets` onwards.
+    once the run has finished. ``dataset`` is the raw ``inputs.exp_data`` ref ``rotation_index``
+    (the *pooled* index for a multi-dataset run) belongs to, matching :attr:`ThicknessProfile.label`'s
+    convention. It is carried on the rotation's own ``pattern`` from
+    :func:`~diffBloch.preprocess.setup_datasets` onwards, so nothing downstream re-derives dataset
+    membership from pooled index offsets.
     """
 
     channel: ClassVar[str] = "refined rotation"
@@ -1111,10 +1108,6 @@ class ThicknessProfile:
 
     ``channel`` embeds the label (the per-instance form the :class:`Event` protocol anticipates)
     so metric sinks that key series on ``channel/name`` keep pooled datasets' curves apart.
-
-    ``rotation_index`` (and any per-rotation index tuple) is the rotation's index *within its
-    dataset*, the ``(dataset, rotation_index)`` identity shared by every event -- never the pooled
-    engine index.
     """
 
     form: str
@@ -1358,10 +1351,6 @@ class RefinementOrientationStep:
     reporting shape. ``iteration`` places it on the same x-axis as :class:`RefinementStep`;
     ``rotation_index`` (the original zero-based PETS rotation index) is this event's ``step``,
     matching the per-rotation convention of :class:`RotationScored` / :class:`OrientationOptimized`.
-
-    ``rotation_index`` (and any per-rotation index tuple) is the rotation's index *within its
-    dataset*, the ``(dataset, rotation_index)`` identity shared by every event -- never the pooled
-    engine index.
     """
 
     channel: ClassVar[str] = "refinement orientation"

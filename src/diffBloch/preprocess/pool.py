@@ -76,16 +76,7 @@ def pool(plans: Sequence[Plan], *, offsets: Sequence[int]) -> Plan:
         )
 
     pooled = tuple(
-        # The offset is recorded beside the moved label, so ``pattern.dataset_rotation_index``
-        # still answers "which frame of which file" -- what the report names a rotation by.
-        replace(
-            op,
-            pattern=replace(
-                op.pattern,
-                rotation_index=offset + op.pattern.rotation_index,
-                pool_offset=op.pattern.pool_offset + offset,
-            ),
-        )
+        replace(op, pattern=replace(op.pattern, rotation_index=offset + op.pattern.rotation_index))
         for plan, offset in zip(plans, offsets, strict=True)
         for op in plan.orientations
     )

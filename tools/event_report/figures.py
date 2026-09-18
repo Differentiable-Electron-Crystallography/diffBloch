@@ -17,7 +17,7 @@ These live in a module rather than in a notebook cell so they can be imported, d
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -572,6 +572,30 @@ def plot_coupling_segment_heatmap(records: Sequence[EventRecord]) -> Figure | No
     return fig
 
 
+def _pooled_index(
+    records: Sequence[EventRecord], local: Iterable[Positioned]
+) -> dict[tuple[str, int], int]:
+    """Map a preprocess event's ``(dataset, file-local rotation_index)`` to the pooled index.
+
+    ``optimize_orientation``/``optimize_thickness`` run per dataset before pooling renumbers the
+    rotations, so their ``rotation_index`` is file-local; every refinement-side event carries the
+    *pooled* index. ``report_coupling`` fires on the settled pooled plan on every run, so its
+    ``RotationCoupling`` events give each dataset's pooled indices in order, and pooling preserves
+    order within a dataset -- pairing the two sorted lists positionally is the mapping. A dataset
+    whose two counts disagree is left unmapped rather than guessed at.
+    """
+    pooled = by_dataset(events_of(records, RotationCoupling))
+    mapping: dict[tuple[str, int], int] = {}
+    for dataset, group in by_dataset(local).items():
+        after = sorted(
+            {e.rotation_index for e in pooled.get(dataset, []) if e.rotation_index is not None}
+        )
+        before = sorted({e.rotation_index for e in group if e.rotation_index is not None})
+        if after and len(after) == len(before):
+            mapping.update({(dataset, b): a for b, a in zip(before, after, strict=True)})
+    return mapping
+
+
 @styled
 def plot_objective_decomposition(records: Sequence[EventRecord]) -> Figure | None:
     """The objective per epoch, and what each composed term contributed to it.
@@ -705,6 +729,7 @@ def plot_thickness_grid_vs_model(records: Sequence[EventRecord]) -> Figure | Non
     profiles = events_of(records, ThicknessProfile)
     if not fits or not profiles:
         return None
+    pooled = _pooled_index(records, fits)
     fig, ax = plt.subplots(figsize=(8, 4.5))
     drawn = False
     for slot, profile in enumerate(profiles):
@@ -719,9 +744,11 @@ def plot_thickness_grid_vs_model(records: Sequence[EventRecord]) -> Figure | Non
             label=f"{profile.label} learned",
         )
         points = [
-            (alpha_of[fit.rotation_index], fit.thickness)
+            (alpha_of[pooled[fit.dataset, fit.rotation_index]], fit.thickness)
             for fit in fits
-            if fit.dataset == profile.label and fit.rotation_index in alpha_of
+            if fit.dataset == profile.label
+            and (fit.dataset, fit.rotation_index) in pooled
+            and pooled[fit.dataset, fit.rotation_index] in alpha_of
         ]
         if points:
             drawn = True
@@ -793,11 +820,13 @@ def plot_refinement_gain(records: Sequence[EventRecord]) -> Figure | None:
     refined = events_of(records, RefinedRotationMetrics)
     if not fits or not refined:
         return None
+    pooled = _pooled_index(records, fits)
     final = {(row.dataset, row.rotation_index): row for row in refined}
     pairs = [
-        (fit, final[fit.dataset, fit.rotation_index])
+        (fit, final[fit.dataset, pooled[fit.dataset, fit.rotation_index]])
         for fit in fits
-        if (fit.dataset, fit.rotation_index) in final
+        if (fit.dataset, fit.rotation_index) in pooled
+        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in final
     ]
     if not pairs:
         return None
@@ -894,14 +923,16 @@ def plot_angle_deltas_vs_tilt(records: Sequence[EventRecord]) -> Figure | None:
     profiles = events_of(records, ThicknessProfile)
     if not fits or not profiles:
         return None
+    pooled = _pooled_index(records, fits)
     alpha_of: dict[tuple[str, int], float] = {}
     for profile in profiles:
         for index, alpha in zip(profile.rotation_indices, profile.alphas, strict=True):
             alpha_of[profile.label, index] = alpha
     located = [
-        (alpha_of[fit.dataset, fit.rotation_index], fit)
+        (alpha_of[fit.dataset, pooled[fit.dataset, fit.rotation_index]], fit)
         for fit in fits
-        if (fit.dataset, fit.rotation_index) in alpha_of
+        if (fit.dataset, fit.rotation_index) in pooled
+        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in alpha_of
     ]
     if not located:
         return None
@@ -959,14 +990,16 @@ def plot_rotation_cost(records: Sequence[EventRecord]) -> Figure | None:
         costs.append((fit, (t1 - t0).total_seconds()))
     if not costs:
         return None
+    pooled = _pooled_index(records, [fit for fit, _ in costs])
     beams = {
         (row.dataset, row.rotation_index): row.n_union_beams
         for row in events_of(records, RotationCoupling)
     }
     sized = [
-        (beams[fit.dataset, fit.rotation_index], seconds)
+        (beams[fit.dataset, pooled[fit.dataset, fit.rotation_index]], seconds)
         for fit, seconds in costs
-        if (fit.dataset, fit.rotation_index) in beams
+        if (fit.dataset, fit.rotation_index) in pooled
+        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in beams
     ]
     fig, axes = plt.subplots(1, 2 if sized else 1, figsize=(12 if sized else 8, 4.2), squeeze=False)
     bars = axes[0, 0]

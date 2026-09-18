@@ -173,12 +173,13 @@ function of tilt angle, one per dataset, evaluated after the loop. They carry di
 sit under separate headings for that reason; `thickness_grid_vs_model` is the one figure that puts
 them on the same axes, which is the check that the network learned what the search found.
 
-**Every event names a rotation the same way: `(dataset, rotation_index)`**, where the index is
-the rotation's position *within its dataset file* — the PETS frame you can look up. A
-multi-dataset run pools its datasets onto one global index space internally, but that pooled
-index never reaches the report: the pattern carries its within-dataset index through pooling
-(`PatternBatch.dataset_rotation_index`), and every emitter reads it from there. So the figures
-marked `preprocess` + `refine` pair events by that key directly, with no mapping between stages.
+**Figures marked `preprocess` + `refine` pair events across the pooling boundary.** The
+preprocess fits (`OrientationOptimized`, `ThicknessOptimized`) carry *file-local* rotation indices
+because they run per dataset before pooling; every refinement event carries the *pooled* index.
+`RotationCoupling` fires on the settled pooled plan every run and lists each dataset's pooled
+indices, and pooling keeps a dataset's order, so the two sorted lists pair positionally. A report
+without the coupling events — or a dataset whose counts disagree — makes those figures decline
+rather than guess.
 
 The two coupling figures are emitted during **preprocess**, not refinement, even though what they
 describe is the geometry the refinement loop repeats every step. They fire on checkpoint-reuse runs

@@ -310,11 +310,9 @@ def test_build_figures_renders_every_figure_the_report_has_events_for() -> None:
         "orientation_optimization",
         "orientation_search_headroom",
         "orientation_search_trace",
-        "angle_deltas_vs_tilt",
         "rotation_cost",
         "objective_decomposition",
         "refined_rotation_scores",
-        "refinement_gain",
         "score_distributions",
         "per_dataset_summary",
         "thickness_grids",
@@ -324,8 +322,9 @@ def test_build_figures_renders_every_figure_the_report_has_events_for() -> None:
         "coupling_geometry",
         "coupling_segment_heatmap",
     }
-    # Declined, not errored: the report has no verbose per-rotation steps.
-    assert "rotation_epoch_heatmap" not in built
+    # Declined, not errored: no verbose per-rotation steps, and the single coupling event cannot
+    # pair dataset a's two searched rotations with pooled indices.
+    assert {"rotation_epoch_heatmap", "refinement_gain", "angle_deltas_vs_tilt"}.isdisjoint(built)
     # A refine report declares no convergence sweep, so that figure is absent rather than empty.
     assert "convergence_sweeps" not in built
     assert built["epoch_curve"].axes[0].get_xlabel() == "epoch"
@@ -855,25 +854,33 @@ def test_orientation_search_headroom_flags_rotations_that_ran_to_the_cap() -> No
     assert [line.get_label() for line in matched.lines] == ["after", "seed"]
 
 
-def test_thickness_grid_vs_model_pairs_rotations_by_dataset_and_index() -> None:
-    """Both stages name a rotation ``(dataset, index within the dataset)``, so they pair by key."""
+def test_thickness_grid_vs_model_pairs_file_local_rotations_with_pooled_alphas() -> None:
+    """Preprocess rotation 0 of dataset b is pooled rotation 2; the profile is keyed on the latter."""
     profile = ThicknessProfile(
         form="linear",
         min_thickness=900.0,
         max_thickness=1100.0,
-        rotation_indices=(0, 1),
+        rotation_indices=(2, 3),
         alphas=(-10.0, 10.0),
         thicknesses=(980.0, 1020.0),
         label="b.cif_pets",
     )
-    fits = [replace(_thickness(k), dataset="b.cif_pets") for k in (0, 1)]
-    other = replace(_thickness(0), dataset="a.cif_pets")  # same index, other dataset: not paired
+    local = [replace(_thickness(k), dataset="b.cif_pets") for k in (0, 1)]
+    coupling = [
+        replace(_coupling(k), dataset="b.cif_pets", index=k, rotation_index=k) for k in (2, 3)
+    ]
 
-    figure = plot_thickness_grid_vs_model(_records(*fits, other, profile))
+    figure = plot_thickness_grid_vs_model(_records(*local, *coupling, profile))
 
     assert figure is not None
     (points,) = figure.axes[0].collections
-    assert points.get_offsets().tolist() == [[-10.0, fits[0].thickness], [10.0, fits[1].thickness]]
+    # file-local 0, 1 -> pooled 2, 3 -> alphas -10, 10
+    assert points.get_offsets().tolist() == [
+        [-10.0, local[0].thickness],
+        [10.0, local[1].thickness],
+    ]
+    # Without the coupling events the pairing is impossible, and the figure says so by declining.
+    assert plot_thickness_grid_vs_model(_records(*local, profile)) is None
 
 
 def test_rotation_epoch_heatmap_lays_out_rotations_by_epoch() -> None:
@@ -905,7 +912,7 @@ def test_refinement_gain_compares_under_the_searched_residual() -> None:
         dataset="a.cif_pets",
     )
 
-    figure = plot_refinement_gain(_records(fit, refined))
+    figure = plot_refinement_gain(_records(fit, _coupling(0), refined))
 
     assert figure is not None
     ax = figure.axes[0]
@@ -946,12 +953,12 @@ def test_angle_deltas_vs_tilt_needs_a_thickness_profile_for_the_tilt_axis() -> N
     )
     fits = (_orientation(0), _orientation(1))
 
-    figure = plot_angle_deltas_vs_tilt(_records(*fits, profile))
+    figure = plot_angle_deltas_vs_tilt(_records(*fits, _coupling(0), _coupling(1), profile))
 
     assert figure is not None
     assert len(figure.axes) == 3
     assert figure.axes[0].collections[0].get_offsets()[:, 0].tolist() == [-10.0, 10.0]
-    assert plot_angle_deltas_vs_tilt(_records(*fits)) is None
+    assert plot_angle_deltas_vs_tilt(_records(*fits, _coupling(0), _coupling(1))) is None
 
 
 def test_rotation_cost_reads_wall_time_off_the_envelope_timestamps() -> None:

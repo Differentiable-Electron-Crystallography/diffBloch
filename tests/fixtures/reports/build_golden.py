@@ -78,9 +78,9 @@ def _stage(name: str, seconds: float, *events: Event) -> Iterator[Event]:
     )
 
 
-def _preprocess_dataset(dataset: str) -> Iterator[Event]:
-    """One dataset's recipe: two rotations (indices within the dataset), orientation then thickness."""
-    rotations = (0, 1)
+def _preprocess_dataset(dataset: str, offset: int) -> Iterator[Event]:
+    """One dataset's recipe: two rotations, orientation then thickness fit."""
+    rotations = (offset, offset + 1)
     yield PlanSeeded(measurements={"n_orientations": 2.0, "n_observed_hkl": 60.0})
     yield PlanStepCompleted(
         channel="build_orientation_plans",
@@ -146,10 +146,9 @@ def _preprocess_dataset(dataset: str) -> Iterator[Event]:
 
 
 def _coupling(dataset: str, offset: int) -> Iterator[Event]:
-    """``index`` is the position in the pooled plan; ``rotation_index`` the index within the dataset."""
-    for k, rotation in enumerate((0, 1)):
+    for k, rotation in enumerate((offset, offset + 1)):
         yield RotationCoupling(
-            index=offset + k,
+            index=rotation,
             n_coupling_segments=2,
             n_tilts=8,
             max_tilts_per_segment=4,
@@ -226,8 +225,8 @@ def build_events() -> list[Event]:
         30.0,
         DeviceSelected(requested="cuda", selected="cpu", cuda_available=False),
         declared,
-        *_preprocess_dataset("a.cif_pets"),
-        *_preprocess_dataset("b.cif_pets"),
+        *_preprocess_dataset("a.cif_pets", 0),
+        *_preprocess_dataset("b.cif_pets", 2),
         *_coupling("a.cif_pets", 0),
         *_coupling("b.cif_pets", 2),
         CouplingSummary(
@@ -283,7 +282,7 @@ def build_events() -> list[Event]:
                 wr2=0.040 + 0.002 * k,
                 n_matched=35,
                 dataset=DATASETS[k // 2],
-                rotation_index=k % 2,
+                rotation_index=k,
             )
             for k in range(4)
         ),
@@ -359,7 +358,7 @@ def build_events() -> list[Event]:
         ),
         *(
             RefinedRotationMetrics(
-                rotation_index=k % 2,
+                rotation_index=k,
                 wr2=0.039 + 0.002 * k,
                 r_obs=0.049 + 0.002 * k,
                 n_matched=35,
@@ -373,12 +372,12 @@ def build_events() -> list[Event]:
                 form="linear",
                 min_thickness=900.0,
                 max_thickness=1100.0,
-                rotation_indices=(0, 1),
+                rotation_indices=(offset, offset + 1),
                 alphas=(-10.0, 10.0),
-                thicknesses=(980.0, 1020.0 + 20.0 * slot),
+                thicknesses=(980.0, 1020.0),
                 label=dataset,
             )
-            for slot, dataset in enumerate(DATASETS)
+            for dataset, offset in zip(DATASETS, (0, 2), strict=True)
         ),
         RefinementOutputsWritten(
             structure="refined_structure.cif",

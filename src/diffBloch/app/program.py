@@ -654,14 +654,13 @@ def _report_refinement_outcome(
     goes last and carries the output artifact manifest for post-run tools -- with each path made
     relative to ``root``, so the report stays meaningful once copied elsewhere (``result.artifacts``
     itself keeps the absolute paths an API caller wants to open directly). Each row already knows
-    its dataset ref and within-dataset index (read off the rotation's own ``pattern``), so the
-    event names the rotation the way the preprocess events did; the pooled index stays internal
-    (it is still what ``is_validation`` is decided on).
+    its dataset ref (``RotationMetrics.dataset``, read off the rotation's own ``pattern``), so the
+    per-dataset breakdown costs nothing here.
     """
     for row in engine.per_rotation_metrics(result.best_model):
         logger.report(
             RefinedRotationMetrics(
-                rotation_index=row.dataset_rotation_index,
+                rotation_index=row.rotation_index,
                 wr2=row.wr2,
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,

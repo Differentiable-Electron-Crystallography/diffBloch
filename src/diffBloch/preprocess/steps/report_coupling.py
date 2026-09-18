@@ -36,7 +36,7 @@ def report_coupling(logger: Logger) -> PlanStep:
 
     def run(plan: Plan) -> Plan:
         for index, op in enumerate(plan.orientations):
-            rotation_index = int(op.pattern.dataset_rotation_index)
+            rotation_index = int(op.pattern.rotation_index)
             dataset = op.pattern.dataset
             logger.report(
                 RotationCoupling(
@@ -57,7 +57,7 @@ def report_coupling(logger: Logger) -> PlanStep:
 def _segment_event(
     op: OrientationPlan | CoupledOrientationPlan, *, dataset: str
 ) -> RotationCouplingSegments:
-    rotation_index = int(op.pattern.dataset_rotation_index)
+    rotation_index = int(op.pattern.rotation_index)
     if isinstance(op, CoupledOrientationPlan):
         first_tilt_index = tuple(int(segment.cover.min()) for segment in op.segments)
         last_tilt_index = tuple(int(segment.cover.max()) for segment in op.segments)

@@ -121,7 +121,7 @@ def optimize_thickness(
             orientation, score, thickness, candidate_scores = _fit_one(engine, fgb, op, candidates)
             logger.report(
                 ThicknessOptimized(
-                    rotation_index=orientation.pattern.dataset_rotation_index,
+                    rotation_index=orientation.pattern.rotation_index,
                     score=score,
                     residual=residual,
                     thickness=thickness,
