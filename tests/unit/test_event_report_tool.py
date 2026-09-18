@@ -27,13 +27,11 @@ from tools.event_report.figures import (  # noqa: E402
     plot_dataset_summary,
     plot_epoch_curve,
     plot_objective_decomposition,
-    plot_observed_vs_calculated,
     plot_orientation_optimization,
     plot_orientation_search_headroom,
     plot_orientation_search_trace,
     plot_refined_rotation_scores,
     plot_refinement_gain,
-    plot_residuals_by_resolution,
     plot_rotation_cost,
     plot_rotation_epoch_heatmap,
     plot_score_distributions,
@@ -65,7 +63,6 @@ from diffBloch.observability import (  # noqa: E402
     RefinementStep,
     RotationCoupling,
     RotationCouplingSegments,
-    RotationReflections,
     RotationScored,
     RunStageStarted,
     RunStageStopped,
@@ -133,22 +130,6 @@ def _refined(rotation_index: int, dataset: str, *, validation: bool) -> RefinedR
         n_matched=40,
         is_validation=validation,
         dataset=dataset,
-    )
-
-
-def _reflections(rotation_index: int, dataset: str = "a.cif_pets") -> RotationReflections:
-    return RotationReflections(
-        rotation_index=rotation_index,
-        dataset=dataset,
-        h=(1, 1, 2, 0),
-        k=(0, 1, 0, 2),
-        l=(0, 0, 1, 1),
-        i_obs=(120.0, 40.0, 9.0, -1.0),
-        sigma=(4.0, 3.0, 4.0, 1.0),  # the third is weak (9 <= 3 * 4), the last non-positive
-        i_calc=(118.0, 43.0, 8.0, 0.5),
-        d_spacing=(4.91, 3.47, 2.46, 2.13),
-        scale=0.8,
-        thickness=1000.0,
     )
 
 
@@ -252,7 +233,6 @@ def _full_report() -> list[EventRecord]:
         _refinement_step(1, validation=True),
         _refined(0, "a.cif_pets", validation=False),
         _refined(3, "b.cif_pets", validation=True),
-        _reflections(0),
         ThicknessProfile(
             form="linear",
             min_thickness=1000.0,
@@ -336,8 +316,6 @@ def test_build_figures_renders_every_figure_the_report_has_events_for() -> None:
         "refined_rotation_scores",
         "refinement_gain",
         "score_distributions",
-        "observed_vs_calculated",
-        "residuals_by_resolution",
         "per_dataset_summary",
         "thickness_grids",
         "thickness_heatmap",
@@ -365,7 +343,6 @@ def test_build_sections_heads_each_stage_separately() -> None:
         "Refinement — epoch history",
         "Refinement — per-rotation scores",
         "Refinement — datasets",
-        "Refinement — reflections",
         "Refinement — learned thickness model",
     ]
     assert dict(sections)["Preprocess — per-rotation thickness fit"].keys() == {
@@ -999,28 +976,3 @@ def test_rotation_cost_reads_wall_time_off_the_envelope_timestamps() -> None:
     assert [patch.get_height() for patch in bars.patches] == [5.0, 7.0]
     assert scatter.get_xlabel() == "union beams in the solve"
     assert plot_rotation_cost(_records(_coupling(0))) is None
-
-
-def test_observed_vs_calculated_separates_weak_reflections_and_counts_the_unplottable() -> None:
-    figure = plot_observed_vs_calculated(_records(_reflections(0), _reflections(1)))
-
-    assert figure is not None
-    ax = figure.axes[0]
-    labels = [t.get_text() for t in ax.get_legend().get_texts()]
-    assert labels == ["I ≤ 3σ (n=2)", "I > 3σ (n=4)", "I_calc = I_obs"]
-    assert ax.get_xscale() == "log" and ax.get_yscale() == "log"
-    assert "2 non-positive not shown" in ax.get_title()
-    assert plot_observed_vs_calculated([]) is None
-
-
-def test_residuals_by_resolution_bins_strong_reflections_into_equal_count_shells() -> None:
-    figure = plot_residuals_by_resolution(_records(_reflections(0), _reflections(1)))
-
-    assert figure is not None
-    residual_axis, count_axis = figure.axes
-    # 4 strong reflections at only 2 distinct d-spacings (the rotations share hkl): two bounds make
-    # one shell holding all four, rather than empty shells padded out to the eight asked for.
-    assert [patch.get_height() for patch in count_axis.patches] == [4]
-    (line,) = residual_axis.lines
-    assert all(0.0 <= r < 0.1 for r in line.get_ydata())  # a near-perfect model: small R
-    assert plot_residuals_by_resolution(_records(_reflections(0))) is not None

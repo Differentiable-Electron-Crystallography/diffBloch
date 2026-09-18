@@ -73,7 +73,6 @@ __all__ = [
     "RefinementStep",
     "RotationCouplingSegments",
     "RotationCoupling",
-    "RotationReflections",
     "RotationScored",
     "RunStage",
     "RunStageStarted",
@@ -1097,64 +1096,6 @@ class RefinedRotationMetrics:
             "r_obs": self.r_obs,
             "n_matched": float(self.n_matched),
             "is_validation": float(self.is_validation),
-        }
-
-
-@dataclass(frozen=True)
-class RotationReflections:
-    """Every matched reflection of one rotation, observed beside calculated, for the best model.
-
-    The per-reflection record behind :class:`RefinedRotationMetrics`: where that event reduces a
-    rotation to two numbers, this keeps the rows those numbers were computed from, so a report can
-    draw the crystallographer's own diagnostics -- observed against calculated intensity, residuals
-    by resolution shell, the reflections that dominate a bad rotation -- instead of only their
-    summary. Emitted once per rotation at the end of a refinement, by the *reporting* engine over
-    every rotation (held-out ones included), so it is the settled result and never the objective.
-
-    Columns are parallel, in the alignment's observed order, like :class:`OrientationSearchTrace`:
-    ``h``/``k``/``l`` the reflection, ``i_obs``/``sigma`` as measured, ``i_calc`` the model
-    intensity at the rotation's wR2-best ``thickness`` **after** the wR2-optimal ``scale`` has been
-    applied, so ``i_obs`` and ``i_calc`` are directly comparable, and ``d_spacing`` (Angstrom) the
-    reflection's resolution from the cell. ``scale`` and ``thickness`` are carried so the raw model
-    intensity is recoverable.
-    """
-
-    channel: ClassVar[str] = "reflections"
-    rotation_index: int
-    dataset: str
-    h: tuple[int, ...]
-    k: tuple[int, ...]
-    l: tuple[int, ...]  # noqa: E741 -- the Miller index, named as crystallography names it
-    i_obs: tuple[float, ...]
-    sigma: tuple[float, ...]
-    i_calc: tuple[float, ...]
-    d_spacing: tuple[float, ...]
-    scale: float
-    thickness: float
-
-    def __post_init__(self) -> None:
-        lengths = {
-            len(self.h),
-            len(self.k),
-            len(self.l),
-            len(self.i_obs),
-            len(self.sigma),
-            len(self.i_calc),
-            len(self.d_spacing),
-        }
-        if len(lengths) != 1:
-            raise ValueError("reflection columns must have equal length")
-
-    @property
-    def step(self) -> int | None:
-        return self.rotation_index
-
-    @property
-    def measurements(self) -> Mapping[str, float]:
-        return {
-            "n_reflections": float(len(self.i_obs)),
-            "scale": self.scale,
-            "thickness": self.thickness,
         }
 
 

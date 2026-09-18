@@ -162,8 +162,6 @@ shown empty.
 | `refined_rotation_scores` | `refine` | final per-rotation scores, held-out rotations marked |
 | `refinement_gain` | `preprocess` + `refine` | each rotation's score after the orientation search vs after refinement, under the residual the search used |
 | `score_distributions` | `refine` | empirical CDFs of final wR2 and R_obs, train vs validation per dataset |
-| `observed_vs_calculated` | `refine` | every matched reflection's observed vs scaled calculated intensity for the best model, log–log, weak (I ≤ 3σ) reflections muted, non-positive intensities counted in the title |
-| `residuals_by_resolution` | `refine` | R_obs per equal-count resolution shell over I > 3σ reflections, with each shell's count |
 | `per_dataset_summary` | `refine` | mean final wR2/R_obs per dataset, train and validation rotations split, with their counts (pooled runs only) |
 | `thickness_model` | `refine` | the learned `ApparentThicknessNN` curve per dataset |
 | `thickness_grid_vs_model` | `preprocess` + `refine` | the grid-search thickness of each rotation drawn on the learned curve at its tilt angle |

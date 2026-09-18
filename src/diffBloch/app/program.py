@@ -658,8 +658,7 @@ def _report_refinement_outcome(
     event names the rotation the way the preprocess events did; the pooled index stays internal
     (it is still what ``is_validation`` is decided on).
     """
-    rows = engine.per_rotation_metrics(result.best_model)
-    for row in rows:
+    for row in engine.per_rotation_metrics(result.best_model):
         logger.report(
             RefinedRotationMetrics(
                 rotation_index=row.dataset_rotation_index,
@@ -670,10 +669,6 @@ def _report_refinement_outcome(
                 dataset=row.dataset,
             )
         )
-    # The rows behind those numbers, after the summary they support: a console sink can stop
-    # listening after the metrics, a report sink keeps the per-reflection record.
-    for row in rows:
-        logger.report(row.reflections)
     if raw_alphas is not None:
         # Each network filters the pooled orientations to its own rotation_range itself.
         for thickness_nn in thickness_nns:
