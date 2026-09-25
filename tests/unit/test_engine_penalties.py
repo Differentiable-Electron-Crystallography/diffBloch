@@ -151,7 +151,10 @@ def test_perceive_bond_length_penalty_excludes_hydrogen_by_default() -> None:
 
 
 def test_perceive_bond_length_penalty_reports_missing_covalent_radius() -> None:
-    structure = _structure(positions=[[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]], numbers=[14, 6])
+    # Iron, which the table does not carry. This used to be silicon, which it
+    # now does, because every example in this repository contains an element
+    # the table was missing.
+    structure = _structure(positions=[[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]], numbers=[26, 6])
 
     with pytest.raises(ValueError, match="no covalent radius"):
         perceive_bond_length_penalty(structure)
@@ -181,3 +184,17 @@ def test_bond_penalty_validates_shapes_and_sigmas() -> None:
             frac_to_cart=cell,
             criterion="not-a-criterion",  # type: ignore[arg-type]
         )
+
+
+def test_covalent_radii_cover_every_element_the_examples_contain() -> None:
+    """The shipped examples must be usable with the bond-length restraint.
+
+    quartz contains Si, borane contains B, and CsPbBr3 contains Cs and Pb.
+    Each of those raised before, so the restraint could not run on any example
+    this repository ships.
+    """
+    from diffBloch.engine.chemistry import covalent_radius
+
+    for element, number in (("Si", 14), ("B", 5), ("Cs", 55), ("Pb", 82)):
+        radius = covalent_radius(number)
+        assert radius > 0.0, f"{element} (Z={number}) has a non-positive radius"
