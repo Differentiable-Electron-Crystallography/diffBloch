@@ -83,10 +83,9 @@ def test_golden_report_renders_every_table_and_figure(golden: list[EventRecord])
     assert [title for title, _ in sections] == [
         "Convergence",
         "Preprocess — orientation optimization",
-        "Preprocess — per-rotation thickness fit",
-        "Preprocess — coupled solve geometry",
+        "Preprocess — per-orientation thickness fit",
         "Refinement — epoch history",
-        "Refinement — per-rotation scores",
+        "Refinement — per-orientation scores",
         "Refinement — datasets",
         "Refinement — learned thickness model",
     ]

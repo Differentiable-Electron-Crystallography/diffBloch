@@ -62,13 +62,13 @@ def test_reported_run_promotes_into_the_reports_subdirectory(tmp_path: Path) -> 
     assert path.exists()
 
 
-def test_reported_run_keeps_the_report_when_the_command_raises(
+def test_reported_run_discards_the_report_when_the_command_raises(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A failed run's report is the only structured record of the failure -- keep it, renamed.
+    """A run that does not complete leaves no report behind.
 
-    Including for an exception the command layer does not catch: the promotion is a context
-    manager, so an interrupt or an allocator error cannot leak the temporary file either.
+    Including for an exception the command layer does not catch: the report is a context manager,
+    so an interrupt or an allocator error discards the partial report too.
     """
     experiment = tmp_path / "experiment"
     experiment.mkdir()
@@ -77,10 +77,8 @@ def test_reported_run_keeps_the_report_when_the_command_raises(
         run.logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
         raise KeyboardInterrupt
 
-    reports = sorted((experiment / "reproducibility" / "reports").glob("*.jsonl"))
-    assert [path.name.endswith("-failed.jsonl") for path in reports] == [True]
-    assert "RotationScored" in reports[0].read_text()
-    assert reports[0].name in capsys.readouterr().err
+    assert not list((experiment / "reproducibility" / "reports").glob("*.jsonl"))
+    assert ".jsonl" not in capsys.readouterr().err
 
 
 def test_missing_file_reports_concise_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -229,7 +227,7 @@ def test_infer_delegates_to_run_experiment_and_reports(
     assert "INFER COMPLETE" in out
     assert _summary_row(out, "Evaluated", "1")
     assert _summary_row(out, "Mean R_obs", "0.05")
-    assert "report:" in out
+    assert ".jsonl" not in out  # the report is written but its path is not printed
     assert len(list((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
@@ -304,15 +302,10 @@ def test_infer_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_infer_failure_keeps_the_report_under_the_failed_name(
+def test_infer_failure_reports_the_error_and_leaves_no_report(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    """A failed command reports the error *and* leaves its partial report behind.
-
-    The successful name is reserved for a completed run, so a reader never mistakes one for the
-    other -- but throwing the artifact away would delete the run's only structured account of the
-    failure at the moment it is most wanted.
-    """
+    """A failed command reports the error on the console and leaves no JSONL report behind."""
     experiment_dir = tmp_path / "experiment"
     experiment_dir.mkdir()
 
@@ -325,8 +318,7 @@ def test_infer_failure_keeps_the_report_under_the_failed_name(
 
     err = capsys.readouterr().err
     assert "error: bad input" in err
-    reports = sorted((experiment_dir / "reproducibility" / "reports").glob("*.jsonl"))
-    assert [path.name.endswith("-failed.jsonl") for path in reports] == [True]
+    assert not list((experiment_dir / "reproducibility" / "reports").glob("*.jsonl"))
 
 
 def test_converge_delegates_and_reports(
@@ -357,7 +349,7 @@ def test_converge_delegates_and_reports(
     assert _summary_row(out, "g_max", "2.5")
     assert _summary_row(out, "sg_max", "0.02")
     assert _summary_row(out, "Tilt steps", "46")
-    assert "report:" in out
+    assert ".jsonl" not in out  # the report is written but its path is not printed
     assert len(list((exp_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
@@ -463,7 +455,7 @@ def test_preprocess_delegates_and_reports_without_scoring(
     assert "Optimize Orientation" in out
     assert "Optimize Thickness" in out
     assert "R_obs" not in out
-    assert "Report" in out
+    assert ".jsonl" not in out  # the report is written but its path is not printed
     assert len(list((exp_dir / "reproducibility" / "reports").glob("report-*.jsonl"))) == 1
 
 
@@ -606,11 +598,15 @@ def test_refine_delegates_and_reports(
 
     assert rc == 0
     assert captured["dir"] == str(experiment_dir)
-    # The refine path fans out to the console and a timestamped canonical JSONL report sink,
-    # composed here rather than inside refine_experiment.
+    # The refine path fans out to the console, a timestamped JSONL report, and the text
+    # refinement_report.txt, composed here rather than inside refine_experiment.
     logger = captured["logger"]
     assert isinstance(logger, MultiLogger)
-    assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]
+    assert [type(s).__name__ for s in logger.loggers] == [
+        "ConsoleLogger",
+        "ReportLogger",
+        "SummaryLogger",
+    ]
     reports = sorted((experiment_dir / "reproducibility" / "reports").glob("report-*.jsonl"))
     assert len(reports) == 1
     out = capsys.readouterr().out
@@ -622,8 +618,8 @@ def test_refine_delegates_and_reports(
     assert _summary_row(out, "Matched HKLs (I>3σ/total)", "8 / 12")
     assert "Refined Structure" in out
     assert str(REFINED_CIF) in out
-    assert "Report" in out
-    assert reports[0].name in out
+    assert "Refinement Report" in out
+    assert reports[0].name not in out  # the JSONL is written but its path is not printed
 
 
 def test_refine_flags_thread_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

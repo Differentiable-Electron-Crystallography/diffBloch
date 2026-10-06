@@ -72,6 +72,7 @@ __all__ = [
     "RefinementStarted",
     "RefinementStep",
     "RotationCoupling",
+    "RotationCouplingSegments",
     "RotationScored",
     "RunStage",
     "RunStageStarted",
@@ -827,8 +828,9 @@ class RotationCoupling:
     """One rotation's coupled solve geometry, emitted per rotation at the consumer boundary.
 
     The shape the refinement loop repeats every step: ``n_coupling_segments`` coupled unions over
-    ``n_tilts`` rocking-curve tilts, the widest union spanning ``max_tilts_per_segment`` tilts, and
-    the deduped union carrying ``n_union_beams`` beams. Fires on
+    ``n_tilts`` rocking-curve tilts, the widest union spanning ``max_tilts_per_segment`` tilts, the
+    deduped union carrying ``n_union_beams`` beams, and the largest single segment
+    ``max_beams_per_segment`` beams -- the ``N`` of the dominant per-segment eigensolve. Fires on
     every run (fresh or checkpoint-reuse), so the coupling a long refine is about to chew on is
     legible before the first step.
     """
@@ -839,6 +841,7 @@ class RotationCoupling:
     n_tilts: int
     max_tilts_per_segment: int
     n_union_beams: int
+    max_beams_per_segment: int
     dataset: str = ""
     rotation_index: int | None = None
 
@@ -853,6 +856,50 @@ class RotationCoupling:
             "n_tilts": float(self.n_tilts),
             "max_tilts_per_segment": float(self.max_tilts_per_segment),
             "n_union_beams": float(self.n_union_beams),
+            "max_beams_per_segment": float(self.max_beams_per_segment),
+        }
+
+
+@dataclass(frozen=True)
+class RotationCouplingSegments:
+    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers.
+
+    The columns are parallel and in segment order, so row position *is* the segment index -- the
+    same convention as :class:`OrientationSearchTrace`.
+    """
+
+    channel: ClassVar[str] = "coupling segments"
+    rotation_index: int
+    first_tilt_index: tuple[int, ...]
+    last_tilt_index: tuple[int, ...]
+    n_tilts: tuple[int, ...]
+    n_segment_beams: tuple[int, ...]
+    n_union_beams: int
+    n_total_tilts: int
+    dataset: str = ""
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.first_tilt_index),
+            len(self.last_tilt_index),
+            len(self.n_tilts),
+            len(self.n_segment_beams),
+        }
+        if len(lengths) != 1:
+            raise ValueError("coupling segment columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "n_segments": float(len(self.n_segment_beams)),
+            "n_union_beams": float(self.n_union_beams),
+            "n_total_tilts": float(self.n_total_tilts),
+            "max_segment_beams": float(max(self.n_segment_beams, default=0)),
+            "max_segment_tilts": float(max(self.n_tilts, default=0)),
         }
 
 

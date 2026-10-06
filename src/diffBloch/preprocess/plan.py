@@ -188,18 +188,21 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
 
     Phase-robust (a plan is summarised after every pipeline step, from the pre-build candidate on):
     a :class:`~diffBloch.engine.plan.CoupledOrientationPlan` reports its real coupling
-    (``n_coupling_segments`` unions and per-union ``cover`` widths); a built :class:`~diffBloch.engine.plan.OrientationPlan` is one implicit union spanning
+    (``n_coupling_segments`` unions, per-union ``cover`` widths and ``union_beam_index`` beam
+    counts); a built :class:`~diffBloch.engine.plan.OrientationPlan` is one implicit union spanning
     all its tilts; a pre-build :class:`CandidatePlan` knows only its beam-pool size (no
     tilts/segments yet). These are exactly the ``(B, T, N)`` drivers of the segmented Bloch solve
     the refinement loop repeats.
     """
     if isinstance(op, CoupledOrientationPlan):
         covers = [len(segment.cover) for segment in op.segments]
+        seg_beams = [int(segment.union_beam_index.shape[0]) for segment in op.segments]
         return {
             "n_coupling_segments": len(op.segments),
             "n_tilts": int(op.tilts.shape[0]),
             "max_tilts_per_segment": max(covers, default=0),
             "n_union_beams": int(op.beam_hkl.shape[0]),
+            "max_beams_per_segment": max(seg_beams, default=0),
         }
     if isinstance(op, OrientationPlan):
         n_tilts = len(op.beam_plans)
@@ -209,6 +212,7 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
             "n_tilts": n_tilts,
             "max_tilts_per_segment": n_tilts,
             "n_union_beams": beams,
+            "max_beams_per_segment": beams,
         }
     beams = int(np.asarray(op.beam_hkl).shape[0])  # CandidatePlan: only the beam pool is known
     return {
@@ -216,6 +220,7 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
         "n_tilts": 0,
         "max_tilts_per_segment": 0,
         "n_union_beams": beams,
+        "max_beams_per_segment": beams,
     }
 
 

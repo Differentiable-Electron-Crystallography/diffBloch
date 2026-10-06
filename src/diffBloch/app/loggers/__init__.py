@@ -50,6 +50,7 @@ from diffBloch.observability import (
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
+    RotationCouplingSegments,
     RunStageStarted,
     RunStageStopped,
     ThicknessOptimizationStarted,
@@ -234,7 +235,7 @@ class ConsoleLogger:
     def report(self, event: Event) -> None:
         if isinstance(
             event,
-            OrientationSearchTrace | RotationCoupling | CouplingSummary,
+            OrientationSearchTrace | RotationCoupling | RotationCouplingSegments | CouplingSummary,
         ):
             # High-cardinality payload for JSONL/notebook consumers. Logging it to the live console
             # breaks the in-place progress bars without adding human-readable progress.

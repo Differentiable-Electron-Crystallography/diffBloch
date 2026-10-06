@@ -1071,23 +1071,20 @@ def test_report_logger_can_defer_the_declared_artifact_until_finalize(tmp_path: 
     assert _records(path)[0].event_type == "RotationScored"
 
 
-def test_deferred_report_logger_promotes_a_failed_run_under_the_failed_name(
-    tmp_path: Path,
-) -> None:
-    """A failed run keeps its report, beside the successful name rather than under it."""
+def test_deferred_report_logger_discards_a_failed_run(tmp_path: Path) -> None:
+    """A run that does not complete leaves nothing behind: no report, no temporary directory."""
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, completed_only=True)
     logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
 
-    landed = logger.finalize(failed=True)
+    logger.discard()
 
-    assert landed == tmp_path / "report-failed.jsonl"
-    assert not path.exists()
-    assert _records(landed)[0].event_type == "RotationScored"
+    assert not list(tmp_path.iterdir())
+    assert logger._temporary_dir is not None and not logger._temporary_dir.exists()  # noqa: SLF001
 
 
-def test_report_logger_as_a_context_manager_promotes_on_the_way_out(tmp_path: Path) -> None:
-    """An exception the caller never catches still promotes the partial report and cleans up."""
+def test_report_logger_as_a_context_manager_discards_on_an_exception(tmp_path: Path) -> None:
+    """An exception the caller never catches still discards the partial report and cleans up."""
     path = tmp_path / "report.jsonl"
     logger = ReportLogger(path=path, completed_only=True)
 
@@ -1095,8 +1092,7 @@ def test_report_logger_as_a_context_manager_promotes_on_the_way_out(tmp_path: Pa
         logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
         raise KeyboardInterrupt
 
-    assert not path.exists()
-    assert _records(logger.failed_path)[0].event_type == "RotationScored"
+    assert not list(tmp_path.iterdir())
     assert logger._temporary_dir is not None and not logger._temporary_dir.exists()  # noqa: SLF001
 
 
@@ -1107,8 +1103,9 @@ def test_report_logger_finalize_is_idempotent(tmp_path: Path) -> None:
     logger.report(RotationScored(index=0, r_obs=0.5, wr2=0.5, n_matched=4))
 
     assert logger.finalize() == path
-    assert logger.finalize(failed=True) == path  # the first call settled where it landed
-    assert not logger.failed_path.exists()
+    assert logger.finalize() == path
+    logger.discard()  # a completed report is kept: discarding after finalize is a no-op
+    assert _records(path)[0].event_type == "RotationScored"
 
 
 def test_report_logger_builds_timestamped_report_paths() -> None:

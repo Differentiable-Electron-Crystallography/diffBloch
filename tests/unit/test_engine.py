@@ -643,6 +643,9 @@ def test_refine_emits_a_step_stream_and_a_completion_event(tmp_path: Path) -> No
         "n_rotations": 1.0,
         "n_wr2_evaluated": 1.0,
         "n_r_obs_evaluated": 1.0,
+        # Only occupancy is trainable, so the structure cannot move from the starting model.
+        "position_rmsd": 0.0,
+        "ueq_rmsd": 0.0,
     }
     assert completed.payload["n_steps"] == 6
     assert completed.payload["best_step"] == result.best_step
@@ -683,6 +686,8 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss(tmp_path: 
         "n_rotations": 1.0,
         "n_wr2_evaluated": 1.0,
         "n_r_obs_evaluated": 1.0,
+        "position_rmsd": 0.0,
+        "ueq_rmsd": 0.0,
     }
 
 

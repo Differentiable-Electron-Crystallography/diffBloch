@@ -445,6 +445,8 @@ def _write_stage_notebooks(report_path: Path, experiment_directory: str | Path) 
             plotted_stages.append(open_stages[-1])
         if record.event_type == "RunStageStopped" and open_stages:
             open_stages.pop()
+    if not plotted_stages:
+        return []
     experiment_name = load_config(Path(experiment_directory) / "experiment.yaml").name
     # The report's stamp is UTC; the notebook is named and headed in local time for people.
     started = (

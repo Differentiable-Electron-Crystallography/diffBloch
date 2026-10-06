@@ -7,8 +7,7 @@ asserted on here -- a plot function inside an ``.ipynb`` is code nothing in CI e
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import matplotlib
@@ -21,23 +20,15 @@ from tools.event_report.figures import (  # noqa: E402
     build_figures,
     build_sections,
     export_figures,
-    plot_angle_deltas_vs_tilt,
     plot_convergence_sweeps,
-    plot_coupling_segment_heatmap,
     plot_dataset_summary,
     plot_epoch_curve,
-    plot_objective_decomposition,
+    plot_matched_reflections,
     plot_orientation_optimization,
-    plot_orientation_search_headroom,
-    plot_orientation_search_trace,
     plot_refined_rotation_scores,
-    plot_refinement_gain,
-    plot_rotation_cost,
     plot_rotation_epoch_heatmap,
-    plot_score_distributions,
-    plot_thickness_grid_vs_model,
+    plot_structure_drift,
     plot_thickness_grids,
-    plot_thickness_heatmap,
     plot_thickness_model,
 )
 from tools.event_report.tables import (  # noqa: E402
@@ -52,7 +43,6 @@ from diffBloch.observability import (  # noqa: E402
     ConvergenceTrial,
     EventRecord,
     ExperimentDeclared,
-    OrientationOptimizationStarted,
     OrientationOptimized,
     OrientationSearchTrace,
     PreprocessCompleted,
@@ -308,28 +298,24 @@ def test_build_figures_renders_every_figure_the_report_has_events_for() -> None:
     assert set(built) == {
         "epoch_curve",
         "orientation_optimization",
-        "orientation_search_headroom",
-        "orientation_search_trace",
-        "rotation_cost",
-        "objective_decomposition",
+        "matched_reflections",
         "refined_rotation_scores",
-        "score_distributions",
         "per_dataset_summary",
         "thickness_grids",
-        "thickness_heatmap",
         "thickness_model",
-        "thickness_grid_vs_model",
-        "coupling_geometry",
-        "coupling_segment_heatmap",
     }
-    # Declined, not errored: no verbose per-rotation steps, and the single coupling event cannot
-    # pair dataset a's two searched rotations with pooled indices.
-    assert {"rotation_epoch_heatmap", "refinement_gain", "angle_deltas_vs_tilt"}.isdisjoint(built)
+    # Declined, not errored: no verbose per-orientation steps, and no RMSD on these epoch events.
+    assert {"rotation_epoch_heatmap", "structure_drift"}.isdisjoint(built)
     # A refine report declares no convergence sweep, so that figure is absent rather than empty.
     assert "convergence_sweeps" not in built
-    assert built["epoch_curve"].axes[0].get_xlabel() == "epoch"
-    # Two epochs, and validation reported -> four series, not two.
-    assert len(built["epoch_curve"].axes[0].lines) == 4
+    epoch_curve = built["epoch_curve"]
+    assert epoch_curve.axes[-1].get_xlabel() == "Epoch"
+    # wR2 and R_obs on their own axes; validation reported -> train and validation on each.
+    assert [len(ax.lines) for ax in epoch_curve.axes] == [2, 2]
+    assert [t.get_text() for t in epoch_curve.axes[0].get_legend().get_texts()] == [
+        "train",
+        "validation",
+    ]
 
 
 def test_build_sections_heads_each_stage_separately() -> None:
@@ -337,16 +323,14 @@ def test_build_sections_heads_each_stage_separately() -> None:
 
     assert [title for title, _ in sections] == [
         "Preprocess — orientation optimization",
-        "Preprocess — per-rotation thickness fit",
-        "Preprocess — coupled solve geometry",
+        "Preprocess — per-orientation thickness fit",
         "Refinement — epoch history",
-        "Refinement — per-rotation scores",
+        "Refinement — per-orientation scores",
         "Refinement — datasets",
         "Refinement — learned thickness model",
     ]
-    assert dict(sections)["Preprocess — per-rotation thickness fit"].keys() == {
-        "thickness_grids",
-        "thickness_heatmap",
+    assert dict(sections)["Preprocess — per-orientation thickness fit"].keys() == {
+        "thickness_grids"
     }
 
 
@@ -356,12 +340,12 @@ def test_build_sections_follows_the_order_the_run_actually_ran() -> None:
     orientation_first = _records(_orientation(0), _thickness(0))
 
     assert [title for title, _ in build_sections(thickness_first)] == [
-        "Preprocess — per-rotation thickness fit",
+        "Preprocess — per-orientation thickness fit",
         "Preprocess — orientation optimization",
     ]
     assert [title for title, _ in build_sections(orientation_first)] == [
         "Preprocess — orientation optimization",
-        "Preprocess — per-rotation thickness fit",
+        "Preprocess — per-orientation thickness fit",
     ]
 
 
@@ -369,7 +353,7 @@ def test_build_sections_drops_a_section_whose_figures_all_declined() -> None:
     """A single-dataset run has metrics but no dataset comparison, so that heading is absent."""
     sections = dict(build_sections(_records(_refined(0, "a.cif_pets", validation=False))))
 
-    assert "Refinement — per-rotation scores" in sections
+    assert "Refinement — per-orientation scores" in sections
     assert "Refinement — datasets" not in sections
 
 
@@ -380,13 +364,13 @@ def test_every_figure_is_none_when_its_events_are_absent() -> None:
         plot_convergence_sweeps,
         plot_epoch_curve,
         plot_orientation_optimization,
-        plot_orientation_search_trace,
+        plot_matched_reflections,
+        plot_structure_drift,
         plot_refined_rotation_scores,
         plot_dataset_summary,
         plot_thickness_grids,
-        plot_thickness_heatmap,
         plot_thickness_model,
-        plot_coupling_segment_heatmap,
+        plot_rotation_epoch_heatmap,
     ):
         assert plot(empty) is None, plot.__name__
     assert build_figures(empty) == {}
@@ -433,28 +417,6 @@ def test_per_dataset_summary_draws_only_training_bars_without_a_split() -> None:
     assert figure.axes[0].get_legend() is None  # one series needs no legend
 
 
-def test_orientation_search_trace_plots_the_longest_search() -> None:
-    short = OrientationSearchTrace(
-        rotation_index=1,
-        residual="wr2",
-        alpha=(0.0,),
-        beta=(0.0,),
-        omega=(0.0,),
-        score=(0.09,),
-        comparable_score=(0.09,),
-        n_matched_hkl=(40,),
-        is_seed=(1,),
-        is_final=(1,),
-        dataset="a.cif_pets",
-    )
-
-    figure = plot_orientation_search_trace(_records(short, _trace(0)))
-
-    assert figure is not None
-    assert "a.cif_pets:0" in figure.axes[0].get_title()  # the 3-trial trace, not the 1-trial one
-    assert figure.axes[1].get_xlabel() == "trial"
-
-
 def test_refined_rotation_scores_marks_held_out_rotations() -> None:
     records = _records(
         _refined(0, "a.cif_pets", validation=False),
@@ -465,7 +427,7 @@ def test_refined_rotation_scores_marks_held_out_rotations() -> None:
 
     assert figure is not None
     labels = [text.get_text() for text in figure.axes[0].get_legend().get_texts()]
-    assert "a.cif_pets validation" in labels
+    assert labels == ["train", "validation"]
 
 
 def _converge_report() -> list[EventRecord]:
@@ -503,8 +465,12 @@ def test_convergence_sweeps_panels_each_control_against_the_threshold() -> None:
     figure = plot_convergence_sweeps(_converge_report())
 
     assert figure is not None
-    assert [ax.get_title() for ax in figure.axes] == ["g_max", "sg_max"]
-    assert figure.axes[-1].get_xlabel() == "candidate value"
+    # No titles: each panel names its control on its own x axis.
+    assert [ax.get_title() for ax in figure.axes] == ["", ""]
+    assert [ax.get_xlabel() for ax in figure.axes] == [
+        r"Candidate $g_{\mathrm{max}}$",
+        r"Candidate $s_{g,\mathrm{max}}$",
+    ]
     # Log scale: the R-factors span orders of magnitude as a control converges.
     assert figure.axes[0].get_yscale() == "log"
     # One ladder line per pass, and the threshold drawn as a rule beneath it.
@@ -543,76 +509,6 @@ def test_convergence_sweeps_stays_linear_when_an_r_factor_is_not_positive() -> N
 
     assert figure is not None
     assert figure.axes[0].get_yscale() == "linear"
-
-
-def test_thickness_heatmap_traces_the_fitted_thickness_per_rotation() -> None:
-    records = _records(_thickness(0), _thickness(1), _thickness(2))
-
-    figure = plot_thickness_heatmap(records)
-
-    assert figure is not None
-    assert figure.axes[0].get_ylabel() == "rotation"
-    # axes[0] is the single data panel; the colorbar is appended after it.
-    assert figure.axes[0].get_xlabel() == "thickness"
-    trace = figure.axes[0].lines[0]
-    assert list(trace.get_xdata()) == [1200.0, 1200.0, 1200.0]
-    assert list(trace.get_ydata()) == [0, 1, 2]
-    assert figure.axes[0].images[0].get_array().shape == (3, 2)
-
-
-def test_thickness_heatmap_clips_the_colour_scale_to_keep_the_basin_readable() -> None:
-    """The grid's far ends score arbitrarily badly and would flatten the minimum into one tone."""
-    wide = ThicknessOptimized(
-        rotation_index=0,
-        score=0.02,
-        residual="wr2",
-        thickness=1000.0,
-        candidate_thicknesses=(900.0, 1000.0, 1100.0, 1200.0),
-        candidate_score=(0.05, 0.02, 0.06, 9.0),
-        dataset="a.cif_pets",
-    )
-
-    figure = plot_thickness_heatmap(_records(wide))
-
-    assert figure is not None
-    assert figure.axes[0].images[0].get_clim()[1] < 9.0
-
-
-def test_thickness_heatmap_gives_each_dataset_its_own_panel() -> None:
-    """Pooled datasets may be gridded over different ranges, so they cannot share an axis."""
-    other = ThicknessOptimized(
-        rotation_index=0,
-        score=0.03,
-        residual="wr2",
-        thickness=800.0,
-        candidate_thicknesses=(700.0, 800.0),
-        candidate_score=(0.06, 0.03),
-        dataset="b.cif_pets",
-    )
-
-    figure = plot_thickness_heatmap(_records(_thickness(0), other))
-
-    assert figure is not None
-    titles = [ax.get_title() for ax in figure.axes if ax.get_title()]
-    assert titles == ["Thickness score grid: a.cif_pets", "Thickness score grid: b.cif_pets"]
-
-
-def test_thickness_heatmap_skips_rotations_gridded_differently_from_their_dataset() -> None:
-    """A mismatched grid is dropped rather than stretched onto the wrong thickness axis."""
-    mismatched = ThicknessOptimized(
-        rotation_index=1,
-        score=0.03,
-        residual="wr2",
-        thickness=1100.0,
-        candidate_thicknesses=(1000.0, 1100.0, 1200.0),
-        candidate_score=(0.06, 0.03, 0.05),
-        dataset="a.cif_pets",
-    )
-
-    figure = plot_thickness_heatmap(_records(_thickness(0), mismatched))
-
-    assert figure is not None
-    assert figure.axes[0].images[0].get_array().shape == (1, 2)  # only the matching rotation
 
 
 def test_export_figures_writes_one_file_per_figure_and_format(tmp_path: Path) -> None:
@@ -780,107 +676,13 @@ def test_bundled_example_report_renders() -> None:
 
     assert [title for title, _ in build_tables(records)] == ["Preprocess", "Refinement summary"]
     assert {name for _, figures in build_sections(records) for name in figures} == {
-        "coupling_geometry",
-        "coupling_segment_heatmap",
         "epoch_curve",
-        "objective_decomposition",
         "refined_rotation_scores",
-        "score_distributions",
         "thickness_model",
     }
 
 
 # --- the second batch of figures ------------------------------------------------------------------
-
-
-def test_objective_decomposition_stacks_terms_and_marks_the_selected_epoch() -> None:
-    step = RefinementStep(
-        iteration=0,
-        loss=0.3,
-        components={
-            "diffraction": {"raw": 0.2, "weight": 1.0, "contribution": 0.2},
-            "bond_length": {"raw": 0.05, "weight": 2.0, "contribution": 0.1},
-        },
-    )
-    later = RefinementStep(iteration=1, loss=0.25, components=step.components)
-    report = _records(
-        step,
-        later,
-        RefinementCompleted(n_steps=2, best_step=1, best_loss=0.25, selection="validation"),
-    )
-
-    figure = plot_objective_decomposition(report)
-
-    assert figure is not None
-    top, bottom = figure.axes
-    assert [t.get_text() for t in top.get_legend().get_texts()] == [
-        "objective",
-        "selected on validation (validation objective 0.25)",
-    ]
-    # The star sits on the training curve at the selected epoch, not at the validation objective.
-    assert top.collections[0].get_offsets().tolist() == [[2.0, 0.25]]
-    assert [t.get_text() for t in bottom.get_legend().get_texts()] == [
-        "diffraction",
-        "bond_length",
-    ]
-    # No components at all -> the objective panel alone, not an empty stack.
-    bare = plot_objective_decomposition(_records(RefinementStep(iteration=0, loss=0.3)))
-    assert bare is not None and len(bare.axes) == 1
-
-
-def test_orientation_search_headroom_flags_rotations_that_ran_to_the_cap() -> None:
-    capped = OrientationOptimized(
-        rotation_index=1,
-        score=0.05,
-        seed_score=0.06,
-        alpha=0.0,
-        beta=0.0,
-        omega=0.0,
-        residual="wr2",
-        n_matched_hkl=30,
-        n_trials=200,
-        n_passes=2000,
-        pass_cap=2000,
-        dataset="a.cif_pets",
-    )
-
-    figure = plot_orientation_search_headroom(_records(_orientation(0), capped, _trace(0)))
-
-    assert figure is not None
-    passes, matched = figure.axes
-    labels = [t.get_text() for t in passes.get_legend().get_texts()]
-    assert "cap 2000" in labels and "ran to cap (1)" in labels
-    # The seed's matched count comes from the trace, so the lower panel has before *and* after.
-    assert [line.get_label() for line in matched.lines] == ["after", "seed"]
-
-
-def test_thickness_grid_vs_model_pairs_file_local_rotations_with_pooled_alphas() -> None:
-    """Preprocess rotation 0 of dataset b is pooled rotation 2; the profile is keyed on the latter."""
-    profile = ThicknessProfile(
-        form="linear",
-        min_thickness=900.0,
-        max_thickness=1100.0,
-        rotation_indices=(2, 3),
-        alphas=(-10.0, 10.0),
-        thicknesses=(980.0, 1020.0),
-        label="b.cif_pets",
-    )
-    local = [replace(_thickness(k), dataset="b.cif_pets") for k in (0, 1)]
-    coupling = [
-        replace(_coupling(k), dataset="b.cif_pets", index=k, rotation_index=k) for k in (2, 3)
-    ]
-
-    figure = plot_thickness_grid_vs_model(_records(*local, *coupling, profile))
-
-    assert figure is not None
-    (points,) = figure.axes[0].collections
-    # file-local 0, 1 -> pooled 2, 3 -> alphas -10, 10
-    assert points.get_offsets().tolist() == [
-        [-10.0, local[0].thickness],
-        [10.0, local[1].thickness],
-    ]
-    # Without the coupling events the pairing is impossible, and the figure says so by declining.
-    assert plot_thickness_grid_vs_model(_records(*local, profile)) is None
 
 
 def test_rotation_epoch_heatmap_lays_out_rotations_by_epoch() -> None:
@@ -901,108 +703,27 @@ def test_rotation_epoch_heatmap_lays_out_rotations_by_epoch() -> None:
     assert plot_rotation_epoch_heatmap([]) is None
 
 
-def test_refinement_gain_compares_under_the_searched_residual() -> None:
-    fit = replace(_orientation(0), residual="robs", score=0.08)
-    refined = RefinedRotationMetrics(
-        rotation_index=0,
-        wr2=0.02,
-        r_obs=0.05,
-        n_matched=40,
-        is_validation=True,
-        dataset="a.cif_pets",
-    )
+def test_rotation_axes_tick_every_orientation_and_number_every_fifth() -> None:
+    """Every orientation gets a tick; only indices that are multiples of five get a number.
 
-    figure = plot_refinement_gain(_records(fit, _coupling(0), refined))
-
-    assert figure is not None
-    ax = figure.axes[0]
-    assert ax.get_ylabel() == "R_obs"
-    after = next(line for line in ax.lines if line.get_label() == "after refinement")
-    assert after.get_ydata().tolist() == [0.05]  # r_obs, not wr2
-    assert "validation" in [t.get_text() for t in ax.get_legend().get_texts()]
-
-
-def test_score_distributions_draw_one_ecdf_per_dataset_and_split() -> None:
-    report = _records(
-        _refined(0, "a.cif_pets", validation=False),
-        _refined(1, "a.cif_pets", validation=True),
-        _refined(2, "b.cif_pets", validation=False),
-    )
-
-    figure = plot_score_distributions(report)
-
-    assert figure is not None
-    wr2, r_obs = figure.axes
-    assert [t.get_text() for t in wr2.get_legend().get_texts()] == [
-        "a.cif_pets train (n=1)",
-        "a.cif_pets validation (n=1)",
-        "b.cif_pets train (n=1)",
-    ]
-    assert r_obs.get_xlabel() == "R_obs"
-
-
-def test_angle_deltas_vs_tilt_needs_a_thickness_profile_for_the_tilt_axis() -> None:
-    profile = ThicknessProfile(
-        form="linear",
-        min_thickness=900.0,
-        max_thickness=1100.0,
-        rotation_indices=(0, 1),
-        alphas=(-10.0, 10.0),
-        thicknesses=(980.0, 1020.0),
-        label="a.cif_pets",
-    )
-    fits = (_orientation(0), _orientation(1))
-
-    figure = plot_angle_deltas_vs_tilt(_records(*fits, _coupling(0), _coupling(1), profile))
-
-    assert figure is not None
-    assert len(figure.axes) == 3
-    assert figure.axes[0].collections[0].get_offsets()[:, 0].tolist() == [-10.0, 10.0]
-    assert plot_angle_deltas_vs_tilt(_records(*fits, _coupling(0), _coupling(1))) is None
-
-
-def test_rotation_cost_reads_wall_time_off_the_envelope_timestamps() -> None:
-    t0 = datetime(2026, 1, 1, tzinfo=UTC)
-    events = [
-        OrientationOptimizationStarted(total_rotations=2, dataset="a.cif_pets"),
-        _orientation(0),
-        _orientation(1),
-        _coupling(0),
-        _coupling(1),
-    ]
-    seconds = [0, 5, 12, 12, 12]
-    report = [
-        event_record_from_event(e, run_id="run", sequence=i, timestamp=t0 + timedelta(seconds=s))
-        for i, (e, s) in enumerate(zip(events, seconds, strict=True))
-    ]
-
-    figure = plot_rotation_cost(report)
-
-    assert figure is not None
-    bars, scatter = figure.axes
-    assert [patch.get_height() for patch in bars.patches] == [5.0, 7.0]
-    assert scatter.get_xlabel() == "union beams in the solve"
-    assert plot_rotation_cost(_records(_coupling(0))) is None
-
-
-def test_rotation_axes_name_every_rotation_by_its_exact_index() -> None:
-    """No thinning to round numbers: a reader looks a rotation up by the index on the axis.
-
-    One dataset reads as bare frame numbers; several get the dataset prefix. The figure widens
-    with the run so every label fits.
+    One dataset reads as bare frame numbers; several get the dataset prefix. Fewer than five
+    orientations number every tick. Every figure is drawn at one width, however long the run.
     """
-    indices = [3, 7, 8, 12, 40, 41] + list(range(50, 80))  # 36 rotations, gaps included
+    indices = [3, 7, 8, 12, 40, 41] + list(range(50, 80))  # 36 orientations, gaps included
     single = plot_orientation_optimization(_records(*(_orientation(i) for i in indices)))
 
     assert single is not None
-    labels = [t.get_text() for t in single.axes[1].get_xticklabels()]
-    assert labels == [str(i) for i in indices]
-    assert (
-        single.get_size_inches()[0]
-        < plot_orientation_optimization(
-            _records(*(_orientation(i) for i in range(120)))
-        ).get_size_inches()[0]
+    axis = single.axes[1].xaxis
+    assert [t.get_text() for t in single.axes[1].get_xticklabels()] == [
+        str(i) for i in indices if i % 5 == 0
+    ]
+    # Numbered (major) ticks plus unnumbered (minor) ones cover every orientation exactly once.
+    assert sorted([*axis.get_majorticklocs(), *axis.get_minorticklocs()]) == list(
+        range(len(indices))
     )
+    longer = plot_orientation_optimization(_records(*(_orientation(i) for i in range(120))))
+    assert longer is not None
+    assert single.get_size_inches()[0] == longer.get_size_inches()[0]
 
     pooled = plot_orientation_optimization(
         _records(_orientation(0, "a.cif_pets"), _orientation(0, "b.cif_pets"))
@@ -1020,11 +741,7 @@ def test_refined_rotation_scores_tick_each_rotation_index_that_exists() -> None:
     figure = plot_refined_rotation_scores(report)
 
     assert figure is not None
-    assert [t.get_text() for t in figure.axes[1].get_xticklabels()] == [
-        "0",
-        "1",
-        "2",
-        "5",
-        "9",
-        "33",
-    ]
+    # A tick at each orientation index that exists; numbers only on the multiples of five.
+    assert [t.get_text() for t in figure.axes[1].get_xticklabels()] == ["0", "5"]
+    axis = figure.axes[1].xaxis
+    assert sorted([*axis.get_majorticklocs(), *axis.get_minorticklocs()]) == [0, 1, 2, 5, 9, 33]

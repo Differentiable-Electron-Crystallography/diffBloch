@@ -312,6 +312,8 @@ def build_events() -> list[Event]:
             val_n_rotations=1,
             val_n_wr2_evaluated=1,
             val_n_r_obs_evaluated=1,
+            position_rmsd=0.01 * (i + 1),
+            ueq_rmsd=0.0005 * (i + 1),
         )
         for i in range(3)
     ]

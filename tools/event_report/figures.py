@@ -405,6 +405,8 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
             )
         ax.set_ylabel(label)
         ax.set_ylim(bottom=0)
+        if len(splits) > 1:
+            ax.legend()
     counts = [
         (
             sum(not row.is_validation for row in grouped[name]),
