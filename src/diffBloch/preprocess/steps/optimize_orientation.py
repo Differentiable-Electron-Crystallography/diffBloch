@@ -69,6 +69,7 @@ from diffBloch.observability import (
     OrientationOptimizationStarted,
     OrientationOptimizationSummary,
     OrientationOptimized,
+    OrientationSearchTrace,
 )
 from diffBloch.params import Device
 from diffBloch.preprocess.coupling import build_coupling_segments
@@ -264,6 +265,21 @@ def optimize_orientation(
                     dataset=dataset,
                 )
             )
+            logger.report(
+                OrientationSearchTrace(
+                    rotation_index=result.plan.pattern.rotation_index,
+                    residual=residual,
+                    alpha=result.trial_alpha,
+                    beta=result.trial_beta,
+                    omega=result.trial_omega,
+                    score=result.trial_score,
+                    comparable_score=result.trial_comparable_score,
+                    n_matched_hkl=result.trial_n_matched_hkl,
+                    is_seed=result.trial_is_seed,
+                    is_final=result.trial_is_final,
+                    dataset=dataset,
+                )
+            )
 
         if workers > 1:
             pool = ThreadPoolExecutor(max_workers=workers)
@@ -273,10 +289,9 @@ def optimize_orientation(
                     index = futures[future]
                     report(index, future.result())
             finally:
-                # An early abort surfaces as a logger.report() raising mid-loop. Cancel the
-                # not-yet-started searches and don't block on the in-flight ones, so the abort
-                # actually saves the remaining budget instead of draining every queued rotation
-                # first (the whole point of stopping early). The `with`-block's default
+                # A sink exception surfaces as logger.report() raising mid-loop. Cancel the
+                # not-yet-started searches and don't block on the in-flight ones, so the exception
+                # does not drain every queued rotation before propagating. The `with`-block's default
                 # shutdown(wait=True) would run them all before the exception surfaced. Rotations
                 # already executing cannot be interrupted, so up to `workers` still finish; the
                 # queued remainder is dropped. On normal completion nothing is pending -- a no-op.
@@ -335,8 +350,7 @@ def _comparable_score(score: float, plan: OrientationPlanLike, search: NelderMea
 
 
 class _FitResult(NamedTuple):
-    """One rotation's finished search: the fitted plan plus everything :class:`OrientationOptimized`
-    reports about it."""
+    """One rotation's finished search plus the fields reported downstream."""
 
     plan: OrientationPlanLike
     score: float
@@ -346,6 +360,14 @@ class _FitResult(NamedTuple):
     beta: float
     omega: float
     seed_score: float
+    trial_alpha: tuple[float, ...]
+    trial_beta: tuple[float, ...]
+    trial_omega: tuple[float, ...]
+    trial_score: tuple[float, ...]
+    trial_comparable_score: tuple[float, ...]
+    trial_n_matched_hkl: tuple[int, ...]
+    trial_is_seed: tuple[int, ...]
+    trial_is_final: tuple[int, ...]
 
 
 def _refine_one(
@@ -367,10 +389,10 @@ def _refine_one(
     around ``(alpha, beta, omega) = (0, 0, 0)``, exactly mirroring the reference implementation
     this port is checked against. ``n_passes`` is scipy's reported iteration count (``result.nit``).
 
-    ``seed_score`` is the same metric evaluated once more at the unsearched seed orientation
-    (``alpha = beta = omega = 0``) -- one extra forward solve on top of the search's own trials, paid
-    so the report can state what the search actually bought (``seed_score - score``) instead of only
-    the post-search value.
+    ``seed_score`` is the same metric at the unsearched seed orientation (``alpha = beta = omega =
+    0``), so the report can state what the search actually bought (``seed_score - score``) instead of
+    only the post-search value. It costs no extra solve: the seed leads the simplex, so it is the
+    search's own first scored trial.
     """
     grid = plan.structure_factor_grid
     n_trials = 0
@@ -378,16 +400,35 @@ def _refine_one(
     # beam set across this rotation's trials.
     gather_cache: dict[bytes, StructureFactorGather] = {}
     seed_orientation = np.asarray(op.orientation, dtype=np.float64)
+    trial_alpha: list[float] = []
+    trial_beta: list[float] = []
+    trial_omega: list[float] = []
+    trial_score: list[float] = []
+    trial_comparable_score: list[float] = []
+    trial_n_matched_hkl: list[int] = []
+    trial_is_final: list[int] = []
+
+    def record_trial(
+        params: NDArray[np.float64],
+        *,
+        score: float,
+        comparable_score: float,
+        trial: OrientationPlanLike,
+        is_final: bool = False,
+    ) -> None:
+        alpha, beta, omega = params
+        trial_alpha.append(float(alpha))
+        trial_beta.append(float(beta))
+        trial_omega.append(float(omega))
+        trial_score.append(score)
+        trial_comparable_score.append(comparable_score)
+        trial_n_matched_hkl.append(int(trial.alignment.pattern_index.shape[0]))
+        trial_is_final.append(int(is_final))
 
     def build_trial(orientation: NDArray[np.float64]) -> OrientationPlanLike:
         if coupling is None:
             return op.with_orientation(grid, orientation)
         return _coupled_trial(grid, op, orientation, coupling, gather_cache, validate=validate)
-
-    seed_trial = build_trial(seed_orientation)
-    n_trials += 1
-    seed_trial_fgb = fgb(seed_trial) if callable(fgb) else fgb
-    seed_score = float(engine.score_orientation(seed_trial, seed_trial_fgb))
 
     def objective(params: NDArray[np.float64]) -> float:
         nonlocal n_trials
@@ -399,9 +440,14 @@ def _refine_one(
         raw = float(engine.score_orientation(trial, trial_fgb))
         # scipy minimises this directly, so the (opt-in) fewer-reflections guard lives here: a
         # trial cannot win merely by drifting to geometry that matches a smaller, easier subset.
-        return _comparable_score(raw, trial, search)
+        comparable = _comparable_score(raw, trial, search)
+        record_trial(params, score=raw, comparable_score=comparable, trial=trial)
+        return comparable
 
     step = search.step_size
+    # The origin leads the simplex, so scipy scores the *seed* geometry as its first objective
+    # call: `record_trial`'s first row is the seed, for free. Solving it separately up front to
+    # report `seed_score` would be one extra eigensolve per rotation for a number already here.
     initial_simplex = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -429,6 +475,13 @@ def _refine_one(
     # result.fun is the comparable (penalized) score minimised above; report the plain score
     # instead (self.scores, under whichever residual ExperimentConfig.loss_metrics configures).
     score = float(engine.score_orientation(current, current_fgb))
+    record_trial(
+        np.asarray(result.x, dtype=np.float64),
+        score=score,
+        comparable_score=_comparable_score(score, current, search),
+        trial=current,
+        is_final=True,
+    )
     return _FitResult(
         plan=current,
         score=score,
@@ -437,7 +490,16 @@ def _refine_one(
         alpha=float(alpha),
         beta=float(beta),
         omega=float(omega),
-        seed_score=seed_score,
+        # The seed is the simplex's leading vertex, hence the first scored trial.
+        seed_score=trial_score[0],
+        trial_alpha=tuple(trial_alpha),
+        trial_beta=tuple(trial_beta),
+        trial_omega=tuple(trial_omega),
+        trial_score=tuple(trial_score),
+        trial_comparable_score=tuple(trial_comparable_score),
+        trial_n_matched_hkl=tuple(trial_n_matched_hkl),
+        trial_is_seed=(1,) + (0,) * (len(trial_score) - 1),
+        trial_is_final=tuple(trial_is_final),
     )
 
 

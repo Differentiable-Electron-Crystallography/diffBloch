@@ -205,7 +205,7 @@ class ConvergenceTest:
 
     g_max_step: float = 0.1
     sg_max_step: float = 0.005
-    tilt_steps_step: int = 2
+    tilt_steps_step: int = 5
     num_passes: int = 2
 
     def __post_init__(self) -> None:

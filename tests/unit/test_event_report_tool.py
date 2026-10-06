@@ -1,0 +1,747 @@
+"""The ``tools/event_report`` consumer: the report reader and the figures over it.
+
+The figures live in an importable module rather than in notebook cells precisely so they can be
+asserted on here -- a plot function inside an ``.ipynb`` is code nothing in CI ever runs.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+
+import matplotlib
+import pytest
+
+matplotlib.use("Agg")  # headless: no display, and no figure windows left open by the suite
+
+from tools.event_report import reader  # noqa: E402
+from tools.event_report.figures import (  # noqa: E402
+    build_figures,
+    build_sections,
+    export_figures,
+    plot_convergence_sweeps,
+    plot_dataset_summary,
+    plot_epoch_curve,
+    plot_matched_reflections,
+    plot_orientation_optimization,
+    plot_refined_rotation_scores,
+    plot_rotation_epoch_heatmap,
+    plot_structure_drift,
+    plot_thickness_grids,
+    plot_thickness_model,
+)
+from tools.event_report.tables import (  # noqa: E402
+    build_tables,
+    markdown_table,
+    preprocess_table,
+    refinement_table,
+)
+
+from diffBloch.observability import (  # noqa: E402
+    ConvergencePassStarted,
+    ConvergenceTrial,
+    EventRecord,
+    ExperimentDeclared,
+    OrientationOptimized,
+    OrientationSearchTrace,
+    PreprocessCompleted,
+    RefinedRotationMetrics,
+    RefinementCompleted,
+    RefinementOrientationStep,
+    RefinementOutputsWritten,
+    RefinementStep,
+    RotationCoupling,
+    RotationCouplingSegments,
+    RotationScored,
+    RunStageStarted,
+    RunStageStopped,
+    ThicknessOptimized,
+    ThicknessProfile,
+    event_record_from_event,
+)
+
+
+@pytest.fixture(autouse=True)
+def _close_figures() -> Iterator[None]:
+    """pyplot retains every figure until closed; a module of figure tests otherwise leaks them."""
+    yield
+    matplotlib.pyplot.close("all")
+
+
+def _records(*events: object) -> list[EventRecord]:
+    return [
+        event_record_from_event(
+            event, run_id="run", sequence=index, timestamp=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        for index, event in enumerate(events)
+    ]
+
+
+def _refinement_step(iteration: int, *, validation: bool = False) -> RefinementStep:
+    return RefinementStep(
+        iteration=iteration,
+        loss=1.0 - 0.1 * iteration,
+        wr2=0.05 - 0.001 * iteration,
+        r_obs=0.06,
+        n_rotations=3,
+        n_wr2_evaluated=3,
+        n_r_obs_evaluated=2,
+        val_wr2=0.07 if validation else None,
+        val_r_obs=0.08 if validation else None,
+        val_n_rotations=1 if validation else None,
+        val_n_wr2_evaluated=1 if validation else None,
+        val_n_r_obs_evaluated=1 if validation else None,
+    )
+
+
+def _orientation(rotation_index: int, dataset: str = "a.cif_pets") -> OrientationOptimized:
+    return OrientationOptimized(
+        rotation_index=rotation_index,
+        score=0.04,
+        residual="wr2",
+        n_matched_hkl=40,
+        n_trials=12,
+        n_passes=4,
+        pass_cap=2000,
+        dataset=dataset,
+        seed_score=0.06,
+        alpha=0.01,
+        beta=0.02,
+        omega=0.03,
+    )
+
+
+def _refined(rotation_index: int, dataset: str, *, validation: bool) -> RefinedRotationMetrics:
+    return RefinedRotationMetrics(
+        rotation_index=rotation_index,
+        wr2=0.05,
+        r_obs=0.06,
+        n_matched=40,
+        is_validation=validation,
+        dataset=dataset,
+    )
+
+
+def _thickness(rotation_index: int) -> ThicknessOptimized:
+    return ThicknessOptimized(
+        rotation_index=rotation_index,
+        score=0.04,
+        residual="wr2",
+        thickness=1200.0,
+        candidate_thicknesses=(1000.0, 1200.0),
+        candidate_score=(0.05, 0.04),
+        dataset="a.cif_pets",
+    )
+
+
+def _trace(rotation_index: int) -> OrientationSearchTrace:
+    return OrientationSearchTrace(
+        rotation_index=rotation_index,
+        residual="wr2",
+        alpha=(0.0, 0.1, 0.08),
+        beta=(0.0, 0.0, 0.02),
+        omega=(0.0, 0.0, 0.0),
+        score=(0.06, 0.05, 0.04),
+        comparable_score=(0.06, 0.05, 0.04),
+        n_matched_hkl=(40, 41, 41),
+        is_seed=(1, 0, 0),
+        is_final=(0, 0, 1),
+        dataset="a.cif_pets",
+    )
+
+
+def _segments(rotation_index: int) -> RotationCouplingSegments:
+    return RotationCouplingSegments(
+        rotation_index=rotation_index,
+        first_tilt_index=(0, 3),
+        last_tilt_index=(2, 5),
+        n_tilts=(3, 3),
+        n_segment_beams=(120, 90),
+        n_union_beams=180,
+        n_total_tilts=6,
+        dataset="a.cif_pets",
+    )
+
+
+def _coupling(rotation_index: int) -> RotationCoupling:
+    return RotationCoupling(
+        index=rotation_index,
+        n_coupling_segments=2,
+        n_tilts=6,
+        max_tilts_per_segment=3,
+        n_union_beams=180,
+        max_beams_per_segment=120,
+        dataset="a.cif_pets",
+        rotation_index=rotation_index,
+    )
+
+
+def _full_report() -> list[EventRecord]:
+    return _records(
+        ExperimentDeclared(
+            name="quartz",
+            structure="structure.cif",
+            experimental_data="exp_data.cif_pets",
+            optimizer="adam",
+            seed_thicknesses_by_dataset=(("exp_data.cif_pets", (1000.0,)),),
+            integration_semiangles=(0.01,),
+            rocking_curve_sampling=21,
+            dsg=0.1,
+            rsg=0.1,
+            solve_g_max=0.7,
+            sg_max=1.4,
+            absorption=False,
+            steps=2,
+            learning_rate=0.001,
+            experiment_directory="/tmp/quartz-no-abs",
+        ),
+        RunStageStarted(stage="preprocess", experiment_directory="/tmp/quartz-no-abs"),
+        PreprocessCompleted(n_rotations=4, n_stages=3, total_hkl=100, matched_hkl=80),
+        _orientation(0),
+        _orientation(1),
+        _trace(0),
+        _thickness(0),
+        _coupling(0),
+        _segments(0),
+        RunStageStopped(
+            stage="preprocess",
+            status="completed",
+            elapsed_seconds=1.0,
+            experiment_directory="/tmp/quartz-no-abs",
+        ),
+        RunStageStarted(stage="infer", experiment_directory="/tmp/quartz-no-abs"),
+        RotationScored(index=0, r_obs=0.05, wr2=0.04, n_matched=20),
+        RunStageStopped(
+            stage="infer",
+            status="completed",
+            elapsed_seconds=2.0,
+            experiment_directory="/tmp/quartz-no-abs",
+        ),
+        RunStageStarted(stage="refine", experiment_directory="/tmp/quartz-no-abs"),
+        _refinement_step(0, validation=True),
+        _refinement_step(1, validation=True),
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(3, "b.cif_pets", validation=True),
+        ThicknessProfile(
+            form="linear",
+            min_thickness=1000.0,
+            max_thickness=1300.0,
+            rotation_indices=(0, 1),
+            alphas=(-10.0, 10.0),
+            thicknesses=(1000.0, 1300.0),
+            label="a.cif_pets",
+        ),
+        RefinementCompleted(n_steps=2, best_step=0, best_loss=1.0),
+        RefinementOutputsWritten(
+            structure="/tmp/quartz-no-abs/refined_structure.cif",
+            artifacts={"refined_structure": "/tmp/quartz-no-abs/refined_structure.cif"},
+        ),
+        RunStageStopped(
+            stage="refine",
+            status="completed",
+            elapsed_seconds=3.0,
+            experiment_directory="/tmp/quartz-no-abs",
+        ),
+    )
+
+
+# --- reader ---------------------------------------------------------------------------------
+
+
+def test_reader_round_trips_a_written_report(tmp_path: Path) -> None:
+    path = tmp_path / "report.jsonl"
+    written = _full_report()
+    path.write_text("".join(record.model_dump_json() + "\n" for record in written))
+
+    loaded = reader.read_records(path)
+
+    assert [record.sequence for record in loaded] == [record.sequence for record in written]
+    assert [record.event_type for record in loaded] == [r.event_type for r in written]
+
+
+def test_reader_resolves_a_repository_relative_path(tmp_path: Path) -> None:
+    """A notebook launched from its own directory must still resolve a repo-relative path."""
+    root = reader.repository_root()
+    relative = Path("pyproject.toml")
+
+    assert reader.resolve_event_log_path(root / relative) == root / relative
+    with pytest.raises(FileNotFoundError, match="Tried:"):
+        reader.resolve_event_log_path("no/such/report.jsonl")
+
+
+def test_reader_slices_by_type_and_dataset() -> None:
+    records = _full_report()
+
+    assert len(reader.records_of(records, "OrientationOptimized")) == 2
+    assert reader.records_of(records, "NoSuchEvent") == []
+    assert sorted(reader.by_dataset(reader.records_of(records, "RefinedRotationMetrics"))) == [
+        "a.cif_pets",
+        "b.cif_pets",
+    ]
+    ordered = reader.sorted_by_rotation(reader.records_of(records, "OrientationOptimized"))
+    assert [record.rotation_index for record in ordered] == [0, 1]
+
+
+def test_reader_finite_mean_ignores_none_and_non_finite() -> None:
+    assert reader.finite_mean([1.0, 3.0, None, float("nan"), float("inf")]) == 2.0
+    assert reader.finite_mean([]) is None
+    assert reader.finite_mean([None, float("nan")]) is None
+
+
+# --- figures --------------------------------------------------------------------------------
+
+
+def test_build_figures_renders_every_figure_the_report_has_events_for() -> None:
+    built = build_figures(_full_report())
+
+    assert set(built) == {
+        "epoch_curve",
+        "orientation_optimization",
+        "matched_reflections",
+        "refined_rotation_scores",
+        "per_dataset_summary",
+        "thickness_grids",
+        "thickness_model",
+    }
+    # Declined, not errored: no verbose per-orientation steps, and no RMSD on these epoch events.
+    assert {"rotation_epoch_heatmap", "structure_drift"}.isdisjoint(built)
+    # A refine report declares no convergence sweep, so that figure is absent rather than empty.
+    assert "convergence_sweeps" not in built
+    epoch_curve = built["epoch_curve"]
+    assert epoch_curve.axes[-1].get_xlabel() == "Epoch"
+    # wR2 and R_obs on their own axes; validation reported -> train and validation on each.
+    assert [len(ax.lines) for ax in epoch_curve.axes] == [2, 2]
+    assert [t.get_text() for t in epoch_curve.axes[0].get_legend().get_texts()] == [
+        "train",
+        "validation",
+    ]
+
+
+def test_build_sections_heads_each_stage_separately() -> None:
+    sections = build_sections(_full_report())
+
+    assert [title for title, _ in sections] == [
+        "Preprocess — orientation optimization",
+        "Preprocess — per-orientation thickness fit",
+        "Refinement — epoch history",
+        "Refinement — per-orientation scores",
+        "Refinement — datasets",
+        "Refinement — learned thickness model",
+    ]
+    assert dict(sections)["Preprocess — per-orientation thickness fit"].keys() == {
+        "thickness_grids"
+    }
+
+
+def test_build_sections_follows_the_order_the_run_actually_ran() -> None:
+    """``preprocess.stage_order: thickness_first`` swaps the two fits, so the order is derived."""
+    thickness_first = _records(_thickness(0), _orientation(0))
+    orientation_first = _records(_orientation(0), _thickness(0))
+
+    assert [title for title, _ in build_sections(thickness_first)] == [
+        "Preprocess — per-orientation thickness fit",
+        "Preprocess — orientation optimization",
+    ]
+    assert [title for title, _ in build_sections(orientation_first)] == [
+        "Preprocess — orientation optimization",
+        "Preprocess — per-orientation thickness fit",
+    ]
+
+
+def test_build_sections_drops_a_section_whose_figures_all_declined() -> None:
+    """A single-dataset run has metrics but no dataset comparison, so that heading is absent."""
+    sections = dict(build_sections(_records(_refined(0, "a.cif_pets", validation=False))))
+
+    assert "Refinement — per-orientation scores" in sections
+    assert "Refinement — datasets" not in sections
+
+
+def test_every_figure_is_none_when_its_events_are_absent() -> None:
+    """A preprocess-only report renders fewer figures rather than raising."""
+    empty: list[EventRecord] = []
+    for plot in (
+        plot_convergence_sweeps,
+        plot_epoch_curve,
+        plot_orientation_optimization,
+        plot_matched_reflections,
+        plot_structure_drift,
+        plot_refined_rotation_scores,
+        plot_dataset_summary,
+        plot_thickness_grids,
+        plot_thickness_model,
+        plot_rotation_epoch_heatmap,
+    ):
+        assert plot(empty) is None, plot.__name__
+    assert build_figures(empty) == {}
+
+
+def test_per_dataset_summary_needs_more_than_one_dataset() -> None:
+    """One dataset has nothing to compare against, so the comparison figure is omitted."""
+    single = _records(_refined(0, "a.cif_pets", validation=False))
+
+    assert plot_dataset_summary(single) is None
+
+
+def test_per_dataset_summary_splits_train_from_validation() -> None:
+    """Held-out rotations get their own bars, so a dataset that generalizes badly is visible."""
+    report = _records(
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(1, "a.cif_pets", validation=True),
+        _refined(2, "b.cif_pets", validation=False),
+    )
+
+    figure = plot_dataset_summary(report)
+
+    assert figure is not None
+    wr2_panel, r_obs_panel = figure.axes
+    assert [text.get_text() for text in wr2_panel.get_legend().get_texts()] == [
+        "train",
+        "validation",
+    ]
+    assert len(wr2_panel.patches) == len(r_obs_panel.patches) == 4  # 2 datasets x 2 splits
+    labels = [label.get_text() for label in r_obs_panel.get_xticklabels()]
+    assert labels == ["a.cif_pets\n(1/1)", "b.cif_pets\n(1/0)"]
+
+
+def test_per_dataset_summary_draws_only_training_bars_without_a_split() -> None:
+    report = _records(
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(1, "b.cif_pets", validation=False),
+    )
+
+    figure = plot_dataset_summary(report)
+
+    assert figure is not None
+    assert len(figure.axes[0].patches) == 2
+    assert figure.axes[0].get_legend() is None  # one series needs no legend
+
+
+def test_refined_rotation_scores_marks_held_out_rotations() -> None:
+    records = _records(
+        _refined(0, "a.cif_pets", validation=False),
+        _refined(1, "a.cif_pets", validation=True),
+    )
+
+    figure = plot_refined_rotation_scores(records)
+
+    assert figure is not None
+    labels = [text.get_text() for text in figure.axes[0].get_legend().get_texts()]
+    assert labels == ["train", "validation"]
+
+
+def _converge_report() -> list[EventRecord]:
+    """One pass sweeping two controls, each settling on its third candidate."""
+    events: list[object] = [
+        ConvergencePassStarted(
+            pass_index=1,
+            g_max=2.25,
+            sg_max=0.01,
+            tilt_steps=42,
+            r_factor_threshold=0.01,
+            n_orientations=1,
+        )
+    ]
+    for control, values in (
+        ("g_max", ((2.25, 2.45, 0.0312), (2.45, 2.65, 0.0180), (2.65, 2.85, 0.0071))),
+        ("sg_max", ((0.01, 0.02, 0.0500), (0.02, 0.03, 0.0210), (0.03, 0.04, 0.0042))),
+    ):
+        for trial_index, (previous, candidate, r_factor) in enumerate(values):
+            events.append(
+                ConvergenceTrial(
+                    control=control,
+                    trial_index=trial_index,
+                    pass_index=1,
+                    previous=previous,
+                    candidate=candidate,
+                    r_factor=r_factor,
+                    n_compared_hkl=612,
+                )
+            )
+    return _records(*events)
+
+
+def test_convergence_sweeps_panels_each_control_against_the_threshold() -> None:
+    figure = plot_convergence_sweeps(_converge_report())
+
+    assert figure is not None
+    # No titles: each panel names its control on its own x axis.
+    assert [ax.get_title() for ax in figure.axes] == ["", ""]
+    assert [ax.get_xlabel() for ax in figure.axes] == [
+        r"Candidate $g_{\mathrm{max}}$",
+        r"Candidate $s_{g,\mathrm{max}}$",
+    ]
+    # Log scale: the R-factors span orders of magnitude as a control converges.
+    assert figure.axes[0].get_yscale() == "log"
+    # One ladder line per pass, and the threshold drawn as a rule beneath it.
+    assert len(figure.axes[0].lines) == 2
+    assert figure.axes[0].lines[1].get_ydata()[0] == pytest.approx(0.01)
+
+
+def test_convergence_sweeps_marks_the_first_candidate_under_the_threshold() -> None:
+    """The crossing is the settled value -- the reason the ladder is plotted at all."""
+    figure = plot_convergence_sweeps(_converge_report())
+
+    assert figure is not None
+    settled = [
+        collection.get_offsets().tolist()
+        for collection in figure.axes[0].collections
+        if len(collection.get_offsets())
+    ]
+    assert settled == [[[2.85, 0.0071]]]  # the third g_max trial, the first under 0.01
+
+
+def test_convergence_sweeps_stays_linear_when_an_r_factor_is_not_positive() -> None:
+    """A log axis silently drops non-positive points; fall back rather than hide a trial."""
+    records = _records(
+        ConvergenceTrial(
+            control="g_max",
+            trial_index=0,
+            pass_index=1,
+            previous=2.25,
+            candidate=2.45,
+            r_factor=0.0,
+            n_compared_hkl=612,
+        )
+    )
+
+    figure = plot_convergence_sweeps(records)
+
+    assert figure is not None
+    assert figure.axes[0].get_yscale() == "linear"
+
+
+def test_export_figures_writes_one_file_per_figure_and_format(tmp_path: Path) -> None:
+    built = build_figures(_full_report())
+
+    written = export_figures(built, tmp_path / "figures", formats=("svg", "png"))
+
+    assert len(written) == 2 * len(built)
+    assert all(path.exists() and path.stat().st_size > 0 for path in written)
+
+
+# --- tables ---------------------------------------------------------------------------------
+
+
+def test_tables_are_absent_without_their_events() -> None:
+    assert preprocess_table([]) is None
+    assert refinement_table([]) is None
+    assert build_tables([]) == []
+
+
+def test_preprocess_table_reports_each_fit_stage_and_its_own_settings() -> None:
+    steps = (
+        ("build_orientation_plans", {"rocking": {"__type__": "RockingCurve", "sampling": 42}}),
+        (
+            "optimize_orientation",
+            {
+                "search": {"__type__": "NelderMeadSearch", "step_size": 0.05, "max_iterations": 60},
+                "absorption": {"__type__": "Absorption", "enabled": False},
+            },
+        ),
+    )
+    rows = preprocess_table(
+        _records(
+            PreprocessCompleted(
+                n_rotations=4, n_stages=2, total_hkl=100, matched_hkl=80, steps=steps
+            )
+        )
+    )
+
+    assert rows == [
+        ("Rotations", "4"),
+        ("Stages", "2"),
+        ("Total HKLs", "100"),
+        ("Matched HKLs", "80"),
+        ("Orientation optimization", "ran"),
+        ("search.step_size", "0.05"),
+        ("search.max_iterations", "60"),
+        # a stage absent from the recipe says so instead of silently missing
+        ("Thickness optimization", "not run"),
+    ]
+
+
+def test_preprocess_table_does_not_claim_stages_were_skipped_when_unrecorded() -> None:
+    """A report from before ``steps`` was recorded has no key at all -- unknown, not "not run".
+
+    ``steps`` defaults to ``()`` on the event, so a typed read alone cannot tell the two apart;
+    this is the one place the table consults the envelope.
+    """
+    (record,) = _records(
+        PreprocessCompleted(n_rotations=4, n_stages=3, total_hkl=100, matched_hkl=80)
+    )
+    payload = {key: value for key, value in record.payload.items() if key != "steps"}
+    older = record.model_copy(update={"payload": payload})
+
+    rows = preprocess_table([older]) or []
+
+    assert rows[-1] == ("Stage settings", "not recorded in this report")
+    assert not any(value == "not run" for _, value in rows)
+
+
+def test_refinement_table_reports_the_selected_epoch_with_its_denominators() -> None:
+    report = _records(
+        ExperimentDeclared(
+            name="quartz",
+            structure="structure.cif",
+            experimental_data="exp_data.cif_pets",
+            optimizer="adam",
+            seed_thicknesses_by_dataset=(("exp_data.cif_pets", (1000.0,)),),
+            integration_semiangles=(0.01,),
+            rocking_curve_sampling=21,
+            dsg=0.1,
+            rsg=0.1,
+            solve_g_max=0.7,
+            sg_max=1.4,
+            absorption=False,
+            steps=2,
+            learning_rate=0.001,
+        ),
+        _refinement_step(0, validation=True),
+        _refinement_step(1, validation=True),
+        RefinementCompleted(
+            n_steps=2,
+            best_step=1,
+            best_loss=0.9,
+            selection="validation",
+            reflection_counts={"matched": 12, "matched_i_gt_3sigma": 8},
+        ),
+    )
+
+    rows = dict(refinement_table(report) or [])
+
+    assert rows["Experiment"] == "quartz"
+    assert rows["Best epoch"] == "2 / 2"
+    assert rows["Selected on"] == "validation"
+    assert rows["Objective"] == "0.9"
+    assert rows["Optimizer"] == "adam"
+    assert rows["Train wR2 (%)"] == "4.90 [3/3]"  # epoch 2's numbers, not epoch 1's
+    assert rows["Train R_obs (%)"] == "6.00 [2/3]"
+    assert rows["Val wR2 (%)"] == "7.00 [1/1]"
+    assert rows["Val R_obs (%)"] == "8.00 [1/1]"
+    assert rows["Matched HKLs (I>3σ/total)"] == "8 / 12"
+
+
+def test_refinement_table_drops_the_train_prefix_and_survives_a_nan_mean() -> None:
+    """No validation split -> one population, so no Train/Val labels. A NaN mean round-trips through
+    the JSONL as the string "NaN" and must still render as n/a with its count."""
+    step = RefinementStep(
+        iteration=0, loss=1.0, wr2=float("nan"), r_obs=0.06, n_rotations=3, n_wr2_evaluated=0
+    )
+    written = _records(step, RefinementCompleted(n_steps=1, best_step=0, best_loss=1.0))
+    report = reader.read_records_text("".join(r.model_dump_json() + "\n" for r in written))
+
+    rows = dict(refinement_table(report) or [])
+
+    assert rows["wR2 (%)"] == "n/a [0/3]"
+    assert rows["R_obs (%)"] == "6.00"  # no evaluated count reported -> no denominator
+    assert not any(label.startswith(("Train", "Val")) for label in rows)
+    assert rows["Matched HKLs (I>3σ/total)"] == "n/a"
+
+
+def test_build_tables_renders_markdown_in_run_order() -> None:
+    tables = build_tables(_full_report())
+
+    assert [title for title, _ in tables] == ["Preprocess", "Refinement summary"]
+    preprocess = tables[0][1].splitlines()
+    assert preprocess[:3] == ["| Parameter | Value |", "| --- | --- |", "| Rotations | 4 |"]
+
+
+def test_markdown_table_escapes_pipes() -> None:
+    assert markdown_table([("a|b", "c")]).splitlines()[-1] == "| a\\|b | c |"
+
+
+# --- the bundled example report -----------------------------------------------------------------
+
+
+def test_default_event_log_is_the_env_var_else_the_bundled_example(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DIFFBLOCH_EVENT_LOG", "/elsewhere/report.jsonl")
+    assert reader.default_event_log() == Path("/elsewhere/report.jsonl")
+
+    monkeypatch.delenv("DIFFBLOCH_EVENT_LOG")
+    assert reader.default_event_log() == reader.EXAMPLE_REPORT
+    assert reader.EXAMPLE_REPORT.is_file()
+
+
+def test_bundled_example_report_renders() -> None:
+    """The notebook's default input is a real run and must keep fitting the contract.
+
+    Unlike the golden fixture it cannot be regenerated by a script: if this fails after a schema
+    change, re-run ``diffbloch refine examples/Colmey_et_al_2026/data/quartz-no-abs`` and copy the
+    new report over ``tools/event_report/example_report.jsonl``.
+    """
+    records = reader.read_records(reader.EXAMPLE_REPORT)
+
+    assert [title for title, _ in build_tables(records)] == ["Preprocess", "Refinement summary"]
+    assert {name for _, figures in build_sections(records) for name in figures} == {
+        "epoch_curve",
+        "refined_rotation_scores",
+        "thickness_model",
+    }
+
+
+# --- the second batch of figures ------------------------------------------------------------------
+
+
+def test_rotation_epoch_heatmap_lays_out_rotations_by_epoch() -> None:
+    steps = [
+        RefinementOrientationStep(
+            iteration=e, rotation_index=r, wr2=0.1 * (r + 1) / (e + 1), dataset="a"
+        )
+        for e in range(3)
+        for r in range(2)
+    ]
+
+    figure = plot_rotation_epoch_heatmap(_records(*steps))
+
+    assert figure is not None
+    ax = figure.axes[0]
+    assert ax.images[0].get_array().shape == (2, 3)  # rotations x epochs
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["1", "2", "3"]
+    assert plot_rotation_epoch_heatmap([]) is None
+
+
+def test_rotation_axes_tick_every_orientation_and_number_every_fifth() -> None:
+    """Every orientation gets a tick; only indices that are multiples of five get a number.
+
+    One dataset reads as bare frame numbers; several get the dataset prefix. Fewer than five
+    orientations number every tick. Every figure is drawn at one width, however long the run.
+    """
+    indices = [3, 7, 8, 12, 40, 41] + list(range(50, 80))  # 36 orientations, gaps included
+    single = plot_orientation_optimization(_records(*(_orientation(i) for i in indices)))
+
+    assert single is not None
+    axis = single.axes[1].xaxis
+    assert [t.get_text() for t in single.axes[1].get_xticklabels()] == [
+        str(i) for i in indices if i % 5 == 0
+    ]
+    # Numbered (major) ticks plus unnumbered (minor) ones cover every orientation exactly once.
+    assert sorted([*axis.get_majorticklocs(), *axis.get_minorticklocs()]) == list(
+        range(len(indices))
+    )
+    longer = plot_orientation_optimization(_records(*(_orientation(i) for i in range(120))))
+    assert longer is not None
+    assert single.get_size_inches()[0] == longer.get_size_inches()[0]
+
+    pooled = plot_orientation_optimization(
+        _records(_orientation(0, "a.cif_pets"), _orientation(0, "b.cif_pets"))
+    )
+    assert pooled is not None
+    assert [t.get_text() for t in pooled.axes[1].get_xticklabels()] == [
+        "a.cif_pets:0",
+        "b.cif_pets:0",
+    ]
+
+
+def test_refined_rotation_scores_tick_each_rotation_index_that_exists() -> None:
+    report = _records(*(_refined(i, "a.cif_pets", validation=False) for i in (0, 1, 2, 5, 9, 33)))
+
+    figure = plot_refined_rotation_scores(report)
+
+    assert figure is not None
+    # A tick at each orientation index that exists; numbers only on the multiples of five.
+    assert [t.get_text() for t in figure.axes[1].get_xticklabels()] == ["0", "5"]
+    axis = figure.axes[1].xaxis
+    assert sorted([*axis.get_majorticklocs(), *axis.get_minorticklocs()]) == [0, 1, 2, 5, 9, 33]

@@ -2,12 +2,19 @@
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import numpy as np
 import pytest
 import torch
 
-from diffBloch.app.program import _thickness_networks, _write_refinement_outputs
+from diffBloch.app.loggers import ReportLogger
+from diffBloch.app.program import (
+    _report_refinement_outcome,
+    _thickness_networks,
+    _write_refinement_outputs,
+)
 from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.core.products import PatternBatch
@@ -18,7 +25,12 @@ from diffBloch.engine import (
 )
 from diffBloch.io import read_structure
 from diffBloch.io.record import ExperimentalRecord
-from diffBloch.observability import ObjectiveManifest, ObjectiveTerm, RefinementStep
+from diffBloch.observability import (
+    EventRecord,
+    ObjectiveManifest,
+    ObjectiveTerm,
+    RefinementStep,
+)
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
 from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.specs import ApparentThicknessNetwork
@@ -333,3 +345,48 @@ def test_write_refinement_outputs_writes_a_refinement_lock_from_a_relative_root(
     assert "refinement_lock" in written.artifacts
     lock_path = relative_root / "reproducibility" / "refinement.lock"
     assert read_refinement_lock(lock_path).refined_structure.path == "refined_structure.cif"
+
+
+def test_outputs_written_event_carries_paths_relative_to_the_experiment_directory(
+    tmp_path: Path,
+) -> None:
+    """The report must survive being copied off the machine that wrote it.
+
+    ``result.artifacts`` keeps absolute paths (an API caller opens them directly), but the event a
+    report sink records makes them relative to the experiment directory it also carries, so
+    ``experiment_directory / path`` recovers the file on any machine the tree lands on. A path
+    outside the tree cannot be relativized and stays absolute rather than being mangled.
+    """
+    root = tmp_path / "experiment"
+    (root / "reproducibility").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere.npz"
+    artifacts = {
+        "refined_structure": str((root / "refined_structure.cif").resolve()),
+        "refinement_lock": str((root / "reproducibility" / "refinement.lock").resolve()),
+        "stray": str(elsewhere.resolve()),
+    }
+    result = SimpleNamespace(artifacts=artifacts, best_model=object())
+    engine = SimpleNamespace(per_rotation_metrics=lambda _model: [], orientations=())
+    path = tmp_path / "report.jsonl"
+
+    _report_refinement_outcome(
+        ReportLogger(path),
+        cast(Any, engine),
+        cast(Any, result),
+        root=root,
+        validation_rotation_indices=frozenset(),
+        thickness_nns=(),
+        raw_alphas=None,
+    )
+
+    (record,) = [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
+    assert record.event_type == "RefinementOutputsWritten"
+    assert record.payload["experiment_directory"] == str(root.resolve())
+    assert record.payload["structure"] == "refined_structure.cif"
+    assert record.artifacts == {
+        "refined_structure": "refined_structure.cif",
+        "refinement_lock": str(Path("reproducibility") / "refinement.lock"),
+        "stray": str(elsewhere.resolve()),
+    }
+    rejoined = Path(record.payload["experiment_directory"], record.artifacts["refinement_lock"])
+    assert rejoined == (root / "reproducibility" / "refinement.lock").resolve()

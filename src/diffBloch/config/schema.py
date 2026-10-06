@@ -363,18 +363,11 @@ class ThicknessOptimizationConfig(_StrictConfig):
     :class:`~diffBloch.specs.ThicknessGrid` value-type the pure ``optimize_thickness`` consumes, and
     delegates all validation there (one rule home, no drift). Defaults derive from that value-type
     (``_THICKNESS_GRID_DEFAULTS``), so the boundary value cannot drift from it either.
-
-    ``plot`` is reporting-only -- it selects whether the CLI attaches a
-    :class:`~diffBloch.app.loggers.plotting.ThicknessPlotLogger` (one wR2-vs-thickness PNG per
-    rotation, default ``<inputs.structure's directory>/thickness_optim``); it never changes the
-    fitted ``Plan``, so :func:`~diffBloch.config.manifest.dataset_config_digest` excludes it explicitly even
-    when the rest of this block is in scope.
     """
 
     min_thickness: float = _THICKNESS_GRID_DEFAULTS.min_thickness  # Angstroms
     max_thickness: float = _THICKNESS_GRID_DEFAULTS.max_thickness  # Angstroms
     n_steps: int = _THICKNESS_GRID_DEFAULTS.n_steps  # evenly-spaced candidates
-    plot: bool = False
 
     def to_grid(self) -> ThicknessGrid:
         """Parse into the validated value-type the pure ``optimize_thickness`` consumes."""
@@ -528,7 +521,9 @@ class ExperimentConfig(_StrictConfig):
                 )
         return self
 
-    def to_declaration(self, integrations: Sequence[IntegrationGeometry]) -> ExperimentDeclared:
+    def to_declaration(
+        self, integrations: Sequence[IntegrationGeometry], *, experiment_directory: str = ""
+    ) -> ExperimentDeclared:
         """Project the result-determining knobs onto the run's declaration event.
 
         One more ``to_*`` edge alongside :meth:`BlochwaveConfig.to_policy` /
@@ -556,6 +551,7 @@ class ExperimentConfig(_StrictConfig):
             structure=self.inputs.structure,
             experimental_data=experimental_data,
             optimizer=self.refinement.optimizer.name,
+            experiment_directory=experiment_directory,
             seed_thicknesses_by_dataset=seed_thicknesses_by_dataset,
             integration_semiangles=tuple(integration.semiangle for integration in integrations),
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,

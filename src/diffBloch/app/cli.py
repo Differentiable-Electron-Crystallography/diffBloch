@@ -8,15 +8,20 @@ science.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
 from diffBloch import __version__
-from diffBloch.app.loggers import ConsoleLogger, CSVLogger, print_summary_box
+from diffBloch.app.loggers import ConsoleLogger, ReportLogger, print_summary_box
 from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
@@ -25,15 +30,21 @@ from diffBloch.app.program import (
     run_experiment,
 )
 from diffBloch.config import load_config, write_experiment_lock
-from diffBloch.observability import Logger, MultiLogger
+from diffBloch.observability import (
+    EventRecord,
+    Logger,
+    MultiLogger,
+)
+
+# The input/config failures a command reports as a one-line `error:` instead of a traceback.
+# Anything else is a bug or an interrupt and propagates (and `_reported_run` discards the partial
+# report).
+_COMMAND_ERRORS = (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError)
 
 
 def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
     """Add the flags shared by ``infer``, ``preprocess``, and ``refine`` (same preprocess surface)."""
     parser.add_argument("experiment_directory", help="Path to the experiment directory")
-    parser.add_argument(
-        "--csv", metavar="PATH", help="append per-rotation observations to a long-format CSV log"
-    )
     parser.add_argument(
         "--refresh",
         action="store_true",
@@ -68,21 +79,6 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         help="cap the matrix_exp propagator block to N (N,N) operators (memory only, matches the "
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
-    )
-    parser.add_argument(
-        "--plot-thickness",
-        action="store_true",
-        help="save one wR2-vs-thickness PNG per rotation from the thickness grid search; ORs with "
-        "preprocess.thickness.plot in experiment.yaml, so "
-        "either turns it on. Defaults to '<inputs.structure's directory>/thickness_optim', "
-        "override with --plot-thickness-dir",
-    )
-    parser.add_argument(
-        "--plot-thickness-dir",
-        metavar="PATH",
-        default=None,
-        help="override the output directory for thickness plots; only takes effect when plotting "
-        "is on (--plot-thickness or preprocess.thickness.plot)",
     )
 
 
@@ -142,9 +138,6 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=1,
         help="use the first N orientations for convergence testing (default: 1)",
-    )
-    p_converge.add_argument(
-        "--csv", metavar="PATH", help="append per-trial observations to a long-format CSV log"
     )
     p_preprocess = sub.add_parser(
         "preprocess", help="Settle the coupled preprocess Plan and write the checkpoint (no score)"
@@ -225,22 +218,22 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            run_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                run_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
+        # ConsoleLogger printed "INFER COMPLETE" off the run's terminal event.
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "preprocess":
@@ -248,22 +241,20 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            plan = preprocess_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                plan = preprocess_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         # ConsoleLogger printed "PREPROCESS COMPLETE" the moment preprocessing settled -- the same
         # box a refine/infer run gets, from the same sink.
         print()
@@ -283,6 +274,9 @@ def main(argv: list[str] | None = None) -> int:
                 lock = npz.with_suffix(".lock")
                 if lock.exists():
                     print(f"  • {'Plan Lock':<20} {lock.resolve()}")
+        else:
+            print("Output files")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "refine":
@@ -290,37 +284,28 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            # The written summary is one more sink on the run's event stream, chosen here beside
-            # the console/CSV ones rather than by refine_experiment: an API caller composes it (or
-            # not) for themselves instead of having a file appear as a side effect of refining.
-            report_path = (Path(args.experiment_directory) / "refinement_report.txt").resolve()
-            refine_sinks: tuple[Logger, ...] = (
-                _build_logger(csv=args.csv),
-                SummaryLogger(report_path),
-            )
-            refine_experiment(
-                args.experiment_directory,
-                logger=MultiLogger(refine_sinks),
-                checkpoint=not args.no_checkpoint,
-                refresh=args.refresh,
-                device=args.device,
-                workers=args.workers,
-                max_batch=args.max_batch,
-                verbose=args.verbose_refinement,
-                profile=args.profile,
-                checkpoint_activations=not args.no_checkpoint_activations,
-                plot_thickness=args.plot_thickness,
-                plot_thickness_dir=args.plot_thickness_dir,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory, refinement_report=True) as run:
+                refine_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    checkpoint=not args.no_checkpoint,
+                    refresh=args.refresh,
+                    device=args.device,
+                    workers=args.workers,
+                    max_batch=args.max_batch,
+                    verbose=args.verbose_refinement,
+                    profile=args.profile,
+                    checkpoint_activations=not args.no_checkpoint_activations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         # ConsoleLogger printed "REFINEMENT COMPLETE" and the artifact list off the run's terminal
-        # event. The report is the one output this file chose the location of, so it is also the
-        # one line this file still prints.
-        print(f"  • {'Refinement Report':<20} {report_path}")
+        # event; this file adds the outputs it chose the location of. The JSON report is written
+        # but not printed: the visualization notebooks are how it is read.
+        print(f"  • {'Refinement Report':<20} {run.refinement_report_path}")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "converge":
@@ -328,17 +313,17 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            settled = converge_experiment(
-                args.experiment_directory,
-                logger=_build_logger(csv=args.csv),
-                device=args.device,
-                n_orientations=args.orientations,
-            )
-        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            with _reported_run(args.experiment_directory) as run:
+                settled = converge_experiment(
+                    args.experiment_directory,
+                    logger=run.logger,
+                    device=args.device,
+                    n_orientations=args.orientations,
+                )
+        except _COMMAND_ERRORS as exc:
             if args.debug:
                 raise
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return _error(exc)
         print()
         print_summary_box(
             "CONVERGENCE COMPLETE",
@@ -348,23 +333,182 @@ def main(argv: list[str] | None = None) -> int:
                 ("Tilt steps", str(settled.tilt_steps)),
             ),
         )
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     parser.print_help()
     return 0
 
 
-def _build_logger(*, csv: str | None, per_rotation: bool = True) -> Logger:
-    """Combine the observation sinks every command gets: the console, plus a CSV log if asked.
+@dataclass(frozen=True)
+class _ReportedRun:
+    """The sinks one command runs against, plus where its reports will land."""
 
-    The single place a CLI run's sinks are assembled, so a newly observable phase is rendered by
-    teaching :class:`~diffBloch.app.loggers.ConsoleLogger` its event rather than by wiring another
-    sink into each command. ``per_rotation`` opts the console into the settled per-rotation stream.
+    logger: Logger
+    report_path: Path
+    refinement_report_path: Path | None
+
+
+@contextmanager
+def _reported_run(
+    experiment_directory: str | Path, *, refinement_report: bool = False
+) -> Iterator[_ReportedRun]:
+    """Attach the console and canonical-report sinks for one command.
+
+    ``refinement_report=True`` (refine) also attaches the ``refinement_report.txt`` writer. The
+    JSONL report is written only when the command completes; on any exception, *including* the
+    ones :func:`main` does not catch, the partial report is deleted.
     """
-    console = ConsoleLogger(per_rotation=per_rotation)
-    if csv is None:
-        return console
-    return MultiLogger((console, CSVLogger(Path(csv))))
+    root = Path(experiment_directory)
+    if not root.exists():
+        raise FileNotFoundError(root)
+    report = ReportLogger(
+        ReportLogger.timestamped_path(root / "reproducibility" / "reports").resolve(),
+        completed_only=True,
+    )
+    sinks: tuple[Logger, ...] = (ConsoleLogger(), report)
+    refinement_report_path = None
+    if refinement_report:
+        refinement_report_path = (root / "refinement_report.txt").resolve()
+        sinks = (*sinks, SummaryLogger(refinement_report_path))
+    with report:
+        yield _ReportedRun(
+            logger=MultiLogger(sinks),
+            report_path=report.path,
+            refinement_report_path=refinement_report_path,
+        )
+
+
+# The report rendering code lives in the checkout's tools/, outside the installed package.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPORT_TOOLS = _REPO_ROOT / "tools" / "event_report"
+
+_REPORT_NOTEBOOK_CODE = """\
+import sys
+sys.path.insert(0, {repo_root!r})
+
+import matplotlib.pyplot as plt
+from IPython.display import HTML, Markdown, display
+from tools.event_report import figures, reader
+
+records = reader.stage_records(reader.read_records({report_name!r}), {stage!r})
+for title, panels in figures.build_sections(records):
+    display(Markdown(f"## {{title}}"))
+    for figure in panels.values():
+        display(HTML(figures.figure_dropdown_html(figure)))
+plt.close("all")
+"""
+
+
+# Event types the visualization notebook has plots for. A stage that emitted none of them (e.g. a
+# preprocess that only reused a checkpoint) gets no notebook rather than an empty one.
+_PLOTTED_EVENTS = frozenset(
+    {
+        "ConvergenceTrial",
+        "OrientationOptimized",
+        "ThicknessOptimized",
+        "RefinementStep",
+        "RefinementOrientationStep",
+        "RefinedRotationMetrics",
+        "ThicknessProfile",
+    }
+)
+
+
+# How a stage is named in its notebook's file name and heading, where that differs from the stage.
+_NOTEBOOK_NAMES = {"converge": "convergence-test", "refine": "refinement"}
+
+
+def _write_stage_notebooks(report_path: Path, experiment_directory: str | Path) -> list[Path]:
+    """Write one visualization notebook per stage of the run that has something to plot.
+
+    A command's report can hold several stages (``refine`` runs ``preprocess`` first); each gets its
+    own notebook beside the report, named by the stage and the run's local date and time (e.g.
+    ``refinement_2026-10-06_15-30-33.ipynb``), plotting only the events emitted while that stage
+    was the innermost one running. Nothing is written when the rendering code in
+    ``tools/event_report`` is absent, e.g. an installed package rather than a checkout.
+    """
+    if not _REPORT_TOOLS.is_dir():
+        return []
+    # Stages in the order their first plottable event appeared (preprocess before refine).
+    plotted_stages: list[str] = []
+    open_stages: list[str] = []
+    for line in report_path.read_text().splitlines():
+        record = EventRecord.model_validate_json(line)
+        if record.event_type == "RunStageStarted":
+            open_stages.append(str(record.payload["stage"]))
+        if (
+            open_stages
+            and record.event_type in _PLOTTED_EVENTS
+            and open_stages[-1] not in plotted_stages
+        ):
+            plotted_stages.append(open_stages[-1])
+        if record.event_type == "RunStageStopped" and open_stages:
+            open_stages.pop()
+    if not plotted_stages:
+        return []
+    experiment_name = load_config(Path(experiment_directory) / "experiment.yaml").name
+    # The report's stamp is UTC; the notebook is named and headed in local time for people.
+    started = (
+        datetime.strptime(report_path.stem.removeprefix("report-"), "%Y%m%dT%H%M%SZ")
+        .replace(tzinfo=UTC)
+        .astimezone()
+    )
+    written = []
+    for stage in plotted_stages:
+        name = _NOTEBOOK_NAMES.get(stage, stage)
+        written.append(
+            _write_report_notebook(
+                report_path,
+                stage,
+                report_path.with_name(f"{name}_{started:%Y-%m-%d_%H-%M-%S}.ipynb"),
+                f"{name.capitalize()} visualization notebook, {experiment_name}, "
+                f"{started.day} {started:%B %Y %H:%M}",
+            )
+        )
+    return written
+
+
+def _print_notebooks(notebooks: list[Path]) -> None:
+    for notebook in notebooks:
+        print(f"  • {'Visualization':<20} {notebook}")
+
+
+def _write_report_notebook(report_path: Path, stage: str, notebook_path: Path, title: str) -> Path:
+    """Write ``notebook_path``: a title and one code cell plotting ``stage`` of ``report_path``.
+
+    Run All renders the plots for that stage's events. The notebook reads the report by file name
+    relative to itself.
+    """
+    code = _REPORT_NOTEBOOK_CODE.format(
+        repo_root=str(_REPO_ROOT), report_name=report_path.name, stage=stage
+    )
+    notebook = {
+        "cells": [
+            {"cell_type": "markdown", "id": "title", "metadata": {}, "source": [f"# {title}"]},
+            {
+                "cell_type": "code",
+                "id": "plots",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": code.splitlines(keepends=True),
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    notebook_path.write_text(json.dumps(notebook, indent=1) + "\n")
+    return notebook_path
+
+
+def _error(exc: Exception) -> int:
+    print(f"error: {exc}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

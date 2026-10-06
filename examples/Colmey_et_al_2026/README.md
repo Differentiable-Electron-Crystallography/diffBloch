@@ -82,9 +82,9 @@ CsPbBr3, alpha-quartz, and borane data:
 | **wR2 (%), absorptive**  |   5.07   |     3.70     |   7.60   |
 
 All six runs completed (`train_test: false` -- trained on every rotation, matching the published
-setup). Taken from each directory's `refinement_report.txt` (`best_epoch` 35-40/40 depending on the
-run); see the per-rotation breakdown in each report. Re-running these refinements reproduces this
-table to within ~0.1-0.4 points (Adam + GPU nondeterminism), not bit-for-bit.
+setup). These are historical best-epoch results from the checked-in example runs (`best_epoch` 35-40/40
+depending on the run). Re-running these refinements reproduces this table to within ~0.1-0.4 points
+(Adam + GPU nondeterminism), not bit-for-bit.
 
 ## Reproducing these numbers
 
