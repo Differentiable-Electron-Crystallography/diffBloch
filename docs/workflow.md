@@ -135,8 +135,7 @@ uv run diffbloch refine <experiment_dir>
 
 The objective and validation metrics are reported throughout the run, and `refine` writes a durable
 structured report at `<experiment_dir>/reproducibility/reports/report-YYYYMMDDTHHMMSSZ.jsonl` by
-default. A failed run's partial report is kept too, under the `-failed.jsonl` name — its stage
-events are how you see where the run stopped.
+default. A run that fails or is interrupted leaves no report.
 
 The top-level `tools/event_report/` visualizer consumes that JSONL file: `reader.py` loads and
 slices a report, `figures.py` renders it — convergence sweeps, orientation search, thickness grids

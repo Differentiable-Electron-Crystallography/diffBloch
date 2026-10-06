@@ -68,8 +68,7 @@ uv run diffbloch infer "$EXPERIMENT"
 REPORT=$(ls -t "$EXPERIMENT"/reproducibility/reports/report-*.jsonl | head -n 1)
 ```
 
-A command that *fails* still leaves its report, under `report-<stamp>-failed.jsonl` — the stage
-events in it are how you see where the run stopped.
+A command that fails or is interrupted leaves no report.
 
 ## The notebook
 
@@ -155,7 +154,6 @@ shown empty.
 | `rotation_cost` | `preprocess` | wall time per orientation search from the record timestamps, and time against the solve's union beam count |
 | `thickness_grids` | `preprocess` | every rotation's thickness-vs-score curve overlaid, selected thickness marked — shows the *shape* of each minimum |
 | `thickness_heatmap` | `preprocess` | the same grids as rotation × thickness → score, one panel per dataset, fitted thickness traced — shows whether the fit drifts smoothly with tilt or jumps between minima |
-| `coupling_geometry`, `coupling_segment_heatmap` | `preprocess` | coupled-solve shape per rotation and per segment |
 | `epoch_curve` | `refine` | train/validation wR2 and R_obs per epoch |
 | `objective_decomposition` | `refine` | the objective per epoch with the selected epoch marked, and each composed term's contribution stacked |
 | `rotation_epoch_heatmap` | `refine --verbose-refinement` | per-rotation wR2 across epochs, rotation × epoch |

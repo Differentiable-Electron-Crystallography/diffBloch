@@ -50,7 +50,6 @@ from diffBloch.observability import (
     RefinementStarted,
     RefinementStep,
     RotationCoupling,
-    RotationCouplingSegments,
     RunStageStarted,
     RunStageStopped,
     ThicknessOptimizationStarted,
@@ -235,7 +234,7 @@ class ConsoleLogger:
     def report(self, event: Event) -> None:
         if isinstance(
             event,
-            OrientationSearchTrace | RotationCoupling | RotationCouplingSegments | CouplingSummary,
+            OrientationSearchTrace | RotationCoupling | CouplingSummary,
         ):
             # High-cardinality payload for JSONL/notebook consumers. Logging it to the live console
             # breaks the in-place progress bars without adding human-readable progress.
@@ -656,15 +655,11 @@ class ReportLogger:
     performs filesystem I/O.
 
     ``completed_only`` streams to a temporary file and promotes it on :meth:`finalize`, so a report
-    only appears at its declared path once the run reached an end. A run that *failed* still gets
-    its artifact -- promoted beside the successful name with a ``-failed`` suffix. Deleting it would
-    throw away the one structured record of the failure, including the
-    :class:`~diffBloch.observability.RunStageStopped` event that reports it, at exactly the moment
-    a reader most needs the event stream.
+    only appears at its declared path once the run completed. A run that fails leaves no report:
+    :meth:`discard` deletes the partial stream (the console already showed where it stopped).
 
-    Use it as a context manager (or ``try``/``finally``) so an exception that escapes the caught set
-    -- ``KeyboardInterrupt``, an allocator error -- still promotes the partial report and removes
-    the temporary directory.
+    Use it as a context manager (or ``try``/``finally``) so any exception, including
+    ``KeyboardInterrupt``, discards the partial report and removes the temporary directory.
     """
 
     path: Path
@@ -700,7 +695,7 @@ class ReportLogger:
         with self._active_path.open("a") as handle:
             handle.write(record.model_dump_json() + "\n")
 
-    def finalize(self, *, failed: bool = False) -> Path:
+    def finalize(self) -> Path:
         """Promote the streamed report and return the path it landed at.
 
         Idempotent: a second call returns the same path without touching the filesystem, so a
@@ -708,22 +703,27 @@ class ReportLogger:
         """
         if self._final_path is not None:
             return self._final_path
-        target = self.failed_path if failed else self.path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if self._active_path != target:
-            shutil.move(str(self._active_path), target)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self._active_path != self.path:
+            shutil.move(str(self._active_path), self.path)
         if self._temporary_dir is not None:
             shutil.rmtree(self._temporary_dir, ignore_errors=True)
-        self._final_path = target
-        return target
+        self._final_path = self.path
+        return self.path
 
-    @property
-    def failed_path(self) -> Path:
-        """Where a failed run's report lands: ``report-....jsonl`` -> ``report-...-failed.jsonl``."""
-        return self.path.with_name(f"{self.path.stem}-failed{self.path.suffix}")
+    def discard(self) -> None:
+        """Delete the partial report of a run that did not complete; nothing is left on disk."""
+        if self._final_path is not None:
+            return
+        self._active_path.unlink(missing_ok=True)
+        if self._temporary_dir is not None:
+            shutil.rmtree(self._temporary_dir, ignore_errors=True)
 
     def __enter__(self) -> ReportLogger:
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self.finalize(failed=exc_type is not None)
+        if exc_type is None:
+            self.finalize()
+        else:
+            self.discard()

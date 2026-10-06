@@ -27,6 +27,7 @@ import torch
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
+from diffBloch.core.adp import equivalent_isotropic_adp
 from diffBloch.core.dynamical import (
     BeamPlanBatch,
     build_bloch_system,
@@ -962,6 +963,35 @@ def _detach_model(model: RefinementModel) -> RefinementModel:
     )
 
 
+def _structure_drift(
+    engine: RefinementEngine, reference: PhysicalState, params: RefinableParams
+) -> tuple[float, float]:
+    """Coordinate RMSD (Angstrom) and Ueq RMSD (Angstrom^2) of ``params`` from ``reference``.
+
+    Taken over the asymmetric-unit atoms of the crystallographically constrained state. Positions
+    are compared in Cartesian Angstrom (fractional differences through the direct basis
+    ``B^-T``, ``B`` the reciprocal basis); ADPs as each atom's equivalent isotropic U, the trace
+    mean of the Cartesian tensor ``B^-1 U* B^-T``, so Uiso and Uani atoms share one scale. A
+    reporting diagnostic only, computed without gradients.
+    """
+    with torch.no_grad():
+        state = engine.physical_state(params)
+        basis = engine.grid.reciprocal_basis.to(
+            device=state.positions.device, dtype=state.positions.dtype
+        )
+        inverse = torch.linalg.inv(basis)
+        displacement = (state.positions - reference.positions) @ inverse.T
+        position_rmsd = displacement.square().sum(dim=-1).mean().sqrt()
+
+        def ueq(uij_star: Tensor) -> Tensor:
+            return equivalent_isotropic_adp(
+                torch.einsum("ij,ajk,lk->ail", inverse, uij_star, inverse)
+            )
+
+        ueq_rmsd = (ueq(state.uij_star) - ueq(reference.uij_star)).square().mean().sqrt()
+    return float(position_rmsd), float(ueq_rmsd)
+
+
 def run_refinement_model(
     engine: RefinementEngine,
     model: RefinementModel,
@@ -1055,6 +1085,9 @@ def run_refinement_model(
     best_loss = float("inf")
     best_step = 0
     best_model = _detach_model(current_model())
+    # The starting structure every epoch's coordinate/ADP RMSD is measured against.
+    with torch.no_grad():
+        reference_state = engine.physical_state(model.structure.initial)
     # Declared before the first step, so the composed objective is legible from the run's opening
     # lines rather than inferred later from which per-term measurements happened to appear.
     manifest = ObjectiveManifest(
@@ -1094,6 +1127,9 @@ def run_refinement_model(
             selection_loss = _scalar_float(selection_objective.total)
             selection_losses.append(selection_loss)
             selection_diagnostics = selection_objective.diagnostics
+        position_rmsd, ueq_rmsd = _structure_drift(
+            engine, reference_state, trainable_params.params()
+        )
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
@@ -1120,6 +1156,8 @@ def run_refinement_model(
                 if selection_diagnostics is None
                 else int(selection_diagnostics["n_r_obs_evaluated"])
             ),
+            position_rmsd=position_rmsd,
+            ueq_rmsd=ueq_rmsd,
         )
         history.append(event)
         logger.report(event)

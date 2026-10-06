@@ -21,7 +21,13 @@ from pathlib import Path
 from statistics import fmean
 from typing import Protocol, cast
 
-from diffBloch.observability import Event, EventRecord, event_from_record
+from diffBloch.observability import (
+    Event,
+    EventRecord,
+    RunStageStarted,
+    RunStageStopped,
+    event_from_record,
+)
 
 __all__ = [
     "by_dataset",
@@ -88,6 +94,31 @@ def default_event_log() -> Path:
     if from_environment:
         return Path(from_environment)
     return EXAMPLE_REPORT
+
+
+def stage_records(records: Iterable[EventRecord], stage: str) -> list[EventRecord]:
+    """The records emitted while ``stage`` was the innermost running stage, in emission order.
+
+    Commands nest stages (``refine`` and ``infer`` run ``preprocess`` inside themselves), and each
+    record belongs to the stage most recently started and not yet stopped. So a ``refine`` report
+    splits into its preprocessing records and its refinement records, with no overlap. The stage's
+    own start/stop markers are included.
+    """
+    open_stages: list[str] = []
+    selected: list[EventRecord] = []
+    for record in sorted(records, key=lambda record: record.sequence):
+        event = (
+            event_from_record(record)
+            if record.event_type in {RunStageStarted.__name__, RunStageStopped.__name__}
+            else None
+        )
+        if isinstance(event, RunStageStarted):
+            open_stages.append(event.stage)
+        if open_stages and open_stages[-1] == stage:
+            selected.append(record)
+        if isinstance(event, RunStageStopped) and open_stages:
+            open_stages.pop()
+    return selected
 
 
 def read_records(path: Path | str) -> list[EventRecord]:

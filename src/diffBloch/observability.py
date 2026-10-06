@@ -71,7 +71,6 @@ __all__ = [
     "RefinementOutputsWritten",
     "RefinementStarted",
     "RefinementStep",
-    "RotationCouplingSegments",
     "RotationCoupling",
     "RotationScored",
     "RunStage",
@@ -828,9 +827,8 @@ class RotationCoupling:
     """One rotation's coupled solve geometry, emitted per rotation at the consumer boundary.
 
     The shape the refinement loop repeats every step: ``n_coupling_segments`` coupled unions over
-    ``n_tilts`` rocking-curve tilts, the widest union spanning ``max_tilts_per_segment`` tilts, the
-    deduped union carrying ``n_union_beams`` beams, and the largest single segment
-    ``max_beams_per_segment`` beams -- the ``N`` of the dominant per-segment eigensolve. Fires on
+    ``n_tilts`` rocking-curve tilts, the widest union spanning ``max_tilts_per_segment`` tilts, and
+    the deduped union carrying ``n_union_beams`` beams. Fires on
     every run (fresh or checkpoint-reuse), so the coupling a long refine is about to chew on is
     legible before the first step.
     """
@@ -841,7 +839,6 @@ class RotationCoupling:
     n_tilts: int
     max_tilts_per_segment: int
     n_union_beams: int
-    max_beams_per_segment: int
     dataset: str = ""
     rotation_index: int | None = None
 
@@ -856,50 +853,6 @@ class RotationCoupling:
             "n_tilts": float(self.n_tilts),
             "max_tilts_per_segment": float(self.max_tilts_per_segment),
             "n_union_beams": float(self.n_union_beams),
-            "max_beams_per_segment": float(self.max_beams_per_segment),
-        }
-
-
-@dataclass(frozen=True)
-class RotationCouplingSegments:
-    """Segment-level coupled solve geometry for one rotation, batched for heatmap visualizers.
-
-    The columns are parallel and in segment order, so row position *is* the segment index -- the
-    same convention as :class:`OrientationSearchTrace`.
-    """
-
-    channel: ClassVar[str] = "coupling segments"
-    rotation_index: int
-    first_tilt_index: tuple[int, ...]
-    last_tilt_index: tuple[int, ...]
-    n_tilts: tuple[int, ...]
-    n_segment_beams: tuple[int, ...]
-    n_union_beams: int
-    n_total_tilts: int
-    dataset: str = ""
-
-    def __post_init__(self) -> None:
-        lengths = {
-            len(self.first_tilt_index),
-            len(self.last_tilt_index),
-            len(self.n_tilts),
-            len(self.n_segment_beams),
-        }
-        if len(lengths) != 1:
-            raise ValueError("coupling segment columns must have equal length")
-
-    @property
-    def step(self) -> int | None:
-        return self.rotation_index
-
-    @property
-    def measurements(self) -> Mapping[str, float]:
-        return {
-            "n_segments": float(len(self.n_segment_beams)),
-            "n_union_beams": float(self.n_union_beams),
-            "n_total_tilts": float(self.n_total_tilts),
-            "max_segment_beams": float(max(self.n_segment_beams, default=0)),
-            "max_segment_tilts": float(max(self.n_tilts, default=0)),
         }
 
 
@@ -1280,6 +1233,11 @@ class RefinementStep:
     (``refinement.split.train_test``). That scoring already happens every epoch purely to pick
     ``best_model`` -- reporting it here is free, and lets a sink show the training/validation curves
     side by side instead of the validation numbers only ever surfacing once, at the very end.
+
+    ``position_rmsd`` (Angstrom) and ``ueq_rmsd`` (Angstrom^2) measure how far the structure has
+    moved from the starting model by the *end* of this epoch (after its optimizer update), over the
+    asymmetric-unit atoms: the Cartesian RMSD of the atom positions, and the RMSD of each atom's
+    equivalent isotropic ADP. ``None`` when the emitter does not compute them.
     """
 
     channel: ClassVar[str] = "refinement"
@@ -1298,6 +1256,8 @@ class RefinementStep:
     val_n_rotations: int | None = None
     val_n_wr2_evaluated: int | None = None
     val_n_r_obs_evaluated: int | None = None
+    position_rmsd: float | None = None
+    ueq_rmsd: float | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -1334,6 +1294,10 @@ class RefinementStep:
             values["val_n_wr2_evaluated"] = float(self.val_n_wr2_evaluated)
         if self.val_n_r_obs_evaluated is not None:
             values["val_n_r_obs_evaluated"] = float(self.val_n_r_obs_evaluated)
+        if self.position_rmsd is not None:
+            values["position_rmsd"] = self.position_rmsd
+        if self.ueq_rmsd is not None:
+            values["ueq_rmsd"] = self.ueq_rmsd
         for term, entries in self.components.items():
             for name, value in entries.items():
                 values[f"{term}/{name}"] = value

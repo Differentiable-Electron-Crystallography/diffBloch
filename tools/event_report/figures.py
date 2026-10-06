@@ -16,14 +16,18 @@ These live in a module rather than in a notebook cell so they can be imported, d
 
 from __future__ import annotations
 
+import base64
+import html
+import io
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.axis import Axis
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 
@@ -31,45 +35,32 @@ from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceTrial,
     EventRecord,
-    OrientationOptimizationStarted,
     OrientationOptimized,
     OrientationSearchTrace,
     RefinedRotationMetrics,
-    RefinementCompleted,
     RefinementOrientationStep,
     RefinementStep,
-    RotationCoupling,
-    RotationCouplingSegments,
     ThicknessOptimized,
     ThicknessProfile,
-    event_from_record,
 )
 
 from .reader import Positioned, by_dataset, events_of, finite_mean, sorted_by_rotation
-from .style import INK, MUTED, SERIES, styled
+from .style import INK, MUTED, REPORT_RC, SERIES, styled
 
 __all__ = [
     "build_figures",
     "build_sections",
     "export_figures",
-    "plot_angle_deltas_vs_tilt",
+    "figure_dropdown_html",
     "plot_convergence_sweeps",
-    "plot_coupling_geometry",
-    "plot_coupling_segment_heatmap",
     "plot_dataset_summary",
     "plot_epoch_curve",
-    "plot_objective_decomposition",
     "plot_orientation_optimization",
-    "plot_orientation_search_headroom",
-    "plot_orientation_search_trace",
+    "plot_matched_reflections",
     "plot_refined_rotation_scores",
-    "plot_refinement_gain",
-    "plot_rotation_cost",
     "plot_rotation_epoch_heatmap",
-    "plot_score_distributions",
-    "plot_thickness_grid_vs_model",
+    "plot_structure_drift",
     "plot_thickness_grids",
-    "plot_thickness_heatmap",
     "plot_thickness_model",
 ]
 
@@ -88,26 +79,83 @@ def _rotation_labels(events: Sequence[Positioned]) -> list[str]:
 
 def _rotation_axis_title(events: Sequence[Positioned]) -> str:
     """The axis title matching :func:`_rotation_labels`: plain ``rotation`` for one dataset."""
-    return "rotation" if len({event.dataset or "" for event in events}) <= 1 else "dataset:rotation"
+    return (
+        "Orientation"
+        if len({event.dataset or "" for event in events}) <= 1
+        else "Dataset:orientation"
+    )
 
 
-# Inches per rotation label: a 7pt label turned on its side needs about this much room, so a
-# rotation axis can name *every* rotation. The figure grows with the run instead of the labels
-# being thinned to round numbers nobody can look up.
-_INCHES_PER_ROTATION = 0.16
+# Every figure is drawn at one width. The notebook scales each image to the page width, so a
+# shared figure width is what makes the text render at the same size in every plot.
+FIGURE_WIDTH = 12.0
+
+# Orientation and epoch axes carry a tick at every index but a number only at every fifth.
+_LABEL_EVERY = 5
+
+# Inches per row of a vertical orientation axis (the per-orientation epoch heatmap).
+_INCHES_PER_ROTATION = 0.3
 
 
 def _rotation_extent(n_rotations: int, *, minimum: float) -> float:
-    """The figure width (or height) that fits one label per rotation."""
+    """The figure height that fits one label per orientation row."""
     return max(minimum, _INCHES_PER_ROTATION * n_rotations + 2.0)
 
 
-def _label_every_rotation(ax: Axes, labels: Sequence[str]) -> None:
-    """Tick and name every rotation on the x axis -- exact indices, never a thinned subset."""
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=90, ha="center", fontsize=7)
-    ax.set_xlim(-0.75, len(labels) - 0.25)
+def _index_ticks(
+    axis: Axis,
+    positions: Sequence[float],
+    values: Sequence[int],
+    labels: Sequence[str] | None = None,
+) -> None:
+    """Tick every index on ``axis``; number only those whose value is a multiple of five.
 
+    ``values`` are the indices themselves (orientation or epoch numbers) and decide which ticks
+    get a label; ``labels`` (default: the values) is the text shown. An axis with fewer than five
+    entries, or none on a multiple of five, labels every tick.
+    """
+    shown = list(labels) if labels is not None else [str(value) for value in values]
+    keep = [i for i, value in enumerate(values) if value % _LABEL_EVERY == 0]
+    if len(values) < _LABEL_EVERY or not keep:
+        keep = list(range(len(values)))
+    axis.set_ticks([positions[i] for i in keep])
+    axis.set_ticklabels([shown[i] for i in keep])
+    axis.set_ticks(list(positions), minor=True)
+
+
+def _label_every_rotation(ax: Axes, events: Sequence[Positioned]) -> None:
+    """Tick the orientation x axis at positions ``0..n-1``, numbered by orientation index."""
+    _index_ticks(
+        ax.xaxis,
+        range(len(events)),
+        [event.rotation_index or 0 for event in events],
+        _rotation_labels(events),
+    )
+    ax.set_xlim(-0.75, len(events) - 0.25)
+
+
+# Axis-label forms of the metric and control names, set as mathtext so subscripts render as
+# subscripts rather than as a literal underscore.
+_WR2 = r"$wR_2$"
+_R_OBS = r"$R_{\mathrm{obs}}$"
+# Each metric keeps one colour in every figure: wR2 red, R_obs blue.
+_WR2_COLOR = SERIES[7]
+_R_OBS_COLOR = SERIES[0]
+_ALPHA = r"$\alpha$ (°)"
+
+
+def _residual_axis(residual: str) -> tuple[str, str]:
+    """The axis label and colour for a preprocessing search's configured residual."""
+    return (_R_OBS, _R_OBS_COLOR) if residual == "robs" else (_WR2, _WR2_COLOR)
+
+
+_ANGLE_DELTA = r"$\Delta$ angle (°)"
+_GONIOMETER_ANGLES = (r"$\alpha$", r"$\beta$", r"$\omega$")
+_CONTROL_LABELS = {
+    "g_max": r"$g_{\mathrm{max}}$",
+    "sg_max": r"$s_{g,\mathrm{max}}$",
+    "tilt_steps": "tilt steps",
+}
 
 # Panel order for the convergence sweep; anything else follows, alphabetically.
 _CONTROL_ORDER = ("g_max", "sg_max", "tilt_steps")
@@ -141,7 +189,7 @@ def plot_convergence_sweeps(records: Sequence[EventRecord]) -> Figure | None:
     }
     controls = sorted({trial.control for trial in trials}, key=_control_rank)
     fig, axes = plt.subplots(
-        len(controls), 1, figsize=(9, 3.2 * len(controls)), squeeze=False, sharey=True
+        len(controls), 1, figsize=(FIGURE_WIDTH, 3.6 * len(controls)), squeeze=False, sharey=True
     )
     positive = all(trial.r_factor > 0.0 for trial in trials)
     for ax, control in zip(axes[:, 0], controls, strict=True):
@@ -175,11 +223,11 @@ def plot_convergence_sweeps(records: Sequence[EventRecord]) -> Figure | None:
         if positive:
             # The R-factors span orders of magnitude as a control converges; linear hides the tail.
             ax.set_yscale("log")
-        ax.set_ylabel("R between steps")
-        ax.set_title(control)
-        ax.grid(True, alpha=0.25, which="both")
+        # R1 between the simulations at the previous and candidate settings, not against data.
+        ax.set_ylabel(r"$R_1$ vs previous setting")
+        ax.set_xlabel(f"Candidate {_CONTROL_LABELS.get(control, control)}")
         ax.legend(fontsize="small")
-    axes[-1, 0].set_xlabel("candidate value")
+    fig.set_label("Convergence sweeps")
     fig.tight_layout()
     return fig
 
@@ -194,34 +242,51 @@ def _by_pass(trials: Sequence[ConvergenceTrial], control: str) -> dict[int, list
 
 @styled
 def plot_epoch_curve(records: Sequence[EventRecord]) -> Figure | None:
-    """Train/validation wR2 and R_obs against refinement epoch."""
+    """wR2 (upper axes) and R_obs (lower axes) against refinement epoch.
+
+    The training curve is solid; a validation curve, when the run held orientations out, is dotted.
+    """
     steps = events_of(records, RefinementStep)
     if not steps:
         return None
     x = [step.iteration + 1 for step in steps]
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    series: tuple[tuple[str, Callable[[RefinementStep], float | None]], ...] = (
-        ("train wR2", lambda step: step.wr2),
-        ("train R_obs", lambda step: step.r_obs),
-        ("validation wR2", lambda step: step.val_wr2),
-        ("validation R_obs", lambda step: step.val_r_obs),
+    fig, axes = plt.subplots(2, 1, figsize=(FIGURE_WIDTH, 8), sharex=True)
+    metrics: tuple[
+        tuple[
+            str,
+            Callable[[RefinementStep], float | None],
+            Callable[[RefinementStep], float | None],
+        ],
+        ...,
+    ] = (
+        (_WR2, lambda step: step.wr2, lambda step: step.val_wr2),
+        (_R_OBS, lambda step: step.r_obs, lambda step: step.val_r_obs),
     )
-    for label, read in series:
-        y = [read(step) for step in steps]
-        if any(value is not None for value in y):
-            # An epoch that did not report the metric leaves a gap in the line, not a zero.
-            ax.plot(
-                x,
-                [math.nan if value is None else value for value in y],
-                marker="o",
-                linewidth=1.5,
-                label=label,
-            )
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("score")
-    ax.set_title("Epoch curve")
-    ax.grid(True, alpha=0.25)
-    ax.legend()
+    colors = (_WR2_COLOR, _R_OBS_COLOR)
+    has_validation = any(step.val_wr2 is not None or step.val_r_obs is not None for step in steps)
+    for ax, color, (label, train, validation) in zip(axes, colors, metrics, strict=True):
+        for read, linestyle, split in ((train, "-", "train"), (validation, ":", "validation")):
+            y = [read(step) for step in steps]
+            if any(value is not None for value in y):
+                # An epoch that did not report the metric leaves a gap in the line, not a zero.
+                ax.plot(
+                    x,
+                    [math.nan if value is None else value for value in y],
+                    marker="o",
+                    linewidth=1.5,
+                    linestyle=linestyle,
+                    color=color,
+                    label=split,
+                )
+        ax.set_ylabel(label)
+        ax.set_ylim(bottom=0)
+        if has_validation:
+            ax.legend()
+    axes[-1].set_xlabel("Epoch")
+    _index_ticks(axes[-1].xaxis, x, x)
+    axes[-1].set_xlim(min(x) - 0.5, max(x) + 0.5)
+    fig.set_label("Epoch curve")
+    fig.tight_layout()
     return fig
 
 
@@ -232,34 +297,70 @@ def plot_orientation_optimization(records: Sequence[EventRecord]) -> Figure | No
     if not fits:
         return None
     x = range(len(fits))
-    fig, axes = plt.subplots(
-        2, 1, figsize=(_rotation_extent(len(fits), minimum=10.0), 7), sharex=True
+    fig, axes = plt.subplots(2, 1, figsize=(FIGURE_WIDTH, 8), sharex=True)
+    metric, color = _residual_axis(fits[0].residual)
+    axes[0].plot(
+        x, [fit.seed_score for fit in fits], marker="o", linewidth=1, color=MUTED, label="initial"
     )
-    axes[0].plot(x, [fit.seed_score for fit in fits], marker="o", linewidth=1, label="before")
-    axes[0].plot(x, [fit.score for fit in fits], marker="o", linewidth=1, label="after")
-    axes[0].set_ylabel("score")
-    axes[0].set_title("Orientation optimization")
-    axes[0].grid(True, alpha=0.25)
+    axes[0].plot(
+        x, [fit.score for fit in fits], marker="o", linewidth=1, color=color, label="final"
+    )
+    axes[0].set_ylabel(metric)
+    axes[0].set_ylim(bottom=0)
     axes[0].legend()
     angles: tuple[tuple[str, Callable[[OrientationOptimized], float]], ...] = (
-        ("alpha", lambda fit: fit.alpha),
-        ("beta", lambda fit: fit.beta),
-        ("omega", lambda fit: fit.omega),
+        (_GONIOMETER_ANGLES[0], lambda fit: fit.alpha),
+        (_GONIOMETER_ANGLES[1], lambda fit: fit.beta),
+        (_GONIOMETER_ANGLES[2], lambda fit: fit.omega),
     )
     for label, read in angles:
         axes[1].plot(x, [read(fit) for fit in fits], marker="o", linewidth=1, label=label)
-    axes[1].set_ylabel("delta angle (deg)")
-    axes[1].grid(True, alpha=0.25)
+    axes[1].set_ylabel(_ANGLE_DELTA)
+    axes[1].set_xlabel(_rotation_axis_title(fits))
     axes[1].legend()
-    _label_every_rotation(axes[1], _rotation_labels(fits))
+    _label_every_rotation(axes[1], fits)
+    fig.set_label("Orientation optimization")
+    fig.tight_layout()
+    return fig
+
+
+@styled
+def plot_structure_drift(records: Sequence[EventRecord]) -> Figure | None:
+    """How far the structure has moved from the starting model, per epoch, side by side.
+
+    Left: Cartesian RMSD of the asymmetric-unit atom positions (Angstrom). Right: RMSD of each
+    atom's equivalent isotropic ADP (Angstrom^2). Each point is the structure after that epoch's
+    update, measured against the starting model.
+    """
+    steps = [
+        step
+        for step in events_of(records, RefinementStep)
+        if step.position_rmsd is not None and step.ueq_rmsd is not None
+    ]
+    if not steps:
+        return None
+    x = [step.iteration + 1 for step in steps]
+    fig, axes = plt.subplots(1, 2, figsize=(FIGURE_WIDTH, 5))
+    panels: tuple[tuple[str, list[float | None]], ...] = (
+        ("Coordinate RMSD (Å)", [step.position_rmsd for step in steps]),
+        (r"$U_{\mathrm{eq}}$ RMSD (Å$^2$)", [step.ueq_rmsd for step in steps]),
+    )
+    for ax, (label, values) in zip(axes, panels, strict=True):
+        ax.plot(x, values, marker="o", linewidth=1.5, color=INK)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel(label)
+        ax.set_ylim(bottom=0)
+        _index_ticks(ax.xaxis, x, x)
+        ax.set_xlim(min(x) - 0.5, max(x) + 0.5)
+    fig.set_label("Structure change from starting model")
     fig.tight_layout()
     return fig
 
 
 # The two final-score metrics every per-rotation refinement figure draws, by name.
-_ROTATION_METRICS: tuple[tuple[str, Callable[[RefinedRotationMetrics], float]], ...] = (
-    ("wR2", lambda row: row.wr2),
-    ("R_obs", lambda row: row.r_obs),
+_ROTATION_METRICS: tuple[tuple[str, str, Callable[[RefinedRotationMetrics], float]], ...] = (
+    (_WR2, _WR2_COLOR, lambda row: row.wr2),
+    (_R_OBS, _R_OBS_COLOR, lambda row: row.r_obs),
 )
 
 
@@ -283,8 +384,8 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
         splits.append(("validation", True))
     width = 0.8 / len(splits)
     x = range(len(datasets))
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6.5), sharex=True)
-    for ax, (label, read) in zip(axes, _ROTATION_METRICS, strict=True):
+    fig, axes = plt.subplots(2, 1, figsize=(FIGURE_WIDTH, 8), sharex=True)
+    for ax, (label, color, read) in zip(axes, _ROTATION_METRICS, strict=True):
         for slot, (split, is_validation) in enumerate(splits):
             means = [
                 finite_mean(
@@ -297,11 +398,13 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
                 [value + offset for value in x],
                 [math.nan if mean is None else mean for mean in means],
                 width=width,
+                color=color,
+                # Held-out bars are the same colour, lighter, beside the training bar.
+                alpha=0.45 if is_validation else 1.0,
                 label=split,
             )
         ax.set_ylabel(label)
-        if len(splits) > 1:
-            ax.legend()
+        ax.set_ylim(bottom=0)
     counts = [
         (
             sum(not row.is_validation for row in grouped[name]),
@@ -315,158 +418,105 @@ def plot_dataset_summary(records: Sequence[EventRecord]) -> Figure | None:
             f"{name}\n({train}/{held_out})"
             for name, (train, held_out) in zip(datasets, counts, strict=True)
         ],
-        rotation=30,
-        ha="right",
+        ha="center",
     )
-    axes[1].set_xlabel("dataset (train/validation rotations)")
-    axes[0].set_title("Per-dataset final scores")
+    axes[1].set_xlabel("Dataset (train/validation orientations)")
+    fig.set_label("Per-dataset final scores")
     fig.tight_layout()
     return fig
 
 
 @styled
 def plot_refined_rotation_scores(records: Sequence[EventRecord]) -> Figure | None:
-    """Final refined wR2 and R_obs per rotation, with held-out rotations marked."""
+    """Final refined wR2 (upper axes) and R_obs (lower axes) per orientation.
+
+    Training orientations are circles; held-out validation orientations are crosses, with a legend
+    whenever the run held any out.
+    """
     metrics = events_of(records, RefinedRotationMetrics)
     if not metrics:
         return None
-    fig, axes = plt.subplots(
-        2, 1, figsize=(_rotation_extent(len(metrics), minimum=10.0), 6.5), sharex=True
-    )
-    for dataset, group in sorted(by_dataset(metrics).items()):
+    has_validation = any(row.is_validation for row in metrics)
+    fig, axes = plt.subplots(2, 1, figsize=(FIGURE_WIDTH, 8), sharex=True)
+    for slot, (_, group) in enumerate(sorted(by_dataset(metrics).items())):
         ordered = sorted(group, key=lambda row: row.rotation_index)
         x = [row.rotation_index for row in ordered]
+        train = [row for row in ordered if not row.is_validation]
         held_out = [row for row in ordered if row.is_validation]
-        for ax, (label, read) in zip(axes, _ROTATION_METRICS, strict=True):
-            ax.plot(
-                x,
-                [read(row) for row in ordered],
+        for ax, (label, color, read) in zip(axes, _ROTATION_METRICS, strict=True):
+            ax.plot(x, [read(row) for row in ordered], linewidth=1, color=color)
+            ax.scatter(
+                [row.rotation_index for row in train],
+                [read(row) for row in train],
                 marker="o",
-                linewidth=1,
-                label=dataset or "dataset",
+                s=25,
+                color=color,
+                zorder=3,
+                label="train" if slot == 0 else None,
             )
             if held_out:
                 ax.scatter(
                     [row.rotation_index for row in held_out],
                     [read(row) for row in held_out],
                     marker="x",
-                    s=50,
-                    linewidths=1.5,
-                    label=f"{dataset or 'dataset'} validation",
+                    s=70,
+                    linewidths=2,
+                    color=INK,
+                    zorder=4,
+                    label="validation" if slot == 0 else None,
                 )
             ax.set_ylabel(label)
-            ax.grid(True, alpha=0.25)
-    axes[0].set_title("Final refined per-rotation scores")
-    axes[1].set_xlabel("rotation")
-    # The x axis is the rotation index itself here, so tick each one that exists rather than
+            ax.set_ylim(bottom=0)
+    if has_validation:
+        for ax in axes:
+            ax.legend()
+    axes[1].set_xlabel("Orientation")
+    # The x axis is the orientation index itself here, so tick the indices that exist rather than
     # matplotlib's round numbers.
     indices = sorted({row.rotation_index for row in metrics})
-    axes[1].set_xticks(indices)
-    axes[1].set_xticklabels([str(index) for index in indices], rotation=90, fontsize=7)
-    axes[0].legend(fontsize="small", ncols=2)
+    _index_ticks(axes[1].xaxis, indices, indices)
+    fig.set_label("Final refined per-orientation scores")
     fig.tight_layout()
     return fig
 
 
 @styled
 def plot_thickness_grids(records: Sequence[EventRecord]) -> Figure | None:
-    """Every rotation's scored thickness grid, with the selected thickness marked."""
-    fits = events_of(records, ThicknessOptimized)
-    if not fits:
-        return None
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    for fit in fits:
-        if not fit.candidate_thicknesses or not fit.candidate_score:
-            continue
-        # Every curve is one colour on purpose. Letting the prop cycle run would paint a single
-        # population of rotations in eight hues and imply a grouping that does not exist.
-        ax.plot(
-            fit.candidate_thicknesses,
-            fit.candidate_score,
-            linewidth=0.8,
-            alpha=0.35,
-            color=SERIES[0],
-        )
-        ax.scatter([fit.thickness], [fit.score], s=14, color=INK, alpha=0.55, zorder=3)
-    ax.set_ylim(bottom=0)
-    ax.set_xlabel("thickness")
-    ax.set_ylabel("score")
-    ax.set_title("Thickness score grids")
-    ax.grid(True, alpha=0.25)
-    return fig
+    """One small panel per orientation: the thickness grid search's residual against thickness.
 
-
-def _percentile(values: Sequence[float], fraction: float) -> float | None:
-    """Nearest-rank percentile over the finite values, or ``None`` when there are none."""
-    kept = sorted(value for value in values if math.isfinite(value))
-    if not kept:
-        return None
-    return kept[min(len(kept) - 1, int(fraction * (len(kept) - 1)))]
-
-
-@styled
-def plot_thickness_heatmap(records: Sequence[EventRecord]) -> Figure | None:
-    """The thickness grid as rotation x thickness -> score, with the fitted thickness traced.
-
-    The companion to :func:`plot_thickness_grids`: that one shows the *shape* of each minimum but
-    overlays a hundred rotations into a hairball, while this one keeps them apart and answers the
-    question the per-rotation fit actually raises -- does the fitted thickness drift smoothly with
-    tilt, as an irregular specimen implies, or jump around, which means rotations are landing in
-    different minima.
-
-    One panel per dataset, since a pooled experiment's datasets may be gridded over different
-    thickness ranges. Rotations whose grid disagrees with the rest of their dataset are skipped
-    rather than silently stretched onto the wrong axis.
+    Every panel shares both axes so the orientations compare directly, the y axis starts at 0, and
+    the selected thickness is marked. The orientation is named inside its panel.
     """
-    fits = events_of(records, ThicknessOptimized)
+    fits = sorted_by_rotation(
+        fit for fit in events_of(records, ThicknessOptimized) if fit.candidate_score
+    )
     if not fits:
         return None
-    panels = []
-    for dataset, group in sorted(by_dataset(fits).items()):
-        ordered = sorted(group, key=lambda fit: fit.rotation_index)
-        grid = ordered[0].candidate_thicknesses
-        rows = [fit for fit in ordered if fit.candidate_thicknesses == grid and fit.candidate_score]
-        if len(grid) > 1 and rows:
-            panels.append((dataset, grid, rows))
-    if not panels:
-        return None
-    heights = [_rotation_extent(len(rows), minimum=3.0) for _, _, rows in panels]
+    metric, color = _residual_axis(fits[0].residual)
+    labels = _rotation_labels(fits)
+    n_cols = min(6, len(fits))
+    n_rows = math.ceil(len(fits) / n_cols)
     fig, axes = plt.subplots(
-        len(panels), 1, figsize=(9, sum(heights)), squeeze=False, height_ratios=heights
+        n_rows,
+        n_cols,
+        figsize=(FIGURE_WIDTH, 2.0 * n_rows + 1.0),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
     )
-    for ax, (dataset, grid, rows) in zip(axes[:, 0], panels, strict=True):
-        matrix = [list(fit.candidate_score) for fit in rows]
-        ax.grid(False)  # the house gridlines would draw over the image
-        image = ax.imshow(
-            matrix,
-            aspect="auto",
-            interpolation="nearest",
-            origin="upper",
-            extent=(grid[0], grid[-1], len(rows) - 0.5, -0.5),
-            # The far ends of the grid score arbitrarily badly and would otherwise take most of
-            # the colour range, flattening the basin -- the part actually being read -- into one
-            # tone. Clipping at the 95th percentile keeps the scale in absolute score units.
-            vmax=_percentile([value for row in matrix for value in row], 0.95),
-        )
-        # Dark ink, not white: the basin the trace runs through is the *light* end of a
-        # lightness-monotonic ramp, so a white line would vanish exactly where it is read.
-        ax.plot(
-            [fit.thickness for fit in rows],
-            range(len(rows)),
-            color=INK,
-            linewidth=1.2,
-            marker=".",
-            markersize=3,
-            label="fitted thickness",
-        )
-        indices = [fit.rotation_index for fit in rows]
-        ax.set_yticks(range(len(indices)))
-        ax.set_yticklabels([str(index) for index in indices], fontsize=7)
-        ax.set_ylabel("rotation")
-        ax.set_title(f"Thickness score grid: {dataset or 'dataset'}")
-        ax.legend(fontsize="small", loc="upper right")
-        fig.colorbar(image, ax=ax, label="score")
-    axes[-1, 0].set_xlabel("thickness")
+    for ax, fit, label in zip(axes.flat, fits, labels, strict=False):
+        ax.plot(fit.candidate_thicknesses, fit.candidate_score, linewidth=1.5, color=color)
+        ax.scatter([fit.thickness], [fit.score], s=30, color=INK, zorder=3)
+        ax.text(0.04, 0.92, f"Orientation {label}", transform=ax.transAxes, fontsize=14, va="top")
+        ax.xaxis.set_major_locator(MaxNLocator(3))
+    for ax in list(axes.flat)[len(fits) :]:
+        ax.set_visible(False)
+    # Headroom above the highest curve keeps the in-panel orientation label clear of the data.
+    highest = max(max(fit.candidate_score) for fit in fits)
+    axes[0, 0].set_ylim(0, 1.3 * highest)
+    fig.supxlabel("Thickness (Å)", fontsize=20)
+    fig.supylabel(metric, fontsize=20)
+    fig.set_label("Thickness fit per orientation")
     fig.tight_layout()
     return fig
 
@@ -484,7 +534,7 @@ def plot_thickness_model(records: Sequence[EventRecord]) -> Figure | None:
     profiles = events_of(records, ThicknessProfile)
     if not profiles:
         return None
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(FIGURE_WIDTH, 5))
     for profile in profiles:
         if not profile.alphas or not profile.thicknesses:
             continue
@@ -494,214 +544,22 @@ def plot_thickness_model(records: Sequence[EventRecord]) -> Figure | None:
             [row[1] for row in ordered],
             marker="o",
             linewidth=1.5,
-            label=profile.label or profile.channel,
         )
-    ax.set_xlabel("alpha (degrees)")
-    ax.set_ylabel("predicted thickness")
-    ax.set_title("Learned thickness model")
-    ax.grid(True, alpha=0.25)
-    ax.legend()
-    return fig
-
-
-@styled
-def plot_coupling_geometry(records: Sequence[EventRecord]) -> Figure | None:
-    """Per-rotation coupled-solve shape: beam counts above, segment/tilt counts below."""
-    rows = sorted_by_rotation(events_of(records, RotationCoupling))
-    if not rows:
-        return None
-    x = range(len(rows))
-    fig, axes = plt.subplots(
-        2, 1, figsize=(_rotation_extent(len(rows), minimum=10.0), 6.5), sharex=True
-    )
-    series: tuple[tuple[int, str, Callable[[RotationCoupling], int]], ...] = (
-        (0, "union beams", lambda row: row.n_union_beams),
-        (0, "max beams/segment", lambda row: row.max_beams_per_segment),
-        (1, "segments", lambda row: row.n_coupling_segments),
-        (1, "max tilts/segment", lambda row: row.max_tilts_per_segment),
-    )
-    for panel, label, read in series:
-        ax = axes[panel]
-        ax.plot(x, [read(row) for row in rows], marker="o", linewidth=1, label=label)
-        ax.grid(True, alpha=0.25)
-        ax.legend(fontsize="small")
-    axes[0].set_title("Coupled solve geometry")
-    axes[1].set_xlabel(_rotation_axis_title(rows))
-    _label_every_rotation(axes[1], _rotation_labels(rows))
+    ax.set_xlabel(_ALPHA)
+    ax.set_ylabel("Learned Thickness (Å)")
+    ax.set_ylim(bottom=0)
+    fig.set_label("Learned thickness model")
     fig.tight_layout()
     return fig
 
 
 @styled
-def plot_orientation_search_trace(records: Sequence[EventRecord]) -> Figure | None:
-    """The scored search path of the longest-running rotation's orientation fit.
+def plot_matched_reflections(records: Sequence[EventRecord]) -> Figure | None:
+    """Each orientation's matched-reflection count at the start and end of the orientation search.
 
-    One rotation, not all of them: the traces overlay into noise, and the longest search is the one
-    worth inspecting. Row position is the trial index (the event stores no index column).
-    """
-    traces = events_of(records, OrientationSearchTrace)
-    if not traces:
-        return None
-    trace = max(traces, key=lambda trace: len(trace.score))
-    if not trace.score:
-        return None
-    trial = list(range(len(trace.score)))
-    fig, axes = plt.subplots(2, 1, figsize=(9, 6.5), sharex=True)
-    axes[0].plot(trial, trace.score, linewidth=1.2, label=trace.residual)
-    if trace.comparable_score != trace.score:
-        axes[0].plot(trial, trace.comparable_score, linewidth=1.0, alpha=0.75, label="comparable")
-    for flags, marker, label in ((trace.is_seed, "o", "seed"), (trace.is_final, "x", "final")):
-        marked = [(t, s) for t, s, flag in zip(trial, trace.score, flags, strict=True) if flag]
-        if marked:
-            axes[0].scatter(
-                [point[0] for point in marked],
-                [point[1] for point in marked],
-                marker=marker,
-                s=60,
-                label=label,
-            )
-    axes[0].set_ylabel("score")
-    axes[0].set_title(
-        f"Orientation search trace: {trace.dataset or 'dataset'}:{trace.rotation_index}"
-    )
-    axes[0].grid(True, alpha=0.25)
-    axes[0].legend(fontsize="small")
-    for label, values in (("alpha", trace.alpha), ("beta", trace.beta), ("omega", trace.omega)):
-        axes[1].plot(trial, values, linewidth=1.0, label=label)
-    axes[1].set_xlabel("trial")
-    axes[1].set_ylabel("angle delta (deg)")
-    axes[1].grid(True, alpha=0.25)
-    axes[1].legend(fontsize="small")
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_coupling_segment_heatmap(records: Sequence[EventRecord]) -> Figure | None:
-    """Per-rotation, per-segment beam counts as a heatmap (rows padded with NaN to the widest)."""
-    traces = sorted_by_rotation(events_of(records, RotationCouplingSegments))
-    if not traces:
-        return None
-    widest = max(len(trace.n_segment_beams) for trace in traces)
-    if widest == 0:
-        return None
-    matrix = [
-        list(trace.n_segment_beams) + [math.nan] * (widest - len(trace.n_segment_beams))
-        for trace in traces
-    ]
-    labels = _rotation_labels(traces)
-    fig, ax = plt.subplots(figsize=(10, _rotation_extent(len(matrix), minimum=4.0)))
-    ax.grid(False)  # the house gridlines would draw over the image
-    image = ax.imshow(matrix, aspect="auto", interpolation="nearest")
-    ax.set_xlabel("segment")
-    ax.set_ylabel(_rotation_axis_title(traces))
-    ax.set_title("Coupling segment beam counts")
-    ax.set_xticks(range(widest))
-    ax.set_yticks(range(len(labels)))
-    ax.set_yticklabels(labels, fontsize=7)
-    fig.colorbar(image, ax=ax, label="segment beams")
-    fig.tight_layout()
-    return fig
-
-
-def _pooled_index(
-    records: Sequence[EventRecord], local: Iterable[Positioned]
-) -> dict[tuple[str, int], int]:
-    """Map a preprocess event's ``(dataset, file-local rotation_index)`` to the pooled index.
-
-    ``optimize_orientation``/``optimize_thickness`` run per dataset before pooling renumbers the
-    rotations, so their ``rotation_index`` is file-local; every refinement-side event carries the
-    *pooled* index. ``report_coupling`` fires on the settled pooled plan on every run, so its
-    ``RotationCoupling`` events give each dataset's pooled indices in order, and pooling preserves
-    order within a dataset -- pairing the two sorted lists positionally is the mapping. A dataset
-    whose two counts disagree is left unmapped rather than guessed at.
-    """
-    pooled = by_dataset(events_of(records, RotationCoupling))
-    mapping: dict[tuple[str, int], int] = {}
-    for dataset, group in by_dataset(local).items():
-        after = sorted(
-            {e.rotation_index for e in pooled.get(dataset, []) if e.rotation_index is not None}
-        )
-        before = sorted({e.rotation_index for e in group if e.rotation_index is not None})
-        if after and len(after) == len(before):
-            mapping.update({(dataset, b): a for b, a in zip(before, after, strict=True)})
-    return mapping
-
-
-@styled
-def plot_objective_decomposition(records: Sequence[EventRecord]) -> Figure | None:
-    """The objective per epoch, and what each composed term contributed to it.
-
-    ``RefinementStep.components`` carries every term's ``contribution`` (raw * weight) each epoch;
-    stacked, they show whether the restraints or the diffraction term is doing the work -- the
-    question every soft-penalty run raises and the epoch curve cannot answer. The upper panel is the
-    objective itself with the epoch the run *selected* marked (``RefinementCompleted.best_step``,
-    labelled by what selected it), which is not necessarily the last or the lowest-training-loss
-    epoch under a validation split.
-    """
-    steps = events_of(records, RefinementStep)
-    if not steps:
-        return None
-    completed = events_of(records, RefinementCompleted)
-    x = [step.iteration + 1 for step in steps]
-    terms: list[str] = []
-    for step in steps:
-        for term in step.components:
-            if term not in terms:
-                terms.append(term)
-    fig, axes = plt.subplots(
-        2 if terms else 1, 1, figsize=(8, 7 if terms else 4), sharex=True, squeeze=False
-    )
-    top = axes[0, 0]
-    top.plot(x, [step.loss for step in steps], marker="o", linewidth=1.5, label="objective")
-    if completed:
-        best = completed[-1]
-        selected = next((step for step in steps if step.iteration == best.best_step), None)
-        top.axvline(best.best_step + 1, linestyle="--", linewidth=1.0, color=MUTED)
-        if selected is not None:
-            # The star sits on the training curve at the selected epoch. Under a validation split
-            # ``best_loss`` is the *validation* objective -- a different population -- so it is
-            # quoted in the label rather than drawn as a point on this curve.
-            label = f"selected on {best.selection}"
-            if best.selection == "validation":
-                label += f" (validation objective {best.best_loss:.4g})"
-            top.scatter(
-                [best.best_step + 1],
-                [selected.loss],
-                marker="*",
-                s=140,
-                zorder=3,
-                color=INK,
-                label=label,
-            )
-    top.set_ylabel("objective")
-    top.xaxis.set_major_locator(MaxNLocator(integer=True))
-    top.set_title("Objective per epoch")
-    top.legend(fontsize="small")
-    if terms:
-        bottom = axes[1, 0]
-        contributions = [
-            [step.components.get(term, {}).get("contribution", math.nan) for step in steps]
-            for term in terms
-        ]
-        bottom.stackplot(x, contributions, labels=terms, alpha=0.85)
-        bottom.set_ylabel("contribution")
-        bottom.set_title("Objective composition")
-        bottom.legend(fontsize="small", loc="upper right")
-    axes[-1, 0].set_xlabel("epoch")
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_orientation_search_headroom(records: Sequence[EventRecord]) -> Figure | None:
-    """Each rotation's Nelder-Mead pass count against the cap, and its matched-reflection count.
-
-    The calibration figure for ``preprocess.orientation.max_iterations``: a rotation that ran to
-    the cap (highlighted) stopped because it was told to, not because it converged, and the value
-    it settled on is a budget artefact. The lower panel shows the matched-reflection count the
-    search ended on and, where the search trace is in the report, the count it *started* from --
-    the ``penalize_fewer_reflections`` guard exists to stop the fit "winning" by matching fewer.
+    The ``penalize_fewer_reflections`` guard exists to stop the fit "winning" by matching fewer
+    reflections; this shows whether the final orientation matches fewer than the initial one. The
+    initial counts come from the search trace and are drawn only when it is in the report.
     """
     fits = sorted_by_rotation(events_of(records, OrientationOptimized))
     if not fits:
@@ -714,93 +572,31 @@ def plot_orientation_search_headroom(records: Sequence[EventRecord]) -> Figure |
         if seeds:
             seed_matched[trace.dataset, trace.rotation_index] = seeds[0]
     x = list(range(len(fits)))
-    capped = [fit.n_passes >= fit.pass_cap for fit in fits]
-    fig, axes = plt.subplots(
-        2, 1, figsize=(_rotation_extent(len(fits), minimum=10.0), 7), sharex=True
-    )
-    axes[0].bar(
-        x,
-        [fit.n_passes for fit in fits],
-        color=[SERIES[7] if flag else SERIES[0] for flag in capped],
-        label="passes",
-    )
-    for cap in sorted({fit.pass_cap for fit in fits}):
-        axes[0].axhline(cap, linestyle="--", linewidth=1.0, color=MUTED, label=f"cap {cap}")
-    if any(capped):
-        axes[0].scatter([], [], color=SERIES[7], marker="s", label=f"ran to cap ({sum(capped)})")
-    axes[0].set_ylabel("Nelder-Mead passes")
-    axes[0].set_title("Orientation search headroom")
-    axes[0].legend(fontsize="small")
-    axes[1].plot(x, [fit.n_matched_hkl for fit in fits], marker="o", linewidth=1, label="after")
-    before = [seed_matched.get((fit.dataset, fit.rotation_index)) for fit in fits]
-    if any(value is not None for value in before):
-        axes[1].plot(
+    fig, ax = plt.subplots(figsize=(FIGURE_WIDTH, 5))
+    initial = [seed_matched.get((fit.dataset, fit.rotation_index)) for fit in fits]
+    if any(value is not None for value in initial):
+        ax.plot(
             x,
-            [math.nan if value is None else value for value in before],
+            [math.nan if value is None else value for value in initial],
             marker="o",
             linewidth=1,
-            label="seed",
+            color=MUTED,
+            label="initial",
         )
-    axes[1].set_ylabel("matched reflections")
-    axes[1].legend(fontsize="small")
-    _label_every_rotation(axes[1], _rotation_labels(fits))
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_thickness_grid_vs_model(records: Sequence[EventRecord]) -> Figure | None:
-    """The refinement's learned thickness curve with the preprocess grid-search points on it.
-
-    Two stages estimate the same physical quantity: ``optimize_thickness`` picks one scalar per
-    rotation by argmin, and ``ApparentThicknessNN`` learns a function of tilt. Drawn on the same
-    alpha axis, the points show what the grid search found and the curve what the network settled
-    on -- agreement means the NN learned the specimen shape, systematic offset means the refinement
-    moved it, scatter far from the curve names the rotations the grid search got wrong. Needs both
-    stages in the report; a report with only one is served by the single-stage figures.
-    """
-    fits = events_of(records, ThicknessOptimized)
-    profiles = events_of(records, ThicknessProfile)
-    if not fits or not profiles:
-        return None
-    pooled = _pooled_index(records, fits)
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    drawn = False
-    for slot, profile in enumerate(profiles):
-        colour = SERIES[slot % len(SERIES)]
-        alpha_of = dict(zip(profile.rotation_indices, profile.alphas, strict=True))
-        curve = sorted(zip(profile.alphas, profile.thicknesses, strict=True))
-        ax.plot(
-            [row[0] for row in curve],
-            [row[1] for row in curve],
-            linewidth=1.5,
-            color=colour,
-            label=f"{profile.label} learned",
-        )
-        points = [
-            (alpha_of[pooled[fit.dataset, fit.rotation_index]], fit.thickness)
-            for fit in fits
-            if fit.dataset == profile.label
-            and (fit.dataset, fit.rotation_index) in pooled
-            and pooled[fit.dataset, fit.rotation_index] in alpha_of
-        ]
-        if points:
-            drawn = True
-            ax.scatter(
-                [point[0] for point in points],
-                [point[1] for point in points],
-                s=18,
-                color=colour,
-                alpha=0.7,
-                label=f"{profile.label} grid search",
-            )
-    if not drawn:
-        plt.close(fig)
-        return None
-    ax.set_xlabel("alpha (degrees)")
-    ax.set_ylabel("thickness")
-    ax.set_title("Grid-search thickness vs learned model")
+    ax.plot(
+        x,
+        [fit.n_matched_hkl for fit in fits],
+        marker="o",
+        linewidth=1,
+        color=SERIES[0],
+        label="final",
+    )
+    ax.set_ylabel("Matched reflections")
+    ax.set_xlabel(_rotation_axis_title(fits))
     ax.legend(fontsize="small")
+    _label_every_rotation(ax, fits)
+    fig.set_label("Matched reflections")
+    fig.tight_layout()
     return fig
 
 
@@ -825,237 +621,20 @@ def plot_rotation_epoch_heatmap(records: Sequence[EventRecord]) -> Figure | None
         matrix[position[step.dataset, step.rotation_index]][column[step.iteration]] = (
             math.nan if value is None else value
         )
-    fig, ax = plt.subplots(figsize=(9, _rotation_extent(len(rows), minimum=3.5)))
-    ax.grid(False)  # the house gridlines would draw over the image
+    fig, ax = plt.subplots(figsize=(FIGURE_WIDTH, _rotation_extent(len(rows), minimum=3.5)))
     image = ax.imshow(matrix, aspect="auto", interpolation="nearest")
-    ax.set_xticks(range(len(epochs)))
-    ax.set_xticklabels([str(epoch + 1) for epoch in epochs])
+    _index_ticks(ax.xaxis, range(len(epochs)), [epoch + 1 for epoch in epochs])
     single = len({dataset for dataset, _ in rows}) <= 1
-    ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels(
-        [str(index) if single else f"{dataset}:{index}" for dataset, index in rows], fontsize=7
+    _index_ticks(
+        ax.yaxis,
+        range(len(rows)),
+        [index for _, index in rows],
+        [str(index) if single else f"{dataset}:{index}" for dataset, index in rows],
     )
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("rotation" if single else "dataset:rotation")
-    ax.set_title("Per-rotation wR2 across epochs")
-    fig.colorbar(image, ax=ax, label="wR2")
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_refinement_gain(records: Sequence[EventRecord]) -> Figure | None:
-    """Each rotation's score after the orientation search vs after refinement.
-
-    The same shape as the seed-vs-fitted panel of the orientation figure, one stage later: what the
-    structure refinement bought (or cost) per rotation, on top of the geometry preprocessing
-    settled. Compared under the residual the search actually scored, so a ``robs`` search is set
-    against the refined ``R_obs``, not ``wR2``.
-    """
-    fits = sorted_by_rotation(events_of(records, OrientationOptimized))
-    refined = events_of(records, RefinedRotationMetrics)
-    if not fits or not refined:
-        return None
-    pooled = _pooled_index(records, fits)
-    final = {(row.dataset, row.rotation_index): row for row in refined}
-    pairs = [
-        (fit, final[fit.dataset, pooled[fit.dataset, fit.rotation_index]])
-        for fit in fits
-        if (fit.dataset, fit.rotation_index) in pooled
-        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in final
-    ]
-    if not pairs:
-        return None
-    residual = pairs[0][0].residual
-    after = [(row.r_obs if residual == "robs" else row.wr2) for _, row in pairs]
-    x = list(range(len(pairs)))
-    fig, ax = plt.subplots(figsize=(_rotation_extent(len(pairs), minimum=10.0), 4.5))
-    ax.plot(
-        x,
-        [fit.score for fit, _ in pairs],
-        marker="o",
-        linewidth=1,
-        label="after orientation search",
-    )
-    ax.plot(x, after, marker="o", linewidth=1, label="after refinement")
-    held_out = [
-        (i, value)
-        for i, (value, (_, row)) in enumerate(zip(after, pairs, strict=True))
-        if row.is_validation
-    ]
-    if held_out:
-        ax.scatter(
-            [i for i, _ in held_out],
-            [value for _, value in held_out],
-            marker="x",
-            s=50,
-            linewidths=1.5,
-            color=INK,
-            label="validation",
-        )
-    ax.set_ylabel("R_obs" if residual == "robs" else "wR2")
-    ax.set_title("What refinement bought, per rotation")
-    ax.legend(fontsize="small")
-    _label_every_rotation(ax, _rotation_labels([fit for fit, _ in pairs]))
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_score_distributions(records: Sequence[EventRecord]) -> Figure | None:
-    """Empirical CDFs of the final per-rotation wR2 and R_obs, train vs validation per dataset.
-
-    At a hundred rotations the per-index line plots are a hairball; a distribution reads at any
-    count, and putting the held-out rotations on the same axes makes the generalization gap the
-    first thing seen rather than something to infer from marker positions.
-    """
-    metrics = events_of(records, RefinedRotationMetrics)
-    if not metrics:
-        return None
-    groups: dict[tuple[str, str], list[RefinedRotationMetrics]] = {}
-    for row in metrics:
-        groups.setdefault((row.dataset, "validation" if row.is_validation else "train"), []).append(
-            row
-        )
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2))
-    for ax, (label, read) in zip(axes, _ROTATION_METRICS, strict=True):
-        for slot, ((dataset, split), rows) in enumerate(sorted(groups.items())):
-            values = sorted(v for v in (read(row) for row in rows) if math.isfinite(v))
-            if not values:
-                continue
-            # Markers as well as the step: a group of one rotation has no step to draw, and a
-            # held-out set of two or three is common enough that it must still be visible.
-            ax.step(
-                values,
-                [(i + 1) / len(values) for i in range(len(values))],
-                where="post",
-                linewidth=1.5,
-                marker="o",
-                markersize=4,
-                color=SERIES[slot % len(SERIES)],
-                linestyle="-" if split == "train" else ":",
-                label=f"{dataset or 'dataset'} {split} (n={len(values)})",
-            )
-        ax.set_xlabel(label)
-        ax.set_ylabel("fraction of rotations")
-        ax.set_ylim(0, 1)
-        ax.legend(fontsize="small")
-    axes[0].set_title("Final per-rotation score distributions")
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_angle_deltas_vs_tilt(records: Sequence[EventRecord]) -> Figure | None:
-    """The fitted goniometer corrections against the rotation's tilt angle.
-
-    Against rotation *index* (the orientation figure) the deltas are a sequence; against alpha they
-    are a function. A smooth trend with tilt is a systematic misalignment the search is correcting
-    the same way every time -- worth fixing at the source -- while scatter is per-frame noise. The
-    tilt angles come from ``ThicknessProfile`` (the one event that carries alpha per rotation), so
-    this needs a thickness-NN refinement in the report.
-    """
-    fits = events_of(records, OrientationOptimized)
-    profiles = events_of(records, ThicknessProfile)
-    if not fits or not profiles:
-        return None
-    pooled = _pooled_index(records, fits)
-    alpha_of: dict[tuple[str, int], float] = {}
-    for profile in profiles:
-        for index, alpha in zip(profile.rotation_indices, profile.alphas, strict=True):
-            alpha_of[profile.label, index] = alpha
-    located = [
-        (alpha_of[fit.dataset, pooled[fit.dataset, fit.rotation_index]], fit)
-        for fit in fits
-        if (fit.dataset, fit.rotation_index) in pooled
-        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in alpha_of
-    ]
-    if not located:
-        return None
-    fig, axes = plt.subplots(3, 1, figsize=(8, 7.5), sharex=True)
-    deltas: tuple[tuple[str, Callable[[OrientationOptimized], float]], ...] = (
-        ("alpha", lambda fit: fit.alpha),
-        ("beta", lambda fit: fit.beta),
-        ("omega", lambda fit: fit.omega),
-    )
-    datasets = sorted({fit.dataset for _, fit in located})
-    for ax, (label, read) in zip(axes, deltas, strict=True):
-        for slot, dataset in enumerate(datasets):
-            points = [(tilt, read(fit)) for tilt, fit in located if fit.dataset == dataset]
-            ax.scatter(
-                [p[0] for p in points],
-                [p[1] for p in points],
-                s=16,
-                color=SERIES[slot % len(SERIES)],
-                label=dataset or "dataset",
-            )
-        ax.axhline(0.0, linewidth=0.8, color=MUTED)
-        ax.set_ylabel(f"delta {label} (deg)")
-    axes[0].set_title("Goniometer corrections vs tilt")
-    if len(datasets) > 1:
-        axes[0].legend(fontsize="small")
-    axes[-1].set_xlabel("tilt alpha (degrees)")
-    fig.tight_layout()
-    return fig
-
-
-@styled
-def plot_rotation_cost(records: Sequence[EventRecord]) -> Figure | None:
-    """Wall time per orientation search, and against the size of the solve it required.
-
-    Derived from the envelope alone: consecutive ``OrientationOptimized`` records' timestamps (the
-    first measured from ``OrientationOptimizationStarted``). With ``workers > 1`` events arrive in
-    completion order and the deltas are inter-arrival gaps, not per-rotation durations -- the bars
-    then read as throughput, not cost. The right panel puts each rotation's time against its
-    coupled-solve basis size (``RotationCoupling.n_union_beams``), which is the cost model the
-    memory and budget knobs are set against.
-    """
-    ordered = [
-        record
-        for record in records
-        if record.event_type
-        in {OrientationOptimized.__name__, OrientationOptimizationStarted.__name__}
-    ]
-    stamps = [datetime.fromisoformat(record.timestamp_utc) for record in ordered]
-    costs: list[tuple[OrientationOptimized, float]] = []
-    for record, t0, t1 in zip(ordered[1:], stamps, stamps[1:], strict=False):
-        if record.event_type != OrientationOptimized.__name__:
-            continue
-        fit = event_from_record(record)
-        assert isinstance(fit, OrientationOptimized)
-        costs.append((fit, (t1 - t0).total_seconds()))
-    if not costs:
-        return None
-    pooled = _pooled_index(records, [fit for fit, _ in costs])
-    beams = {
-        (row.dataset, row.rotation_index): row.n_union_beams
-        for row in events_of(records, RotationCoupling)
-    }
-    sized = [
-        (beams[fit.dataset, pooled[fit.dataset, fit.rotation_index]], seconds)
-        for fit, seconds in costs
-        if (fit.dataset, fit.rotation_index) in pooled
-        and (fit.dataset, pooled[fit.dataset, fit.rotation_index]) in beams
-    ]
-    bar_width = _rotation_extent(len(costs), minimum=8.0)
-    fig, axes = plt.subplots(
-        1,
-        2 if sized else 1,
-        figsize=(bar_width + (5.0 if sized else 0.0), 4.2),
-        squeeze=False,
-        width_ratios=(bar_width, 5.0) if sized else None,
-    )
-    bars = axes[0, 0]
-    bars.bar(range(len(costs)), [seconds for _, seconds in costs], color=SERIES[0])
-    bars.set_ylabel("seconds")
-    bars.set_title(f"Orientation search time per rotation (total {sum(s for _, s in costs):.0f} s)")
-    _label_every_rotation(bars, _rotation_labels([fit for fit, _ in costs]))
-    if sized:
-        scatter = axes[0, 1]
-        scatter.scatter([b for b, _ in sized], [s for _, s in sized], s=18, color=SERIES[0])
-        scatter.set_xlabel("union beams in the solve")
-        scatter.set_ylabel("seconds")
-        scatter.set_title("Time vs solve size")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Orientation" if single else "Dataset:orientation")
+    fig.colorbar(image, ax=ax, label=_WR2)
+    fig.set_label("Per-orientation wR2 across epochs")
     fig.tight_layout()
     return fig
 
@@ -1083,47 +662,29 @@ SECTIONS = (
         "Preprocess — orientation optimization",
         (
             ("orientation_optimization", plot_orientation_optimization),
-            ("orientation_search_headroom", plot_orientation_search_headroom),
-            ("orientation_search_trace", plot_orientation_search_trace),
-            ("angle_deltas_vs_tilt", plot_angle_deltas_vs_tilt),
-            ("rotation_cost", plot_rotation_cost),
+            ("matched_reflections", plot_matched_reflections),
         ),
         (OrientationOptimized, OrientationSearchTrace),
     ),
     Section(
-        # "per-rotation" earns its place: the refinement stage has a thickness section too, and
+        # "per-orientation" earns its place: the refinement stage has a thickness section too, and
         # that one is a learned function of tilt rather than one fitted scalar per rotation.
-        "Preprocess — per-rotation thickness fit",
-        (
-            ("thickness_grids", plot_thickness_grids),
-            ("thickness_heatmap", plot_thickness_heatmap),
-        ),
+        "Preprocess — per-orientation thickness fit",
+        (("thickness_grids", plot_thickness_grids),),
         (ThicknessOptimized,),
-    ),
-    Section(
-        "Preprocess — coupled solve geometry",
-        (
-            ("coupling_geometry", plot_coupling_geometry),
-            ("coupling_segment_heatmap", plot_coupling_segment_heatmap),
-        ),
-        (RotationCoupling, RotationCouplingSegments),
     ),
     Section(
         "Refinement — epoch history",
         (
             ("epoch_curve", plot_epoch_curve),
-            ("objective_decomposition", plot_objective_decomposition),
+            ("structure_drift", plot_structure_drift),
             ("rotation_epoch_heatmap", plot_rotation_epoch_heatmap),
         ),
         (RefinementStep, RefinementOrientationStep),
     ),
     Section(
-        "Refinement — per-rotation scores",
-        (
-            ("refined_rotation_scores", plot_refined_rotation_scores),
-            ("refinement_gain", plot_refinement_gain),
-            ("score_distributions", plot_score_distributions),
-        ),
+        "Refinement — per-orientation scores",
+        (("refined_rotation_scores", plot_refined_rotation_scores),),
         (RefinedRotationMetrics,),
     ),
     Section(
@@ -1133,10 +694,7 @@ SECTIONS = (
     ),
     Section(
         "Refinement — learned thickness model",
-        (
-            ("thickness_model", plot_thickness_model),
-            ("thickness_grid_vs_model", plot_thickness_grid_vs_model),
-        ),
+        (("thickness_model", plot_thickness_model),),
         (ThicknessProfile,),
     ),
 )
@@ -1187,6 +745,27 @@ def build_figures(records: Sequence[EventRecord]) -> dict[str, Figure]:
     }
 
 
+def figure_dropdown_html(figure: Figure) -> str:
+    """The figure as a collapsible HTML block: its title (the figure's label) is the toggle.
+
+    Plots carry no drawn title; each ``plot_*`` names its figure with ``Figure.set_label`` and the
+    name is shown here, above the image, as the header that opens and closes it.
+    """
+    buffer = io.BytesIO()
+    # Fonts and mathtext resolve at draw time, so the style has to be active here too.
+    with plt.rc_context(cast(Any, REPORT_RC)):
+        figure.savefig(buffer, format="png", bbox_inches="tight", dpi=150)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    title = html.escape(str(figure.get_label() or "Figure"))
+    return (
+        "<details open>"
+        '<summary style="font-family: Arial, sans-serif; font-size: 20px; cursor: pointer;">'
+        f"{title}</summary>"
+        f'<img src="data:image/png;base64,{encoded}" style="max-width: 100%;">'
+        "</details>"
+    )
+
+
 def export_figures(
     figures: dict[str, Figure], output_dir: Path, formats: Sequence[str] = ("svg",)
 ) -> list[Path]:
@@ -1196,6 +775,7 @@ def export_figures(
     for name, figure in figures.items():
         for suffix in formats:
             path = output_dir / f"{name}.{suffix}"
-            figure.savefig(path, bbox_inches="tight", dpi=160)
+            with plt.rc_context(cast(Any, REPORT_RC)):
+                figure.savefig(path, bbox_inches="tight", dpi=160)
             written.append(path)
     return written

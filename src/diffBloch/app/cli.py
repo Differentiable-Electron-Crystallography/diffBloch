@@ -8,11 +8,13 @@ science.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -20,6 +22,7 @@ from pydantic import ValidationError
 
 from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, ReportLogger, print_summary_box
+from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
@@ -28,13 +31,14 @@ from diffBloch.app.program import (
 )
 from diffBloch.config import load_config, write_experiment_lock
 from diffBloch.observability import (
+    EventRecord,
     Logger,
     MultiLogger,
 )
 
 # The input/config failures a command reports as a one-line `error:` instead of a traceback.
-# Anything else is a bug or an interrupt and propagates -- `_reported_run` still promotes the
-# partial report on the way out.
+# Anything else is a bug or an interrupt and propagates (and `_reported_run` discards the partial
+# report).
 _COMMAND_ERRORS = (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError)
 
 
@@ -229,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             return _error(exc)
         # ConsoleLogger printed "INFER COMPLETE" off the run's terminal event.
-        print(f"report: {run.report_path}")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "preprocess":
@@ -272,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  • {'Plan Lock':<20} {lock.resolve()}")
         else:
             print("Output files")
-        print(f"  • {'Report':<20} {run.report_path}")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "refine":
@@ -280,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
-            with _reported_run(args.experiment_directory) as run:
+            with _reported_run(args.experiment_directory, refinement_report=True) as run:
                 refine_experiment(
                     args.experiment_directory,
                     logger=run.logger,
@@ -298,9 +302,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise
             return _error(exc)
         # ConsoleLogger printed "REFINEMENT COMPLETE" and the artifact list off the run's terminal
-        # event. The report is the one output this file chose the location of, so it is also the
-        # one line this file still prints.
-        print(f"  • {'Report':<20} {run.report_path}")
+        # event; this file adds the outputs it chose the location of. The JSON report is written
+        # but not printed: the visualization notebooks are how it is read.
+        print(f"  • {'Refinement Report':<20} {run.refinement_report_path}")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     if args.command == "converge":
@@ -328,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
                 ("Tilt steps", str(settled.tilt_steps)),
             ),
         )
-        print(f"report: {run.report_path}")
+        _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
     parser.print_help()
@@ -337,20 +342,22 @@ def main(argv: list[str] | None = None) -> int:
 
 @dataclass(frozen=True)
 class _ReportedRun:
-    """The sinks one command runs against, plus where its report will land."""
+    """The sinks one command runs against, plus where its reports will land."""
 
     logger: Logger
     report_path: Path
+    refinement_report_path: Path | None
 
 
 @contextmanager
-def _reported_run(experiment_directory: str | Path) -> Iterator[_ReportedRun]:
+def _reported_run(
+    experiment_directory: str | Path, *, refinement_report: bool = False
+) -> Iterator[_ReportedRun]:
     """Attach the console and canonical-report sinks for one command.
 
-    The report is promoted on the way out whatever happened -- under its declared name on a clean
-    exit, under the ``-failed`` name on any exception, *including* the ones :func:`main` does not
-    catch. The ``ReportLogger`` is held directly rather than recovered from the composed sink, so
-    finalizing needs no ``isinstance`` walk back through the logger tree.
+    ``refinement_report=True`` (refine) also attaches the ``refinement_report.txt`` writer. The
+    JSONL report is written only when the command completes; on any exception, *including* the
+    ones :func:`main` does not catch, the partial report is deleted.
     """
     root = Path(experiment_directory)
     if not root.exists():
@@ -359,15 +366,142 @@ def _reported_run(experiment_directory: str | Path) -> Iterator[_ReportedRun]:
         ReportLogger.timestamped_path(root / "reproducibility" / "reports").resolve(),
         completed_only=True,
     )
-    logger = MultiLogger((ConsoleLogger(), report))
-    try:
-        with report:
-            yield _ReportedRun(logger=logger, report_path=report.path)
-    except BaseException:
-        # The failed report is the run's only structured record of what went wrong, so say where
-        # it is -- the success paths print their own path beside the rest of the output files.
-        print(f"report: {report.failed_path}", file=sys.stderr)
-        raise
+    sinks: tuple[Logger, ...] = (ConsoleLogger(), report)
+    refinement_report_path = None
+    if refinement_report:
+        refinement_report_path = (root / "refinement_report.txt").resolve()
+        sinks = (*sinks, SummaryLogger(refinement_report_path))
+    with report:
+        yield _ReportedRun(
+            logger=MultiLogger(sinks),
+            report_path=report.path,
+            refinement_report_path=refinement_report_path,
+        )
+
+
+# The report rendering code lives in the checkout's tools/, outside the installed package.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPORT_TOOLS = _REPO_ROOT / "tools" / "event_report"
+
+_REPORT_NOTEBOOK_CODE = """\
+import sys
+sys.path.insert(0, {repo_root!r})
+
+import matplotlib.pyplot as plt
+from IPython.display import HTML, Markdown, display
+from tools.event_report import figures, reader
+
+records = reader.stage_records(reader.read_records({report_name!r}), {stage!r})
+for title, panels in figures.build_sections(records):
+    display(Markdown(f"## {{title}}"))
+    for figure in panels.values():
+        display(HTML(figures.figure_dropdown_html(figure)))
+plt.close("all")
+"""
+
+
+# Event types the visualization notebook has plots for. A stage that emitted none of them (e.g. a
+# preprocess that only reused a checkpoint) gets no notebook rather than an empty one.
+_PLOTTED_EVENTS = frozenset(
+    {
+        "ConvergenceTrial",
+        "OrientationOptimized",
+        "ThicknessOptimized",
+        "RefinementStep",
+        "RefinementOrientationStep",
+        "RefinedRotationMetrics",
+        "ThicknessProfile",
+    }
+)
+
+
+# How a stage is named in its notebook's file name and heading, where that differs from the stage.
+_NOTEBOOK_NAMES = {"converge": "convergence-test", "refine": "refinement"}
+
+
+def _write_stage_notebooks(report_path: Path, experiment_directory: str | Path) -> list[Path]:
+    """Write one visualization notebook per stage of the run that has something to plot.
+
+    A command's report can hold several stages (``refine`` runs ``preprocess`` first); each gets its
+    own notebook beside the report, named by the stage and the run's local date and time (e.g.
+    ``refinement_2026-10-06_15-30-33.ipynb``), plotting only the events emitted while that stage
+    was the innermost one running. Nothing is written when the rendering code in
+    ``tools/event_report`` is absent, e.g. an installed package rather than a checkout.
+    """
+    if not _REPORT_TOOLS.is_dir():
+        return []
+    # Stages in the order their first plottable event appeared (preprocess before refine).
+    plotted_stages: list[str] = []
+    open_stages: list[str] = []
+    for line in report_path.read_text().splitlines():
+        record = EventRecord.model_validate_json(line)
+        if record.event_type == "RunStageStarted":
+            open_stages.append(str(record.payload["stage"]))
+        if (
+            open_stages
+            and record.event_type in _PLOTTED_EVENTS
+            and open_stages[-1] not in plotted_stages
+        ):
+            plotted_stages.append(open_stages[-1])
+        if record.event_type == "RunStageStopped" and open_stages:
+            open_stages.pop()
+    experiment_name = load_config(Path(experiment_directory) / "experiment.yaml").name
+    # The report's stamp is UTC; the notebook is named and headed in local time for people.
+    started = (
+        datetime.strptime(report_path.stem.removeprefix("report-"), "%Y%m%dT%H%M%SZ")
+        .replace(tzinfo=UTC)
+        .astimezone()
+    )
+    written = []
+    for stage in plotted_stages:
+        name = _NOTEBOOK_NAMES.get(stage, stage)
+        written.append(
+            _write_report_notebook(
+                report_path,
+                stage,
+                report_path.with_name(f"{name}_{started:%Y-%m-%d_%H-%M-%S}.ipynb"),
+                f"{name.capitalize()} visualization notebook, {experiment_name}, "
+                f"{started.day} {started:%B %Y %H:%M}",
+            )
+        )
+    return written
+
+
+def _print_notebooks(notebooks: list[Path]) -> None:
+    for notebook in notebooks:
+        print(f"  • {'Visualization':<20} {notebook}")
+
+
+def _write_report_notebook(report_path: Path, stage: str, notebook_path: Path, title: str) -> Path:
+    """Write ``notebook_path``: a title and one code cell plotting ``stage`` of ``report_path``.
+
+    Run All renders the plots for that stage's events. The notebook reads the report by file name
+    relative to itself.
+    """
+    code = _REPORT_NOTEBOOK_CODE.format(
+        repo_root=str(_REPO_ROOT), report_name=report_path.name, stage=stage
+    )
+    notebook = {
+        "cells": [
+            {"cell_type": "markdown", "id": "title", "metadata": {}, "source": [f"# {title}"]},
+            {
+                "cell_type": "code",
+                "id": "plots",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": code.splitlines(keepends=True),
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    notebook_path.write_text(json.dumps(notebook, indent=1) + "\n")
+    return notebook_path
 
 
 def _error(exc: Exception) -> int:
