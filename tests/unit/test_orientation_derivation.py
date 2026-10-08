@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from diffBloch.core.crystal import cell_matrix_from_parameters
+from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.io import read_experimental_data
 from diffBloch.preprocess import resolve_dataset_orientations
 from diffBloch.preprocess.orientation import (
@@ -130,6 +130,31 @@ def test_busing_levy_determinant_is_inverse_volume(golden: dict[str, np.ndarray]
     ca, cb, cg = np.cos(np.deg2rad([alpha, beta, gamma]))
     volume = a * b * c * np.sqrt(1.0 - ca**2 - cb**2 - cg**2 + 2.0 * ca * cb * cg)
     assert np.linalg.det(busing_levy_matrix(golden["cell_params"])) == pytest.approx(1.0 / volume)
+
+
+TRICLINIC_CELL = np.array([8.77478, 9.26455, 11.55388, 74.53492, 81.54956, 89.0115])
+
+
+def test_busing_levy_matches_the_reciprocal_metric_for_a_triclinic_cell() -> None:
+    """``B.T @ B`` is the reciprocal metric.
+
+    ``B[2, 1]`` scales with ``cos(alpha) - cos(beta) cos(gamma)``, which vanishes for orthogonal,
+    hexagonal and standard-setting monoclinic cells, so only a triclinic cell exercises its sign;
+    the determinant test above is blind to it.
+    """
+    recip = reciprocal_cell(cell_matrix_from_parameters(TRICLINIC_CELL))
+    b_matrix = busing_levy_matrix(TRICLINIC_CELL)
+    assert np.allclose(b_matrix.T @ b_matrix, recip @ recip.T, rtol=1e-12, atol=1e-15)
+
+
+def test_u_matrix_recovers_the_rotation_for_a_triclinic_cell() -> None:
+    """``u_matrix`` recovers ``U`` from an independent PETS-style UB (columns ``a*, b*, c*``).
+
+    Only a triclinic cell exercises the sign of ``B[2, 1]`` (see the metric test above).
+    """
+    rotation = goniometer_rotation(12.0, -7.0, 33.0)
+    ub = rotation @ reciprocal_cell(cell_matrix_from_parameters(TRICLINIC_CELL)).T
+    assert np.allclose(u_matrix(ub, TRICLINIC_CELL), rotation, atol=1e-12)
 
 
 def test_orientation_basis_matches_oracle() -> None:
