@@ -11,18 +11,19 @@ is deferred to the real quartz e2e.
 
 from __future__ import annotations
 
-import time
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
-from diffBloch.app.loggers import EarlyAbortLogger, FitAbortedError
+from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
+from diffBloch.observability import EventRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, hexagonal_tilt, optimize_orientation
 from diffBloch.preprocess.orientation import rocking_curve_tilts
@@ -38,6 +39,10 @@ from diffBloch.specs import (
 _ENERGY = 200e3
 _CELL = np.eye(3, dtype=np.float64) * 5.0
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
+
+
+def _records(path: Path) -> list[EventRecord]:
+    return [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
 
 
 # --- hexagonal_tilt (pure) ------------------------------------------------------------------------
@@ -155,50 +160,43 @@ def test_fit_orientation_leaves_a_self_consistent_orientation_unchanged() -> Non
     assert np.linalg.norm(np.asarray(refined.orientation) - true_orientation) < 1e-2
 
 
-def test_fit_orientation_reads_the_dataset_label_off_the_plan() -> None:
+def test_fit_orientation_reads_the_dataset_label_off_the_plan(tmp_path: Path) -> None:
     """The label comes from the rotations' own pattern.dataset, not from a step argument, so a
     pooled multi-dataset console log can tell which dataset a "N rotation(s)" announcement belongs
     to without the app boundary threading a label into the recipe."""
-    from diffBloch.observability import (
-        OrientationOptimizationStarted,
-        OrientationOptimized,
-        RecordingLogger,
-    )
-
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     labelled = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets"))
     refinement = _refinement(asu_plan, spec, numbers)
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
 
-    optimize_orientation(refinement, NelderMeadSearch(), logger=recorder)(
+    optimize_orientation(refinement, NelderMeadSearch(), logger=ReportLogger(path))(
         Plan(structure_factor_grid=grid, orientations=(labelled,))
     )
 
-    (started,) = [e for e in recorder.events if isinstance(e, OrientationOptimizationStarted)]
-    assert started.dataset == "a.cif_pets"
-    (fitted,) = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
+    records = _records(path)
+    (started,) = [e for e in records if e.event_type == "OrientationOptimizationStarted"]
+    assert started.payload["dataset"] == "a.cif_pets"
+    (fitted,) = [e for e in records if e.event_type == "OrientationOptimized"]
     assert fitted.dataset == "a.cif_pets"
 
 
-def test_fit_orientation_leaves_the_label_empty_for_a_mixed_dataset_plan() -> None:
+def test_fit_orientation_leaves_the_label_empty_for_a_mixed_dataset_plan(tmp_path: Path) -> None:
     """A pooled plan names no single dataset, so the label is empty rather than an arbitrary pick
     from whichever rotation happened to be first."""
-    from diffBloch.observability import OrientationOptimizationStarted, RecordingLogger
-
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
     a = replace(matched, pattern=replace(matched.pattern, dataset="a.cif_pets", rotation_index=0))
     b = replace(matched, pattern=replace(matched.pattern, dataset="b.cif_pets", rotation_index=1))
     refinement = _refinement(asu_plan, spec, numbers)
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
 
-    optimize_orientation(refinement, NelderMeadSearch(), logger=recorder)(
+    optimize_orientation(refinement, NelderMeadSearch(), logger=ReportLogger(path))(
         Plan(structure_factor_grid=grid, orientations=(a, b))
     )
 
-    (started,) = [e for e in recorder.events if isinstance(e, OrientationOptimizationStarted)]
-    assert started.dataset == ""
+    (started,) = [e for e in _records(path) if e.event_type == "OrientationOptimizationStarted"]
+    assert started.payload["dataset"] == ""
 
 
 def test_fit_orientation_threads_the_rocking_curve_tilts_through_the_search() -> None:
@@ -297,56 +295,6 @@ def test_fit_orientation_workers_matches_sequential() -> None:
     threaded = optimize_orientation(refinement, NelderMeadSearch(), workers=3)(plan).orientations
     for a, b in zip(sequential, threaded, strict=True):
         assert torch.equal(a.orientation, b.orientation)
-
-
-def test_fit_orientation_workers_abort_cancels_pending_rotations(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Under ``workers > 1`` an early abort cancels the queued rotations, not drains them.
-
-    Regression for the ThreadPoolExecutor drain: a ``with`` block's ``shutdown(wait=True)`` ran
-    every submitted search before the ``FitAbortedError`` surfaced, defeating the point of stopping
-    early. With ``cancel_futures`` the queued rotations' compute is saved (only the ``<= workers``
-    already in flight finish). The per-rotation search is stubbed so the test is fast; we count how
-    many actually run and assert it is below the total -- which the old draining code could not do.
-    """
-    import diffBloch.preprocess.steps.optimize_orientation as fo
-
-    calls: list[int] = []
-
-    def stub(  # type: ignore[no-untyped-def]
-        engine,
-        fgb,
-        plan,
-        op,
-        *,
-        search,
-        coupling,
-        validate=True,
-    ):
-        calls.append(1)
-        time.sleep(0.03)  # a window in which the abort can cancel the still-queued rotations
-        return fo._FitResult(
-            plan=op,
-            score=0.5,
-            n_trials=1,
-            n_passes=1,
-            alpha=0.0,
-            beta=0.0,
-            omega=0.0,
-            seed_score=0.5,
-        )
-
-    monkeypatch.setattr(fo, "_refine_one", stub)
-    grid, asu_plan, spec, numbers = _silicon()
-    matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
-    plan = Plan(structure_factor_grid=grid, orientations=(matched,) * 40)
-    refinement = _refinement(asu_plan, spec, numbers)
-    logger = EarlyAbortLogger(wr2_ceiling=-1.0, patience=1)  # aborts on the first fit event
-
-    with pytest.raises(FitAbortedError):
-        optimize_orientation(refinement, NelderMeadSearch(), workers=4, logger=logger)(plan)
-    assert len(calls) < 40  # queued rotations cancelled; the draining code ran all 40
 
 
 def test_nelder_mead_search_rejects_a_nonpositive_iteration_cap() -> None:

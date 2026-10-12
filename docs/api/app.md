@@ -1,7 +1,7 @@
 # App
 
 The imperative shell: the `diffbloch` CLI, the default experiment runner it delegates to, and the
-logger backends (console/CSV always available; Weights & Biases and Comet behind optional extras —
+logger backends (console and structured report always available; Weights & Biases and Comet behind optional extras —
 vendor SDKs never reach the core).
 
 ```{eval-rst}
