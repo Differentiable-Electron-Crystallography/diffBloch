@@ -36,9 +36,13 @@ runtime plot writer: preprocess completion, per-epoch train/validation wR2 and R
 before/after scores with fitted angle deltas, per-dataset final rotation metrics, and thickness
 score grids. `tools/event_report/` is the shipped consumer. Higher-cardinality visualization
 data is batched into single events: `OrientationSearchTrace` carries the scored search path for one
-rotation, and `RotationCouplingSegments` carries the per-segment tilt/beam geometry for one
-rotation. Both store their columns in parallel evaluation order, so row position is the trial or
-segment index and no `range(n)` column is written. Matplotlib rendering and optional figure export
+rotation, `RotationCouplingSegments` carries the per-segment tilt/beam geometry for one
+rotation, and `RefinedReflectionIntensities` carries one rotation's matched reflections under the
+final refined model (hkl and its g-vector magnitude, measured intensity and sigma, and the
+simulated intensity already on the measured scale), which the report tool plots as I_obs vs I_calc
+and as R_obs per resolution shell. Each stores its
+columns as parallel tuples, so row position is the trial, segment or reflection index and no
+`range(n)` column is written. Matplotlib rendering and optional figure export
 live in `tools/event_report/figures.py`, not in `src/diffBloch`.
 
 The consumer half of the contract lives here too. `EVENT_TYPES` is the registry of every event

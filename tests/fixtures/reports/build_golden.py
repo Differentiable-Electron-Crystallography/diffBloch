@@ -43,6 +43,7 @@ from diffBloch.observability import (
     PlanSeeded,
     PlanStepCompleted,
     PreprocessCompleted,
+    RefinedReflectionIntensities,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOrientationStep,
@@ -366,6 +367,20 @@ def build_events() -> list[Event]:
                 n_matched=35,
                 is_validation=(k == 3),
                 dataset=DATASETS[k // 2],
+            )
+            for k in range(4)
+        ),
+        *(
+            RefinedReflectionIntensities(
+                rotation_index=k,
+                dataset=DATASETS[k // 2],
+                is_validation=(k == 3),
+                scale=1.2e6 + 1.0e4 * k,
+                hkl=((1, 0, 0), (0, 1, 1), (2, 1, 0)),
+                g_magnitude=(0.2, 0.28, 0.45),
+                observed=(5.1e5, 2.4e4, -1.0e3),
+                sigmas=(2.0e4, 4.0e3, 3.0e3),
+                calculated=(5.6e5, 2.2e4, 1.5e3),
             )
             for k in range(4)
         ),

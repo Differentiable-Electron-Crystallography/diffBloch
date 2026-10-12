@@ -86,6 +86,7 @@ from diffBloch.observability import (
     DeviceSelected,
     Logger,
     PreprocessCompleted,
+    RefinedReflectionIntensities,
     RefinedRotationMetrics,
     RefinementOutputsWritten,
     RunStage,
@@ -655,9 +656,11 @@ def _report_refinement_outcome(
     relative to ``root``, so the report stays meaningful once copied elsewhere (``result.artifacts``
     itself keeps the absolute paths an API caller wants to open directly). Each row already knows
     its dataset ref (``RotationMetrics.dataset``, read off the rotation's own ``pattern``), so the
-    per-dataset breakdown costs nothing here.
+    per-dataset breakdown costs nothing here. The same scoring pass also carries each rotation's
+    matched reflections, reported as :class:`RefinedReflectionIntensities` for I_obs vs I_calc.
     """
-    for row in engine.per_rotation_metrics(result.best_model):
+    rows = engine.per_rotation_metrics(result.best_model)
+    for row in rows:
         logger.report(
             RefinedRotationMetrics(
                 rotation_index=row.rotation_index,
@@ -666,6 +669,20 @@ def _report_refinement_outcome(
                 n_matched=row.n_matched,
                 is_validation=row.rotation_index in validation_rotation_indices,
                 dataset=row.dataset,
+            )
+        )
+    for row in rows:
+        logger.report(
+            RefinedReflectionIntensities(
+                rotation_index=row.rotation_index,
+                dataset=row.dataset,
+                is_validation=row.rotation_index in validation_rotation_indices,
+                scale=row.scale,
+                hkl=row.hkl,
+                g_magnitude=row.g_magnitude,
+                observed=row.observed,
+                sigmas=row.sigmas,
+                calculated=row.calculated,
             )
         )
     if raw_alphas is not None:

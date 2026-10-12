@@ -12,7 +12,7 @@ import torch
 from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.app.loggers import ReportLogger
-from diffBloch.core.losses import mse
+from diffBloch.core.losses import mse, w_rbragg
 from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
@@ -869,3 +869,35 @@ def test_refinement_metrics_counts_an_unmatched_reflection_once_not_per_rotation
 
     assert n_matched == 1  # only 000 is in the beam set
     assert n_unmatched == 1  # 200, once -- not once per rotation
+
+
+def test_per_rotation_metrics_carries_the_scaled_reflections_its_wr2_was_scored_over() -> None:
+    """The per-reflection columns are exactly what the reported wR2 was computed from.
+
+    Observations are the simulated pattern times 1000, so the scale is far from 1: ``calculated``
+    must already carry it (sitting on the observed scale), and evaluating wR2 on the columns as
+    they stand, with no further scaling, must reproduce the rotation's reported ``wr2``.
+    """
+    true_params = _params()
+    clean = _observed_pattern(true_params)
+    pattern = dataclasses.replace(
+        clean,
+        intensities=1000.0 * clean.intensities * torch.tensor([1.0, 1.1, 0.9], dtype=torch.float64),
+        sigmas=1000.0 * clean.sigmas,
+    )
+    engine = _with_pattern(_engine(), pattern)
+
+    (row,) = engine.per_rotation_metrics(build_refinement_model(initial=true_params))
+
+    (orientation,) = engine.orientations
+    assert row.hkl == tuple(tuple(hkl) for hkl in orientation.alignment.hkl.tolist())
+    # 5 A cubic cell: |g| = |hkl| / 5 (1/d, no 2 pi), so 000 sits at 0 and 100 at 0.2.
+    assert row.g_magnitude == pytest.approx([np.linalg.norm(hkl) / 5.0 for hkl in row.hkl])
+    assert len(row.observed) == len(row.sigmas) == len(row.calculated) == row.n_matched
+    assert 500.0 < row.scale < 2000.0
+    rescored = w_rbragg(
+        torch.tensor(row.calculated, dtype=torch.float64),
+        torch.tensor(row.observed, dtype=torch.float64),
+        torch.tensor(row.sigmas, dtype=torch.float64),
+    )
+    assert float(rescored) == pytest.approx(row.wr2, rel=1e-9)

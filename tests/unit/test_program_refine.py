@@ -8,6 +8,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 import torch
+from tests.unit.test_engine import _engine, _params
 
 from diffBloch.app.loggers import ReportLogger
 from diffBloch.app.program import (
@@ -29,6 +30,8 @@ from diffBloch.observability import (
     EventRecord,
     ObjectiveManifest,
     ObjectiveTerm,
+    RefinedReflectionIntensities,
+    RefinementOutputsWritten,
     RefinementStep,
 )
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
@@ -390,3 +393,53 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
     }
     rejoined = Path(record.payload["experiment_directory"], record.artifacts["refinement_lock"])
     assert rejoined == (root / "reproducibility" / "refinement.lock").resolve()
+
+
+def test_report_refinement_outcome_emits_each_rotations_scored_reflections(
+    tmp_path: Path,
+) -> None:
+    """I_obs vs I_calc data is the settled scoring pass's own reflections, held-out included.
+
+    Read off the same ``per_rotation_metrics`` rows the per-rotation scores come from (so the two
+    can never disagree about which reflections were scored), flagged by the validation split, and
+    emitted before the terminal ``RefinementOutputsWritten``.
+    """
+    engine = _engine()
+    model = build_refinement_model(initial=_params())
+    result = ModelRefinementResult(
+        model=model,
+        losses=torch.zeros(1, dtype=torch.float64),
+        best_model=model,
+        best_step=0,
+        artifacts={"refined_structure": "q/refined_structure.cif"},
+    )
+    (row,) = engine.per_rotation_metrics(model)
+    events: list[object] = []
+
+    class _Recorder:
+        def report(self, event: object) -> None:
+            events.append(event)
+
+    _report_refinement_outcome(
+        cast(Any, _Recorder()),
+        engine,
+        result,
+        root=tmp_path,
+        validation_rotation_indices=frozenset({row.rotation_index}),
+        thickness_nns=(),
+        raw_alphas=None,
+    )
+
+    [event] = [e for e in events if isinstance(e, RefinedReflectionIntensities)]
+    assert event == RefinedReflectionIntensities(
+        rotation_index=row.rotation_index,
+        dataset=row.dataset,
+        is_validation=True,
+        scale=row.scale,
+        hkl=row.hkl,
+        g_magnitude=row.g_magnitude,
+        observed=row.observed,
+        sigmas=row.sigmas,
+        calculated=row.calculated,
+    )
+    assert isinstance(events[-1], RefinementOutputsWritten)

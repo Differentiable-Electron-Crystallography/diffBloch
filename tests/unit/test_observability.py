@@ -46,6 +46,7 @@ from diffBloch.observability import (
     OrientationSearchTrace,
     PlanStepCompleted,
     PreprocessCompleted,
+    RefinedReflectionIntensities,
     RefinementCompleted,
     RefinementOrientationStep,
     RefinementOutputsWritten,
@@ -958,6 +959,7 @@ def _minimal(cls: type) -> dict[str, object]:
         "bool": False,
         "tuple[float, ...]": (0.5,),
         "tuple[int, ...]": (1,),
+        "tuple[tuple[int, int, int], ...]": ((1, 0, 0),),
         "tuple[str, ...]": ("x",),
         "tuple[tuple[str, tuple[float, ...]], ...]": (("x", (0.5,)),),
         "tuple[tuple[str, dict[str, Any] | None], ...]": (("x", None),),
@@ -1287,3 +1289,44 @@ def test_console_logger_lists_outputs_even_without_a_refinement_summary(
     out = capsys.readouterr().out
     assert "REFINEMENT COMPLETE" not in out
     assert "Output files" in out
+
+
+def _refined_reflections(**overrides: object) -> RefinedReflectionIntensities:
+    values: dict[str, object] = {
+        "rotation_index": 4,
+        "dataset": "a.cif_pets",
+        "is_validation": False,
+        "scale": 1.5e6,
+        "hkl": ((1, 0, 0), (0, 2, 1)),
+        "g_magnitude": (0.2, 0.45),
+        "observed": (5.0e5, -2.0e3),
+        "sigmas": (1.0e4, 3.0e3),
+        "calculated": (5.2e5, 1.0e3),
+    }
+    values.update(overrides)
+    return RefinedReflectionIntensities(**values)  # type: ignore[arg-type]
+
+
+def test_refined_reflection_intensities_places_itself_on_its_rotation() -> None:
+    event = _refined_reflections()
+
+    assert event.channel == "refined reflections"
+    assert event.step == 4
+    assert event.measurements == {"n_reflections": 2.0, "scale": 1.5e6}
+    record = event_record_from_event(event, run_id="run", sequence=0)
+    assert (record.dataset, record.rotation_index) == ("a.cif_pets", 4)
+
+
+def test_refined_reflection_intensities_rejects_ragged_columns() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        _refined_reflections(calculated=(5.2e5,))
+
+
+def test_console_logger_stays_silent_on_per_reflection_intensities(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One event per rotation carrying every reflection is for the report, not the live console."""
+    with caplog.at_level(logging.INFO, logger="diffBloch.loggers"):
+        ConsoleLogger(level=logging.INFO).report(_refined_reflections())
+
+    assert caplog.records == []

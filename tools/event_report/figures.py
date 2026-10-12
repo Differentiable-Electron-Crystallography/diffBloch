@@ -19,24 +19,29 @@ from __future__ import annotations
 import base64
 import html
 import io
+import itertools
 import math
+import statistics
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
+import torch
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 
+from diffBloch.core import rbragg
 from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceTrial,
     EventRecord,
     OrientationOptimized,
     OrientationSearchTrace,
+    RefinedReflectionIntensities,
     RefinedRotationMetrics,
     RefinementOrientationStep,
     RefinementStep,
@@ -58,7 +63,9 @@ __all__ = [
     "plot_orientation_optimization",
     "plot_matched_reflections",
     "plot_refined_rotation_scores",
+    "plot_resolution_shells",
     "plot_rotation_epoch_heatmap",
+    "plot_observed_vs_calculated",
     "plot_structure_drift",
     "plot_thickness_grids",
     "plot_thickness_model",
@@ -142,6 +149,7 @@ _R_OBS = r"$R_{\mathrm{obs}}$"
 _WR2_COLOR = SERIES[7]
 _R_OBS_COLOR = SERIES[0]
 _ALPHA = r"$\alpha$ (°)"
+_I_CALC = r"$I_{\mathrm{calc}}\ _{_{\mathrm{(scaled\ per\ rotation)}}}$"
 
 
 def _residual_axis(residual: str) -> tuple[str, str]:
@@ -641,6 +649,229 @@ def plot_rotation_epoch_heatmap(records: Sequence[EventRecord]) -> Figure | None
     return fig
 
 
+_RATIO_BINS = 15
+_RATIO_MIN_PER_BIN = 10
+
+
+def _binned_median_ratio(
+    calculated: Sequence[float], observed: Sequence[float], n_bins: int, min_per_bin: int
+) -> list[tuple[float, float]]:
+    """``(median I_calc, median I_obs / I_calc)`` over equal-count bins of ascending ``I_calc``.
+
+    Takes every reflection with ``I_calc > 0``, including those with ``I_obs <= 0``: dropping them
+    (as a log axis must) censors the faint end and fakes a ratio that climbs as ``I_calc`` falls.
+    Bins with fewer than ``min_per_bin`` reflections are left out.
+    """
+    pairs = sorted(
+        (calc, obs / calc) for calc, obs in zip(calculated, observed, strict=True) if calc > 0
+    )
+    n_bins = min(n_bins, len(pairs) // min_per_bin)
+    if n_bins < 1:
+        return []
+    bounds = [round(i * len(pairs) / n_bins) for i in range(n_bins + 1)]
+    return [
+        (
+            statistics.median(calc for calc, _ in pairs[lo:hi]),
+            statistics.median(ratio for _, ratio in pairs[lo:hi]),
+        )
+        for lo, hi in itertools.pairwise(bounds)
+    ]
+
+
+@styled
+def plot_observed_vs_calculated(records: Sequence[EventRecord]) -> Figure | None:
+    """I_obs against I_calc for every matched reflection of the refined model.
+
+    Left: ``I_obs`` against the scaled ``I_calc`` on log axes, ``I > 3 sigma`` reflections in colour
+    and weak ones muted, with ``I_obs = I_calc`` drawn as the reference. Right: ``I_obs / I_calc``
+    against ``I_calc`` with its median over equal-count ``I_calc`` bins, so a misfit that depends on
+    intensity shows as that median drifting away from 1.
+
+    Each rotation's ``I_calc`` carries its own wR2-optimal scale, so the pooled reflections compare
+    on one axis. Reflections with ``I_obs <= 0`` cannot be placed on a log axis and are not drawn;
+    the binned median still includes them.
+    """
+    events = events_of(records, RefinedReflectionIntensities)
+    if not events:
+        return None
+    observed = [value for event in events for value in event.observed]
+    sigmas = [value for event in events for value in event.sigmas]
+    calculated = [value for event in events for value in event.calculated]
+    drawn = [
+        (calc, obs, obs > 3.0 * sigma)
+        for calc, obs, sigma in zip(calculated, observed, sigmas, strict=True)
+        if calc > 0 and obs > 0
+    ]
+    if not drawn:
+        return None
+    fig, (ax_scatter, ax_ratio) = plt.subplots(1, 2, figsize=(FIGURE_WIDTH, 5.5))
+
+    lo = min(min(calc, obs) for calc, obs, _ in drawn) * 0.8
+    hi = max(max(calc, obs) for calc, obs, _ in drawn) * 1.25
+    ax_scatter.plot([lo, hi], [lo, hi], color=INK, linewidth=0.8, zorder=1)
+    weak = [(calc, obs) for calc, obs, strong in drawn if not strong]
+    strong = [(calc, obs) for calc, obs, is_strong in drawn if is_strong]
+    for rows, color, label in (
+        (weak, MUTED, rf"$I \leq 3\sigma$ (n={len(weak)})"),
+        (strong, SERIES[0], rf"$I > 3\sigma$ (n={len(strong)})"),
+    ):
+        ax_scatter.scatter(
+            [calc for calc, _ in rows],
+            [obs for _, obs in rows],
+            s=8,
+            color=color,
+            alpha=0.6,
+            linewidths=0,
+            label=label,
+            zorder=2,
+        )
+    ax_scatter.set_xscale("log")
+    ax_scatter.set_yscale("log")
+    ax_scatter.set_xlim(lo, hi)
+    ax_scatter.set_ylim(lo, hi)
+    ax_scatter.set_aspect("equal")
+    ax_scatter.set_xlabel(_I_CALC)
+    ax_scatter.set_ylabel(r"$I_{\mathrm{obs}}$")
+    ax_scatter.legend(loc="upper left")
+
+    ax_ratio.axhline(1.0, color=INK, linewidth=0.8, zorder=1)
+    ax_ratio.scatter(
+        [calc for calc, _, _ in drawn],
+        [obs / calc for calc, obs, _ in drawn],
+        s=8,
+        color=SERIES[0],
+        alpha=0.35,
+        linewidths=0,
+        zorder=2,
+    )
+    binned = [
+        (calc, ratio)
+        for calc, ratio in _binned_median_ratio(
+            calculated, observed, _RATIO_BINS, _RATIO_MIN_PER_BIN
+        )
+        if ratio > 0
+    ]
+    if binned:
+        ax_ratio.plot(
+            [calc for calc, _ in binned],
+            [ratio for _, ratio in binned],
+            color=SERIES[1],
+            linewidth=2,
+            marker="o",
+            markersize=6,
+            label=f"median ({len(binned)} equal-count bins)",
+            zorder=3,
+        )
+    ax_ratio.set_xscale("log")
+    ax_ratio.set_yscale("log")
+    ax_ratio.set_xlabel(_I_CALC)
+    ax_ratio.set_ylabel(r"$I_{\mathrm{obs}} \, / \, I_{\mathrm{calc}}$")
+    ax_ratio.legend(loc="lower left")
+    fig.set_label("I_obs vs I_calc")
+    fig.tight_layout()
+    return fig
+
+
+_RESOLUTION_SHELLS = 5
+
+
+def _resolution_shells(g_magnitudes: Sequence[float], n_shells: int) -> list[tuple[float, float]]:
+    """``(lo, hi)`` bounds of ``n_shells`` equal-width ``|g|`` shells from 0 to the largest ``|g|``.
+
+    The shells touch and cover all of ``[0, max |g|]``. A shell is ``lo <= |g| < hi``, the last one
+    closed so the highest-resolution reflection is kept; a shell may be empty. ``000`` (``|g| = 0``)
+    has no resolution and sets no bound.
+    """
+    top = max((g for g in g_magnitudes if g > 0), default=0.0)
+    if top == 0.0:
+        return []
+    edges = [top * i / n_shells for i in range(n_shells + 1)]
+    return list(itertools.pairwise(edges))
+
+
+@styled
+def plot_resolution_shells(records: Sequence[EventRecord]) -> Figure | None:
+    """R_obs of the refined model per resolution shell (upper), each shell's reflection count below.
+
+    Only observed reflections (``I > 3 sigma``, the R_obs cut) count, in both panels. They are
+    pooled over every rotation (held-out ones included, as in I_obs vs I_calc) into five
+    equal-width ``|g|`` shells covering ``0`` to the highest-resolution reflection; the x ticks are
+    the shell edges and the count bars span each shell, so the ranges read off directly. A shell's
+    R_obs is the library's own :func:`~diffBloch.core.rbragg` over that shell's reflections -- a
+    pooled sum, not a mean of per-rotation values -- and an empty shell leaves a gap in the line.
+
+    ``I_calc`` carries each rotation's wR2-optimal scale (as reported), and R_obs is evaluated at
+    that scale rather than re-optimising its own, so it reads slightly above the per-rotation R_obs
+    reported elsewhere.
+    """
+    events = events_of(records, RefinedReflectionIntensities)
+    rows = [
+        (g, obs, sigma, calc)
+        for event in events
+        for g, obs, sigma, calc in zip(
+            event.g_magnitude, event.observed, event.sigmas, event.calculated, strict=True
+        )
+        if g > 0 and obs > 3.0 * sigma
+    ]
+    shells = _resolution_shells([row[0] for row in rows], _RESOLUTION_SHELLS)
+    if not shells:
+        return None
+    last = len(shells) - 1
+    members = [
+        [row for row in rows if lo <= row[0] < hi or (i == last and row[0] == hi)]
+        for i, (lo, hi) in enumerate(shells)
+    ]
+    r_obs: list[float] = []
+    for chosen in members:
+        if not chosen:
+            r_obs.append(math.nan)
+            continue
+        observed, sigmas, calculated = (
+            torch.tensor([row[k] for row in chosen], dtype=torch.float64) for k in (1, 2, 3)
+        )
+        r_obs.append(float(rbragg(calculated, observed, sigmas)))
+    counts = [len(chosen) for chosen in members]
+    edges = [lo for lo, _ in shells] + [shells[-1][1]]
+    width = edges[1] - edges[0]
+
+    fig, (ax_r, ax_n) = plt.subplots(
+        2, 1, figsize=(FIGURE_WIDTH, 8), sharex=True, gridspec_kw={"height_ratios": [3, 2]}
+    )
+    ax_r.plot(
+        [(lo + hi) / 2 for lo, hi in shells],
+        r_obs,
+        marker="o",
+        markersize=9,
+        linewidth=2,
+        color=_R_OBS_COLOR,
+    )
+    ax_r.set_ylim(0, max(value for value in r_obs if not math.isnan(value)) * 1.15)
+    ax_r.set_ylabel(_R_OBS, fontsize=24)
+    # At most five labelled ticks per axis, on round numbers.
+    ax_r.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
+    ax_n.bar(
+        edges[:-1],
+        counts,
+        width=width,
+        align="edge",
+        color=INK,
+        alpha=0.75,
+        edgecolor="white",
+        linewidth=2,
+    )
+    ax_n.set_ylim(0, max(counts) * 1.15)
+    ax_n.set_ylabel("Reflections\n" + r"($I > 3\sigma$)", fontsize=24)
+    ax_n.yaxis.set_major_locator(MaxNLocator(nbins=4, integer=True, steps=[1, 2, 2.5, 5, 10]))
+    ax_n.set_xticks(edges, [f"{g:.2f}" for g in edges])
+    ax_n.set_xlim(0, edges[-1])
+    ax_n.set_xlabel(r"$|g|$ (Å$^{-1}$)", fontsize=24)
+    for ax in (ax_r, ax_n):
+        ax.tick_params(labelsize=18)
+    fig.set_label("R_obs per resolution shell")
+    fig.tight_layout()
+    return fig
+
+
 @dataclass(frozen=True)
 class Section:
     """One headed group of figures, and the event types that place it in the run."""
@@ -688,6 +919,14 @@ SECTIONS = (
         "Refinement — per-orientation scores",
         (("refined_rotation_scores", plot_refined_rotation_scores),),
         (RefinedRotationMetrics,),
+    ),
+    Section(
+        "Refinement — intensity agreement",
+        (
+            ("observed_vs_calculated", plot_observed_vs_calculated),
+            ("resolution_shells", plot_resolution_shells),
+        ),
+        (RefinedReflectionIntensities,),
     ),
     Section(
         "Refinement — datasets",

@@ -6,6 +6,7 @@ asserted on here -- a plot function inside an ``.ipynb`` is code nothing in CI e
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ matplotlib.use("Agg")  # headless: no display, and no figure windows left open b
 
 from tools.event_report import reader  # noqa: E402
 from tools.event_report.figures import (  # noqa: E402
+    _binned_median_ratio,
+    _resolution_shells,
     build_figures,
     build_sections,
     export_figures,
@@ -24,8 +27,10 @@ from tools.event_report.figures import (  # noqa: E402
     plot_dataset_summary,
     plot_epoch_curve,
     plot_matched_reflections,
+    plot_observed_vs_calculated,
     plot_orientation_optimization,
     plot_refined_rotation_scores,
+    plot_resolution_shells,
     plot_rotation_epoch_heatmap,
     plot_structure_drift,
     plot_thickness_grids,
@@ -46,6 +51,7 @@ from diffBloch.observability import (  # noqa: E402
     OrientationOptimized,
     OrientationSearchTrace,
     PreprocessCompleted,
+    RefinedReflectionIntensities,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOrientationStep,
@@ -371,6 +377,8 @@ def test_every_figure_is_none_when_its_events_are_absent() -> None:
         plot_thickness_grids,
         plot_thickness_model,
         plot_rotation_epoch_heatmap,
+        plot_observed_vs_calculated,
+        plot_resolution_shells,
     ):
         assert plot(empty) is None, plot.__name__
     assert build_figures(empty) == {}
@@ -745,3 +753,117 @@ def test_refined_rotation_scores_tick_each_rotation_index_that_exists() -> None:
     assert [t.get_text() for t in figure.axes[1].get_xticklabels()] == ["0", "5"]
     axis = figure.axes[1].xaxis
     assert sorted([*axis.get_majorticklocs(), *axis.get_minorticklocs()]) == [0, 1, 2, 5, 9, 33]
+
+
+def _reflections(
+    rotation_index: int, calculated: list[float], observed: list[float], sigma: float = 1.0
+) -> RefinedReflectionIntensities:
+    return RefinedReflectionIntensities(
+        rotation_index=rotation_index,
+        dataset="a.cif_pets",
+        is_validation=False,
+        scale=1.0,
+        hkl=tuple((index, 0, 0) for index in range(len(calculated))),
+        g_magnitude=tuple(0.1 * index for index in range(len(calculated))),
+        observed=tuple(observed),
+        sigmas=(sigma,) * len(calculated),
+        calculated=tuple(calculated),
+    )
+
+
+def test_observed_vs_calculated_median_ratio_follows_the_bright_end_down() -> None:
+    """Bright reflections measured weaker than simulated read as a binned median ratio under 1.
+
+    Two rotations pooled: the faint half agrees exactly, the bright half was measured at half the
+    simulated intensity. Weak (I <= 3 sigma) reflections are split out; the non-positive one is not
+    drawn.
+    """
+    faint = [10.0 * (index + 1) for index in range(100)]
+    bright = [1.0e5 * (index + 1) for index in range(100)]
+    records = _records(
+        _reflections(0, [*faint, 50.0], [*faint, -3.0], sigma=5.0),
+        _reflections(1, bright, [0.5 * calc for calc in bright], sigma=5.0),
+    )
+
+    figure = plot_observed_vs_calculated(records)
+
+    assert figure is not None
+    scatter_panel, ratio_panel = figure.axes
+    assert [text.get_text() for text in scatter_panel.get_legend().get_texts()] == [
+        r"$I \leq 3\sigma$ (n=1)",
+        r"$I > 3\sigma$ (n=199)",
+    ]
+    assert [text.get_text() for text in ratio_panel.get_legend().get_texts()] == [
+        "median (15 equal-count bins)"
+    ]
+    (median,) = [line for line in ratio_panel.lines if line.get_marker() == "o"]
+    ratios = list(median.get_ydata())
+    assert ratios[0] == pytest.approx(1.0)
+    assert ratios[-1] == pytest.approx(0.5)
+
+
+def test_observed_vs_calculated_declines_without_a_drawable_reflection() -> None:
+    assert plot_observed_vs_calculated(_records(_reflections(0, [10.0], [-1.0]))) is None
+
+
+def test_binned_median_ratio_keeps_reflections_a_log_axis_cannot_draw() -> None:
+    """Dropping I_obs <= 0 would censor the faint bin and fake a ratio that climbs as I_calc falls.
+
+    The faint bin here is ten reflections at ratio 1 and ten at ratio -1: its median is 0 with them
+    kept, but would be 1 with the negatives dropped, which is the bias the binned median avoids.
+    """
+    calculated = [1.0] * 20 + [100.0] * 20
+    observed = [1.0] * 10 + [-1.0] * 10 + [100.0] * 20
+
+    bins = _binned_median_ratio(calculated, observed, n_bins=2, min_per_bin=10)
+
+    assert bins == [(1.0, 0.0), (100.0, 1.0)]
+    assert _binned_median_ratio(calculated[:5], observed[:5], n_bins=2, min_per_bin=10) == []
+
+
+def test_resolution_shells_run_from_zero_to_the_highest_resolution_reflection() -> None:
+    shells = _resolution_shells([0.0, 0.3, 0.2, 0.5], n_shells=5)
+
+    assert [lo for lo, _ in shells] == pytest.approx([0.0, 0.1, 0.2, 0.3, 0.4])
+    assert [hi for _, hi in shells] == pytest.approx([0.1, 0.2, 0.3, 0.4, 0.5])
+    assert _resolution_shells([0.0], n_shells=5) == []
+
+
+def test_resolution_shells_plot_scores_and_counts_only_observed_reflections() -> None:
+    """R_obs and the per-shell count both use the I > 3 sigma reflections alone.
+
+    Shells are 0.1 wide up to 0.5. 000 is dropped (no resolution) and the 0.3 reflection is weak,
+    so shells 0.2-0.3 and 0.3-0.4 are empty (gaps, zero bars). The last shell holds 0.45 (exact)
+    and 0.5 (measured at half the simulated intensity, and kept by the closed upper edge).
+    """
+    event = RefinedReflectionIntensities(
+        rotation_index=0,
+        dataset="a.cif_pets",
+        is_validation=False,
+        scale=1.0,
+        hkl=tuple((index, 0, 0) for index in range(6)),
+        g_magnitude=(0.0, 0.05, 0.15, 0.3, 0.45, 0.5),
+        observed=(100.0, 100.0, 100.0, 1.0, 100.0, 50.0),
+        sigmas=(5.0,) * 6,
+        calculated=(100.0,) * 6,
+    )
+
+    figure = plot_resolution_shells(_records(event))
+
+    assert figure is not None
+    ax_r, ax_n = figure.axes
+    (line,) = ax_r.lines
+    expected = (10.0 - 50.0**0.5) / (10.0 + 50.0**0.5)
+    assert list(line.get_xdata()) == pytest.approx([0.05, 0.15, 0.25, 0.35, 0.45])
+    assert list(line.get_ydata()) == pytest.approx(
+        [0.0, 0.0, math.nan, math.nan, expected], nan_ok=True
+    )
+    assert [bar.get_height() for bar in ax_n.patches] == [1, 1, 0, 0, 2]
+    assert [bar.get_x() for bar in ax_n.patches] == pytest.approx([0.0, 0.1, 0.2, 0.3, 0.4])
+    assert ax_n.get_xlim() == pytest.approx((0.0, 0.5))
+
+
+def test_resolution_shells_plot_declines_without_an_observed_reflection() -> None:
+    weak_only = _reflections(0, [100.0, 100.0], [1.0, 1.0], sigma=5.0)
+
+    assert plot_resolution_shells(_records(weak_only)) is None

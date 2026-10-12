@@ -410,6 +410,7 @@ _PLOTTED_EVENTS = frozenset(
         "RefinementStep",
         "RefinementOrientationStep",
         "RefinedRotationMetrics",
+        "RefinedReflectionIntensities",
         "ThicknessProfile",
     }
 )

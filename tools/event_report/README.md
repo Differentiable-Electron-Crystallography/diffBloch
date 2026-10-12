@@ -158,6 +158,8 @@ shown empty.
 | `objective_decomposition` | `refine` | the objective per epoch with the selected epoch marked, and each composed term's contribution stacked |
 | `rotation_epoch_heatmap` | `refine --verbose-refinement` | per-rotation wR2 across epochs, rotation × epoch |
 | `refined_rotation_scores` | `refine` | final per-rotation scores, held-out rotations marked |
+| `observed_vs_calculated` | `refine` | every matched reflection's I_obs against its scaled I_calc, and their ratio against I_calc with its median over equal-count bins |
+| `resolution_shells` | `refine` | R_obs of the observed (I > 3σ) reflections in five equal-width \|g\| shells from 0 to the highest resolution (upper), and each shell's reflection count as touching bars (lower) |
 | `refinement_gain` | `preprocess` + `refine` | each rotation's score after the orientation search vs after refinement, under the residual the search used |
 | `score_distributions` | `refine` | empirical CDFs of final wR2 and R_obs, train vs validation per dataset |
 | `per_dataset_summary` | `refine` | mean final wR2/R_obs per dataset, train and validation rotations split, with their counts (pooled runs only) |

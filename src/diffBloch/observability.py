@@ -65,6 +65,7 @@ __all__ = [
     "PlanSeeded",
     "PlanStepCompleted",
     "PreprocessCompleted",
+    "RefinedReflectionIntensities",
     "RefinedRotationMetrics",
     "RefinementCompleted",
     "RefinementOrientationStep",
@@ -1094,6 +1095,51 @@ class RefinedRotationMetrics:
             "n_matched": float(self.n_matched),
             "is_validation": float(self.is_validation),
         }
+
+
+@dataclass(frozen=True)
+class RefinedReflectionIntensities:
+    """One rotation's matched reflections under the *final refined* model: measured vs simulated.
+
+    The per-reflection companion of :class:`RefinedRotationMetrics`, emitted beside it by the same
+    settled scoring pass, so it covers held-out rotations too (``is_validation``). The columns are
+    parallel tuples in alignment order: ``hkl`` and its ``g_magnitude`` (``|g| = 1/d``,
+    Angstrom^-1); the measured ``observed`` intensity and its ``sigmas``; and ``calculated``, the
+    simulated intensity already multiplied by ``scale`` (the wR2-optimal scale of the thickness the
+    rotation's wR2 was scored at), so it sits on the observed intensity's scale and the two compare
+    directly. The report tool plots ``observed`` against ``calculated`` across every rotation, and
+    bins the same columns by ``g_magnitude`` for the R factors per resolution shell.
+    """
+
+    channel: ClassVar[str] = "refined reflections"
+    rotation_index: int
+    dataset: str
+    is_validation: bool
+    scale: float
+    hkl: tuple[tuple[int, int, int], ...]
+    g_magnitude: tuple[float, ...]
+    observed: tuple[float, ...]
+    sigmas: tuple[float, ...]
+    calculated: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.hkl),
+            len(self.g_magnitude),
+            len(self.observed),
+            len(self.sigmas),
+            len(self.calculated),
+        }
+        if len(lengths) != 1:
+            raise ValueError("refined reflection columns must have equal length")
+
+    @property
+    def step(self) -> int | None:
+        return self.rotation_index
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"n_reflections": float(len(self.hkl)), "scale": self.scale}
 
 
 @dataclass(frozen=True)

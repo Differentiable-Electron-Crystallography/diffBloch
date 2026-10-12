@@ -156,12 +156,25 @@ class RotationMetrics:
     *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
     came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
     never re-derives dataset membership from index offsets.
+
+    The per-reflection columns are the matched reflections ``wr2`` was scored over, in alignment
+    order: ``hkl`` and its ``g_magnitude`` (``|g| = 1/d`` in Angstrom^-1, the same no-``2 pi``
+    convention as ``g_max``, from the fixed cell), the measured ``observed`` intensity and its
+    ``sigmas``, and ``calculated``, the simulated intensity already multiplied by ``scale`` (the
+    wR2-optimal scale of the selected thickness), so it sits on the observed intensity's scale and
+    an intensity- or resolution-dependent misfit can be read from them directly.
     """
 
     rotation_index: int
     wr2: float
     r_obs: float
     n_matched: int
+    scale: float
+    hkl: tuple[tuple[int, int, int], ...]
+    g_magnitude: tuple[float, ...]
+    observed: tuple[float, ...]
+    sigmas: tuple[float, ...]
+    calculated: tuple[float, ...]
     dataset: str = ""
 
 
@@ -401,13 +414,15 @@ class RefinementEngine:
 
         Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
         rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
-        is reported but never optimised), returning every rotation's pair instead of an aggregate.
+        is reported but never optimised), returning every rotation's pair instead of an aggregate,
+        together with the per-reflection intensities that thickness's wR2 was scored over.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
             for constraint in model.structure.constraints:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
+            reciprocal_basis = self.grid.reciprocal_basis.to(dtype=torch.float64, device="cpu")
             rows = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
@@ -421,17 +436,16 @@ class RefinementEngine:
                     orientation.pattern,
                     orientation.alignment,
                 )
-                wr2_scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t],
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                            metric=w_rbragg,
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
+                wr2_fits = [
+                    optimal_scale(
+                        aligned.calculated[t],
+                        aligned.observed[t],
+                        aligned.sigmas[t],
+                        metric=w_rbragg,
+                    )
+                    for t in range(aligned.calculated.shape[0])
+                ]
+                wr2_scores = torch.stack([score for _, score in wr2_fits])
                 r_obs_scores = torch.stack(
                     [
                         optimal_scale(
@@ -444,12 +458,25 @@ class RefinementEngine:
                     ]
                 )
                 best_t = int(torch.argmin(wr2_scores))
+                scale = float(wr2_fits[best_t][0])
+                hkl = orientation.alignment.hkl.to(dtype=torch.float64, device="cpu")
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
+                        scale=scale,
+                        hkl=tuple(
+                            (int(row[0]), int(row[1]), int(row[2]))
+                            for row in orientation.alignment.hkl.tolist()
+                        ),
+                        g_magnitude=tuple(
+                            torch.linalg.norm(hkl @ reciprocal_basis, dim=-1).tolist()
+                        ),
+                        observed=tuple(aligned.observed[best_t].tolist()),
+                        sigmas=tuple(aligned.sigmas[best_t].tolist()),
+                        calculated=tuple((scale * aligned.calculated[best_t]).tolist()),
                         dataset=orientation.pattern.dataset,
                     )
                 )
