@@ -336,6 +336,15 @@ class ApparentThicknessNN:
 
 
 def _positive_inverse(value: Tensor) -> Tensor:
+    """Inverse of softplus, evaluated so it survives realistic thicknesses.
+
+    ``log(expm1(v))`` overflows once ``expm1`` leaves the float range, which is
+    ``v`` above about 709 in float64 and about 88 in float32, and the result is
+    ``inf``. Crystal thicknesses reach that easily: the quartz example ships a
+    seed of 850 Angstrom. The identity ``log(expm1(v)) == v + log1p(-exp(-v))``
+    holds everywhere the left side is defined and evaluates without overflow,
+    because ``exp(-v)`` decays instead of growing.
+    """
     if bool((value <= 0).any()):
         raise ValueError("thickness values must be positive")
-    return torch.log(torch.expm1(value))
+    return value + torch.log1p(-torch.exp(-value))
