@@ -77,7 +77,7 @@ def busing_levy_matrix(cell_parameters: FloatArray) -> FloatArray:
             [-cg / (a * sg), 1.0 / (b * sg), 0.0],
             [
                 b * c / volume * (cg * (ca - cb * cg) / sg - cb * sg),
-                a * c / (volume * sg) * (ca - cb * cg),
+                -a * c / (volume * sg) * (ca - cb * cg),
                 a * b * sg / volume,
             ],
         ]
