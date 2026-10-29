@@ -97,6 +97,7 @@ matrix must already provide a close starting orientation.
 | `x_tolerance` | `1e-3` degrees | Convergence tolerance for changes in the correction angles. |
 | `f_tolerance` | `1e-3` | Convergence tolerance for changes in the comparison residual. |
 | `penalize_fewer_reflections` | `true` | Prevents a trial from appearing better only because its orientation produces a smaller matched-reflection set. |
+| `max_correction_degrees` | `null` | Bounds each correction angle to ± this many degrees, so a rotation cannot drift to an orientation it was not measured at. `step_size` only sizes the starting simplex and does not bound the search. Must be at least `step_size`; `null` leaves the search unbounded. |
 
 ```yaml
 preprocess:
