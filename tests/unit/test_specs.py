@@ -35,7 +35,7 @@ def test_convergence_tolerance_rejects_invalid_bounds() -> None:
 def test_convergence_test_defaults() -> None:
     test = ConvergenceTest()
     assert test.num_passes == 2
-    assert (test.g_max_step, test.sg_max_step, test.tilt_steps_step) == (0.1, 0.005, 2)
+    assert (test.g_max_step, test.sg_max_step, test.tilt_steps_step) == (0.1, 0.005, 5)
 
 
 def test_convergence_test_rejects_invalid_bounds() -> None:

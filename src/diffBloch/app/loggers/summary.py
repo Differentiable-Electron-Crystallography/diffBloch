@@ -35,7 +35,6 @@ from typing import Any
 
 import gemmi
 
-from diffBloch.config.schema import dataset_checkpoint_stem
 from diffBloch.core.crystal import cell_volume
 from diffBloch.io import read_structure
 from diffBloch.observability import (
@@ -143,15 +142,11 @@ class SummaryLogger:
     ``path`` is the report file. Every event is buffered until
     :class:`~diffBloch.observability.RefinementOutputsWritten` arrives, at which point the report is
     rendered and written; a run that never emits that event writes nothing, which is the correct
-    behaviour for an aborted run (there is no committed structure to describe).
-
-    ``plot`` (default ``True``) additionally writes one thickness-NN shape PNG beside the report
-    per :class:`~diffBloch.observability.ThicknessProfile` seen (one per dataset, named by its
-    checkpoint stem) when matplotlib is installed; the report notes the omission otherwise.
+    behaviour for an aborted run (there is no committed structure to describe). It writes text
+    only; plotting lives outside the library, in the visualization notebooks.
     """
 
     path: Path
-    plot: bool = True
     _experiment: ExperimentDeclared | None = field(default=None, init=False, repr=False)
     _manifest: ObjectiveManifest | None = field(default=None, init=False, repr=False)
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
@@ -207,8 +202,10 @@ class SummaryLogger:
         lines.append(f" generated   : {datetime.now(UTC).isoformat(timespec='seconds')}")
         lines.append(f" elapsed     : {elapsed:.1f} s ({elapsed / 60.0:.2f} min)")
 
+        # The event carries the CIF path relative to the experiment directory.
+        structure_path = Path(outputs.experiment_directory) / outputs.structure
         self._simulation_parameters(lines, rule)
-        self._crystallographic_parameters(lines, rule, Path(outputs.structure))
+        self._crystallographic_parameters(lines, rule, structure_path)
         self._objective_terms(lines, rule)
         self._preprocessing(lines, rule)
         self._objective_components(lines, rule)
@@ -216,7 +213,7 @@ class SummaryLogger:
         self._rotation_metrics(lines, rule)
         self._per_dataset_summary(lines, rule)
         self._thickness_profile(lines, rule)
-        self._refined_structure(lines, rule, Path(outputs.structure))
+        self._refined_structure(lines, rule, structure_path)
 
         self.path.write_text("\n".join(lines) + "\n")
 
@@ -526,27 +523,6 @@ class SummaryLogger:
                     ],
                 )
             )
-            if not self.plot:
-                continue
-            # The checkpoint stem is the established filesystem-safe dataset name; refs are
-            # validated stem-unique, so per-dataset plot files cannot collide.
-            stem = dataset_checkpoint_stem(profile.label)
-            plot_path = self.path.parent / f"thickness_nn_shape_{stem}.png"
-            try:
-                from diffBloch.app.loggers.plotting import plot_thickness_nn_shape
-
-                plot_thickness_nn_shape(
-                    list(zip(profile.alphas, profile.thicknesses, strict=True)),
-                    plot_path,
-                    title=f"Thickness NN final shape -- {profile.label}",
-                )
-                lines.append("")
-                lines.append(f" plot: {plot_path.name}")
-            except ModuleNotFoundError:
-                # matplotlib is a core dependency, so this only fires on a broken install -- the
-                # report still gets written rather than losing the run to a rendering import.
-                lines.append("")
-                lines.append(" plot: skipped (matplotlib is not importable in this environment)")
 
     def _refined_structure(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path

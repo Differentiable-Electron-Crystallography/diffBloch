@@ -52,6 +52,13 @@ For each control, diffBloch increases the value by a chosen step, rebuilds the s
 compares consecutive calculated intensity sets. The sweep stops when their R-factor falls below
 `r_factor_threshold`; failure to reach the threshold within `max_iterations` raises an error.
 
+Every comparison is recorded in the run's JSONL report as a `ConvergenceTrial`, so the sweep can be
+inspected afterwards. `tools/event_report`'s `convergence_sweeps` figure plots one panel per
+control: the between-steps R-factor against the candidate value, the threshold as a rule, and a
+marker on the crossing. Because the y axis is the *change* between consecutive settings rather than
+a measure of quality, a curve that flattens above the rule is a sweep that ran out of range, not a
+converged one.
+
 ## Values used for refinement
 
 The values returned by convergence testing do not have to be used for refinement. They are upper
