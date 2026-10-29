@@ -434,7 +434,11 @@ def test_optimizer_rejects_unconsumed_line_search_field() -> None:
 
 def test_trainable_group_keysets_do_not_drift() -> None:
     assert set(_TRAINABLE_FIELDS) == {field.name for field in fields(TrainableSpec)}
-    assert set(_TRAINABLE_FIELDS) == set(TrainableConfig.model_fields)
+    # mosaicity_sigma is a deliberate, documented exception: it is not a structure atom-group
+    # selection (TrainableSpec's concern), it decides whether a component gets composed into the
+    # refinement model at all (see program.py's _mosaicity_components), so it has no TrainableSpec
+    # counterpart by design.
+    assert set(_TRAINABLE_FIELDS) | {"mosaicity_sigma"} == set(TrainableConfig.model_fields)
 
 
 def test_refinement_trainable_replaces_string_targets() -> None:
@@ -523,6 +527,21 @@ def test_blochwave_has_one_complete_default() -> None:
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     assert cfg.blochwave.to_policy() == UnionCoupling()
+
+
+def test_mosaicity_placement_parses_and_fails_fast_on_a_ring_too_small() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    assert ExperimentConfig.model_validate(base).blochwave.mosaicity_placement == "golden_spiral"
+    cfg = ExperimentConfig.model_validate(
+        {**base, "blochwave": {"incoherent_mosaicity": True, "mosaicity_placement": "symmetric"}}
+    )
+    assert cfg.blochwave.mosaicity_placement == "symmetric"
+    with pytest.raises(ValidationError, match="samples == 1 or >= 4"):
+        ExperimentConfig.model_validate(
+            {**base, "blochwave": {"mosaicity_placement": "symmetric", "mosaicity_samples": 3}}
+        )
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_placement": "ring"}})
 
 
 def test_coupling_policy_override_parses() -> None:

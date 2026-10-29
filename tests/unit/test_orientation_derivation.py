@@ -17,8 +17,11 @@ from diffBloch.io import read_experimental_data
 from diffBloch.preprocess import resolve_dataset_orientations
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
+    compose_mosaic_tilts,
     goniometer_rotation,
     hexagonal_tilt,
+    isotropic_mosaic_directions,
+    isotropic_mosaic_tilts,
     orientation_basis,
     orientation_matrices,
     rocking_curve_tilts,
@@ -190,6 +193,89 @@ def test_busing_levy_rejects_degenerate_cells() -> None:
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 90.0, 90.0, 180.0]))
     with pytest.raises(ValueError, match="geometrically inconsistent"):
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 20.0, 20.0, 170.0]))
+
+
+def test_isotropic_mosaic_tilts_are_proper_rotations_gaussian_placed() -> None:
+    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 5)
+    assert tilts.shape == (5, 3, 3)
+    assert weights.shape == (5,)
+    assert polar.shape == (5,)
+    assert np.allclose(np.linalg.det(tilts), 1.0)
+    assert np.allclose(tilts @ np.swapaxes(tilts, 1, 2), np.eye(3))
+    # Quantile (Rayleigh) placement, not a hard cutoff: samples reach past sigma with shrinking
+    # weight, rather than all being confined within it.
+    angle = np.rad2deg(
+        np.arccos(np.clip((np.trace(tilts, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0))
+    )
+    assert np.allclose(angle, polar)
+    assert np.any(angle > 0.1)
+    # Density weights fall off with distance from the pole: the farthest sample weighs the least.
+    assert weights[np.argmax(angle)] == weights.min()
+    assert np.all((weights > 0.0) & (weights <= 1.0))
+    # Not all identical -- the samples actually scatter, not collapse to one point.
+    assert not np.allclose(tilts[0], tilts[1])
+
+
+def test_isotropic_mosaic_tilts_degenerate_cases_are_the_identity_with_unit_weight() -> None:
+    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 1)
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0])
+    assert np.allclose(polar, [0.0])
+    tilts, weights, polar = isotropic_mosaic_tilts(0.0, 5)
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0])
+    assert np.allclose(polar, [0.0])
+
+
+def test_isotropic_mosaic_tilts_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="samples must be >= 1"):
+        isotropic_mosaic_tilts(0.1, 0)
+    with pytest.raises(ValueError, match="sigma_degrees must be non-negative"):
+        isotropic_mosaic_tilts(-0.1, 5)
+
+
+@pytest.mark.parametrize("samples", [4, 5, 7])
+def test_symmetric_mosaic_placement_matches_the_gaussian_moments(samples: int) -> None:
+    sigma = 0.05
+    tilts, weights, polar = isotropic_mosaic_tilts(sigma, samples, "symmetric")
+    azimuth, _ = isotropic_mosaic_directions(sigma, samples, "symmetric")
+    angle = np.rad2deg(
+        np.arccos(np.clip((np.trace(tilts, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0))
+    )
+    assert np.allclose(angle, polar)
+    # A centre sample plus a ring at 2 sigma, evenly spaced, weighted 1/2 and 1/2.
+    assert polar[0] == 0.0 and np.allclose(polar[1:], 2.0 * sigma)
+    assert np.allclose(np.diff(azimuth[1:]), 360.0 / (samples - 1))
+    assert weights[0] == 0.5 and np.allclose(weights[1:], 0.5 / (samples - 1))
+    # Each sample's lean as a 2-D vector: zero mean, isotropic per-axis variance sigma^2, and the
+    # 2-D Gaussian's fourth radial moment 8 sigma^4.
+    lean = polar[:, None] * np.stack((np.cos(np.deg2rad(azimuth)), np.sin(np.deg2rad(azimuth))), 1)
+    w = weights / weights.sum()
+    assert np.allclose(w @ lean, 0.0, atol=1e-15)
+    second = (w[:, None, None] * lean[:, :, None] * lean[:, None, :]).sum(axis=0)
+    assert np.allclose(second, sigma**2 * np.eye(2), rtol=1e-12, atol=1e-18)
+    assert w @ (polar**4) == pytest.approx(8.0 * sigma**4, rel=1e-12)
+
+
+def test_symmetric_mosaic_placement_needs_a_centre_and_a_ring_of_at_least_three() -> None:
+    for samples in (2, 3):
+        with pytest.raises(ValueError, match="samples == 1 or >= 4"):
+            isotropic_mosaic_tilts(0.1, samples, "symmetric")
+    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 1, "symmetric")
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0]) and np.allclose(polar, [0.0])
+
+
+def test_compose_mosaic_tilts_is_every_rocking_tilt_times_every_mosaic_tilt() -> None:
+    rocking = rocking_curve_tilts(1.0, 4)
+    mosaic, _weights, _polar = isotropic_mosaic_tilts(0.1, 3)
+    combined = compose_mosaic_tilts(rocking, mosaic)
+    assert combined.shape == (12, 3, 3)
+    assert np.allclose(np.linalg.det(combined), 1.0)
+    # index = r * M + m: consecutive entries share a rocking tilt, mosaic varies fastest.
+    for r in range(4):
+        for m in range(3):
+            assert np.allclose(combined[r * 3 + m], rocking[r] @ mosaic[m])
 
 
 def test_rocking_curve_tilts_are_x_axis_rotations_spanning_the_semiangle() -> None:

@@ -17,7 +17,7 @@ Some values are deliberately **not** config fields in diffBloch, they are read f
 | UB orientation matrix | None; required | `.cif_pets` `_diffrn_orient_matrix_UB_*` | The UB matrix and each rotation's goniometer angles supply its starting orientation. |
 | Data-collection geometry | None; required  | `.cif_pets` `_diffrn_measurement_details`, line `data collection geometry:` | PETS values `continuous rotation` and `precession`, respectively. |
 | Integration semiangle | None; required | Per-rotation `.cif_pets` `_diffrn_zone_axis_precession_angle` | Interpreted as the continuous-rotation tilt half-width or the fixed precession-cone angle. I|
-| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.mosaicity: true`; a missing value then raises rather than defaulting silently. |
+| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.incoherent_mosaicity: true`; a missing value then raises rather than defaulting silently. |
 
 
 

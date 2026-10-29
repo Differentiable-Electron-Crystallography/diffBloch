@@ -23,15 +23,18 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
 
+import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
+from diffBloch.core.crystal import orientation_basis
 from diffBloch.core.dynamical import (
     BeamPlanBatch,
     build_bloch_system,
     build_bloch_systems,
     stack_beam_plans,
+    tilted_beam_geometry,
 )
 from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
 from diffBloch.core.products import (
@@ -41,6 +44,7 @@ from diffBloch.core.products import (
     intensities,
     reduce_tilts,
 )
+from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import (
     SolverMethod,
@@ -52,6 +56,7 @@ from diffBloch.engine.constraints import ConstraintTransform
 from diffBloch.engine.losses import wr2_scores
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
+    OrientationPlan,
     OrientationPlanLike,
     StructureFactorGrid,
 )
@@ -357,7 +362,7 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(orientation, fgb, thickness, tilts=context.tilts),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -416,7 +421,7 @@ class RefinementEngine:
                 if thickness is None:
                     thickness = self._thickness_for(orientation, model.structure.initial)
                 aligned = align(
-                    self._solve(orientation, fgb, thickness),
+                    self._solve(orientation, fgb, thickness, tilts=context.tilts),
                     orientation.pattern,
                     orientation.alignment,
                 )
@@ -486,7 +491,7 @@ class RefinementEngine:
             if thickness is None:
                 thickness = self._thickness_for(orientation, params)
             with _Timer(f"solve[rotation={rotation_index}]", fgb.device, self.profile):
-                solution = self._solve(orientation, fgb, thickness)
+                solution = self._solve(orientation, fgb, thickness, tilts=context.tilts)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
                 wr2_scores = torch.stack(
@@ -615,15 +620,28 @@ class RefinementEngine:
         )
 
     def _solve(
-        self, orientation: OrientationPlanLike, fgb: Tensor, thicknesses: Tensor
+        self,
+        orientation: OrientationPlanLike,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        tilts: Tensor | None = None,
     ) -> BlochSolution:
+        """Solve one orientation and reduce its tilts into a :class:`BlochSolution`.
+
+        ``tilts`` ``(N_tilts, 3, 3)`` (from :attr:`ForwardContext.tilts`) replaces
+        ``orientation.tilts`` in the per-tilt Bloch geometry -- the excitation errors and ``Mii``
+        are recomputed from it by :func:`~diffBloch.core.dynamical.tilted_beam_geometry`, so a
+        component can move the tilts differentiably -- while the beam sets, F-gathers, and baked
+        tilt reduction stay as the ``Plan`` built them. ``None`` uses the built geometry as is.
+        """
         if isinstance(orientation, CoupledOrientationPlan):
-            return self._solve_segmented(orientation, fgb, thicknesses)
+            return self._solve_segmented(orientation, fgb, thicknesses, tilts=tilts)
         device = fgb.device  # fgb is param-derived; thicknesses/beam_hkl must co-locate with it
         thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         beam_hkl = orientation.beam_hkl.to(device)
         # Untilted (length 1): the static single solve.
-        if len(orientation.beam_plans) == 1:
+        if len(orientation.beam_plans) == 1 and tilts is None:
             amplitudes = propagate(
                 build_bloch_system(orientation.beam_plans[0], fgb, self.absorption),
                 thicknesses,
@@ -636,28 +654,65 @@ class RefinementEngine:
         # path). The engine then reduces |psi|^2 over the tilt axis (incoherent rotation-frame
         # integration; PlainSum or a mosaicity broadening) via BlochSolution.integrate_batched.
         batch = stack_beam_plans(orientation.beam_plans)
+        mii, diagonal = self._tilt_geometry(orientation, batch, tilts)
 
-        def solve_batch(fgb_: Tensor, thicknesses_: Tensor) -> Tensor:
+        def solve_batch(
+            fgb_: Tensor, thicknesses_: Tensor, mii_: Tensor, diagonal_: Tensor
+        ) -> Tensor:
             return propagate(
-                build_bloch_systems(batch, fgb_, self.absorption),
+                build_bloch_systems(
+                    dataclasses.replace(batch, mii=mii_, diagonal=diagonal_),
+                    fgb_,
+                    self.absorption,
+                ),
                 thicknesses_,
                 method=self.method,
                 max_batch=self._max_batch_for(beam_hkl.shape[0]),
             )
 
         amplitudes = (
-            checkpoint(solve_batch, fgb, thicknesses, use_reentrant=False)
+            checkpoint(solve_batch, fgb, thicknesses, mii, diagonal, use_reentrant=False)
             if self.checkpoint_activations
             and torch.is_grad_enabled()
-            and (fgb.requires_grad or thicknesses.requires_grad)
-            else solve_batch(fgb, thicknesses)
+            and (fgb.requires_grad or thicknesses.requires_grad or diagonal.requires_grad)
+            else solve_batch(fgb, thicknesses, mii, diagonal)
         )  # (B, T, N)
         return BlochSolution.integrate_batched(
             amplitudes, beam_hkl, thicknesses, reduction=orientation.tilt_reduction
         )
 
+    def _tilt_geometry(
+        self, plan: OrientationPlan, batch: BeamPlanBatch, tilts: Tensor | None
+    ) -> tuple[Tensor, Tensor]:
+        """The ``(mii, diagonal)`` ``(B, N)`` to solve ``plan``'s tilts with.
+
+        The built ``batch`` geometry when ``tilts`` is ``None``; otherwise recomputed from those
+        ``(B, 3, 3)`` tilts over ``plan``'s own beams, in its untilted lab frame
+        (``orientation_basis(grid.cell, plan.orientation)``, exactly as
+        :meth:`~diffBloch.engine.plan.OrientationPlan.build` derives it).
+        """
+        if tilts is None:
+            return batch.mii, batch.diagonal
+        if tilts.shape != (len(plan.beam_plans), 3, 3):
+            raise ValueError(
+                f"tilts must have shape ({len(plan.beam_plans)}, 3, 3) to match the plan's "
+                f"tilts, got {tuple(tilts.shape)}"
+            )
+        nominal_basis = orientation_basis(
+            np.asarray(self.grid.cell), plan.orientation.detach().cpu().numpy()
+        )
+        g_nominal = torch.as_tensor(
+            g_vectors(plan.beam_hkl.cpu().numpy(), nominal_basis), device=tilts.device
+        )
+        return tilted_beam_geometry(g_nominal, tilts, plan.energy, u0=plan.u0)
+
     def _solve_segmented(
-        self, plan: CoupledOrientationPlan, fgb: Tensor, thicknesses: Tensor
+        self,
+        plan: CoupledOrientationPlan,
+        fgb: Tensor,
+        thicknesses: Tensor,
+        *,
+        tilts: Tensor | None = None,
     ) -> BlochSolution:
         """Solve each tilt-chunk on its own beam set, reassemble the union curve, then reduce.
 
@@ -668,7 +723,13 @@ class RefinementEngine:
         curve is reassembled is the tilt reduction applied -- the mosaicity sample span can cover
         more tilts than any single chunk holds -- and the result is returned as an ordinary
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
+        ``tilts`` overrides each segment's covered tilts (``tilts[segment.cover]``) as in
+        :meth:`_solve`.
         """
+        if tilts is not None and tilts.shape[0] != plan.tilts.shape[0]:
+            raise ValueError(
+                f"tilts has {tilts.shape[0]} entries, the plan has {plan.tilts.shape[0]} tilts"
+            )
         device = fgb.device
         thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         n_tilts = int(plan.tilts.shape[0])
@@ -678,27 +739,38 @@ class RefinementEngine:
         for segment in plan.segments:
             batch = stack_beam_plans(segment.plan.beam_plans)
             n_segment_beams = int(segment.union_beam_index.shape[0])
+            mii, diagonal = self._tilt_geometry(
+                segment.plan,
+                batch,
+                None if tilts is None else tilts[segment.cover.to(tilts.device)],
+            )
 
             def solve_segment(
                 fgb_: Tensor,
                 thicknesses_: Tensor,
+                mii_: Tensor,
+                diagonal_: Tensor,
                 *,
                 batch_: BeamPlanBatch = batch,
                 n_segment_beams_: int = n_segment_beams,
             ) -> Tensor:
                 return propagate(
-                    build_bloch_systems(batch_, fgb_, self.absorption),
+                    build_bloch_systems(
+                        dataclasses.replace(batch_, mii=mii_, diagonal=diagonal_),
+                        fgb_,
+                        self.absorption,
+                    ),
                     thicknesses_,
                     method=self.method,
                     max_batch=self._max_batch_for(n_segment_beams_),
                 )
 
             amplitudes = (
-                checkpoint(solve_segment, fgb, thicknesses, use_reentrant=False)
+                checkpoint(solve_segment, fgb, thicknesses, mii, diagonal, use_reentrant=False)
                 if self.checkpoint_activations
                 and torch.is_grad_enabled()
-                and (fgb.requires_grad or thicknesses.requires_grad)
-                else solve_segment(fgb, thicknesses)
+                and (fgb.requires_grad or thicknesses.requires_grad or diagonal.requires_grad)
+                else solve_segment(fgb, thicknesses, mii, diagonal)
             )  # (C, T, n_seg)
             cover = segment.cover.to(device)
             union_beam_index = segment.union_beam_index.to(device)
@@ -718,11 +790,16 @@ class RefinementEngine:
 class ForwardContext:
     """Forward-model values supplied by refinement model components.
 
-    Deliberately narrow: apparent thickness is the only value admitted, since it is the only value a
-    component currently supplies. Scale/background/damage fields should be added only when consumed.
+    ``thickness`` and ``tilts`` are the only values admitted, since they are the only values a
+    component currently supplies. Scale/background/damage fields should be added only when
+    consumed. ``tilts`` ``(N_tilts, 3, 3)`` (from
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity`) replaces
+    ``orientation.tilts`` in the Bloch geometry differentiably: excitation errors and ``Mii`` are
+    recomputed from it, while the beam sets, F-gathers, and tilt reduction stay as built.
     """
 
     thickness: Tensor | None = None
+    tilts: Tensor | None = None
 
 
 def _unique_hkl_count(hkl_batches: Sequence[Tensor]) -> int:
@@ -823,6 +900,7 @@ def _forward_context(
     orientation: OrientationPlanLike,
 ) -> ForwardContext:
     thickness: Tensor | None = None
+    tilts: Tensor | None = None
     for component in model.components:
         params = model.component_params[component.key]
         context = component.forward_context(
@@ -832,7 +910,11 @@ def _forward_context(
             if thickness is not None:
                 raise ValueError("multiple refinement components provided thickness")
             thickness = context.thickness
-    return ForwardContext(thickness=thickness)
+        if context.tilts is not None:
+            if tilts is not None:
+                raise ValueError("multiple refinement components provided tilts")
+            tilts = context.tilts
+    return ForwardContext(thickness=thickness, tilts=tilts)
 
 
 def build_refinement_model(
