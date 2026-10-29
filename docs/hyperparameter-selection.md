@@ -143,6 +143,7 @@ Bounds for the local orientation search (`NelderMeadOptimizationConfig`).
 | `x_tolerance` | `0.001` | Simplex convergence tolerance on the orientation parameters (`xatol`). |
 | `f_tolerance` | `0.001` | Simplex convergence tolerance on the objective (`fatol`). |
 | `penalize_fewer_reflections` | `true` | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
+| `max_correction_degrees` | `null` | Per-angle bound (degrees) on the orientation correction. Set it when the search drifts to a far-off orientation that scores well; must be at least `step_size`. |
 
 ### `preprocess.thickness`
 
