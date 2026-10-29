@@ -23,6 +23,7 @@ __all__ = [
     "PerOrientationThickness",
     "QuadraticThicknessProfile",
     "ThicknessBounds",
+    "TrainableIsotropicMosaicity",
 ]
 
 
@@ -333,6 +334,120 @@ class ApparentThicknessNN:
         )[local_index].to(w0.device)
         thickness = F.softplus(mu + sigma * epsilon)
         return ForwardContext(thickness=thickness)
+
+
+@dataclass(frozen=True)
+class TrainableIsotropicMosaicity:
+    """One trainable isotropic-mosaicity sigma, shared across every rotation in the dataset.
+
+    Mosaicity is a bulk property of the crystal, not of any one orientation, so unlike thickness
+    there is a single free parameter here, not one per rotation. It refines by *widening* the mosaic
+    Gaussian: each mosaic tilt was placed when the ``Plan`` was built at azimuth
+    ``azimuth_degrees[m]`` and polar angle ``polar_degrees[m]`` for ``init_sigma_degrees``
+    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`), and every polar angle
+    is proportional to sigma, so a refined sigma moves tilt ``m`` to polar angle
+    ``polar_degrees[m] * sigma / init_sigma_degrees`` along its own azimuth. The composed
+    rocking-and-mosaic tilt ``k = r * M + m`` becomes ``tilts[k] @ R(axis_m, (s - 1) * polar_m)``
+    with ``s = sigma / init_sigma_degrees`` -- the built mosaic rotation undone and the scaled one
+    applied, both about the same in-plane axis. The forward recomputes the excitation errors from
+    these tilts (:attr:`~diffBloch.engine.forward.ForwardContext.tilts`), so sigma gets a gradient
+    through the Bloch geometry itself.
+
+    The beam sets, F-gathers, and the baked per-sample density weights stay as built: the weights
+    depend only on ``polar / sigma``, which the move preserves, and the gather does not depend on the
+    tilt. The beam sets were selected at ``init_sigma_degrees``, so a sigma that grows well past it
+    tilts into beams the solve does not include -- re-settle the ``Plan`` at the refined value
+    before trusting a large change.
+
+    ``rotation_range`` scopes this component to one dataset's half-open ``[start, end)`` pooled
+    source-rotation indices, exactly like :class:`ApparentThicknessNN`: a pooled multi-dataset
+    experiment gets one component per dataset (each with its own resolved sigma/samples), and a
+    rotation outside a given component's range gets no override from it, falling through to
+    whichever component does claim it.
+    """
+
+    azimuth_degrees: tuple[float, ...]
+    polar_degrees: tuple[float, ...]
+    init_sigma_degrees: float
+    rotation_range: tuple[int, int]
+    key: str = "isotropic_mosaicity"
+
+    def __post_init__(self) -> None:
+        if not self.polar_degrees:
+            raise ValueError("polar_degrees must be non-empty")
+        if len(self.azimuth_degrees) != len(self.polar_degrees):
+            raise ValueError("azimuth_degrees and polar_degrees must have one entry per sample")
+        if self.init_sigma_degrees <= 0.0:
+            raise ValueError("init_sigma_degrees must be positive")
+        start, end = self.rotation_range
+        if start < 0 or end <= start:
+            raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+
+    def initial_params(
+        self,
+        *,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> Mapping[str, Tensor]:
+        sigma = torch.tensor([self.init_sigma_degrees], dtype=dtype, device=device)
+        return {"unconstrained_sigma": _positive_inverse(sigma)}
+
+    def forward_context(
+        self,
+        params: Mapping[str, Tensor],
+        *,
+        rotation_index: int,
+        orientation: OrientationPlanLike,
+    ) -> ForwardContext:
+        _ = rotation_index
+        source_index = orientation.pattern.rotation_index
+        start, end = self.rotation_range
+        if source_index < start or source_index >= end:
+            # Another dataset's rotation: the component that does claim it supplies the tilts.
+            return ForwardContext()
+        if "unconstrained_sigma" not in params:
+            raise ValueError(
+                "isotropic mosaicity component requires an 'unconstrained_sigma' tensor"
+            )
+        raw = params["unconstrained_sigma"]
+        n_tilts = int(orientation.tilts.shape[0])
+        n_mosaic = len(self.polar_degrees)
+        if n_tilts % n_mosaic != 0:
+            raise ValueError(
+                f"orientation has {n_tilts} tilts, not a multiple of the {n_mosaic} mosaic "
+                "samples this component was built from"
+            )
+        sigma = positive(raw).reshape(()).to(torch.float64)
+        scale = sigma / self.init_sigma_degrees
+        azimuth = torch.deg2rad(raw.new_tensor(self.azimuth_degrees, dtype=torch.float64))
+        polar = torch.deg2rad(raw.new_tensor(self.polar_degrees, dtype=torch.float64))
+        delta = _in_plane_rotation(azimuth, (scale - 1.0) * polar)  # (M, 3, 3)
+        built = orientation.tilts.to(device=raw.device, dtype=torch.float64)
+        # index = r * M + m (compose_mosaic_tilts): mosaic sample m repeats for every rocking tilt.
+        tilts = built @ delta.repeat(n_tilts // n_mosaic, 1, 1)
+        return ForwardContext(tilts=tilts)
+
+
+def _in_plane_rotation(azimuth: Tensor, angle: Tensor) -> Tensor:
+    """Rotations ``(M, 3, 3)`` by ``angle`` about the in-plane axis ``(cos az, sin az, 0)``.
+
+    Rodrigues' formula for ``R_z(az) R_x(angle) R_z(-az)`` -- the
+    :func:`~diffBloch.preprocess.orientation.hexagonal_tilt` convention -- differentiable in
+    ``angle``. Both arguments are radians, shape ``(M,)``.
+    """
+    ax, ay = torch.cos(azimuth), torch.sin(azimuth)
+    zero = torch.zeros_like(ax)
+    k = torch.stack(
+        (
+            torch.stack((zero, zero, ay), dim=-1),
+            torch.stack((zero, zero, -ax), dim=-1),
+            torch.stack((-ay, ax, zero), dim=-1),
+        ),
+        dim=-2,
+    )
+    eye = torch.eye(3, dtype=k.dtype, device=k.device).expand_as(k)
+    sin, cos = torch.sin(angle)[:, None, None], torch.cos(angle)[:, None, None]
+    return eye + sin * k + (1.0 - cos) * (k @ k)
 
 
 def _positive_inverse(value: Tensor) -> Tensor:

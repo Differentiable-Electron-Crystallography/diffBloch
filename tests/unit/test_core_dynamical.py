@@ -25,6 +25,7 @@ from diffBloch.core.dynamical import (
     snap_to_standard_energy,
     structure_matrix,
     structure_matrix_prefactor,
+    tilted_beam_geometry,
     wavelength2energy,
     wavevector_magnitude,
 )
@@ -446,3 +447,48 @@ def test_structure_matrix_matches_oracle() -> None:
     assert torch.allclose(a_ours, torch.tensor(data["A"]), rtol=1e-10, atol=1e-12)
     # Friedel-symmetric Fgb -> the Mii-symmetrised structure matrix is Hermitian.
     assert torch.allclose(a_ours, a_ours.mH, atol=1e-9)
+
+
+def _tilts(degrees: tuple[float, ...]) -> np.ndarray:
+    """Rotations about x by each angle (degrees), stacked ``(B, 3, 3)``."""
+    out = []
+    for angle in np.deg2rad(degrees):
+        c, s_ = np.cos(angle), np.sin(angle)
+        out.append(np.array([[1.0, 0.0, 0.0], [0.0, c, -s_], [0.0, s_, c]]))
+    return np.stack(out)
+
+
+def test_tilted_beam_geometry_matches_the_built_beam_plans() -> None:
+    # The torch kernel must reproduce build_beam_plan's NumPy geometry at every tilt.
+    tilts = _tilts((-0.6, 0.0, 0.35, 1.2))
+    built = [
+        build_beam_plan(
+            _BEAM_HKL, _GRID_HKL, _RECIP_BASIS @ tilt.T, energy=_ENERGY, gpts=_GPTS, validate=False
+        )
+        for tilt in tilts
+    ]
+    g_nominal = torch.tensor(g_vectors(_BEAM_HKL, _RECIP_BASIS))
+
+    mii, diagonal = tilted_beam_geometry(g_nominal, torch.tensor(tilts), _ENERGY)
+
+    assert mii.dtype == diagonal.dtype == torch.float64
+    assert torch.allclose(mii, torch.stack([plan.mii for plan in built]), rtol=1e-12, atol=0.0)
+    assert torch.allclose(
+        diagonal, torch.stack([plan.diagonal for plan in built]), rtol=1e-9, atol=1e-12
+    )
+
+
+def test_tilted_beam_geometry_is_differentiable_in_the_tilts() -> None:
+    angle = torch.tensor(0.01, dtype=torch.float64, requires_grad=True)
+    c, s_ = torch.cos(angle), torch.sin(angle)
+    one, zero = torch.ones_like(c), torch.zeros_like(c)
+    tilt = torch.stack(
+        (torch.stack((one, zero, zero)), torch.stack((zero, c, -s_)), torch.stack((zero, s_, c)))
+    )[None]
+    g_nominal = torch.tensor(g_vectors(_BEAM_HKL, _RECIP_BASIS))
+
+    _, diagonal = tilted_beam_geometry(g_nominal, tilt, _ENERGY)
+    diagonal.sum().backward()
+
+    assert angle.grad is not None and torch.isfinite(angle.grad)
+    assert float(angle.grad) != 0.0

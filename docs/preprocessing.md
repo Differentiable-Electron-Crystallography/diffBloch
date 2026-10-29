@@ -223,7 +223,7 @@ it would be in a single perfectly oriented crystal. Mosaicity therefore broadens
 rocking curve and changes the integrated intensity, especially for reflections whose excitation
 condition varies rapidly with angle.
 
-With `blochwave.mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
+With `blochwave.incoherent_mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
 `.cif_pets` and converts it to an internal sampled-tilt span using
 
 ```{math}
@@ -241,5 +241,5 @@ The calculated rocking curve is averaged over that span before integration. A sp
 leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
 adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
 
-Set `blochwave.mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
+Set `blochwave.incoherent_mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
 sum their intensities without mosaic broadening. In that mode any PETS mosaicity value is ignored.

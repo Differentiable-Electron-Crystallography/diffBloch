@@ -436,6 +436,37 @@ def stack_beam_plans(plans: Sequence[BeamPlan]) -> BeamPlanBatch:
     )
 
 
+def tilted_beam_geometry(
+    g_nominal: Tensor, tilts: Tensor, energy: float, *, u0: float = 0.0
+) -> tuple[Tensor, Tensor]:
+    """Per-tilt ``(mii, diagonal)`` ``(B, N)`` for beams ``g_nominal`` under ``tilts``, in torch.
+
+    The differentiable counterpart of the per-tilt geometry :func:`build_beam_plan` precomputes in
+    NumPy: each tilt ``(3, 3)`` rotates the beams' untilted lab-frame vectors ``g_nominal``
+    ``(N, 3)`` to ``g = g_nominal @ tilt.T`` (exactly ``beam_hkl @ (nominal_basis @ tilt.T)``),
+    giving the excitation errors ``Sg = (|K|^2 - |K + g|^2) / (2|K|)``, the symmetrisation factors
+    ``Mii = 1 / sqrt(1 - g_z / K_n)``, and the structure-matrix diagonal ``2 K_n Sg Mii``. It lets
+    a refined quantity move the tilts themselves -- gradients flow to ``tilts`` -- while the beam
+    set and its F-gather stay fixed, since neither depends on the tilt.
+
+    Computed in float64 whatever the input dtype: ``Sg`` is a small difference of squared
+    wavevectors of order ``K_n^2``, which float32 would not resolve. Raises when a tilted beam
+    reaches ``g_z >= K_n`` (``Mii`` undefined), as :func:`~diffBloch.core.dynamical.mii_factors`
+    does.
+    """
+    g_nominal = g_nominal.to(torch.float64)
+    tilts = tilts.to(device=g_nominal.device, dtype=torch.float64)
+    g = torch.einsum("nj,bij->bni", g_nominal, tilts)  # (B, N, 3): g_nominal @ tilt.T per tilt
+    k_n = wavevector_magnitude(energy, u0=u0)
+    k_plus_g = g + g.new_tensor([0.0, 0.0, -k_n])
+    sg = (k_n**2 - k_plus_g.square().sum(dim=-1)) / (2.0 * k_n)
+    radicand = 1.0 - g[..., 2] / k_n
+    if bool((radicand <= 0.0).any()):
+        raise ValueError("g_z must satisfy g_z < K_n for every tilted beam (1 - g_z/K_n > 0)")
+    mii = radicand.rsqrt()
+    return mii, 2.0 * k_n * sg * mii
+
+
 def build_bloch_systems(
     batch: BeamPlanBatch,
     structure_factors: Tensor,

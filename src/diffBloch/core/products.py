@@ -38,6 +38,7 @@ __all__ = [
     "PatternBatch",
     "PlainSum",
     "TiltReduction",
+    "WeightedSum",
     "align",
     "build_alignment_plan",
     "intensities",
@@ -77,10 +78,31 @@ class MosaicSmoothed:
             raise ValueError("samples must be >= 1")
 
 
-# The tilt-axis reduction of a rocking curve: a plain incoherent sum, or a mosaicity-broadened sum.
-# Carried per-orientation on ``OrientationPlan`` (default ``PlainSum``) and applied by
-# :meth:`BlochSolution.integrate`; a discriminated union rather than an optional sample-count field.
-TiltReduction = PlainSum | MosaicSmoothed
+@dataclass(frozen=True)
+class WeightedSum:
+    """A per-tilt-weighted incoherent sum -- e.g. a Gaussian-density mosaic average.
+
+    Unlike :class:`PlainSum` (every tilt counts equally) or :class:`MosaicSmoothed` (a moving
+    average along the rocking axis only), this weights each of the ``N`` tilts by an arbitrary
+    per-tilt factor before summing -- e.g.
+    :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`'s Gaussian density at each
+    isotropic mosaic sample's cone radius, tiled across every rocking-curve tilt. ``weights`` has
+    shape ``(N,)`` matching the tilt axis it reduces; its overall scale is irrelevant (the fitted
+    intensity scale absorbs it), only the *relative* weighting changes the result.
+    """
+
+    weights: Tensor
+
+    def __post_init__(self) -> None:
+        if self.weights.ndim != 1:
+            raise ValueError("weights must be 1-D, shape (N,) matching the tilt axis")
+
+
+# The tilt-axis reduction of a rocking curve: a plain incoherent sum, a mosaicity-broadened sum, or
+# an arbitrary per-tilt-weighted sum. Carried per-orientation on ``OrientationPlan`` (default
+# ``PlainSum``) and applied by :meth:`BlochSolution.integrate`; a discriminated union rather than an
+# optional sample-count field.
+TiltReduction = PlainSum | MosaicSmoothed | WeightedSum
 
 # Shared immutable default (``PlainSum`` is stateless), so signatures avoid a call-in-default.
 PLAIN_SUM: TiltReduction = PlainSum()
@@ -90,12 +112,12 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
     """Reduce stacked per-tilt intensities ``(N_tilts, ...)`` over the leading tilt axis.
 
     The rocking-curve rotation-frame integration: :class:`PlainSum` sums the tilts;
-    :class:`MosaicSmoothed` applies a sampled moving average first (the mosaicity broadening). Public
-    because the tilt axis is reduced from two places -- a single shared beam set
-    (:meth:`BlochSolution.integrate` / :meth:`BlochSolution.integrate_batched`) and the segmented
-    coupling path, which reassembles each reflection's curve across per-chunk beam sets onto a
-    shared
-    union axis and reduces that ``(N_tilts, T, N_union)`` stack here.
+    :class:`MosaicSmoothed` applies a sampled moving average first (the mosaicity broadening);
+    :class:`WeightedSum` scales each tilt by its own weight before summing. Public because the tilt
+    axis is reduced from two places -- a single shared beam set (:meth:`BlochSolution.integrate` /
+    :meth:`BlochSolution.integrate_batched`) and the segmented coupling path, which reassembles each
+    reflection's curve across per-chunk beam sets onto a shared union axis and reduces that
+    ``(N_tilts, T, N_union)`` stack here.
     """
     match reduction:
         case PlainSum():
@@ -108,6 +130,17 @@ def reduce_tilts(stacked: Tensor, reduction: TiltReduction) -> Tensor:
                 )
             samples_view = stacked.unfold(0, samples, 1)  # (N - samples + 1, T, N_beams, samples)
             return samples_view.mean(dim=-1).sum(dim=0)
+        case WeightedSum(weights=weights):
+            n_tilts = stacked.shape[0]
+            if weights.shape[0] != n_tilts:
+                raise ValueError(
+                    f"WeightedSum weights has {weights.shape[0]} entries, expected {n_tilts} "
+                    "(one per tilt)"
+                )
+            broadcast = weights.to(device=stacked.device, dtype=stacked.dtype).reshape(
+                (n_tilts,) + (1,) * (stacked.ndim - 1)
+            )
+            return (stacked * broadcast).sum(dim=0)
 
 
 @dataclass(frozen=True)

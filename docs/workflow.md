@@ -44,10 +44,10 @@ The simulation hyperparameters include the reciprocal-space cutoffs and the numb
 samples. Suitable values depend on the experiment and should be established by convergence testing
 before preprocessing or refinement. 
 
-With `mosaicity: true`, diffBloch reads the apparent mosaicity from `.cif_pets` and converts it to a
+With `incoherent_mosaicity: true`, diffBloch reads the apparent mosaicity from `.cif_pets` and converts it to a
 moving-average sample span using the angular spacing between sampled orientations. The calculated
 rocking curve is smoothed over that span before it is summed. This does not add Bloch-wave solves.
-`mosaicity: false` (the default) applies no smoothing and ignores any PETS mosaicity value. The
+`incoherent_mosaicity: false` (the default) applies no smoothing and ignores any PETS mosaicity value. The
 output is one calculated diffraction pattern for each experimental rotation.
 
 For more information, see [Inputs and outputs](inputs.md).
