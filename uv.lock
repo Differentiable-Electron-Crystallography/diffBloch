@@ -768,6 +768,9 @@ dependencies = [
 comet = [
     { name = "comet-ml" },
 ]
+visualization = [
+    { name = "matplotlib" },
+]
 wandb = [
     { name = "wandb" },
 ]
@@ -798,6 +801,7 @@ requires-dist = [
     { name = "diffpy-structure", specifier = ">=3.2" },
     { name = "gemmi", specifier = ">=0.7.5" },
     { name = "matplotlib", specifier = ">=3.7" },
+    { name = "matplotlib", marker = "extra == 'visualization'", specifier = ">=3.11.1" },
     { name = "numpy", specifier = ">=2.5.2" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -805,7 +809,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.13.0" },
     { name = "wandb", marker = "extra == 'wandb'", specifier = ">=0.28.2" },
 ]
-provides-extras = ["comet", "wandb"]
+provides-extras = ["comet", "visualization", "wandb"]
 
 [package.metadata.requires-dev]
 dev = [

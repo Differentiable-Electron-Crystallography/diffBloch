@@ -65,6 +65,7 @@ Issues = "https://github.com/Differentiable-Electron-Crystallography/diffBloch/i
 # install the extra to use that backend. The core never imports these.
 wandb = ["wandb>=0.28.2"]
 comet = ["comet_ml>=3.58.4"]
+visualization = ["matplotlib>=3.11.1"]
 
 [tool.uv]
 # Security floors for packages we do not depend on directly: wandb pulls gitpython, torch and

@@ -39,6 +39,11 @@ import numpy as np
 import torch
 from pydantic import ValidationError
 
+from diffBloch.app.pattern_visualization import (
+    PatternVisualization,
+    PatternVisualizationOutput,
+    render_patterns,
+)
 from diffBloch.config import (
     CellParameters,
     ExperimentConfig,
@@ -127,6 +132,7 @@ __all__ = [
     "preprocess_experiment",
     "refine_experiment",
     "run_experiment",
+    "visualize_experiment",
 ]
 
 _log = logging.getLogger(__name__)
@@ -436,6 +442,104 @@ def run_experiment(
         max_batch=max_batch,
         logger=logger,
         absorption=cfg.blochwave.to_absorption(),
+    )
+
+
+def visualize_experiment(
+    experiment_dir: str | Path,
+    *,
+    output_dir: str | Path | None = None,
+    name: str | None = None,
+    style: PatternVisualization | None = None,
+    device: Device | None = "cuda",
+    workers: int = 1,
+    max_batch: int | None = None,
+    max_rotations: int | None = None,
+) -> PatternVisualizationOutput:
+    """Simulate an experiment and render one calculated-pattern PNG per rotation.
+
+    This is deliberately separate from the preprocess program: it neither reads nor writes Plan
+    checkpoints and runs no orientation/thickness fitting. It constructs only the configured
+    rocking/coupling geometry needed by the forward engine, directly from the input records.
+    Styling and output paths are execution-only arguments and do not enter ``experiment.yaml`` or
+    its lock.
+    """
+    root = Path(experiment_dir)
+    device = _select_device(device)
+    cfg, _lock = load_experiment(root)
+    structure = _read_structure(root, cfg)
+    records = _read_experimental_data(root, cfg)
+    refinement, datasets = setup_datasets(structure, records, cfg)
+    if max_rotations is not None and max_rotations < 1:
+        raise ValueError("max_rotations must be >= 1")
+    resolved_style = PatternVisualization() if style is None else style
+    plans: list[Plan] = []
+    offsets: list[int] = []
+    offset = 0
+    remaining = max_rotations
+    available_rotations = sum(len(d.plan.orientations) for d in datasets)
+    _log.info(
+        "building pattern geometry for %d rotation(s)",
+        available_rotations if max_rotations is None else min(max_rotations, available_rotations),
+    )
+    for dataset in datasets:
+        dataset_offset = offset
+        offset += dataset.n_rotations
+        if remaining == 0:
+            continue
+        selected_orientations = dataset.plan.orientations[
+            : None if remaining is None else remaining
+        ]
+        if not selected_orientations:
+            continue
+        source_plan = replace(dataset.plan, orientations=selected_orientations)
+        offsets.append(dataset_offset)
+        if remaining is not None:
+            remaining -= len(selected_orientations)
+        built = build_orientation_plans(
+            cfg.blochwave.to_rocking_curve(dataset.integration),
+            dataset.mosaicity,
+            coupling=cfg.blochwave.to_policy(),
+            scoring_selection=cfg.blochwave.to_beam_selection(dataset.integration),
+            workers=workers,
+        )(source_plan)
+        plans.append(built)
+    plan = pool(plans, offsets=offsets)
+    solutions = None
+    if resolved_style.source == "simulated" or resolved_style.side_by_side:
+        params = refinement.params if device is None else refinement.params.to(device)
+        engine = build_engine(
+            plan,
+            refinement,
+            method=cfg.blochwave.solver,
+            max_batch=max_batch,
+            absorption=cfg.blochwave.to_absorption(),
+        )
+        _log.info(
+            "simulating %d calculated pattern(s) on %s", len(plan.orientations), device or "cpu"
+        )
+        with torch.no_grad():
+            solutions = engine.simulate(params)
+    display_source = (
+        "experimental/simulated" if resolved_style.side_by_side else resolved_style.source
+    )
+    _log.info("rendering %d %s pattern(s)", len(plan.orientations), display_source)
+    return render_patterns(
+        plan,
+        solutions,
+        root / "pattern-visualization" if output_dir is None else output_dir,
+        name=(
+            f"{cfg.name}-side-by-side"
+            if name is None and resolved_style.side_by_side
+            else f"{cfg.name}-{resolved_style.source}"
+            if name is None
+            else name
+        ),
+        style=resolved_style,
+        experimental_selections={
+            ref: cfg.blochwave.to_beam_selection(dataset.integration)
+            for ref, dataset in zip(_exp_data_refs(cfg), datasets, strict=True)
+        },
     )
 
 

@@ -18,11 +18,13 @@ from pydantic import ValidationError
 from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, CSVLogger, print_summary_box
 from diffBloch.app.loggers.summary import SummaryLogger
+from diffBloch.app.pattern_visualization import PatternVisualization
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
     refine_experiment,
     run_experiment,
+    visualize_experiment,
 )
 from diffBloch.config import load_config, write_experiment_lock
 from diffBloch.observability import Logger, MultiLogger
@@ -176,6 +178,48 @@ def main(argv: list[str] | None = None) -> int:
         "forward recompute on backward for higher peak memory (gradients are unaffected either "
         "way) -- try this if backward is much slower than forward and you have memory headroom",
     )
+    p_pattern_vis = sub.add_parser("pattern-vis", help="Render calculated diffraction-pattern PNGs")
+    p_pattern_vis.add_argument("experiment_directory", help="Path to the experiment directory")
+    p_pattern_vis.add_argument(
+        "--device",
+        default="cuda",
+        help="run the forward solve on this torch device (default: cuda)",
+    )
+    p_pattern_vis.add_argument(
+        "--side-by-side",
+        action="store_true",
+        help="render experimental and simulated patterns beside each other in each PNG",
+    )
+    p_pattern_vis.add_argument(
+        "--normalization",
+        choices=("global", "self"),
+        default="global",
+        help="share brightness across rotations or normalize each rotation independently",
+    )
+    p_pattern_vis.add_argument(
+        "--workers", metavar="N", type=int, default=1, help="parallel geometry-build workers"
+    )
+    p_pattern_vis.add_argument(
+        "--max-batch", metavar="N", type=int, default=None, help="matrix_exp memory block cap"
+    )
+    p_pattern_vis.add_argument(
+        "--first", metavar="N", type=int, default=None, help="render only the first N rotations"
+    )
+    p_pattern_vis.add_argument("--output-dir", type=Path, default=None)
+    p_pattern_vis.add_argument("--name", default=None, help="output filename stem")
+    p_pattern_vis.add_argument(
+        "--source",
+        choices=("simulated", "experimental"),
+        default="simulated",
+        help="render calculated intensities or measured PETS intensities (default: simulated)",
+    )
+    p_pattern_vis.add_argument("--image-size", type=int, default=1024)
+    p_pattern_vis.add_argument("--theme", choices=("dark", "light"), default="light")
+    p_pattern_vis.add_argument("--cmap", default="gray")
+    p_pattern_vis.add_argument("--header", default=None)
+    p_pattern_vis.add_argument("--rotate", type=float, default=0.0, metavar="DEGREES")
+    p_pattern_vis.add_argument("--labels", type=int, default=2, metavar="N")
+    p_pattern_vis.add_argument("--scale-bar", type=float, default=0.5, metavar="ANGSTROM^-1")
 
     args = parser.parse_args(argv)
 
@@ -321,6 +365,41 @@ def main(argv: list[str] | None = None) -> int:
         # event. The report is the one output this file chose the location of, so it is also the
         # one line this file still prints.
         print(f"  • {'Refinement Report':<20} {report_path}")
+        return 0
+
+    if args.command == "pattern-vis":
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+        )
+        try:
+            output = visualize_experiment(
+                args.experiment_directory,
+                output_dir=args.output_dir,
+                name=args.name,
+                style=PatternVisualization(
+                    source=args.source,
+                    side_by_side=args.side_by_side,
+                    normalization=args.normalization,
+                    image_size=args.image_size,
+                    theme=args.theme,
+                    cmap=args.cmap,
+                    header=args.header,
+                    rotate_pattern_degrees=args.rotate,
+                    n_label_hkls=args.labels,
+                    scale_bar=args.scale_bar,
+                ),
+                device=args.device,
+                workers=args.workers,
+                max_batch=args.max_batch,
+                max_rotations=args.first,
+            )
+        except (FileNotFoundError, ValueError, ValidationError, yaml.YAMLError) as exc:
+            if args.debug:
+                raise
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print("Output files")
+        print(f"  • {'PNG frames':<20} {output.frames[0].parent.resolve()}")
         return 0
 
     if args.command == "converge":

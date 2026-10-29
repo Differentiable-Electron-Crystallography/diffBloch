@@ -19,11 +19,13 @@ from diffBloch.app.loggers import (
 )
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
+from diffBloch.app.pattern_visualization import PatternVisualization, PatternVisualizationOutput
 from diffBloch.app.program import (
     converge_experiment,
     preprocess_experiment,
     refine_experiment,
     run_experiment,
+    visualize_experiment,
 )
 
 __all__ = [
@@ -32,9 +34,12 @@ __all__ = [
     "ConsoleLogger",
     "EarlyAbortLogger",
     "FitAbortedError",
+    "PatternVisualization",
+    "PatternVisualizationOutput",
     "WandbLogger",
     "converge_experiment",
     "preprocess_experiment",
     "refine_experiment",
     "run_experiment",
+    "visualize_experiment",
 ]
