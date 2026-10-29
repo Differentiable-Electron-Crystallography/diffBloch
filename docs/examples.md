@@ -41,8 +41,8 @@ uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-absorption --refr
 
 ## Results
 
-Each refinement writes a refined CIF, a text report, and a thickness plot in its experiment
-directory. Reproducibility records are written under `reproducibility/`.
+Each successful refinement writes a refined CIF in its experiment directory and promotes a canonical
+JSONL report under `reproducibility/`.
 
 The current code has changed since the calculations reported in the paper, so the examples repeat
 the same experiments but are not expected to reproduce the published values exactly. The original

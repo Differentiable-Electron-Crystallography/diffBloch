@@ -447,22 +447,6 @@ def test_config_digest_excludes_orientation_thickness_when_their_step_is_off() -
     assert dataset_config_digest(on_bumped, exp_data=EXP_REF) != on_base
 
 
-def test_config_digest_excludes_thickness_plot() -> None:
-    """thickness.plot only selects PNG output; it never touches the fitted Plan."""
-    cfg = load_config(LOCKED / "experiment.yaml")
-    assert cfg.preprocess.optimize_thickness is True
-    base = dataset_config_digest(cfg, exp_data=EXP_REF)
-
-    plotted = cfg.model_copy(
-        update={
-            "preprocess": cfg.preprocess.model_copy(
-                update={"thickness": cfg.preprocess.thickness.model_copy(update={"plot": True})}
-            )
-        }
-    )
-    assert dataset_config_digest(plotted, exp_data=EXP_REF) == base
-
-
 def test_refinement_config_digest_is_the_complement_of_the_dataset_digest() -> None:
     """refinement_config_digest tracks exactly what dataset_config_digest excludes under
     refinement, and nothing else."""

@@ -27,6 +27,7 @@ import torch
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
+from diffBloch.core.adp import equivalent_isotropic_adp
 from diffBloch.core.dynamical import (
     BeamPlanBatch,
     build_bloch_system,
@@ -155,12 +156,25 @@ class RotationMetrics:
     *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
     came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
     never re-derives dataset membership from index offsets.
+
+    The per-reflection columns are the matched reflections ``wr2`` was scored over, in alignment
+    order: ``hkl`` and its ``g_magnitude`` (``|g| = 1/d`` in Angstrom^-1, the same no-``2 pi``
+    convention as ``g_max``, from the fixed cell), the measured ``observed`` intensity and its
+    ``sigmas``, and ``calculated``, the simulated intensity already multiplied by ``scale`` (the
+    wR2-optimal scale of the selected thickness), so it sits on the observed intensity's scale and
+    an intensity- or resolution-dependent misfit can be read from them directly.
     """
 
     rotation_index: int
     wr2: float
     r_obs: float
     n_matched: int
+    scale: float
+    hkl: tuple[tuple[int, int, int], ...]
+    g_magnitude: tuple[float, ...]
+    observed: tuple[float, ...]
+    sigmas: tuple[float, ...]
+    calculated: tuple[float, ...]
     dataset: str = ""
 
 
@@ -400,13 +414,15 @@ class RefinementEngine:
 
         Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
         rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
-        is reported but never optimised), returning every rotation's pair instead of an aggregate.
+        is reported but never optimised), returning every rotation's pair instead of an aggregate,
+        together with the per-reflection intensities that thickness's wR2 was scored over.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
             for constraint in model.structure.constraints:
                 state = constraint.apply(state)
             fgb = self._structure_factors_from_state(state)
+            reciprocal_basis = self.grid.reciprocal_basis.to(dtype=torch.float64, device="cpu")
             rows = []
             for rotation_index, orientation in enumerate(self.orientations):
                 context = _forward_context(
@@ -420,17 +436,16 @@ class RefinementEngine:
                     orientation.pattern,
                     orientation.alignment,
                 )
-                wr2_scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t],
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                            metric=w_rbragg,
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
+                wr2_fits = [
+                    optimal_scale(
+                        aligned.calculated[t],
+                        aligned.observed[t],
+                        aligned.sigmas[t],
+                        metric=w_rbragg,
+                    )
+                    for t in range(aligned.calculated.shape[0])
+                ]
+                wr2_scores = torch.stack([score for _, score in wr2_fits])
                 r_obs_scores = torch.stack(
                     [
                         optimal_scale(
@@ -443,12 +458,25 @@ class RefinementEngine:
                     ]
                 )
                 best_t = int(torch.argmin(wr2_scores))
+                scale = float(wr2_fits[best_t][0])
+                hkl = orientation.alignment.hkl.to(dtype=torch.float64, device="cpu")
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
                         wr2=float(wr2_scores[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
+                        scale=scale,
+                        hkl=tuple(
+                            (int(row[0]), int(row[1]), int(row[2]))
+                            for row in orientation.alignment.hkl.tolist()
+                        ),
+                        g_magnitude=tuple(
+                            torch.linalg.norm(hkl @ reciprocal_basis, dim=-1).tolist()
+                        ),
+                        observed=tuple(aligned.observed[best_t].tolist()),
+                        sigmas=tuple(aligned.sigmas[best_t].tolist()),
+                        calculated=tuple((scale * aligned.calculated[best_t]).tolist()),
                         dataset=orientation.pattern.dataset,
                     )
                 )
@@ -962,6 +990,35 @@ def _detach_model(model: RefinementModel) -> RefinementModel:
     )
 
 
+def _structure_drift(
+    engine: RefinementEngine, reference: PhysicalState, params: RefinableParams
+) -> tuple[float, float]:
+    """Coordinate RMSD (Angstrom) and Ueq RMSD (Angstrom^2) of ``params`` from ``reference``.
+
+    Taken over the asymmetric-unit atoms of the crystallographically constrained state. Positions
+    are compared in Cartesian Angstrom (fractional differences through the direct basis
+    ``B^-T``, ``B`` the reciprocal basis); ADPs as each atom's equivalent isotropic U, the trace
+    mean of the Cartesian tensor ``B^-1 U* B^-T``, so Uiso and Uani atoms share one scale. A
+    reporting diagnostic only, computed without gradients.
+    """
+    with torch.no_grad():
+        state = engine.physical_state(params)
+        basis = engine.grid.reciprocal_basis.to(
+            device=state.positions.device, dtype=state.positions.dtype
+        )
+        inverse = torch.linalg.inv(basis)
+        displacement = (state.positions - reference.positions) @ inverse.T
+        position_rmsd = displacement.square().sum(dim=-1).mean().sqrt()
+
+        def ueq(uij_star: Tensor) -> Tensor:
+            return equivalent_isotropic_adp(
+                torch.einsum("ij,ajk,lk->ail", inverse, uij_star, inverse)
+            )
+
+        ueq_rmsd = (ueq(state.uij_star) - ueq(reference.uij_star)).square().mean().sqrt()
+    return float(position_rmsd), float(ueq_rmsd)
+
+
 def run_refinement_model(
     engine: RefinementEngine,
     model: RefinementModel,
@@ -1055,6 +1112,9 @@ def run_refinement_model(
     best_loss = float("inf")
     best_step = 0
     best_model = _detach_model(current_model())
+    # The starting structure every epoch's coordinate/ADP RMSD is measured against.
+    with torch.no_grad():
+        reference_state = engine.physical_state(model.structure.initial)
     # Declared before the first step, so the composed objective is legible from the run's opening
     # lines rather than inferred later from which per-term measurements happened to appear.
     manifest = ObjectiveManifest(
@@ -1094,6 +1154,9 @@ def run_refinement_model(
             selection_loss = _scalar_float(selection_objective.total)
             selection_losses.append(selection_loss)
             selection_diagnostics = selection_objective.diagnostics
+        position_rmsd, ueq_rmsd = _structure_drift(
+            engine, reference_state, trainable_params.params()
+        )
         event = RefinementStep(
             iteration=step,
             loss=loss_value,
@@ -1120,6 +1183,8 @@ def run_refinement_model(
                 if selection_diagnostics is None
                 else int(selection_diagnostics["n_r_obs_evaluated"])
             ),
+            position_rmsd=position_rmsd,
+            ueq_rmsd=ueq_rmsd,
         )
         history.append(event)
         logger.report(event)
