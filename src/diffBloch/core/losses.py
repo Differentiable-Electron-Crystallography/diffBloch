@@ -80,16 +80,22 @@ def w_rbragg(calculated: Tensor, observed: Tensor, sigmas: Tensor, *, mu: float 
     factor;
     weak reflections (``I_obs < 0.01*sigma``) use the ``5*sqrt(sigma)`` floor from the Klar et al.
     2023 supplementary information.
+
+    Reflections with ``I_obs < 0`` (background-subtracted noise, not real signal) are excluded by
+    *selection* (``torch.where``), the same NaN-safe pattern :func:`rbragg` uses -- they take no
+    part in either sum rather than being fit against.
     """
     _check_pair(calculated, observed)
     _check_sigmas(sigmas, observed)
     eps = 1e-12
+    mask = observed >= 0.0
     sqrt_obs = torch.sqrt(torch.clamp(observed, min=eps))
     weak = observed < (0.01 * sigmas)
     sigma_sqrt = torch.where(weak, 5 * torch.sqrt(sigmas), 0.5 * sigmas / sqrt_obs)
     w = 1.0 / torch.sqrt(sigma_sqrt**2 + (mu * sqrt_obs) ** 2)
-    numerator = ((w * (calculated - observed)) ** 2).sum(dim=-1)
-    denominator = ((w * observed) ** 2).sum(dim=-1)
+    zero = torch.zeros_like(observed)
+    numerator = torch.where(mask, (w * (calculated - observed)) ** 2, zero).sum(dim=-1)
+    denominator = torch.where(mask, (w * observed) ** 2, zero).sum(dim=-1)
     return torch.sqrt(numerator / denominator)
 
 
