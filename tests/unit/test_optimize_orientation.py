@@ -311,25 +311,25 @@ def test_nelder_mead_search_validates_its_correction_bound() -> None:
         NelderMeadSearch(step_size=0.2, max_correction_degrees=0.1)
 
 
-def test_fit_orientation_keeps_the_correction_within_the_bound() -> None:
+def test_fit_orientation_keeps_the_correction_within_the_bound(tmp_path: Path) -> None:
     """A seed 1 degree off its pattern wants to move ~1 degree; the bound holds it to +/-0.1.
 
     ``step_size`` alone cannot do this (Nelder-Mead expands its simplex), so the returned
     correction is checked against the bound, not just compared with the unbounded fit.
     """
-    from diffBloch.observability import OrientationOptimized, RecordingLogger
     from diffBloch.preprocess.orientation import goniometer_rotation
 
     grid, asu_plan, spec, numbers = _silicon()
     matched = _self_consistent(grid, asu_plan, spec, numbers, goniometer_rotation(1.0, 0.5, 0.3))
     seeded = replace(matched, orientation=torch.eye(3, dtype=torch.float64))
-    recorder = RecordingLogger()
+    path = tmp_path / "report.jsonl"
 
     optimize_orientation(
         _refinement(asu_plan, spec, numbers),
         NelderMeadSearch(max_correction_degrees=0.1),
-        logger=recorder,
+        logger=ReportLogger(path),
     )(Plan(structure_factor_grid=grid, orientations=(seeded,)))
 
-    (fitted,) = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
-    assert max(abs(fitted.alpha), abs(fitted.beta), abs(fitted.omega)) <= 0.1 + 1e-12
+    (fitted,) = [e for e in _records(path) if e.event_type == "OrientationOptimized"]
+    correction = (fitted.payload[k] for k in ("alpha", "beta", "omega"))
+    assert max(abs(c) for c in correction) <= 0.1 + 1e-12
