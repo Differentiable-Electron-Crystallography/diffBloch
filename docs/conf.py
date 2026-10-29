@@ -43,9 +43,17 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 suppress_warnings = ["ref.python"]
 
 # -- MyST (Markdown) ---------------------------------------------------------
-# ``colon_fence`` lets admonitions/directives use ::: fences; ``deflist`` for definition lists.
-myst_enable_extensions = ["colon_fence", "deflist", "fieldlist"]
+# ``colon_fence`` lets admonitions/directives use ::: fences; ``deflist`` for definition lists;
+# ``substitution`` enables the ``{{ version }}`` token below.
+myst_enable_extensions = ["colon_fence", "deflist", "fieldlist", "substitution"]
 myst_heading_anchors = 3  # auto-slug headings so intra-page links resolve
+
+# Prose that names the installed version uses ``{{ version }}`` rather than a literal, so a release
+# bump cannot leave the docs claiming a version that no longer exists. Sourced from ``release``
+# above, i.e. from package metadata. MyST does not expand substitutions inside code fences, so the
+# token has to sit in prose -- a ``# diffbloch 0.2.0rc1`` comment in a ```bash block would silently
+# stay literal.
+myst_substitutions = {"version": release}
 
 # -- Autodoc / napoleon ------------------------------------------------------
 # Centralised so the ``.. automodule::`` blocks in api/*.md stay bare.

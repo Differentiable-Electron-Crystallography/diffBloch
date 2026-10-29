@@ -451,6 +451,10 @@ def test_fit_orientation_emits_progress_events() -> None:
     assert all(e.n_trials >= 1 and e.score >= 0.0 for e in fits)
     # n_passes is the capped quantity and must be observable within its cap for calibration.
     assert all(1 <= e.n_passes <= e.pass_cap == search.max_iterations for e in fits)
+    # seed_score is a real evaluation (not a placeholder), and the search actually moved the
+    # orientation away from the unsearched seed on at least one of its three degrees of freedom.
+    assert all(e.seed_score >= 0.0 for e in fits)
+    assert all(any((e.alpha, e.beta, e.omega)) for e in fits)
 
 
 def test_scored_set_stays_pinned_when_the_solve_union_is_larger() -> None:

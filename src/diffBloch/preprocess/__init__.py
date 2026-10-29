@@ -60,13 +60,14 @@ from diffBloch.preprocess.pipeline import (
 from diffBloch.preprocess.plan import (
     CandidatePlan,
     Plan,
+    dataset_of,
     require_built_plans,
     require_candidate_plans,
     require_orientation_plans,
 )
 from diffBloch.preprocess.pool import pool
 from diffBloch.preprocess.scoring import build_engine, score_orientations
-from diffBloch.preprocess.serialize import read_plan, write_plan
+from diffBloch.preprocess.serialize import plan_is_readable, read_plan, write_plan
 from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
     klar_beam_mask,
@@ -143,6 +144,7 @@ __all__ = [
     "klar_beam_mask",
     "maximize_scalar",
     "couple_beams",
+    "dataset_of",
     "orientation_basis",
     "orientation_matrices",
     "rotation_axis_correction",
@@ -150,6 +152,7 @@ __all__ = [
     "plan_coverage",
     "pool",
     "report_coupling",
+    "plan_is_readable",
     "read_plan",
     "require_built_plans",
     "require_candidate_plans",

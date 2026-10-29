@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from diffBloch.app.program import (
     _LARGE_CELL_THRESHOLD_A3,
+    PreprocessOutcome,
     _preprocess,
     _recipe_steps,
     _select_device,
@@ -73,11 +75,15 @@ def test_preprocess_experiment_default_device_falls_back_to_cpu(
     seen: dict[str, object] = {}
     plan = SimpleNamespace()
 
-    def fake_preprocess(
-        *args: object, **kwargs: object
-    ) -> tuple[object, object, object, object, object]:
+    def fake_preprocess(*args: object, **kwargs: object) -> PreprocessOutcome:
         seen["device"] = kwargs["device"]
-        return object(), object(), plan, object(), None
+        return PreprocessOutcome(
+            refinement=cast(Any, object()),
+            integrations=(),
+            plan=cast(Any, plan),
+            validation_rotation_indices=frozenset(),
+            plan_lock_sha256s=None,
+        )
 
     monkeypatch.setattr("diffBloch.app.program.torch.cuda.is_available", lambda: False)
     monkeypatch.setattr("diffBloch.app.program.load_experiment", lambda _root: (object(), object()))
@@ -229,7 +235,7 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
     )
     plot_dir = tmp_path / "thickness_optim"
 
-    refinement, _integrations, plan, _validation_rotation_indices, _plan_lock_sha256s = _preprocess(
+    outcome = _preprocess(
         root,
         cfg,
         logger=NULL_LOGGER,
@@ -242,8 +248,8 @@ def test_preprocess_wraps_the_logger_with_a_thickness_plot_logger(tmp_path: Path
         plot_thickness_dir=plot_dir,
     )
 
-    assert plan.orientations  # the geometry build actually ran
-    assert refinement is not None
+    assert outcome.plan.orientations  # the geometry build actually ran
+    assert outcome.refinement is not None
     # no thickness fit ran, so no PNG was written -- but the branch itself (directory resolution +
     # MultiLogger composition) executed without error, which is what this test pins.
     assert plot_dir.is_dir()

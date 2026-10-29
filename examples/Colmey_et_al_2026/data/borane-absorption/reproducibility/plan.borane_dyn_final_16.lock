@@ -18,8 +18,8 @@
     90.00002
   ],
   "ignored_rotations": [],
-  "config_digest": "c9d3603ebde0703c101236d8a2ad31115ca62b16b05fcb2383e6464b5ec6c9fa",
-  "code_version": "0.2.0+g1bfdabc.dirty",
+  "config_digest": "4a81007633610c97b7883ba3528b4c28611eae4503be2fa9c773ff4b3bce9055",
+  "code_version": "0.2.0rc1",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -99,8 +99,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.borane_dyn_final_16.npz",
-    "sha256": "3c389a24238fe6d08f8baf68062bda56c45a38d55bb4e34919c83b19dc520495",
-    "bytes": 977266,
+    "sha256": "cea6193d60d118ad398388a342b182d3b0f56f9e01717a95490b9a0c49d236b5",
+    "bytes": 977734,
     "media_type": "application/octet-stream"
   }
 }

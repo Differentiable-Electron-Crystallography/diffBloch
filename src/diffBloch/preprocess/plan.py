@@ -34,6 +34,7 @@ __all__ = [
     "CandidatePlan",
     "Plan",
     "coupling_stats",
+    "dataset_of",
     "require_built_plans",
     "require_candidate_plans",
     "require_orientation_plans",
@@ -221,6 +222,19 @@ def coupling_stats(op: CandidatePlan | OrientationPlanLike) -> dict[str, int]:
         "n_union_beams": beams,
         "max_beams_per_segment": beams,
     }
+
+
+def dataset_of(plans: Iterable[OrientationPlanLike]) -> str:
+    """The single ``inputs.exp_data`` ref ``plans`` all belong to, or ``""`` if they do not.
+
+    Each rotation carries its own ``pattern.dataset`` (stamped at
+    :func:`~diffBloch.preprocess.setup_datasets`), so a per-dataset step can label its observability
+    events by reading the plan rather than taking a dataset argument it would otherwise have to be
+    threaded from the app boundary. Returns ``""`` for a pooled (mixed-dataset) or unlabelled plan,
+    which is the honest answer for a label: there is no one dataset to name.
+    """
+    labels = {op.pattern.dataset for op in plans}
+    return labels.pop() if len(labels) == 1 else ""
 
 
 def unique_hkl_count(hkl_batches: Iterable[Tensor]) -> int:

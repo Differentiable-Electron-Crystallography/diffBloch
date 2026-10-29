@@ -16,6 +16,7 @@ from diffBloch.observability import (
     ExperimentDeclared,
     ObjectiveManifest,
     ObjectiveTerm,
+    PreprocessCompleted,
     RefinedRotationMetrics,
     RefinementCompleted,
     RefinementOutputsWritten,
@@ -97,6 +98,7 @@ def _run(
     experiment: ExperimentDeclared | None = None,
     steps: tuple[RefinementStep, ...] = (),
     rotations: tuple[RefinedRotationMetrics, ...] = (),
+    preprocess: PreprocessCompleted | None = None,
     profiles: tuple[ThicknessProfile, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
@@ -110,6 +112,8 @@ def _run(
         if manifest is not None
         else ObjectiveManifest(penalties=(ObjectiveTerm(name="bond_length", weight=3.0),))
     )
+    if preprocess is not None:
+        logger.report(preprocess)
     for step in steps or (_step(),):
         logger.report(step)
     logger.report(
@@ -131,10 +135,19 @@ def _run(
 
 
 def _rotation(
-    index: int, *, wr2: float = 0.2, is_validation: bool = False
+    index: int,
+    *,
+    wr2: float = 0.2,
+    is_validation: bool = False,
+    dataset: str = "q.cif_pets",
 ) -> RefinedRotationMetrics:
     return RefinedRotationMetrics(
-        rotation_index=index, wr2=wr2, r_obs=0.15, n_matched=5, is_validation=is_validation
+        rotation_index=index,
+        wr2=wr2,
+        r_obs=0.15,
+        n_matched=5,
+        is_validation=is_validation,
+        dataset=dataset,
     )
 
 
@@ -167,7 +180,7 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
     assert "10.00 [3/4]" in text  # best-epoch wR2 (%), 3 of 4 rotations finite
     assert "5.00 [2/4]" in text  # best-epoch R_obs (%), 2 of 4
     assert "mean wR2   = 0.200000 [1/1]" in text
-    assert "HKLs (Observed/total)" in text and "8 / 12" in text
+    assert "Matched HKLs (I>3σ/total)" in text and "8 / 12" in text
 
 
 def test_summary_renders_dataset_labeled_seed_thicknesses(tmp_path: Path) -> None:
@@ -214,6 +227,139 @@ def test_summary_selects_the_best_epoch_not_the_last(tmp_path: Path) -> None:
 
     assert "objective total = 1" in text
     assert "10.00 [3/4]" in text  # the best epoch's wR2, not epoch 2's
+
+
+def test_summary_epoch_curve_lists_every_recorded_step(tmp_path: Path) -> None:
+    """The epoch curve is the whole trajectory, not just the best epoch."""
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8),
+            _step(iteration=1, wr2=0.1, r_obs=0.05),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    assert "Epoch curve" in text
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "1" in epoch_curve and "0.900000" in epoch_curve and "0.800000" in epoch_curve
+    assert "2" in epoch_curve and "0.100000" in epoch_curve and "0.050000" in epoch_curve
+
+
+def test_summary_epoch_curve_renders_na_for_unevaluated_epochs(tmp_path: Path) -> None:
+    text = _run(
+        tmp_path,
+        steps=(_step(wr2=None, r_obs=None),),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "n/a" in epoch_curve
+
+
+def test_summary_epoch_curve_adds_validation_columns_when_a_selection_engine_ran(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        steps=(
+            _step(iteration=0, wr2=0.9, r_obs=0.8, val_wr2=0.95, val_r_obs=0.85),
+            _step(iteration=1, wr2=0.1, r_obs=0.05, val_wr2=0.2, val_r_obs=0.15),
+        ),
+        completed=RefinementCompleted(n_steps=2, best_step=1, best_loss=1.0),
+        rotations=(_rotation(0),),
+    )
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" in epoch_curve and "Val R_obs" in epoch_curve
+    assert "0.950000" in epoch_curve and "0.850000" in epoch_curve
+    assert "0.200000" in epoch_curve and "0.150000" in epoch_curve
+
+
+def test_summary_epoch_curve_omits_validation_columns_without_a_selection_engine(
+    tmp_path: Path,
+) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    epoch_curve = text.split("Epoch curve")[1].split("\n--- ")[0]
+    assert "Val wR2" not in epoch_curve
+
+
+def test_summary_preprocess_defaults_to_not_done(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0),))
+
+    preprocess_section = text.split("Preprocess")[1].split("\n--- ")[0]
+    assert "Orientation optimization: false" in preprocess_section
+    assert "Thickness optimization: false" in preprocess_section
+
+
+def test_summary_preprocess_reports_orientation_optimization_params_when_done(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        preprocess=PreprocessCompleted(
+            n_rotations=1,
+            n_stages=1,
+            total_hkl=10,
+            matched_hkl=8,
+            steps=(
+                (
+                    "optimize_orientation",
+                    {
+                        "search": {
+                            "__type__": "NelderMeadSearch",
+                            "step_size": 0.05,
+                            "max_iterations": 60,
+                        },
+                        "coupling": None,
+                    },
+                ),
+            ),
+        ),
+        rotations=(_rotation(0),),
+    )
+
+    preprocess_section = text.split("Preprocess")[1].split("\n--- ")[0]
+    assert "Orientation optimization: true" in preprocess_section
+    assert "step_size=0.05" in preprocess_section
+    assert "max_iterations=60" in preprocess_section
+    # Composition-site kwargs (coupling, absorption) are shared context, not this step's own
+    # setting, so they must not show up here.
+    assert "coupling" not in preprocess_section
+    assert "Thickness optimization: false" in preprocess_section
+
+
+def test_summary_per_dataset_summary_is_omitted_for_a_single_dataset(tmp_path: Path) -> None:
+    text = _run(tmp_path, rotations=(_rotation(0), _rotation(1)))
+
+    assert "Per-dataset summary" not in text
+
+
+def test_summary_per_dataset_summary_breaks_out_train_validation_and_total(
+    tmp_path: Path,
+) -> None:
+    text = _run(
+        tmp_path,
+        rotations=(
+            _rotation(0, wr2=0.1, dataset="a.cif_pets"),
+            _rotation(1, wr2=0.3, is_validation=True, dataset="a.cif_pets"),
+            _rotation(2, wr2=0.2, dataset="b.cif_pets"),
+        ),
+    )
+
+    assert "Per-dataset summary" in text
+    per_dataset = text.split("Per-dataset summary")[1].split("\n--- ")[0]
+    assert "a.cif_pets" in per_dataset and "b.cif_pets" in per_dataset
+    assert "All datasets" in per_dataset
+    # a.cif_pets: 1 train (wr2=0.1), 1 validation (wr2=0.3), 2 total.
+    assert "0.100000 [1/1]" in per_dataset  # a's train wR2
+    assert "0.300000 [1/1]" in per_dataset  # a's validation wR2
+    # b.cif_pets has no validation rotations -- the cell must not blow up on an empty split.
+    assert "n/a [0/0]" in per_dataset
+    # All datasets aggregates every rotation regardless of which dataset it came from.
+    assert "0.200000 [3/3]" in per_dataset  # mean wR2 over all three rotations
 
 
 def test_summary_renders_an_unevaluated_mean_as_na(tmp_path: Path) -> None:
@@ -339,7 +485,7 @@ def test_thickness_profile_channel_names_its_dataset() -> None:
 def test_summary_degrades_without_the_declaration_events(tmp_path: Path) -> None:
     """A sink attached mid-run says so rather than inventing values or raising."""
     logger = SummaryLogger(tmp_path / "refinement_report.txt")
-    logger.report(RotationScored(index=0, r_obs=0.1, n_observed=5, n_beams=9))
+    logger.report(RotationScored(index=0, r_obs=0.1, wr2=0.1, n_matched=5))
     logger.report(RefinementOutputsWritten(structure=str(_structure(tmp_path))))
 
     text = (tmp_path / "refinement_report.txt").read_text()

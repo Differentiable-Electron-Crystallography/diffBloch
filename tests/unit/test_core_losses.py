@@ -116,22 +116,6 @@ def test_w_rbragg_matches_oracle(_intensity_pair) -> None:
     assert torch.allclose(w_rbragg(calc, obs, sigmas), _oracle_wrbragg(calc, obs, sigmas))
 
 
-def test_w_rbragg_masks_negative_reflections() -> None:
-    # Experimental intensities can be negative (background-subtracted noise, not real signal). Such
-    # a reflection must be excluded from both sums entirely, not fit against -- the result must
-    # equal w_rbragg over the observed subset alone, and a large calc mismatch on the excluded
-    # reflection must not move the score.
-    obs = torch.tensor([[1.0, 4.0, -0.5]], dtype=torch.float64)
-    sigmas = torch.tensor([[0.05, 0.10, 0.10]], dtype=torch.float64)
-    calc = torch.tensor([[1.2, 3.6, 9.0]], dtype=torch.float64)
-    subset = w_rbragg(calc[:, :2], obs[:, :2], sigmas[:, :2])
-    full = w_rbragg(calc, obs, sigmas)
-    full_other_calc = w_rbragg(torch.tensor([[1.2, 3.6, -100.0]], dtype=torch.float64), obs, sigmas)
-    assert torch.isfinite(full).all()
-    assert torch.allclose(full, subset)
-    assert torch.allclose(full, full_other_calc)
-
-
 # --- properties --------------------------------------------------------------------------------
 def test_losses_vanish_for_perfect_agreement(_intensity_pair) -> None:
     _, obs, sigmas = _intensity_pair

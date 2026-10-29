@@ -50,14 +50,13 @@ class RotationInference:
 
     ``r_obs`` is the scaling-optimised Bragg R-factor of calculated vs observed intensities over the
     reflections with ``I > 3*sigma`` (``core.losses.rbragg``); it is ``nan`` when no reflection
-    passes that cut. ``n_observed`` counts those reflections and ``n_beams`` the active beam set --
-    both diagnostics for why an ``r_obs`` is what it is.
+    passes that cut. ``n_matched`` is the rotation's full matched-reflection count (observed and
+    calculated both, no intensity cut) -- a diagnostic for why an ``r_obs`` is what it is.
     """
 
     r_obs: float
     wr2: float
-    n_observed: int
-    n_beams: int
+    n_matched: int
 
 
 @dataclass(frozen=True)
@@ -143,9 +142,7 @@ def run_inference(
     )
     for index, row in enumerate(rows):
         logger.report(
-            RotationScored(
-                index=index, r_obs=row.r_obs, n_observed=row.n_observed, n_beams=row.n_beams
-            )
+            RotationScored(index=index, r_obs=row.r_obs, wr2=row.wr2, n_matched=row.n_matched)
         )
     result = InferenceResult(per_rotation=rows)
     logger.report(
@@ -153,6 +150,7 @@ def run_inference(
             n_rotations=len(rows),
             n_evaluated=result.n_evaluated,
             mean_r_obs=result.mean_r_obs,
+            mean_wr2=result.mean_wr2,
         )
     )
     return result
@@ -176,14 +174,13 @@ def _score_rotation(orientation: OrientationPlanLike, solution: BlochSolution) -
         )
         return float(per_thickness.min())
 
-    # observed/sigmas are thickness-independent, so the I > 3*sigma count is taken at t = 0.
-    n_observed = int((aligned.observed[0] > 3.0 * aligned.sigmas[0]).sum())
     return RotationInference(
         r_obs=best_over_thickness(rbragg),
         # Free alongside r_obs: the same aligned intensities under the other metric, no extra
         # solve. Reported so the CI anchor can track both -- a drift can show in one and not the
         # other, and R_obs alone would not say which.
         wr2=best_over_thickness(w_rbragg),
-        n_observed=n_observed,
-        n_beams=int(orientation.beam_hkl.shape[0]),
+        # Thickness-independent, so read at t = 0; this is the full matched set, not the I > 3*sigma
+        # subset r_obs is scored over.
+        n_matched=int(aligned.observed[0].shape[0]),
     )
