@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import html
 import io
+import json
 import math
 import re
 import sys
@@ -179,6 +180,58 @@ def render(rows: list[Row], theme: dict[str, str]) -> str:
         svg = svg.replace(link, f"{link}<title>{html.escape(_hover(row))}</title>", 1)
     return svg
 
+# Popup for the page's inline charts: the SVG <title> can only hold text, so a point's details
+# and its commit link live in this HTML popup instead. Click (or tap) opens it rather than
+# navigating, so touch screens, which have no hover, reach the link too.
+POPUP_SCRIPT = """
+<div id="pop" class="pop" hidden><div class="when"></div><div class="value"></div>
+<a target="_blank" rel="noopener">Open commit ↗</a></div>
+<script>
+const COMMIT_URL = %s;
+const DATA = %s;
+const pop = document.getElementById("pop");
+let hideTimer;
+function hide() {
+  pop.hidden = true;
+  document.querySelectorAll("tr.hl").forEach((row) => row.classList.remove("hl"));
+}
+function hideSoon(event) {
+  if (event.pointerType === "mouse") hideTimer = setTimeout(hide, 250);
+}
+function show(point, sha) {
+  const d = DATA[sha];
+  if (!d) return;
+  clearTimeout(hideTimer);
+  hide();
+  document.querySelector(`tr[data-sha="${sha}"]`)?.classList.add("hl");
+  pop.querySelector(".when").textContent = `${d[0]} · ${sha.slice(0, 7)}`;
+  pop.querySelector(".value").textContent = `max |ΔR_obs| ${d[1]} · atol ${d[2]} · ${d[3]}`;
+  pop.querySelector("a").href = COMMIT_URL + sha;
+  pop.hidden = false;
+  const r = point.getBoundingClientRect();
+  const width = document.documentElement.clientWidth;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - pop.offsetWidth / 2), width - pop.offsetWidth - 8);
+  const above = r.top - pop.offsetHeight - 8;
+  pop.style.left = `${left + scrollX}px`;
+  pop.style.top = `${(above > 0 ? above : r.bottom + 8) + scrollY}px`;
+}
+for (const point of document.querySelectorAll(".chart a")) {
+  const sha = (point.getAttribute("xlink:href") || point.getAttribute("href") || "").split("/").pop();
+  point.querySelector("title")?.remove();
+  point.addEventListener("pointerenter", () => show(point, sha));
+  point.addEventListener("pointerleave", hideSoon);
+  point.addEventListener("focus", () => show(point, sha));
+  point.addEventListener("click", (event) => { event.preventDefault(); show(point, sha); });
+}
+pop.addEventListener("pointerenter", () => clearTimeout(hideTimer));
+pop.addEventListener("pointerleave", hideSoon);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") hide(); });
+document.addEventListener("click", (event) => {
+  if (!pop.contains(event.target) && !event.target.closest(".chart a")) hide();
+});
+</script>
+"""
+
 
 def _status(deviation: float, atol: float) -> str:
     if math.isnan(deviation):
@@ -189,7 +242,7 @@ def _status(deviation: float, atol: float) -> str:
 
 
 def page(rows: list[Row], light_svg: str, dark_svg: str) -> str:
-    """Both charts inline (links work inline, not through <img>) and a newest-first table."""
+    """Both charts inline with a popup per point, and a newest-first table of every merge."""
 
     def inline(svg: str, prefix: str = "") -> str:
         svg = svg[svg.index("<svg") :]
@@ -197,7 +250,7 @@ def page(rows: list[Row], light_svg: str, dark_svg: str) -> str:
         return re.sub(r'(id="|url\(#|href="#)', rf"\g<1>{prefix}", svg) if prefix else svg
 
     body = "\n".join(
-        "<tr>"
+        f'<tr data-sha="{sha}">'
         f"<td>{date:%Y-%m-%d}</td>"
         f'<td><a href="{COMMIT_URL}{sha}"><code>{sha[:7]}</code></a></td>'
         f"<td class=num>{'—' if math.isnan(dev) else f'{dev:.2e}'}</td>"
@@ -206,15 +259,27 @@ def page(rows: list[Row], light_svg: str, dark_svg: str) -> str:
         "</tr>"
         for date, sha, dev, atol in reversed(rows)
     )
+    data = {
+        sha: [
+            f"{date:%Y-%m-%d}",
+            "—" if math.isnan(dev) else f"{dev:.2e}",
+            "—" if math.isnan(atol) else f"{atol:.0e}",
+            _status(dev, atol),
+        ]
+        for date, sha, dev, atol in rows
+    }
+    popup = POPUP_SCRIPT % (json.dumps(COMMIT_URL), json.dumps(data, ensure_ascii=False))
     return f"""<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>diffBloch anchor trend</title>
 <style>
-:root {{ --bg: #fff; --ink: #1f2328; --muted: #59636e; --rule: #d1d9e0; --link: #0969da; }}
+:root {{ --bg: #fff; --ink: #1f2328; --muted: #59636e; --rule: #d1d9e0; --link: #0969da;
+  --hl: #ddf4ff; }}
 @media (prefers-color-scheme: dark) {{
-  :root {{ --bg: #0d1117; --ink: #e6edf3; --muted: #9198a1; --rule: #3d444d; --link: #4493f8; }}
+  :root {{ --bg: #0d1117; --ink: #e6edf3; --muted: #9198a1; --rule: #3d444d; --link: #4493f8;
+    --hl: #0c2d6b; }}
 }}
 body {{ margin: 0 auto; max-width: 960px; padding: 16px; background: var(--bg); color: var(--ink);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
@@ -228,11 +293,18 @@ table {{ border-collapse: collapse; width: 100%; font-size: 14px; }}
 th, td {{ text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }}
 th {{ color: var(--muted); font-weight: 600; }}
 .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+tr.hl td {{ background: var(--hl); }}
+.chart a {{ cursor: pointer; }}
+.pop {{ position: absolute; z-index: 1; max-width: calc(100vw - 32px); padding: 8px 12px;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; font-size: 13px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15); }}
+.pop[hidden] {{ display: none; }}
+.pop .value {{ color: var(--muted); margin-bottom: 4px; }}
 </style>
 <h1>quartz e2e anchor</h1>
 <p>For every merge to <code>main</code>: the largest deviation of any rotation's
-<code>R_obs</code> from its committed reference, against the tolerance the test allows. Click a
-point or a commit to open its diff.</p>
+<code>R_obs</code> from its committed reference, against the tolerance the test allows. Hover or
+tap a point for its details and commit; click a commit in the table to open its diff.</p>
 <div class="chart light">{inline(light_svg)}</div>
 <div class="chart dark">{inline(dark_svg, "dark-")}</div>
 <div class="table"><table>
@@ -241,6 +313,7 @@ point or a commit to open its diff.</p>
 <tbody>
 {body}
 </tbody></table></div>
+{popup}
 </html>
 """
 
