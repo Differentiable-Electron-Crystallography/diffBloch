@@ -302,3 +302,34 @@ def test_nelder_mead_search_rejects_a_nonpositive_iteration_cap() -> None:
     # optimize_orientation's cap is one of those validated bounds.
     with pytest.raises(ValueError, match="max_iterations must be >= 1"):
         NelderMeadSearch(max_iterations=0)
+
+
+def test_nelder_mead_search_validates_its_correction_bound() -> None:
+    with pytest.raises(ValueError, match="max_correction_degrees must be positive"):
+        NelderMeadSearch(max_correction_degrees=0.0)
+    with pytest.raises(ValueError, match="step_size must not exceed max_correction_degrees"):
+        NelderMeadSearch(step_size=0.2, max_correction_degrees=0.1)
+
+
+def test_fit_orientation_keeps_the_correction_within_the_bound() -> None:
+    """A seed 1 degree off its pattern wants to move ~1 degree; the bound holds it to +/-0.1.
+
+    ``step_size`` alone cannot do this (Nelder-Mead expands its simplex), so the returned
+    correction is checked against the bound, not just compared with the unbounded fit.
+    """
+    from diffBloch.observability import OrientationOptimized, RecordingLogger
+    from diffBloch.preprocess.orientation import goniometer_rotation
+
+    grid, asu_plan, spec, numbers = _silicon()
+    matched = _self_consistent(grid, asu_plan, spec, numbers, goniometer_rotation(1.0, 0.5, 0.3))
+    seeded = replace(matched, orientation=torch.eye(3, dtype=torch.float64))
+    recorder = RecordingLogger()
+
+    optimize_orientation(
+        _refinement(asu_plan, spec, numbers),
+        NelderMeadSearch(max_correction_degrees=0.1),
+        logger=recorder,
+    )(Plan(structure_factor_grid=grid, orientations=(seeded,)))
+
+    (fitted,) = [e for e in recorder.events if isinstance(e, OrientationOptimized)]
+    assert max(abs(fitted.alpha), abs(fitted.beta), abs(fitted.omega)) <= 0.1 + 1e-12

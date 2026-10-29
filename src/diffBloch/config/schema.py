@@ -319,6 +319,7 @@ class NelderMeadOptimizationConfig(_StrictConfig):
     x_tolerance: float = _NELDER_MEAD_DEFAULTS.x_tolerance  # scipy `xatol`
     f_tolerance: float = _NELDER_MEAD_DEFAULTS.f_tolerance  # scipy `fatol`
     penalize_fewer_reflections: bool = _NELDER_MEAD_DEFAULTS.penalize_fewer_reflections
+    max_correction_degrees: float | None = _NELDER_MEAD_DEFAULTS.max_correction_degrees
 
     def to_search(self) -> NelderMeadSearch:
         """Parse into the validated value-type the pure ``optimize_orientation`` consumes."""
@@ -328,6 +329,7 @@ class NelderMeadOptimizationConfig(_StrictConfig):
             x_tolerance=self.x_tolerance,
             f_tolerance=self.f_tolerance,
             penalize_fewer_reflections=self.penalize_fewer_reflections,
+            max_correction_degrees=self.max_correction_degrees,
         )
 
     @model_validator(mode="after")

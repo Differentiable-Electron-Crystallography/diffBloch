@@ -224,6 +224,12 @@ class NelderMeadSearch:
     ``scipy.optimize.minimize(method="Nelder-Mead")``, seeded from a fixed initial simplex of edge
     length ``step_size`` around the seed orientation (``(0, 0, 0)``) -- pick ``step_size``
     comfortably larger than the expected misorientation of the seed (PETS-derived) orientation.
+
+    ``step_size`` only sizes the starting simplex: Nelder-Mead expands it freely, so on its own it
+    does not bound how far a rotation can move. ``max_correction_degrees`` does: when set, each
+    correction angle is confined to ``[-max_correction_degrees, +max_correction_degrees]`` (scipy's
+    bounded Nelder-Mead), so a rotation cannot drift to an orientation it was not measured at.
+    ``None`` (the default) leaves the search unbounded.
     """
 
     step_size: float = 0.05  # degrees; initial simplex edge length around (0, 0, 0)
@@ -234,10 +240,17 @@ class NelderMeadSearch:
     # otherwise win by matching a smaller, easier reflection subset rather than by fitting better.
     # True divides each trial's wR2 by its matched-reflection count before comparing.
     penalize_fewer_reflections: bool = True
+    # Per-angle bound (degrees) on (alpha, beta, omega); None leaves the search unbounded.
+    max_correction_degrees: float | None = None
 
     def __post_init__(self) -> None:
         if self.step_size <= 0.0:
             raise ValueError("step_size must be positive")
+        if self.max_correction_degrees is not None:
+            if self.max_correction_degrees <= 0.0:
+                raise ValueError("max_correction_degrees must be positive")
+            if self.step_size > self.max_correction_degrees:
+                raise ValueError("step_size must not exceed max_correction_degrees")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be >= 1")
         if self.x_tolerance <= 0.0 or self.f_tolerance <= 0.0:

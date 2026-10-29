@@ -388,6 +388,7 @@ def _refine_one(
     ``method="Nelder-Mead"`` from a fixed initial simplex of edge length ``search.step_size``
     around ``(alpha, beta, omega) = (0, 0, 0)``, exactly mirroring the reference implementation
     this port is checked against. ``n_passes`` is scipy's reported iteration count (``result.nit``).
+    With ``search.max_correction_degrees`` set, every angle is bounded to ``+/-`` that value.
 
     ``seed_score`` is the same metric at the unsearched seed orientation (``alpha = beta = omega =
     0``), so the report can state what the search actually bought (``seed_score - score``) instead of
@@ -456,10 +457,12 @@ def _refine_one(
             [0.0, 0.0, step],
         ]
     )
+    bound = search.max_correction_degrees
     result = minimize(
         objective,
         x0=np.zeros(3),
         method="Nelder-Mead",
+        bounds=None if bound is None else [(-bound, bound)] * 3,
         options={
             "initial_simplex": initial_simplex,
             "maxiter": search.max_iterations,
