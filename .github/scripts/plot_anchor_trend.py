@@ -3,16 +3,18 @@
 Usage:  python plot_anchor_trend.py <history.csv> <out_dir>
 
 Reads ``date,sha,max_abs_r_obs_deviation,r_obs_atol`` rows (an empty deviation is a gap: the
-merge recorded no measurement) and writes one SVG per GitHub README theme into ``out_dir``:
+merge recorded no measurement) and writes into ``out_dir``:
 
-    anchor-trend.svg        light
-    anchor-trend-dark.svg   dark
+    anchor-trend.svg        light chart (README, via <picture> with prefers-color-scheme)
+    anchor-trend-dark.svg   dark chart
+    anchor-trend.html       both charts inline, each point linked to its commit, plus a table
 
-The README embeds both via <picture> with prefers-color-scheme. Each point is the largest
+The README's image is proxied as a plain <img>, which disables links inside the SVG, so the
+README links to the HTML page for the interactive view. Each point is the largest
 ``|r_obs - reference r_obs|`` over the rotations ``tests/e2e/inference/test_inference.py`` ran;
 the dashed line is the ``atol`` that test held each rotation to, read per row from the CSV
 (never hardcoded here -- a hardcoded tolerance is how the previous chart went stale). Points on
-or under the line passed; a point above it is the event this plot exists to show.
+or under the line were within tolerance; a point above it is the event this plot exists to show.
 
 CI (``publish`` job) runs this from main's checkout against the history on the ``badges`` branch.
 """
@@ -20,7 +22,10 @@ CI (``publish`` job) runs this from main's checkout against the history on the `
 from __future__ import annotations
 
 import csv
+import html
+import io
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +33,8 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+
+COMMIT_URL = "https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/"
 
 THEMES = {
     "": {  # light
@@ -46,7 +53,7 @@ THEMES = {
     },
 }
 
-type Row = tuple[datetime, float, float]
+type Row = tuple[datetime, str, float, float]
 
 
 def load_rows(path: Path) -> list[Row]:
@@ -58,6 +65,7 @@ def load_rows(path: Path) -> list[Row]:
             rows.append(
                 (
                     datetime.fromisoformat(row["date"]),
+                    row["sha"],
                     float(deviation) if deviation else math.nan,
                     float(atol) if atol else math.nan,
                 )
@@ -66,10 +74,16 @@ def load_rows(path: Path) -> list[Row]:
     return rows
 
 
-def render(rows: list[Row], out: Path, theme: dict[str, str]) -> None:
+def _hover(row: Row) -> str:
+    date, sha, deviation, atol = row
+    return f"{date:%Y-%m-%d} {sha[:7]}: max |ΔR_obs| {deviation:.2e} (atol {atol:.0e})"
+
+
+def render(rows: list[Row], theme: dict[str, str]) -> str:
+    """Return the chart as an SVG document; each measured point links to its commit."""
     xs = list(range(len(rows)))
-    deviations = [d for _, d, _ in rows]
-    atols = [a for _, _, a in rows]
+    deviations = [r[2] for r in rows]
+    atols = [r[3] for r in rows]
 
     fig, ax = plt.subplots(figsize=(8.0, 3.2), dpi=100)
     fig.patch.set_alpha(0.0)
@@ -105,16 +119,18 @@ def render(rows: list[Row], out: Path, theme: dict[str, str]) -> None:
             fontsize=8,
             color=theme["ink_muted"],
         )
-    # NaN gaps break the line; markers show every merge, including isolated ones.
-    ax.plot(
-        xs,
-        deviations,
+    # NaN gaps break the line; one linked marker per measured merge, including isolated ones.
+    ax.plot(xs, deviations, color=theme["series"], linewidth=2.0, zorder=3)
+    measured = [(x, r) for x, r in zip(xs, rows, strict=True) if not math.isnan(r[2])]
+    points = ax.scatter(
+        [x for x, _ in measured],
+        [r[2] for _, r in measured],
+        s=24,
         color=theme["series"],
-        linewidth=2.0,
-        marker="o",
-        markersize=4,
-        zorder=3,
+        linewidths=0,
+        zorder=4,
     )
+    points.set_urls([COMMIT_URL + r[1] for _, r in measured])
 
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: "0" if v == 0 else f"{v:.1e}"))
     ax.set_ylabel("max |ΔR_obs|", color=theme["ink_muted"], fontsize=9)
@@ -153,9 +169,80 @@ def render(rows: list[Row], out: Path, theme: dict[str, str]) -> None:
     ax.spines["bottom"].set_color(theme["baseline"])
 
     fig.tight_layout()
-    fig.savefig(out, format="svg", transparent=True)
+    buffer = io.StringIO()
+    fig.savefig(buffer, format="svg", transparent=True)
     plt.close(fig)
-    print(f"wrote {out} ({len(rows)} rows)")
+    svg = buffer.getvalue()
+    # Hover text: matplotlib writes no <title>, so add one inside each point's link.
+    for _, row in measured:
+        link = f'<a xlink:href="{COMMIT_URL}{row[1]}" target="_blank">'
+        svg = svg.replace(link, f"{link}<title>{html.escape(_hover(row))}</title>", 1)
+    return svg
+
+
+def _status(deviation: float, atol: float) -> str:
+    if math.isnan(deviation):
+        return "no measurement"
+    if math.isnan(atol):
+        return "no tolerance recorded"
+    return "within tolerance" if deviation <= atol else "over tolerance"
+
+
+def page(rows: list[Row], light_svg: str, dark_svg: str) -> str:
+    """Both charts inline (links work inline, not through <img>) and a newest-first table."""
+
+    def inline(svg: str, prefix: str = "") -> str:
+        svg = svg[svg.index("<svg") :]
+        # Both charts share one document: prefix ids and their references so they can't clash.
+        return re.sub(r'(id="|url\(#|href="#)', rf"\g<1>{prefix}", svg) if prefix else svg
+
+    body = "\n".join(
+        "<tr>"
+        f"<td>{date:%Y-%m-%d}</td>"
+        f'<td><a href="{COMMIT_URL}{sha}"><code>{sha[:7]}</code></a></td>'
+        f"<td class=num>{'—' if math.isnan(dev) else f'{dev:.2e}'}</td>"
+        f"<td class=num>{'—' if math.isnan(atol) else f'{atol:.0e}'}</td>"
+        f"<td>{_status(dev, atol)}</td>"
+        "</tr>"
+        for date, sha, dev, atol in reversed(rows)
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>diffBloch anchor trend</title>
+<style>
+:root {{ --bg: #fff; --ink: #1f2328; --muted: #59636e; --rule: #d1d9e0; --link: #0969da; }}
+@media (prefers-color-scheme: dark) {{
+  :root {{ --bg: #0d1117; --ink: #e6edf3; --muted: #9198a1; --rule: #3d444d; --link: #4493f8; }}
+}}
+body {{ margin: 0 auto; max-width: 960px; padding: 16px; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+a {{ color: var(--link); }}
+p {{ color: var(--muted); }}
+.chart svg {{ width: 100%; height: auto; }}
+.chart.dark {{ display: none; }}
+@media (prefers-color-scheme: dark) {{ .chart.light {{ display: none; }} .chart.dark {{ display: block; }} }}
+.table {{ overflow-x: auto; }}
+table {{ border-collapse: collapse; width: 100%; font-size: 14px; }}
+th, td {{ text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }}
+th {{ color: var(--muted); font-weight: 600; }}
+.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+</style>
+<h1>quartz e2e anchor</h1>
+<p>For every merge to <code>main</code>: the largest deviation of any rotation's
+<code>R_obs</code> from its committed reference, against the tolerance the test allows. Click a
+point or a commit to open its diff.</p>
+<div class="chart light">{inline(light_svg)}</div>
+<div class="chart dark">{inline(dark_svg, "dark-")}</div>
+<div class="table"><table>
+<thead><tr><th>Date</th><th>Commit</th><th class=num>max |ΔR_obs|</th><th class=num>atol</th>
+<th>Status</th></tr></thead>
+<tbody>
+{body}
+</tbody></table></div>
+</html>
+"""
 
 
 def main() -> None:
@@ -163,8 +250,12 @@ def main() -> None:
     matplotlib.rcParams["svg.fonttype"] = "none"  # text as text, not paths
     matplotlib.rcParams["font.family"] = "sans-serif"
     rows = load_rows(csv_path)
+    svgs = {}
     for suffix, theme in THEMES.items():
-        render(rows, out_dir / f"anchor-trend{suffix}.svg", theme)
+        svgs[suffix] = render(rows, theme)
+        (out_dir / f"anchor-trend{suffix}.svg").write_text(svgs[suffix])
+    (out_dir / "anchor-trend.html").write_text(page(rows, svgs[""], svgs["-dark"]))
+    print(f"wrote anchor-trend{{,-dark}}.svg and anchor-trend.html to {out_dir} ({len(rows)} rows)")
 
 
 if __name__ == "__main__":

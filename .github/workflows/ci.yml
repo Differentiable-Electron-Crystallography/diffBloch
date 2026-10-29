@@ -137,9 +137,9 @@ jobs:
             '{schemaVersion: 1, label: "coverage", message: $msg, color: $color}' \
             > docs/_build/html/coverage-endpoint.json
           git fetch --depth 1 origin badges
-          for svg in anchor-trend.svg anchor-trend-dark.svg; do
-            git show FETCH_HEAD:"$svg" > "docs/_build/html/$svg" \
-              || echo "::warning::$svg not on badges yet; docsite copy skipped"
+          for file in anchor-trend.svg anchor-trend-dark.svg anchor-trend.html; do
+            git show FETCH_HEAD:"$file" > "docs/_build/html/$file" \
+              || echo "::warning::$file not on badges yet; docsite copy skipped"
           done
 
       - name: Upload Pages artifact
@@ -227,7 +227,8 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: Update anchor trend
-          file_pattern: anchor-deviation-history.csv anchor-trend.svg anchor-trend-dark.svg
+          file_pattern: >-
+            anchor-deviation-history.csv anchor-trend.svg anchor-trend-dark.svg anchor-trend.html
 
   # The physics anchors: opt-in locally (`just test-e2e`), a separate job here so the fast checks
   # report first. Per-rotation quartz inference pinned to tests/e2e/inference/quartz/results.json.

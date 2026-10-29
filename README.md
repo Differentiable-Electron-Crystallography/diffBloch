@@ -61,10 +61,14 @@ line is the tolerance the test allows. Points on or under the line were within t
 come from CI's runner and vary by about 10⁻⁷ between runs and hardware, so a flat line at zero is
 not expected. Gaps are merges that recorded no measurement.
 
+<a href="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.html">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend-dark.svg">
   <img alt="Largest per-rotation R_obs deviation from reference in the quartz e2e test, for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
 </picture>
+</a>
+
+[Every merge, with links to each commit's diff](https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.html)
 
 ## Citation
 
