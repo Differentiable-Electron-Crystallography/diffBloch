@@ -137,9 +137,9 @@ jobs:
             '{schemaVersion: 1, label: "coverage", message: $msg, color: $color}' \
             > docs/_build/html/coverage-endpoint.json
           git fetch --depth 1 origin badges
-          for svg in anchor-trend.svg anchor-trend-dark.svg; do
-            git show FETCH_HEAD:"$svg" > "docs/_build/html/$svg" \
-              || echo "::warning::$svg not on badges yet; docsite copy skipped"
+          for file in anchor-trend.svg anchor-trend-dark.svg anchor-trend.html; do
+            git show FETCH_HEAD:"$file" > "docs/_build/html/$file" \
+              || echo "::warning::$file not on badges yet; docsite copy skipped"
           done
 
       - name: Upload Pages artifact
@@ -151,10 +151,12 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
-  # Publish the anchor R_obs trend to the orphan `badges` branch: CSV + SVGs, rendered by
-  # plot_anchor_trend.py, which lives ON `badges`. Gated on check success but runs even when
-  # e2e is red -- the anchor row becomes a gap. The docsite (docs-deploy) is what serves the
-  # badge data publicly; this branch is the durable store the docsite copies from.
+  # Publish the anchor trend to the orphan `badges` branch: anchor-deviation-history.csv + SVGs,
+  # rendered by .github/scripts/plot_anchor_trend.py from this commit's checkout (so the script is
+  # reviewed with the PR that changes it). Gated on check success but runs even when e2e is red --
+  # the anchor row becomes a gap. The docsite (docs-deploy) is what serves the badge data
+  # publicly; this branch is the durable store the docsite copies from. anchor-history.csv (mean
+  # R_obs, the retired coupled anchor and its successor) stays on `badges`, frozen.
   publish:
     needs: [check, e2e]
     if: >-
@@ -171,6 +173,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: badges
+
+      - uses: actions/checkout@v7
+        with:
+          path: _main
+          sparse-checkout: .github/scripts/plot_anchor_trend.py
+          sparse-checkout-cone-mode: false
 
       # Concurrency serializes runs, but the checkout may still predate a just-finished publish.
       - name: Sync to latest badges
@@ -189,42 +197,41 @@ jobs:
 
       - name: Append anchor history row
         run: |
-          # Keys are written by tests/e2e/inference/test_inference.py::_write_anchor_metrics as
-          # {material}_mean_{metric}. They were `quartz_coupled_mean_r_obs` here against a producer
-          # that no longer exists, and jq's `// empty` turned the mismatch into a blank rather than
-          # an error -- so the trend silently recorded 48 empty rows before anyone noticed.
-          r_obs=""
-          wr2=""
+          # Keys are written by tests/e2e/inference/test_inference.py::_write_anchor_metrics. jq's
+          # `// empty` turns a renamed key into a blank, not an error, so a missing value warns:
+          # a run of silent gaps is how a producer/consumer mismatch went unnoticed before.
+          deviation=""
+          atol=""
           if [ -f anchor-metrics.json ]; then
-            r_obs=$(jq -r '.quartz_mean_r_obs // empty' anchor-metrics.json)
-            wr2=$(jq -r '.quartz_mean_wr2 // empty' anchor-metrics.json)
+            deviation=$(jq -r '.quartz_max_abs_r_obs_deviation // empty' anchor-metrics.json)
+            atol=$(jq -r '.quartz_r_obs_atol // empty' anchor-metrics.json)
           fi
-          if [ -z "$r_obs" ]; then
-            echo "::warning::no quartz_mean_r_obs in anchor-metrics.json; recording a gap"
+          if [ -z "$deviation" ]; then
+            echo "::warning::no quartz_max_abs_r_obs_deviation in anchor-metrics.json; recording a gap"
           fi
-          # Older histories have three columns; widen in place so existing rows keep parsing.
-          [ -f anchor-history.csv ] || echo "date,sha,mean_r_obs,mean_wr2" > anchor-history.csv
-          if head -1 anchor-history.csv | grep -qv mean_wr2; then
-            sed -i '1s/$/,mean_wr2/' anchor-history.csv
-          fi
-          if grep -q "$GITHUB_SHA" anchor-history.csv; then
+          history=anchor-deviation-history.csv
+          [ -f "$history" ] || echo "date,sha,max_abs_r_obs_deviation,r_obs_atol" > "$history"
+          if grep -q "$GITHUB_SHA" "$history"; then
             echo "row for $GITHUB_SHA already present (re-run); leaving history unchanged"
           else
-            echo "$(date -u +%FT%TZ),${GITHUB_SHA},${r_obs},${wr2}" >> anchor-history.csv
+            echo "$(date -u +%FT%TZ),${GITHUB_SHA},${deviation},${atol}" >> "$history"
           fi
 
       - name: Render anchor trend
-        run: MPLBACKEND=Agg uv run --python 3.12 --with 'matplotlib==3.*' python plot_anchor_trend.py
+        run: >-
+          MPLBACKEND=Agg uv run --no-project --python 3.12 --with 'matplotlib==3.*'
+          python _main/.github/scripts/plot_anchor_trend.py anchor-deviation-history.csv .
 
-      # file_pattern keeps the downloaded artifacts out of the commit.
+      # file_pattern keeps the downloaded artifacts and the _main checkout out of the commit.
       - name: Commit anchor trend
         uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: Update anchor trend
-          file_pattern: anchor-history.csv anchor-trend.svg anchor-trend-dark.svg
+          file_pattern: >-
+            anchor-deviation-history.csv anchor-trend.svg anchor-trend-dark.svg anchor-trend.html
 
-  # The physics anchors: opt-in locally (`just anchor`), a separate job here so the fast checks
-  # report first. Full 99-rotation static + integrated (CLI-driven) quartz pins, ~5-6 min on CPU.
+  # The physics anchors: opt-in locally (`just test-e2e`), a separate job here so the fast checks
+  # report first. Per-rotation quartz inference pinned to tests/e2e/inference/quartz/results.json.
   e2e:
     runs-on: ubuntu-latest
     env:
