@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-10-29T17:17:22.528994</dc:date>
+    <dc:date>2026-10-30T09:31:10.615081</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -31,193 +31,598 @@ z
   </g>
   <g id="axes_1">
    <g id="patch_2">
-    <path d="M 51.422109 207.698125 
-L 553.694634 207.698125 
-L 553.694634 28.72 
-L 51.422109 28.72 
-L 51.422109 207.698125 
+    <path d="M 59.342109 208.1 
+L 556.256471 208.1 
+L 556.256471 28.72 
+L 59.342109 28.72 
+L 59.342109 208.1 
 z
 " style="fill: none"/>
-   </g>
-   <g id="patch_3">
-    <path d="M 51.422109 174.139727 
-L 553.694634 174.139727 
-L 553.694634 62.278398 
-L 51.422109 62.278398 
-z
-" clip-path="url(#p6172d17d5e)" style="fill: #cde2fb; opacity: 0.35"/>
    </g>
    <g id="matplotlib.axis_1">
     <g id="xtick_1">
      <g id="line2d_1"/>
      <g id="text_1">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="53.463868" y="217.276875" transform="rotate(-0 53.463868 217.276875)">Jul 08</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="64.213819" y="217.678125" transform="rotate(-0 64.213819 217.678125)">Aug 14</text>
      </g>
     </g>
     <g id="xtick_2">
      <g id="line2d_2"/>
      <g id="text_2">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="135.134197" y="217.276875" transform="rotate(-0 135.134197 217.276875)">Jul 17</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="142.16117" y="217.678125" transform="rotate(-0 142.16117 217.678125)">Aug 18</text>
      </g>
     </g>
     <g id="xtick_3">
      <g id="line2d_3"/>
      <g id="text_3">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="216.804526" y="217.276875" transform="rotate(-0 216.804526 217.276875)">Jul 23</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="298.055871" y="217.678125" transform="rotate(-0 298.055871 217.678125)">Aug 26</text>
      </g>
     </g>
     <g id="xtick_4">
      <g id="line2d_4"/>
      <g id="text_4">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="298.474855" y="217.276875" transform="rotate(-0 298.474855 217.276875)">Jul 24</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="376.003222" y="217.678125" transform="rotate(-0 376.003222 217.678125)">Aug 27</text>
      </g>
     </g>
     <g id="xtick_5">
      <g id="line2d_5"/>
      <g id="text_5">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="380.145185" y="217.27625" transform="rotate(-0 380.145185 217.27625)">Aug 10</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="453.950573" y="217.678125" transform="rotate(-0 453.950573 217.678125)">Sep 10</text>
      </g>
     </g>
     <g id="xtick_6">
      <g id="line2d_6"/>
      <g id="text_6">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="461.815514" y="217.27625" transform="rotate(-0 461.815514 217.27625)">Aug 13</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="531.897923" y="217.678125" transform="rotate(-0 531.897923 217.678125)">Oct 29</text>
      </g>
     </g>
     <g id="xtick_7">
      <g id="line2d_7"/>
      <g id="text_7">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="543.485843" y="217.27625" transform="rotate(-0 543.485843 217.27625)">Oct 21</text>
-     </g>
-    </g>
-    <g id="xtick_8">
-     <g id="line2d_8"/>
-     <g id="text_8">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="551.652876" y="217.27625" transform="rotate(-0 551.652876 217.27625)">Oct 29</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="551.384761" y="217.678125" transform="rotate(-0 551.384761 217.678125)">Oct 30</text>
      </g>
     </g>
    </g>
    <g id="matplotlib.axis_2">
     <g id="ytick_1">
-     <g id="line2d_9">
-      <path d="M 51.422109 205.460898 
-L 553.694634 205.460898 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_8">
+      <path d="M 59.342109 208.1 
+L 556.256471 208.1 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_10"/>
-     <g id="text_9">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="208.499961" transform="rotate(-0 47.922109 208.499961)">0.035</text>
+     <g id="line2d_9"/>
+     <g id="text_8">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="211.139063" transform="rotate(-0 55.842109 211.139063)">0</text>
      </g>
     </g>
     <g id="ytick_2">
-     <g id="line2d_11">
-      <path d="M 51.422109 177.495566 
-L 553.694634 177.495566 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_10">
+      <path d="M 59.342109 184.182667 
+L 556.256471 184.182667 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_12"/>
-     <g id="text_10">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="180.534629" transform="rotate(-0 47.922109 180.534629)">0.040</text>
+     <g id="line2d_11"/>
+     <g id="text_9">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="187.221729" transform="rotate(-0 55.842109 187.221729)">2.0e-07</text>
      </g>
     </g>
     <g id="ytick_3">
-     <g id="line2d_13">
-      <path d="M 51.422109 149.530234 
-L 553.694634 149.530234 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_12">
+      <path d="M 59.342109 160.265333 
+L 556.256471 160.265333 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_14"/>
-     <g id="text_11">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="152.569297" transform="rotate(-0 47.922109 152.569297)">0.045</text>
+     <g id="line2d_13"/>
+     <g id="text_10">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="163.304396" transform="rotate(-0 55.842109 163.304396)">4.0e-07</text>
      </g>
     </g>
     <g id="ytick_4">
-     <g id="line2d_15">
-      <path d="M 51.422109 121.564902 
-L 553.694634 121.564902 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_14">
+      <path d="M 59.342109 136.348 
+L 556.256471 136.348 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_16"/>
-     <g id="text_12">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="124.603965" transform="rotate(-0 47.922109 124.603965)">0.050</text>
+     <g id="line2d_15"/>
+     <g id="text_11">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="139.387063" transform="rotate(-0 55.842109 139.387063)">6.0e-07</text>
      </g>
     </g>
     <g id="ytick_5">
-     <g id="line2d_17">
-      <path d="M 51.422109 93.59957 
-L 553.694634 93.59957 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_16">
+      <path d="M 59.342109 112.430667 
+L 556.256471 112.430667 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_18"/>
-     <g id="text_13">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="96.638633" transform="rotate(-0 47.922109 96.638633)">0.055</text>
+     <g id="line2d_17"/>
+     <g id="text_12">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="115.469729" transform="rotate(-0 55.842109 115.469729)">8.0e-07</text>
      </g>
     </g>
     <g id="ytick_6">
-     <g id="line2d_19">
-      <path d="M 51.422109 65.634238 
-L 553.694634 65.634238 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_18">
+      <path d="M 59.342109 88.513333 
+L 556.256471 88.513333 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_20"/>
-     <g id="text_14">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="68.673301" transform="rotate(-0 47.922109 68.673301)">0.060</text>
+     <g id="line2d_19"/>
+     <g id="text_13">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="91.552396" transform="rotate(-0 55.842109 91.552396)">1.0e-06</text>
      </g>
     </g>
     <g id="ytick_7">
-     <g id="line2d_21">
-      <path d="M 51.422109 37.668906 
-L 553.694634 37.668906 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     <g id="line2d_20">
+      <path d="M 59.342109 64.596 
+L 556.256471 64.596 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
      </g>
-     <g id="line2d_22"/>
+     <g id="line2d_21"/>
+     <g id="text_14">
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="67.635063" transform="rotate(-0 55.842109 67.635063)">1.2e-06</text>
+     </g>
+    </g>
+    <g id="ytick_8">
+     <g id="line2d_22">
+      <path d="M 59.342109 40.678667 
+L 556.256471 40.678667 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #e1e0d9; stroke-width: 0.75; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_23"/>
      <g id="text_15">
-      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="47.922109" y="40.707969" transform="rotate(-0 47.922109 40.707969)">0.065</text>
+      <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="55.842109" y="43.717729" transform="rotate(-0 55.842109 43.717729)">1.4e-06</text>
      </g>
     </g>
     <g id="text_16">
-     <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="18.8575" y="118.209063" transform="rotate(-90 18.8575 118.209063)">mean R_obs</text>
+     <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: middle; fill: #898781" x="18.96875" y="118.41" transform="rotate(-90 18.96875 118.41)">max |ΔR_obs|</text>
     </g>
    </g>
-   <g id="line2d_23">
-    <path d="M 51.422109 118.209062 
-L 553.694634 118.209062 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #cde2fb; stroke-linecap: square"/>
+   <g id="patch_3">
+    <path d="M 59.342109 88.513333 
+L 59.342109 88.513333 
+L 69.085528 88.513333 
+L 69.085528 88.513333 
+L 78.828947 88.513333 
+L 78.828947 88.513333 
+L 88.572366 88.513333 
+L 88.572366 88.513333 
+L 98.315785 88.513333 
+L 98.315785 88.513333 
+L 108.059204 88.513333 
+L 108.059204 88.513333 
+L 117.802622 88.513333 
+L 117.802622 88.513333 
+L 127.546041 88.513333 
+L 127.546041 88.513333 
+L 137.28946 88.513333 
+L 137.28946 88.513333 
+L 147.032879 88.513333 
+L 147.032879 88.513333 
+L 156.776298 88.513333 
+L 156.776298 88.513333 
+L 166.519717 88.513333 
+L 166.519717 88.513333 
+L 176.263136 88.513333 
+L 176.263136 88.513333 
+L 186.006554 88.513333 
+L 186.006554 88.513333 
+L 195.749973 88.513333 
+L 195.749973 88.513333 
+L 205.493392 88.513333 
+L 205.493392 88.513333 
+L 215.236811 88.513333 
+L 215.236811 88.513333 
+L 224.98023 88.513333 
+L 224.98023 88.513333 
+L 234.723649 88.513333 
+L 234.723649 88.513333 
+L 244.467067 88.513333 
+L 244.467067 88.513333 
+L 254.210486 88.513333 
+L 254.210486 88.513333 
+L 263.953905 88.513333 
+L 263.953905 88.513333 
+L 273.697324 88.513333 
+L 273.697324 88.513333 
+L 283.440743 88.513333 
+L 283.440743 88.513333 
+L 293.184162 88.513333 
+L 293.184162 88.513333 
+L 302.927581 88.513333 
+L 302.927581 88.513333 
+L 312.670999 88.513333 
+L 312.670999 88.513333 
+L 322.414418 88.513333 
+L 322.414418 88.513333 
+L 332.157837 88.513333 
+L 332.157837 88.513333 
+L 341.901256 88.513333 
+L 341.901256 88.513333 
+L 351.644675 88.513333 
+L 351.644675 88.513333 
+L 361.388094 88.513333 
+L 361.388094 88.513333 
+L 371.131512 88.513333 
+L 371.131512 88.513333 
+L 380.874931 88.513333 
+L 380.874931 88.513333 
+L 390.61835 88.513333 
+L 390.61835 88.513333 
+L 400.361769 88.513333 
+L 400.361769 88.513333 
+L 410.105188 88.513333 
+L 410.105188 88.513333 
+L 419.848607 88.513333 
+L 419.848607 88.513333 
+L 429.592026 88.513333 
+L 429.592026 88.513333 
+L 439.335444 88.513333 
+L 439.335444 88.513333 
+L 449.078863 88.513333 
+L 449.078863 88.513333 
+L 458.822282 88.513333 
+L 458.822282 88.513333 
+L 468.565701 88.513333 
+L 468.565701 88.513333 
+L 478.30912 88.513333 
+L 478.30912 88.513333 
+L 488.052539 88.513333 
+L 488.052539 88.513333 
+L 497.795958 88.513333 
+L 497.795958 88.513333 
+L 507.539376 88.513333 
+L 507.539376 88.513333 
+L 517.282795 88.513333 
+L 517.282795 88.513333 
+L 527.026214 88.513333 
+L 527.026214 88.513333 
+L 536.769633 88.513333 
+L 536.769633 88.513333 
+L 546.513052 88.513333 
+L 546.513052 88.513333 
+L 556.256471 88.513333 
+L 556.256471 88.513333 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke-dasharray: 4,3; stroke-dashoffset: 0; stroke: #898781; stroke-linejoin: miter"/>
    </g>
    <g id="patch_4">
-    <path d="M 51.422109 207.698125 
-L 553.694634 207.698125 
+    <path d="M 59.342109 208.1 
+L 556.256471 208.1 
 " style="fill: none; stroke: #c3c2b7; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
-   <g id="line2d_24">
-    <path d="M 53.463868 118.408713 
-L 124.925406 118.408713 
-M 141.259472 118.408713 
-L 192.303427 118.408713 
-M 200.47046 117.455087 
-L 210.679251 117.455087 
-M 229.055075 117.455087 
-L 243.347383 117.455087 
-M 259.681449 117.455087 
-L 327.059471 117.455087 
-M 378.103426 69.652218 
-L 433.230899 69.652211 
-L 435.272657 59.660869 
-L 551.652876 59.659769 
-L 551.652876 59.659769 
-" clip-path="url(#p6172d17d5e)" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
-   </g>
    <g id="text_17">
-    <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: end; fill: #898781" x="551.183272" y="60.356523" transform="rotate(-0 551.183272 60.356523)">pinned 0.0506 ± 0.01</text>
+    <text style="font-size: 8px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: start; fill: #898781" x="61.826681" y="83.591458" transform="rotate(-0 61.826681 83.591458)">atol 1e-06</text>
+   </g>
+   <g id="line2d_24">
+    <path d="M 64.213819 153.398234 
+L 73.957238 153.398234 
+L 83.700656 153.398234 
+L 93.444075 153.398234 
+L 103.187494 153.398234 
+L 112.930913 153.398234 
+L 122.674332 153.398234 
+L 132.417751 153.398234 
+L 142.16117 153.398234 
+L 151.904588 153.398234 
+L 161.648007 153.398234 
+L 171.391426 153.398234 
+L 181.134845 153.398234 
+L 190.878264 153.398234 
+L 200.621683 153.398234 
+L 210.365102 153.398234 
+L 220.10852 153.398234 
+L 229.851939 153.398234 
+L 239.595358 153.398234 
+L 249.338777 153.398234 
+L 259.082196 153.398234 
+L 268.825615 153.398234 
+L 278.569033 153.398234 
+L 288.312452 153.398234 
+L 298.055871 153.398234 
+L 307.79929 153.398234 
+L 317.542709 153.398234 
+L 327.286128 204.0932 
+L 337.029547 204.0932 
+L 346.772965 204.0932 
+L 356.516384 204.0932 
+L 366.259803 204.0932 
+L 376.003222 204.0932 
+L 385.746641 204.0932 
+L 395.49006 204.0932 
+L 405.233478 204.0932 
+L 414.976897 204.0932 
+L 424.720316 204.0932 
+L 434.463735 204.0932 
+L 444.207154 204.0932 
+L 453.950573 204.0932 
+L 463.693992 204.0932 
+L 473.43741 204.0932 
+L 483.180829 204.0932 
+L 492.924248 204.0932 
+L 502.667667 204.0932 
+L 512.411086 204.0932 
+L 522.154505 204.0932 
+L 531.897923 204.0932 
+L 541.641342 204.0932 
+L 551.384761 204.0932 
+" clip-path="url(#p3fc4f5e794)" style="fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linecap: square"/>
    </g>
    <g id="text_18">
-    <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: start; fill: #52514e" x="51.422109" y="18.72" transform="rotate(-0 51.422109 18.72)">quartz coupled anchor — mean R_obs per merge to main</text>
+    <text style="font-size: 10px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: start; fill: #52514e" x="59.342109" y="18.72" transform="rotate(-0 59.342109 18.72)">quartz e2e anchor — worst per-rotation R_obs deviation from reference, per merge</text>
+   </g>
+   <g id="PathCollection_1">
+    <defs>
+     <path id="C0_0_eb1878599d" d="M 0 2.44949 
+C 0.649612 2.44949 1.272706 2.191396 1.732051 1.732051 
+C 2.191396 1.272706 2.44949 0.649612 2.44949 -0 
+C 2.44949 -0.649612 2.191396 -1.272706 1.732051 -1.732051 
+C 1.272706 -2.191396 0.649612 -2.44949 0 -2.44949 
+C -0.649612 -2.44949 -1.272706 -2.191396 -1.732051 -1.732051 
+C -2.191396 -1.272706 -2.44949 -0.649612 -2.44949 0 
+C -2.44949 0.649612 -2.191396 1.272706 -1.732051 1.732051 
+C -1.272706 2.191396 -0.649612 2.44949 0 2.44949 
+z
+"/>
+    </defs>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/327ebecad429915d2849f510f294535a825ad520" target="_blank"><title>2026-08-14 327ebec: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="64.213819" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/999708ee2c7c0b1f481448973da295effcbd57e7" target="_blank"><title>2026-08-18 999708e: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="73.957238" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/fbd3b01e5088fd934c8b2530f35b13e6a47d6d34" target="_blank"><title>2026-08-18 fbd3b01: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="83.700656" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/5dd3275f740e28e35795a828d568ffafdb36038f" target="_blank"><title>2026-08-18 5dd3275: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="93.444075" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/df43a7fef88eb1d979bba00482b1f3781a77fc9d" target="_blank"><title>2026-08-18 df43a7f: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="103.187494" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/a24bc05c0ce3370ba6bb8d726e8ab3257d3d5879" target="_blank"><title>2026-08-18 a24bc05: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="112.930913" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/4a0e093774521222a7dafac3aec621b7a9058efe" target="_blank"><title>2026-08-18 4a0e093: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="122.674332" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/864c58a7841394dc8f425c6fbda717cf6303fdf6" target="_blank"><title>2026-08-18 864c58a: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="132.417751" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/104af462d6a2c32c8438e5c11578d8e0db029ea0" target="_blank"><title>2026-08-18 104af46: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="142.16117" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/92860856bd2b3fa2c38b9e81bd30a217b1659458" target="_blank"><title>2026-08-20 9286085: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="151.904588" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/3e5e318d89cd9b1e50e1b88be4805bb1f26af900" target="_blank"><title>2026-08-20 3e5e318: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="161.648007" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/3cbe215ac34ab09adb91c3c8c3cfb8c40d18067f" target="_blank"><title>2026-08-20 3cbe215: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="171.391426" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/f2d8572f12b6e2bf0303de8c87995974216ac112" target="_blank"><title>2026-08-20 f2d8572: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="181.134845" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/c6a92db96f72b4fc428f459360a39fdc699b3035" target="_blank"><title>2026-08-20 c6a92db: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="190.878264" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/7bbc9f786e720f6c26eea2290c5347e6451401a2" target="_blank"><title>2026-08-20 7bbc9f7: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="200.621683" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/34d6154e2d546ce23375c237c01dcb40ca64259e" target="_blank"><title>2026-08-21 34d6154: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="210.365102" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/79262a2f746616a2bc7937745cb2131ea8f5a069" target="_blank"><title>2026-08-26 79262a2: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="220.10852" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/03de1dcfd1b39381b106ab36cf50a920d2bbf5ec" target="_blank"><title>2026-08-26 03de1dc: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="229.851939" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/7c1f7f68fe1112d601f8aa77133fe4045da12b5d" target="_blank"><title>2026-08-26 7c1f7f6: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="239.595358" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/20529fdccfcfd451439df1ece8028592a0caaf68" target="_blank"><title>2026-08-26 20529fd: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="249.338777" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/ddfbb1f6e6d635d654ed26ca677c7101fedc9d9b" target="_blank"><title>2026-08-26 ddfbb1f: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="259.082196" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/ff13554461442ed1acf251ace3bed1f98e334b1d" target="_blank"><title>2026-08-26 ff13554: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="268.825615" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/a4103013eccb8a32da7369713c4e29cefc2a9099" target="_blank"><title>2026-08-26 a410301: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="278.569033" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/d258cb62587acc213c1291322ad03a82d3cc1412" target="_blank"><title>2026-08-26 d258cb6: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="288.312452" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/6941f3b6cae8f6d32feda78d697a0601ae80ecfd" target="_blank"><title>2026-08-26 6941f3b: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="298.055871" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/944cfa5d14196ad51ffc1cef72078f7b8aa0c513" target="_blank"><title>2026-08-26 944cfa5: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="307.79929" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/4637d685cf38a989cac9f58357fb75cbb5619ed2" target="_blank"><title>2026-08-26 4637d68: max |ΔR_obs| 4.57e-07 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="317.542709" y="153.398234" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/a5fd676c4099a66f63cb4944adb37a03b907748c" target="_blank"><title>2026-08-27 a5fd676: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="327.286128" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/1492e434fae592b66aea89655df507db5714634c" target="_blank"><title>2026-08-27 1492e43: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="337.029547" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/b563c5283e5de1fe7125c98c398830170d0119ae" target="_blank"><title>2026-08-27 b563c52: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="346.772965" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/187130712cdef1a6f8b4c786e1a65f32ce61c42f" target="_blank"><title>2026-08-27 1871307: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="356.516384" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/92cca6203853f96a54998b86b41bd60590ff0f3b" target="_blank"><title>2026-08-27 92cca62: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="366.259803" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/e331468ee7d7e1678acea0607eebc2cd372c2d77" target="_blank"><title>2026-08-27 e331468: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="376.003222" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/fe14e933bc647d371375cf25557bd67c42427404" target="_blank"><title>2026-08-27 fe14e93: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="385.746641" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/5608a2543d88cea4f715b98dddf201371dc66898" target="_blank"><title>2026-09-09 5608a25: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="395.49006" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/94ecf1fdfd9a1111f21aa5e08930652eda74b6ef" target="_blank"><title>2026-09-09 94ecf1f: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="405.233478" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/1b8146673537c0f861615c702f7987aae47f8b4a" target="_blank"><title>2026-09-10 1b81466: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="414.976897" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/f898e1501192bf76b483a08fc5b5de6f750ede0a" target="_blank"><title>2026-09-10 f898e15: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="424.720316" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/6f3aee99756640159f0934c2c858972106e7c4ce" target="_blank"><title>2026-09-10 6f3aee9: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="434.463735" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/0493b5914d6a6c0b741c5c15d58e4746b001db49" target="_blank"><title>2026-09-10 0493b59: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="444.207154" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/479ada20784ad5fd7c90268316ca594943a65c27" target="_blank"><title>2026-09-10 479ada2: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="453.950573" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/6d46653c2a94c0b4e519aa28f4d10411544e4f42" target="_blank"><title>2026-09-11 6d46653: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="463.693992" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/6e358c5913e6525162987a7c3008deab3aa3b3e5" target="_blank"><title>2026-09-15 6e358c5: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="473.43741" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/5b2f5bbd84bbd21adc638a876c764117b13f3e78" target="_blank"><title>2026-09-15 5b2f5bb: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="483.180829" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/23203ff4fb895679da204be70e9ac8cb5224e104" target="_blank"><title>2026-10-21 23203ff: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="492.924248" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/abbb08e84dcf48b59dab77c48b52bfc6158d620d" target="_blank"><title>2026-10-21 abbb08e: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="502.667667" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/575c30d7c7213e10d21c067ab8063a5f19fa83c9" target="_blank"><title>2026-10-21 575c30d: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="512.411086" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/88e0545ae553c26d8c33144d860e0b11d7152f87" target="_blank"><title>2026-10-21 88e0545: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="522.154505" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/0a855ab3e2b30453e614c9270bfb7350e5c86130" target="_blank"><title>2026-10-29 0a855ab: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="531.897923" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/7e6b83488d8cc70b760d18926b65b5372a55c7d5" target="_blank"><title>2026-10-29 7e6b834: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="541.641342" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
+    <a xlink:href="https://github.com/Differentiable-Electron-Crystallography/diffBloch/commit/a7b8d9c6a076598d31306319705d835c0c03d9ff" target="_blank"><title>2026-10-30 a7b8d9c: max |ΔR_obs| 3.35e-08 (atol 1e-06)</title>
+     <g clip-path="url(#p3fc4f5e794)">
+      <use xlink:href="#C0_0_eb1878599d" x="551.384761" y="204.0932" style="fill: #2a78d6"/>
+     </g>
+    </a>
    </g>
   </g>
  </g>
  <defs>
-  <clipPath id="p6172d17d5e">
-   <rect x="51.422109" y="28.72" width="502.272525" height="178.978125"/>
+  <clipPath id="p3fc4f5e794">
+   <rect x="59.342109" y="28.72" width="496.914361" height="179.38"/>
   </clipPath>
  </defs>
 </svg>
