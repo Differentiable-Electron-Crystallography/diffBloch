@@ -1,34 +1,5 @@
 # Review: `feat/isotropic-mosaicity`
 
-## Scope, and what I did not check
-
-The branch replaces an axis-only moving-average mosaicity model with one that solves the
-calculation at several perturbed orientations and sums the intensities. Five samples by
-default, placed by `blochwave.mosaicity_placement`, which chooses between `golden_spiral`
-and `symmetric`.
-
-Everything below is about the code's behaviour against the code's own stated intentions.
-I verified each claim by running it. Where I report a number, the command that produced
-it is in the notebook alongside this review.
-
-One thing I deliberately do not claim. The code says `sigma_degrees` is the standard
-deviation of a two-dimensional isotropic Gaussian orientation distribution, and calls
-that "the usual crystallographic mosaicity convention". I have not verified that the
-PETS2 apparent mosaicity the code feeds into it is that quantity. It is scraped from
-free text with no definition recorded:
-
-```python
-# io/pets.py:165-171
-def _mosaicity(block: gemmi.cif.Block) -> float | None:
-    """PETS2 apparent mosaicity in degrees from measurement details."""
-```
-
-`record.py:207` is a bare `mosaicity_degrees: float | None = None`. So I make no claim
-about whether the absolute amount of spread is right. The first finding does not need
-one.
-
----
-
 ## 1. The two placements disagree with each other by a factor of √2
 
 This is a contradiction inside the repository, provable without reference to any
@@ -101,10 +72,25 @@ Equal weights converge on the target. The shipped weighting converges on somethi
 
 ### Which one is wrong
 
-I cannot tell you from the code. If the PETS convention matches `symmetric`, then
-`golden_spiral` under-represents the spread and the fix is to use equal weights. If it
-matches `golden_spiral`, then `symmetric` and its test are wrong instead. What is not
-tenable is shipping both as interchangeable.
+I cannot tell you from the code, and neither can the code. `orientation.py` says
+`sigma_degrees` is the standard deviation of a two-dimensional isotropic Gaussian and
+calls that "the usual crystallographic mosaicity convention", but nothing records whether
+the PETS2 value fed into it is that quantity. It is scraped from free text with no
+definition attached:
+
+```python
+# io/pets.py:165-171
+def _mosaicity(block: gemmi.cif.Block) -> float | None:
+    """PETS2 apparent mosaicity in degrees from measurement details."""
+```
+
+and `record.py:207` is a bare `mosaicity_degrees: float | None = None`.
+
+So: if the convention matches `symmetric`, `golden_spiral` under-represents the spread and
+the fix is equal weights. If it matches `golden_spiral`, `symmetric` and its test are
+wrong instead. Either way one of them is wrong, which is what the measurement above
+establishes without needing the convention at all. What is not tenable is shipping both as
+interchangeable.
 
 This survived because the two tests `golden_spiral` does have check that the weights
 fall off with distance and that samples reach past sigma. The bug satisfies both.
