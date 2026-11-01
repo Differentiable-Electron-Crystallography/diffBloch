@@ -54,16 +54,21 @@ covers installation beyond quickstart.
 
 We welcome collaborations and interested parties may contribute to the codebase.
 
-Every merge to `main` re-runs the end to end (e2e) physics anchors. These correspond to rapid tests of the codebase's key functionalities and integration. Specifically, the measured mean `R_obs` for
-the example quartz refinement is expected to remain the same upon changes made to the directory. This Fig. tracks the result of this test upon every merge; the shaded band is the pinned tolerance. A flat line inside the band is the desired
-outcome, evidence the physics is reproducible commit over commit. Gaps are commits with no valid
-measurement (the committed checkpoint was stale for that commit's recipe, so the fast anchor
-could not score it).
+Every merge to `main` re-runs the end to end (e2e) physics anchor: forward inference on ten quartz
+rotations, each rotation's `R_obs` checked against a committed reference value. This figure plots,
+for every merge, the largest deviation of any rotation's `R_obs` from its reference; the dashed
+line is the tolerance the test allows. Points on or under the line were within tolerance. Values
+come from CI's runner and vary by about 10⁻⁷ between runs and hardware, so a flat line at zero is
+not expected. Gaps are merges that recorded no measurement.
 
+<a href="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.html">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend-dark.svg">
-  <img alt="Mean R_obs of the quartz e2e test for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
+  <img alt="Largest per-rotation R_obs deviation from reference in the quartz e2e test, for every merge to main" src="https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.svg">
 </picture>
+</a>
+
+[Every merge, with links to each commit's diff](https://differentiable-electron-crystallography.github.io/diffBloch/anchor-trend.html)
 
 ## Citation
 

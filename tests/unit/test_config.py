@@ -665,3 +665,27 @@ def test_numerics_beam_selection_cutoffs_are_validated() -> None:
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="rsg must be positive"):
         ExperimentConfig.model_validate({**base, "blochwave": {"rsg": 0.0}})
+
+
+def test_orientation_correction_bound_parses_into_the_search() -> None:
+    cfg = ExperimentConfig.model_validate(
+        {
+            "name": "bounded",
+            "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
+            "preprocess": {"orientation": {"nelder_mead": {"max_correction_degrees": 0.1}}},
+        }
+    )
+
+    assert cfg.preprocess.orientation.nelder_mead.to_search().max_correction_degrees == 0.1
+    with pytest.raises(ValidationError, match="step_size must not exceed max_correction_degrees"):
+        ExperimentConfig.model_validate(
+            {
+                "name": "bad",
+                "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"},
+                "preprocess": {
+                    "orientation": {
+                        "nelder_mead": {"step_size": 0.5, "max_correction_degrees": 0.1}
+                    }
+                },
+            }
+        )
