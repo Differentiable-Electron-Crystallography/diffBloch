@@ -132,6 +132,21 @@ def test_multi_dataset_mean_thicknesses_are_keyed_by_exp_data() -> None:
         )
 
 
+def test_declaration_records_the_incoherent_mosaicity_switch() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    geometry = (IntegrationGeometry(semiangle=1.0),)
+
+    off = ExperimentConfig.model_validate(base).to_declaration(geometry)
+    on = ExperimentConfig.model_validate(
+        {**base, "blochwave": {"incoherent_mosaicity": True}}
+    ).to_declaration(geometry)
+
+    assert off.incoherent_mosaicity is False
+    assert off.measurements["incoherent_mosaicity"] == 0.0
+    assert on.incoherent_mosaicity is True
+    assert on.measurements["incoherent_mosaicity"] == 1.0
+
+
 def test_sample_thicknesses_must_be_finite() -> None:
     base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
 

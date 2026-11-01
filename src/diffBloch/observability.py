@@ -1030,6 +1030,9 @@ class ExperimentDeclared:
     steps: int
     learning_rate: float
     experiment_directory: str = ""
+    # blochwave.incoherent_mosaicity. Defaulted (False, the behaviour before the switch existed) so
+    # reports written before it was recorded still read back.
+    incoherent_mosaicity: bool = False
 
     @property
     def step(self) -> int | None:
@@ -1056,6 +1059,7 @@ class ExperimentDeclared:
             "solve_g_max": self.solve_g_max,
             "sg_max": self.sg_max,
             "absorption": float(self.absorption),
+            "incoherent_mosaicity": float(self.incoherent_mosaicity),
             "steps": float(self.steps),
             "learning_rate": self.learning_rate,
         }

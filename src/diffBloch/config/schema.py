@@ -588,6 +588,7 @@ class ExperimentConfig(_StrictConfig):
             solve_g_max=self.blochwave.g_max,
             sg_max=self.blochwave.sg_max,
             absorption=self.blochwave.absorption,
+            incoherent_mosaicity=self.blochwave.incoherent_mosaicity,
             steps=self.refinement.steps,
             learning_rate=self.refinement.optimizer.lr,
         )
