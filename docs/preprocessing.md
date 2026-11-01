@@ -97,6 +97,7 @@ matrix must already provide a close starting orientation.
 | `x_tolerance` | `1e-3` degrees | Convergence tolerance for changes in the correction angles. |
 | `f_tolerance` | `1e-3` | Convergence tolerance for changes in the comparison residual. |
 | `penalize_fewer_reflections` | `true` | Prevents a trial from appearing better only because its orientation produces a smaller matched-reflection set. |
+| `max_correction_degrees` | `null` | Bounds each correction angle to ± this many degrees, so a rotation cannot drift to an orientation it was not measured at. `step_size` only sizes the starting simplex and does not bound the search. Must be at least `step_size`; `null` leaves the search unbounded. |
 
 ```yaml
 preprocess:
@@ -155,13 +156,11 @@ preprocess:
     min_thickness: 100.0
     max_thickness: 2000.0
     n_steps: 100
-    plot: true
 ```
 
-With `plot: true`, diffBloch writes one residual-versus-thickness PNG for each orientation to
-`thickness_optim/` beside the structure input. Every tested thickness is shown and a dashed line
-marks the selected minimum. These plots show whether the minimum is well defined, whether different
-orientations favor the same thickness range, and whether the chosen search interval is too narrow.
+Each successful CLI run promotes a JSONL report, and each `ThicknessOptimized` event includes the
+full candidate-thickness grid and scores. Visualizers render residual-versus-thickness plots from
+that event data instead of diffBloch writing PNGs during preprocessing.
 
 The neural-network option (`refinement.thickness_nn`) has its own `sample_thickness` switch: when
 enabled, thickness itself is sampled as part of the network's forward pass during refinement,

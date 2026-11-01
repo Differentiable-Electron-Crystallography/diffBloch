@@ -150,24 +150,32 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
 
 
 def _write_anchor_metrics(material: str, actual: dict[str, Any]) -> None:
-    """Append this material's run-level means to ``$DIFFBLOCH_ANCHOR_METRICS``, if set.
+    """Append this material's worst per-rotation deviation to ``$DIFFBLOCH_ANCHOR_METRICS``, if set.
 
     The file CI reads to append a row to the published anchor history. Written *before* the
     comparison, deliberately: a drifted anchor is exactly the run whose measurement the trend needs
     to show, so recording it must not depend on the assertion passing.
 
-    Keys are ``{material}_mean_r_obs`` / ``{material}_mean_wr2``. Unset variable means no file, so
-    an ordinary local run writes nothing.
+    Keys are ``{material}_max_abs_r_obs_deviation`` (largest ``|r_obs - reference r_obs|`` over the
+    rotations run, the quantity ``_compare`` holds to ``atol``) and ``{material}_r_obs_atol`` (from
+    ``case.yaml``, so the plot never hardcodes a tolerance that can go stale). A rotation missing
+    from the reference writes no deviation, so that merge plots as a gap. Unset variable means no
+    file, so an ordinary local run writes nothing.
     """
     destination = os.environ.get("DIFFBLOCH_ANCHOR_METRICS")
     if not destination:
         return
+    reference = json.loads((_material_dir(material) / "results.json").read_text())
+    expected = {row["rotation_index"]: row["r_obs"] for row in reference["rotations"]}
     path = Path(destination)
     metrics: dict[str, Any] = {}
     if path.exists():  # several materials append to one file
         metrics = json.loads(path.read_text())
-    metrics[f"{material}_mean_r_obs"] = actual["mean_r_obs"]
-    metrics[f"{material}_mean_wr2"] = actual["mean_wr2"]
+    if all(row["rotation_index"] in expected for row in actual["rotations"]):
+        metrics[f"{material}_max_abs_r_obs_deviation"] = max(
+            abs(row["r_obs"] - expected[row["rotation_index"]]) for row in actual["rotations"]
+        )
+    metrics[f"{material}_r_obs_atol"] = _load_case(material).atol
     path.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
 
 

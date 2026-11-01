@@ -143,6 +143,7 @@ Bounds for the local orientation search (`NelderMeadOptimizationConfig`).
 | `x_tolerance` | `0.001` | Simplex convergence tolerance on the orientation parameters (`xatol`). |
 | `f_tolerance` | `0.001` | Simplex convergence tolerance on the objective (`fatol`). |
 | `penalize_fewer_reflections` | `true` | Penalize trial orientations that match fewer reflections than the seed, discouraging the search from drifting to a trivially-easier beam set. |
+| `max_correction_degrees` | `null` | Per-angle bound (degrees) on the orientation correction. Set it when the search drifts to a far-off orientation that scores well; must be at least `step_size`. |
 
 ### `preprocess.thickness`
 
@@ -153,7 +154,6 @@ Bounds for the per-rotation thickness grid search (`ThicknessOptimizationConfig`
 | `min_thickness` | `5.0` | Lower bound, Å. |
 | `max_thickness` | `2000.0` | Upper bound, Å. |
 | `n_steps` | `100` | Number of evenly-spaced grid candidates. |
-| `plot` | `false` | Write one wR2-vs-thickness PNG per rotation (`<inputs.structure's directory>/thickness_optim`). Reporting-only — never affects the fitted `Plan` and is excluded from the reproducibility digest. |
 
 ## `loss_metrics`
 

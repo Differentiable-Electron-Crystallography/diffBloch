@@ -136,13 +136,21 @@ def run_inference(
     )
     with torch.no_grad():
         solutions = engine.simulate(params)
+    built = require_built_plans(plan)
     rows = tuple(
         _score_rotation(orientation, solution)
-        for orientation, solution in zip(require_built_plans(plan), solutions, strict=True)
+        for orientation, solution in zip(built, solutions, strict=True)
     )
-    for index, row in enumerate(rows):
+    for index, (orientation, row) in enumerate(zip(built, rows, strict=True)):
         logger.report(
-            RotationScored(index=index, r_obs=row.r_obs, wr2=row.wr2, n_matched=row.n_matched)
+            RotationScored(
+                index=index,
+                r_obs=row.r_obs,
+                wr2=row.wr2,
+                n_matched=row.n_matched,
+                dataset=orientation.pattern.dataset,
+                rotation_index=int(orientation.pattern.rotation_index),
+            )
         )
     result = InferenceResult(per_rotation=rows)
     logger.report(
