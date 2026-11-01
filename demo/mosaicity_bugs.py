@@ -7,8 +7,8 @@ Read-only: imports the shipped functions and writes nothing. Each section prints
 measured value beside the analytic target so the gap is checkable by eye.
 
 Covered here: the golden_spiral density double-count, the WeightedSum checkpoint
-round-trip, the softplus step-budget ceiling, the samples=1 no-op, and the
-non-finite sigma guard.
+round-trip, the softplus step-budget ceiling, the samples=1 no-op, and the two sigma
+validity gaps (+inf accepted, and sigma**2 underflowing to zero).
 
 Not covered here, needing a full crystal setup or no numbers at all: the coupling
 boundary-union beam loss (reproduce with a UnionCoupling policy over a composed tilt
@@ -16,6 +16,7 @@ set), and docs/preprocessing.md:241 still describing the old moving-average mode
 """
 
 import math
+import warnings
 
 import numpy as np
 import torch
@@ -216,16 +217,59 @@ print(
 
 
 # ---------------------------------------------------------------------------
-# BUG 5  the finiteness guard does not reject +inf.
+# BUG 5  the sigma validity checks do not match what the arithmetic needs.
+#
+# specs.py:328 tests `not (sigma >= 0.0)`, which catches NaN but admits +inf.
+# orientation.py:192 returns early only on `sigma == 0.0` exactly, while :199
+# divides by sigma**2, which underflows to zero below about 2.2e-162. Neither
+# check asks whether sigma is a value the arithmetic can actually divide by.
 # ---------------------------------------------------------------------------
-rule("BUG 5  IsotropicMosaicity accepts a non-finite sigma")
+rule("BUG 5  the sigma validity checks admit values the arithmetic cannot use")
 
-spec = IsotropicMosaicity(sigma_degrees=math.inf)  # specs.py:328 tests `>= 0.0`
-print(f"accepted: {spec}")
-t, w, _ = isotropic_mosaic_tilts(math.inf, 5, "golden_spiral")
-print(f"resulting tilts finite? {np.isfinite(t).all()}   weights: {w}")
+
+def probe(sigma: float, label: str) -> None:
+    """Build tilts at `sigma`, reporting what came out and what numpy complained about."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        tilts, weights, _polar = isotropic_mosaic_tilts(sigma, 5, "golden_spiral")
+    seen: dict[tuple[str, str, int], int] = {}
+    for w in caught:
+        key = (w.category.__name__, str(w.message), w.lineno)
+        seen[key] = seen.get(key, 0) + 1
+    print(f"{label}")
+    print(f"  sigma          = {sigma!r}")
+    print(f"  sigma ** 2     = {sigma**2!r}")
+    print(f"  tilts finite   = {np.isfinite(tilts).all()}")
+    print(f"  weights finite = {np.isfinite(weights).all()}")
+    for (category, message, lineno), count in seen.items():
+        times = f" (x{count})" if count > 1 else ""
+        print(f"  warning        = {category}: {message} (orientation.py:{lineno}){times}")
+    print()
+
+
+spec = IsotropicMosaicity(sigma_degrees=math.inf)  # inf >= 0.0 is True
+print(f"spec accepted: {spec}\n")
+probe(math.inf, "infinite sigma")
+
+print(f"underflow threshold for sigma**2: {np.sqrt(np.nextafter(0.0, 1.0)):.4e}\n")
+probe(1e-160, "sigma just above the threshold")
+probe(1e-170, "sigma just below the threshold")
+
+print(f"{'sigma':>10}{'sigma**2':>12}{'tilts finite':>15}{'weights finite':>16}")
+for small in (1e-10, 1e-100, 1e-160, 1e-170, 1e-200, 5e-324):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tilts_s, weights_s, _ = isotropic_mosaic_tilts(small, 5, "golden_spiral")
+    print(
+        f"{small:>10.0e}{small**2:>12.2e}"
+        f"{str(bool(np.isfinite(tilts_s).all())):>15}"
+        f"{str(bool(np.isfinite(weights_s).all())):>16}"
+    )
+
 print(
-    "\n`not (sigma >= 0.0)` catches NaN but inf passes, while the error text promises"
-    "\n'finite and non-negative'. Config cannot reach this (resolve_dataset_mosaicity"
-    "\nguards with np.isfinite), so it is a broken invariant rather than a live path."
+    "\nBelow the threshold the tilts stay finite, because the polar angles underflow"
+    "\nto zero and cos(0) is 1, so the geometry looks healthy while the weights are NaN."
+    "\nNothing raises. Neither case is reachable from a real instrument, since"
+    "\nresolve_dataset_mosaicity guards with np.isfinite, so both are value types failing"
+    "\ntheir own stated invariants."
 )
