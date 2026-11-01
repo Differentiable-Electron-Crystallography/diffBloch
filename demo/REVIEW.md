@@ -297,7 +297,10 @@ positive, but not that any angle is non-zero.
 
 ---
 
-## 8. A non-finite sigma passes the finiteness check
+## 8. The sigma validity checks do not match what the arithmetic needs
+
+Two cases with one cause. Neither check asks whether sigma is a value the arithmetic can
+divide by.
 
 ```python
 # specs.py:328
@@ -306,9 +309,30 @@ if not (self.sigma_degrees >= 0.0):  # catches NaN too
 ```
 
 `inf >= 0.0` is true, so infinity is accepted while the message promises otherwise. The
-resulting tilts are not finite and the weights are all NaN. Config cannot reach it,
-because the resolver guards with `np.isfinite`, so this is a value type failing to
-enforce its own stated invariant rather than a live path.
+tilts come out non-finite and the weights are all NaN.
+
+The second case is quieter and worse. `orientation.py:192` returns early only on
+`sigma_degrees == 0.0` exactly, and `orientation.py:199` divides by `sigma_degrees**2`.
+That square underflows to zero for any sigma below about 2.2e-162, so the weights become
+`0/0`:
+
+```
+     sigma    sigma**2   tilts finite  weights finite
+    1e-100   1.00e-200           True            True
+    1e-160   1.00e-320           True            True
+    1e-170    0.00e+00           True           False
+    5e-324    0.00e+00           True           False
+```
+
+The tilts stay finite there, because the polar angles underflow to zero and `cos(0)` is 1.
+So the geometry looks healthy while the weights are NaN, which is the failure that is
+hardest to notice: nothing raises, and the NaN only appears once it has propagated into
+the intensities.
+
+Neither case is reachable from a real instrument. `resolve_dataset_mosaicity` guards with
+`np.isfinite`, and no PETS file reports 1e-170 degrees. Both are value types failing to
+enforce their own stated invariants, and the fix for both is the same: check that sigma is
+finite and large enough to square, rather than checking `>= 0.0` and `== 0.0`.
 
 ---
 

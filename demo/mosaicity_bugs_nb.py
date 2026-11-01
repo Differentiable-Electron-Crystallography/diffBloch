@@ -21,6 +21,8 @@
 
 # %%
 import math
+import warnings
+from typing import Literal
 
 import numpy as np
 import torch
@@ -46,8 +48,11 @@ print(f"torch {torch.__version__}, numpy {np.__version__}")
 #
 # Both placements are reachable from config. Only one has a moment test.
 
+
 # %%
-def moments(sigma: float, samples: int, placement: str) -> tuple[float, float]:
+def moments(
+    sigma: float, samples: int, placement: Literal["golden_spiral", "symmetric"]
+) -> tuple[float, float]:
     """Weighted <rho^2>/sigma^2 and <rho^4>/sigma^4 for a placement."""
     _, weights, polar = isotropic_mosaic_tilts(sigma, samples, placement)
     w = weights / weights.sum()
@@ -58,7 +63,12 @@ def moments(sigma: float, samples: int, placement: str) -> tuple[float, float]:
 
 
 print(f"{'placement':<16}{'<rho^2>/s^2':>13}{'<rho^4>/s^4':>13}")
-for placement, samples in (("symmetric", 5), ("golden_spiral", 5), ("golden_spiral", 1001)):
+cases: tuple[tuple[Literal["golden_spiral", "symmetric"], int], ...] = (
+    ("symmetric", 5),
+    ("golden_spiral", 5),
+    ("golden_spiral", 1001),
+)
+for placement, samples in cases:
     m2, m4 = moments(SIGMA, samples, placement)
     print(f"{placement + f' ({samples})':<16}{m2:>13.4f}{m4:>13.4f}")
 print(f"{'target':<16}{2.0:>13.4f}{8.0:>13.4f}")
@@ -89,8 +99,7 @@ quantiles = (np.arange(N) + 0.5) / N
 print(f"{'k':>2}{'quantile':>11}{'polar (deg)':>14}{'weight':>10}{'1 - quantile':>14}")
 for k in range(N):
     print(
-        f"{k:>2}{quantiles[k]:>11.4f}{polar[k]:>14.5f}"
-        f"{weights[k]:>10.5f}{1 - quantiles[k]:>14.5f}"
+        f"{k:>2}{quantiles[k]:>11.4f}{polar[k]:>14.5f}{weights[k]:>10.5f}{1 - quantiles[k]:>14.5f}"
     )
 
 print(f"\nweights == 1 - (k+0.5)/samples exactly? {np.allclose(weights, 1 - quantiles)}")
@@ -128,8 +137,8 @@ print(f"{'target':>8}{2.0:>13.4f}{8.0:>13.4f}")
 # placements' modelled spread:
 
 # %%
-m2_golden, _ = moments(SIGMA, 1001, "golden_spiral")
-m2_symmetric, _ = moments(SIGMA, 5, "symmetric")
+m2_golden = moments(SIGMA, 1001, "golden_spiral")[0]
+m2_symmetric = moments(SIGMA, 5, "symmetric")[0]
 print(f"golden_spiral effective / symmetric effective = {math.sqrt(m2_golden / m2_symmetric):.4f}")
 print(f"1/sqrt(2) = {1 / math.sqrt(2):.4f}")
 
@@ -235,17 +244,67 @@ print(f"tilt identical at sigma 0.1 and 9.9? {np.allclose(tilts_small, tilts_lar
 print(f"tilt is the identity?                {np.allclose(tilts_small, np.eye(3))}")
 
 # %% [markdown]
-# ## 5. A non-finite sigma passes the finiteness check
+# ## 5. The sigma validity checks do not match what the arithmetic needs
 #
-# `specs.py:328` tests `not (sigma_degrees >= 0.0)`, which catches NaN but admits `+inf`,
-# against an error message promising finiteness. Config cannot reach this, because the
-# resolver guards with `np.isfinite`, so it is a value type failing its own stated invariant
-# rather than a live path.
+# Two cases, one cause. `specs.py:328` tests `not (sigma_degrees >= 0.0)` and
+# `orientation.py:192` returns early only on `sigma_degrees == 0.0`. Neither asks whether the
+# value is one the arithmetic at `orientation.py:199` can divide by.
+#
+# The warnings below are the point of the cell, so they are captured and printed rather than
+# left to leak into the output. They name the lines where the value goes bad.
+
 
 # %%
-spec = IsotropicMosaicity(sigma_degrees=math.inf)
-print(f"accepted: {spec}")
+def probe(sigma: float, label: str) -> None:
+    """Build tilts at `sigma`, reporting what came out and what numpy complained about."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        tilts, weights, _ = isotropic_mosaic_tilts(sigma, 5, "golden_spiral")
+    print(f"{label}")
+    print(f"  sigma            = {sigma!r}")
+    print(f"  sigma ** 2       = {sigma**2!r}")
+    print(f"  tilts finite     = {np.isfinite(tilts).all()}")
+    print(f"  weights finite   = {np.isfinite(weights).all()}")
+    seen: dict[tuple[str, str, int], int] = {}
+    for w in caught:
+        key = (w.category.__name__, str(w.message), w.lineno)
+        seen[key] = seen.get(key, 0) + 1
+    for (category, message, lineno), count in seen.items():
+        times = f" (x{count})" if count > 1 else ""
+        print(f"  warning          = {category}: {message} (orientation.py:{lineno}){times}")
+    print()
 
-tilts_inf, weights_inf, _ = isotropic_mosaic_tilts(math.inf, 5, "golden_spiral")
-print(f"tilts finite? {np.isfinite(tilts_inf).all()}")
-print(f"weights     : {weights_inf}")
+
+# Accepted by the spec, because inf >= 0.0 is True while the error text promises finiteness.
+spec = IsotropicMosaicity(sigma_degrees=math.inf)
+print(f"spec accepted: {spec}\n")
+probe(math.inf, "infinite sigma")
+
+# %% [markdown]
+# The second case is quieter and worse. `sigma**2` underflows to zero for any sigma below
+# about 1.5e-162, so the weights become `0/0`. The tilts stay finite, because the polar
+# angles underflow to zero and `cos(0)` is 1. So the geometry looks healthy and the weights
+# are NaN, which is the failure mode that is hardest to notice.
+
+# %%
+print(f"underflow threshold for sigma**2: {np.sqrt(np.nextafter(0.0, 1.0)):.4e}\n")
+
+probe(1e-160, "sigma just above the threshold")
+probe(1e-170, "sigma just below the threshold")
+
+# %%
+print(f"{'sigma':>10}{'sigma**2':>12}{'tilts finite':>15}{'weights finite':>16}")
+for s in (1e-10, 1e-100, 1e-160, 1e-170, 1e-200, 5e-324):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        t, w, _ = isotropic_mosaic_tilts(s, 5, "golden_spiral")
+    print(
+        f"{s:>10.0e}{s**2:>12.2e}"
+        f"{str(bool(np.isfinite(t).all())):>15}{str(bool(np.isfinite(w).all())):>16}"
+    )
+
+# %% [markdown]
+# Neither case is reachable from a real instrument: `resolve_dataset_mosaicity` guards with
+# `np.isfinite`, and no PETS file reports 1e-170 degrees. Both are value types failing to
+# enforce their own stated invariants, and the fix for both is the same, which is to check
+# that sigma is finite and large enough to square rather than checking `>= 0.0` and `== 0.0`.
