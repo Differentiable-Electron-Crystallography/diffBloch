@@ -605,3 +605,32 @@ def test_structure_only_model_keeps_quartz_objective_exactly_unchanged() -> None
     wrapped = engine.objective_value_model(build_refinement_model(initial=params))
 
     assert torch.allclose(wrapped.total, legacy.total, rtol=0.0, atol=0.0)
+
+
+def test_thickness_seeding_survives_a_realistic_crystal_thickness() -> None:
+    """The softplus inverse must not overflow at the thicknesses crystals have.
+
+    ``log(expm1(v))`` returns ``inf`` above about 709 in float64. The quartz
+    example under ``examples/Colmey_et_al_2026`` seeds 850 Angstrom, so the
+    seeded parameter was ``inf`` there and only stayed harmless because that
+    configuration leaves ``optimize_thickness`` off.
+    """
+    from diffBloch.engine.components import _positive_inverse
+
+    for thickness in (100.0, 709.0, 710.0, 850.0, 5000.0):
+        for dtype in (torch.float32, torch.float64):
+            value = torch.tensor([thickness], dtype=dtype)
+            seeded = _positive_inverse(value)
+            assert torch.isfinite(seeded).all(), f"{thickness} A in {dtype} gave {seeded}"
+            # softplus is the forward map, so seeding then applying it round trips.
+            assert torch.allclose(
+                torch.nn.functional.softplus(seeded), value, rtol=1e-5, atol=1e-5
+            ), f"{thickness} A in {dtype} did not round trip"
+
+
+def test_thickness_seeding_matches_the_direct_form_where_that_one_works() -> None:
+    """Below the overflow the two expressions agree, so this changes no result."""
+    from diffBloch.engine.components import _positive_inverse
+
+    value = torch.tensor([0.5, 1.0, 10.0, 100.0, 700.0], dtype=torch.float64)
+    assert torch.allclose(_positive_inverse(value), torch.log(torch.expm1(value)))
