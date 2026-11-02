@@ -112,6 +112,7 @@ from diffBloch.preprocess import (
     read_plan,
     report_coupling,
     resolve_recipe,
+    restrict_scored_resolution,
     run_inference,
     select_beams,
     setup_datasets,
@@ -1245,6 +1246,9 @@ def _recipe_steps(
             workers=workers,
         )
     )
+    scored_cap = cfg.blochwave.to_scored_resolution_cap()
+    if scored_cap is not None:
+        steps.append(restrict_scored_resolution(scored_cap))
 
     def orientation_step() -> PlanStep:
         return fork(
@@ -1271,14 +1275,18 @@ def _recipe_steps(
 def _trial_coupling(cfg: ExperimentConfig, integration: IntegrationGeometry) -> TrialCoupling:
     """Assemble the per-trial beam-union policy from the top-level Bloch-wave config.
 
-    The SCORED set reuses the same Klar window as ``select_beams`` and the config's solve cutoff
-    (``g_max``) as the scoring-resolution cap.
+    The SCORED set reuses the same Klar window as ``select_beams``, capped at ``gmax_refine`` when
+    set and otherwise at the config's solve cutoff (``g_max``).
     """
     return TrialCoupling(
         policy=cfg.blochwave.to_policy(),
         scored=ScoredHklSelection(
             klar=cfg.blochwave.to_beam_selection(integration),
-            g_max=cfg.blochwave.g_max,
+            g_max=(
+                cfg.blochwave.g_max
+                if cfg.blochwave.gmax_refine is None
+                else cfg.blochwave.gmax_refine
+            ),
         ),
     )
 

@@ -37,6 +37,7 @@ from diffBloch.specs import (
     OrientationSelection,
     PerTiltCoupling,
     RockingCurve,
+    ScoredResolutionCap,
     ThicknessGrid,
     UnionCoupling,
 )
@@ -104,6 +105,9 @@ class BlochwaveConfig(_StrictConfig):
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
+    # Maximum |g| (A^-1) of the reflections scored -- by the orientation/thickness fits, refinement,
+    # and the report. Beams beyond it still couple in the solve (g_max); None scores up to g_max.
+    gmax_refine: float | None = None
     sg_max: float = 0.01
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
@@ -137,6 +141,10 @@ class BlochwaveConfig(_StrictConfig):
             union_max_new_beams_pct=self.union_max_new_beams_pct,
         )
 
+    def to_scored_resolution_cap(self) -> ScoredResolutionCap | None:
+        """Parse the scored-reflection ``|g|`` cap, or ``None`` when scoring runs up to ``g_max``."""
+        return None if self.gmax_refine is None else ScoredResolutionCap(g_max=self.gmax_refine)
+
     def to_orientation_selection(self) -> OrientationSelection:
         """Parse zero-based source PETS indices excluded from the whole Bloch experiment."""
         return OrientationSelection(ignore_orientations=self.ignore_orientations)
@@ -153,6 +161,10 @@ class BlochwaveConfig(_StrictConfig):
         IsotropicMosaicity(sigma_degrees=0.0, samples=self.mosaicity_samples)
         self.to_policy()
         self.to_orientation_selection()
+        self.to_scored_resolution_cap()
+        if self.gmax_refine is not None and self.gmax_refine > self.g_max:
+            # scored <= solved: a reflection beyond the solve cutoff is never simulated.
+            raise ValueError("gmax_refine must not exceed g_max")
         self.to_absorption()
         if self.absorption and self.solver == "bloch_eigen":
             raise ValueError("absorption requires the non-Hermitian-safe 'matrix_exp' solver")
@@ -600,6 +612,7 @@ class ExperimentConfig(_StrictConfig):
             solve_g_max=self.blochwave.g_max,
             sg_max=self.blochwave.sg_max,
             absorption=self.blochwave.absorption,
+            gmax_refine=self.blochwave.gmax_refine,
             incoherent_mosaicity=self.blochwave.incoherent_mosaicity,
             steps=self.refinement.steps,
             learning_rate=self.refinement.optimizer.lr,

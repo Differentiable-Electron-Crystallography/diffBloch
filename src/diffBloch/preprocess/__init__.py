@@ -91,6 +91,7 @@ from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
 from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
 from diffBloch.preprocess.steps.report_coupling import report_coupling
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
+from diffBloch.preprocess.steps.scored_resolution import restrict_scored_resolution
 from diffBloch.specs import (
     BeamSelection,
     ConvergenceTest,
@@ -147,6 +148,7 @@ __all__ = [
     "dataset_of",
     "orientation_basis",
     "orientation_matrices",
+    "restrict_scored_resolution",
     "rotation_axis_correction",
     "pipeline",
     "plan_coverage",

@@ -58,6 +58,7 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
 | `union_max_new_beams_pct` | `0.01` | Threshold for adaptive splitting. See [Union coupling](#union-coupling). |
 | `g_max` | `2.25` | Largest reflection {math}`g` vector simulated (Å⁻¹). Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
+| `gmax_refine` | `null` | Largest reflection {math}`g` (Å⁻¹) that is *scored*: the orientation and thickness fits, refinement, and the report compare only reflections up to it. Beams beyond it still couple in the simulation (`g_max`). Must not exceed `g_max`; `null` scores up to `g_max`. |
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
 | `ignore_orientations` | `()` | Zero-based `.cif_pets` rotation indices to exclude from the experiment. |
 
