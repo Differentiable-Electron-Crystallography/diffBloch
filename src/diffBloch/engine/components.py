@@ -347,7 +347,7 @@ class TrainableIsotropicMosaicity:
     (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`), and every polar angle
     is proportional to sigma, so a refined sigma moves tilt ``m`` to polar angle
     ``polar_degrees[m] * sigma / init_sigma_degrees`` along its own azimuth. The composed
-    rocking-and-mosaic tilt ``k = r * M + m`` becomes ``tilts[k] @ R(axis_m, (s - 1) * polar_m)``
+    rocking-and-mosaic tilt ``k = m * R + r`` becomes ``tilts[k] @ R(axis_m, (s - 1) * polar_m)``
     with ``s = sigma / init_sigma_degrees`` -- the built mosaic rotation undone and the scaled one
     applied, both about the same in-plane axis. The forward recomputes the excitation errors from
     these tilts (:attr:`~diffBloch.engine.forward.ForwardContext.tilts`), so sigma gets a gradient
@@ -385,8 +385,11 @@ class TrainableIsotropicMosaicity:
             raise ValueError("polar_degrees must be non-empty")
         if len(self.azimuth_degrees) != len(self.polar_degrees):
             raise ValueError("azimuth_degrees and polar_degrees must have one entry per sample")
-        if self.init_sigma_degrees <= 0.0:
-            raise ValueError("init_sigma_degrees must be positive")
+        if not (math.isfinite(self.init_sigma_degrees) and self.init_sigma_degrees > 0.0):
+            raise ValueError("init_sigma_degrees must be finite and positive")
+        if not any(polar != 0.0 for polar in self.polar_degrees):
+            # Every tilt is the identity, so no sigma moves it: the parameter would have no gradient.
+            raise ValueError("polar_degrees must include a tilted sample for sigma to refine")
         start, end = self.rotation_range
         if start < 0 or end <= start:
             raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
@@ -435,8 +438,8 @@ class TrainableIsotropicMosaicity:
         polar = torch.deg2rad(raw.new_tensor(self.polar_degrees, dtype=torch.float64))
         delta = _in_plane_rotation(azimuth, (scale - 1.0) * polar)  # (M, 3, 3)
         built = orientation.tilts.to(device=raw.device, dtype=torch.float64)
-        # index = r * M + m (compose_mosaic_tilts): mosaic sample m repeats for every rocking tilt.
-        tilts = built @ delta.repeat(n_tilts // n_mosaic, 1, 1)
+        # index = m * R + r (compose_mosaic_tilts): mosaic sample m covers R consecutive tilts.
+        tilts = built @ delta.repeat_interleave(n_tilts // n_mosaic, dim=0)
         return ForwardContext(tilts=tilts)
 
 

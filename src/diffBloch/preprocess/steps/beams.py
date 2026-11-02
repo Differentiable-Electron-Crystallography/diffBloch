@@ -153,9 +153,9 @@ def build_orientation_plans(
             mosaicity.sigma_degrees, mosaicity.samples
         )
         plain_tilts = compose_mosaic_tilts(plain_tilts, mosaic_tilts)
-        # index = r * M + m (compose_mosaic_tilts): the same per-mosaic-sample weights repeat for
-        # every rocking tilt.
-        reduction = WeightedSum(weights=torch.tensor(np.tile(mosaic_weights, n_rocking)))
+        # index = m * R + r (compose_mosaic_tilts): each mosaic sample's weight holds across its R
+        # rocking tilts.
+        reduction = WeightedSum(weights=torch.tensor(np.repeat(mosaic_weights, n_rocking)))
 
     def run(plan: Plan) -> Plan:
         candidates = require_candidate_plans(plan)

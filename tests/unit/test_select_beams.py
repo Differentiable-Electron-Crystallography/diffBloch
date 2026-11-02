@@ -185,9 +185,9 @@ def test_build_orientation_plans_composes_isotropic_mosaic_tilts_onto_rocking_ti
     assert len(built.beam_plans) == n_combined
     assert isinstance(built.tilt_reduction, WeightedSum)
     assert built.tilt_reduction.weights.shape == (n_combined,)
-    # Weights repeat mosaic-minor (index = r * M + m): every block of 5 is the same 5 weights.
-    weights = built.tilt_reduction.weights
-    assert torch.equal(weights[:5], weights[5:10])
+    # Mosaic-major (index = m * R + r): each sample's weight is constant over its rocking sweep.
+    weights = built.tilt_reduction.weights.reshape(5, -1)
+    assert torch.equal(weights, weights[:, :1].expand_as(weights))
 
 
 def test_build_orientation_plans_uses_the_centre_and_ring_weights() -> None:
@@ -201,8 +201,9 @@ def test_build_orientation_plans_uses_the_centre_and_ring_weights() -> None:
     assert isinstance(built.tilt_reduction, WeightedSum)
     weights = built.tilt_reduction.weights
     expected = torch.tensor([0.5, 0.125, 0.125, 0.125, 0.125], dtype=weights.dtype)
-    assert torch.allclose(weights[:5], expected)
-    assert torch.equal(weights[:5], weights[5:10])
+    per_sample = weights.reshape(5, -1)
+    assert torch.allclose(per_sample[:, 0], expected)
+    assert torch.equal(per_sample, per_sample[:, :1].expand_as(per_sample))
     assert built.tilts.shape == (config.blochwave.rocking_curve_sampling * 5, 3, 3)
 
 

@@ -18,6 +18,7 @@ a TUI or batch runner) can wrap these raising constructors without changing the 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -320,7 +321,7 @@ class IsotropicMosaicity:
             raise ValueError(
                 "isotropic mosaicity needs samples == 1 or >= 4 (a centre plus a ring of at least 3)"
             )
-        if not (self.sigma_degrees >= 0.0):  # catches NaN too
+        if not (math.isfinite(self.sigma_degrees) and self.sigma_degrees >= 0.0):
             raise ValueError("sigma_degrees must be finite and non-negative")
 
 

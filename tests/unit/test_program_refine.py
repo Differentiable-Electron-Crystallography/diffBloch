@@ -38,6 +38,7 @@ from diffBloch.observability import (
     RefinementStep,
 )
 from diffBloch.preprocess import RefinementSetup, build_orientation_plans
+from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import CandidatePlan, Plan
 from diffBloch.specs import ApparentThicknessNetwork, IntegrationGeometry
 
@@ -204,11 +205,12 @@ def test_mosaicity_components_skips_a_dataset_with_zero_mosaicity() -> None:
 
 
 def test_report_refinement_outcome_emits_the_refined_mosaicity_sigma(tmp_path: Path) -> None:
-    engine = _engine()  # its single orientation carries rotation_index 0
+    # Its single orientation carries rotation_index 0, with one tilt per mosaic sample.
+    engine = _engine(tilts=rocking_curve_tilts(0.5, 2))
     structure_params = _params()
     component = TrainableIsotropicMosaicity(
-        azimuth_degrees=(0.0,),
-        polar_degrees=(0.0,),
+        azimuth_degrees=(0.0, 90.0),
+        polar_degrees=(0.0, 0.04),
         init_sigma_degrees=0.02,
         rotation_range=(0, 1),
         key="isotropic_mosaicity[a.cif_pets]",

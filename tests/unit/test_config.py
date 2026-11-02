@@ -132,6 +132,25 @@ def test_multi_dataset_mean_thicknesses_are_keyed_by_exp_data() -> None:
         )
 
 
+def test_refining_mosaicity_sigma_needs_a_mosaic_spread_to_refine() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    refine_sigma = {"trainable": {"mosaicity_sigma": True}}
+
+    with pytest.raises(ValidationError, match="requires blochwave.incoherent_mosaicity: true"):
+        ExperimentConfig.model_validate({**base, "refinement": refine_sigma})
+    with pytest.raises(ValidationError, match="requires blochwave.mosaicity_samples >= 4"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "blochwave": {"incoherent_mosaicity": True, "mosaicity_samples": 1},
+                "refinement": refine_sigma,
+            }
+        )
+    ExperimentConfig.model_validate(
+        {**base, "blochwave": {"incoherent_mosaicity": True}, "refinement": refine_sigma}
+    )
+
+
 def test_declaration_records_the_incoherent_mosaicity_switch() -> None:
     base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     geometry = (IntegrationGeometry(semiangle=1.0),)

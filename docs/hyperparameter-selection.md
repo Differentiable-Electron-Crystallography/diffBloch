@@ -52,7 +52,8 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and converts it into an internal moving-average sample span. No additional orientations are simulated. |
+| `incoherent_mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and adds `mosaicity_samples` tilts spread isotropically around each rotation. See [Rocking curves and mosaicity](preprocessing.md#rocking-curves-and-mosaicity-inside-a-plan). |
+| `mosaicity_samples` | `5` | Mosaic tilts per rotation: a centre plus a ring, so 1 or at least 4. Each is a full extra set of Bloch-wave solves, so cost scales linearly with it. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
@@ -182,6 +183,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 | `positions` | `"all"` | `"all"` or `"none"`: whether atomic positions are refined. |
 | `adp` | `"all"` | `"all"` or `"none"`: whether atomic displacement parameters are refined. |
 | `occupancy` | `"none"` | `"all"` or `"none"`: whether site occupancies are refined. |
+| `mosaicity_sigma` | `false` | Refine the mosaicity {math}`\sigma`, one per dataset, starting from the PETS value. Requires `blochwave.incoherent_mosaicity: true` and `mosaicity_samples` of at least 4. |
 
 ### `refinement.split`
 

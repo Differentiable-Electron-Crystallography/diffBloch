@@ -543,6 +543,23 @@ class ExperimentConfig(_StrictConfig):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _mosaicity_cross_checks(self) -> ExperimentConfig:
+        # Refining sigma needs a mosaic spread to refine: without the switch no component is built,
+        # and with one sample the only tilt is the identity, so sigma would have no gradient.
+        if self.refinement.trainable.mosaicity_sigma:
+            if not self.blochwave.incoherent_mosaicity:
+                raise ValueError(
+                    "refinement.trainable.mosaicity_sigma requires "
+                    "blochwave.incoherent_mosaicity: true"
+                )
+            if self.blochwave.mosaicity_samples == 1:
+                raise ValueError(
+                    "refinement.trainable.mosaicity_sigma requires blochwave.mosaicity_samples >= 4"
+                    " (one sample is the untilted identity, which sigma cannot move)"
+                )
+        return self
+
     def to_declaration(
         self, integrations: Sequence[IntegrationGeometry], *, experiment_directory: str = ""
     ) -> ExperimentDeclared:

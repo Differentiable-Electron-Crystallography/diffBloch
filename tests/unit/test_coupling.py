@@ -26,6 +26,7 @@ from diffBloch.preprocess.coupling import (
     Segment,
     build_coupling_segments,
 )
+from diffBloch.preprocess.orientation import compose_mosaic_tilts, isotropic_mosaic_tilts
 from diffBloch.specs import PerTiltCoupling, UnionCoupling, assert_grid_covers_coupling
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "quartz_anchor"
@@ -214,3 +215,47 @@ def test_coverage_guard_raises_when_the_grid_is_too_small() -> None:
     policy = UnionCoupling()  # g_max 2.25 -> needs grid g_max >= 4.5
     with pytest.raises(ValueError, match=r"grid g_max.*4\.5|silently gather zeros"):
         assert_grid_covers_coupling(policy, grid_g_max=4.0)
+
+
+def _missing_beams(segments: tuple[Segment, ...], per_tilt: tuple[Segment, ...]) -> int:
+    """Beams excited at some tilt that the segment covering that tilt does not solve."""
+    missing = 0
+    for segment in segments:
+        union = _as_set(segment.union_hkl)
+        for tilt in segment.covered_tilt_indices:
+            missing += len(_as_set(per_tilt[tilt].union_hkl) - union)
+    return missing
+
+
+@pytest.mark.parametrize("adaptive", [True, False])
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_mosaic_composed_tilts_lose_no_excited_beam(rotation: int, adaptive: bool) -> None:
+    """Every beam excited at a tilt is in the union of the segment covering that tilt.
+
+    Composing mosaic samples onto the rocking curve puts several independent sweeps into one tilt
+    list. A segment's beam set is the union of its two end tilts, which only bounds what lies
+    between them when the tilts in between sweep monotonically, so no segment may span two mosaic
+    samples.
+    """
+    grid, rocking = _grid_and_tilts()
+    mosaic, _, _ = isotropic_mosaic_tilts(0.3, 5)
+    tilts = compose_mosaic_tilts(rocking, mosaic)
+    d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
+    policy = UnionCoupling(union_adaptive=adaptive)
+    kwargs = {
+        "cell": np.asarray(grid.cell),
+        "orientation": d["orientation"],
+        "tilts": tilts,
+        "energy": ENERGY_EV,
+        "u0": float(d["u0"]),
+    }
+    hkl = np.asarray(grid.structure_factor_hkl)
+
+    segments = build_coupling_segments(policy, hkl, **kwargs)
+    per_tilt = build_coupling_segments(
+        PerTiltCoupling(g_max=policy.g_max, sg_max=policy.sg_max), hkl, **kwargs
+    )
+
+    assert _missing_beams(segments, per_tilt) == 0
+    covered = sorted(t for segment in segments for t in segment.covered_tilt_indices)
+    assert covered == list(range(tilts.shape[0]))

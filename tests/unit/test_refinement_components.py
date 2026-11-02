@@ -655,17 +655,25 @@ def test_trainable_isotropic_mosaicity_validates_construction() -> None:
             init_sigma_degrees=0.1,
             rotation_range=(0, 1),
         )
-    with pytest.raises(ValueError, match="init_sigma_degrees must be positive"):
+    with pytest.raises(ValueError, match="init_sigma_degrees must be finite and positive"):
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(0.0, 90.0),
+            polar_degrees=(0.0, 0.1),
+            init_sigma_degrees=0.0,
+            rotation_range=(0, 1),
+        )
+    with pytest.raises(ValueError, match="must include a tilted sample"):
+        # One sample: the untilted identity, which no sigma moves.
         TrainableIsotropicMosaicity(
             azimuth_degrees=(0.0,),
             polar_degrees=(0.0,),
-            init_sigma_degrees=0.0,
+            init_sigma_degrees=0.1,
             rotation_range=(0, 1),
         )
     with pytest.raises(ValueError, match="rotation_range must be"):
         TrainableIsotropicMosaicity(
-            azimuth_degrees=(0.0,),
-            polar_degrees=(0.0,),
+            azimuth_degrees=(0.0, 90.0),
+            polar_degrees=(0.0, 0.1),
             init_sigma_degrees=0.1,
             rotation_range=(1, 1),
         )
@@ -705,7 +713,7 @@ def test_trainable_isotropic_mosaicity_forward_context_is_empty_outside_its_rota
     None
 ):
     engine = _engine()
-    component = _mosaicity(samples=1, rotation_range=(5, 7))
+    component = _mosaicity(samples=4, rotation_range=(5, 7))
     params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
 
     context = component.forward_context(
@@ -842,7 +850,7 @@ def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
 
 def test_trainable_isotropic_mosaicity_forward_context_requires_log_sigma_scale() -> None:
     engine = _engine()
-    component = _mosaicity(samples=1)
+    component = _mosaicity(samples=4)
     with pytest.raises(ValueError, match="requires a 'log_sigma_scale' tensor"):
         component.forward_context({}, rotation_index=0, orientation=_orientation_at(engine, 0))
 
@@ -857,9 +865,10 @@ def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_it
 
 
 def test_overlapping_mosaicity_components_reject_duplicate_tilts() -> None:
-    engine = _engine()  # its single orientation carries rotation_index 0
-    first = _mosaicity(samples=1, key="isotropic_mosaicity[a.cif_pets]")
-    second = _mosaicity(samples=1, key="isotropic_mosaicity[b.cif_pets]")
+    # Its single orientation carries rotation_index 0, with one tilt per mosaic sample.
+    engine = _engine(tilts=rocking_curve_tilts(0.5, 4))
+    first = _mosaicity(samples=4, key="isotropic_mosaicity[a.cif_pets]")
+    second = _mosaicity(samples=4, key="isotropic_mosaicity[b.cif_pets]")
     params = _params()
     component_params = {
         component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))

@@ -85,8 +85,8 @@ class WeightedSum:
     Unlike :class:`PlainSum` (every tilt counts equally) or :class:`MosaicSmoothed` (a moving
     average along the rocking axis only), this weights each of the ``N`` tilts by an arbitrary
     per-tilt factor before summing -- e.g.
-    :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`'s Gaussian density at each
-    isotropic mosaic sample's cone radius, tiled across every rocking-curve tilt. ``weights`` has
+    :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`'s centre/ring weight for each
+    isotropic mosaic sample, held across that sample's rocking-curve tilts. ``weights`` has
     shape ``(N,)`` matching the tilt axis it reduces; its overall scale is irrelevant (the fitted
     intensity scale absorbs it), only the *relative* weighting changes the result.
     """

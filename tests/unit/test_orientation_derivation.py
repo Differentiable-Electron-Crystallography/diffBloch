@@ -220,7 +220,7 @@ def test_isotropic_mosaic_tilts_degenerate_cases_are_the_identity_with_unit_weig
 def test_isotropic_mosaic_tilts_rejects_invalid_inputs() -> None:
     with pytest.raises(ValueError, match="samples must be >= 1"):
         isotropic_mosaic_tilts(0.1, 0)
-    with pytest.raises(ValueError, match="sigma_degrees must be non-negative"):
+    with pytest.raises(ValueError, match="sigma_degrees must be finite and non-negative"):
         isotropic_mosaic_tilts(-0.1, 5)
 
 
@@ -262,10 +262,10 @@ def test_compose_mosaic_tilts_is_every_rocking_tilt_times_every_mosaic_tilt() ->
     combined = compose_mosaic_tilts(rocking, mosaic)
     assert combined.shape == (16, 3, 3)
     assert np.allclose(np.linalg.det(combined), 1.0)
-    # index = r * M + m: consecutive entries share a rocking tilt, mosaic varies fastest.
+    # index = m * R + r: each mosaic sample is one contiguous rocking sweep.
     for r in range(4):
         for m in range(4):
-            assert np.allclose(combined[r * 4 + m], rocking[r] @ mosaic[m])
+            assert np.allclose(combined[m * 4 + r], rocking[r] @ mosaic[m])
 
 
 def test_rocking_curve_tilts_are_x_axis_rotations_spanning_the_semiangle() -> None:

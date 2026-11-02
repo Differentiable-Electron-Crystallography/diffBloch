@@ -198,8 +198,8 @@ def isotropic_mosaic_directions(
     """
     if samples < 1:
         raise ValueError("samples must be >= 1")
-    if sigma_degrees < 0.0:
-        raise ValueError("sigma_degrees must be non-negative")
+    if not (np.isfinite(sigma_degrees) and sigma_degrees >= 0.0):
+        raise ValueError("sigma_degrees must be finite and non-negative")
     if samples in (2, 3):
         raise ValueError("isotropic mosaicity needs samples == 1 or >= 4")
     if samples == 1 or sigma_degrees == 0.0:
@@ -220,11 +220,12 @@ def compose_mosaic_tilts(rocking_tilts: FloatArray, mosaic_tilts: FloatArray) ->
     so each mosaic tilt is applied to the *base* orientation first and the rocking sweep composed on
     top (``rocking_tilts[i] @ mosaic_tilts[j]``, matching the ``R_tilt @ orientation``
     left-multiply convention both already use) -- physically a block-orientation offset, then the
-    beam sweeping across it, not the other way round. Flattened as ``index = r * M + m``, so
-    consecutive entries share a rocking tilt (``m`` fastest) -- convenient for anyone reshaping back
-    to ``(R, M, 3, 3)``.
+    beam sweeping across it, not the other way round. Flattened as ``index = m * R + r`` (``r``
+    fastest), so each mosaic sample's ``R`` tilts are one contiguous, monotonic rocking sweep -- the
+    beam coupling's segment unions are only valid over consecutive tilts that are neighbours in
+    angle (:func:`~diffBloch.preprocess.coupling.build_coupling_segments`).
     """
-    composed: FloatArray = np.einsum("rij,mjk->rmik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
+    composed: FloatArray = np.einsum("rij,mjk->mrik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
     return composed
 
 

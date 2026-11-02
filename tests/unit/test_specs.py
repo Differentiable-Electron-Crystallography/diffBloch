@@ -141,3 +141,5 @@ def test_isotropic_mosaicity_rejects_invalid_bounds() -> None:
         IsotropicMosaicity(sigma_degrees=-0.1)
     with pytest.raises(ValueError, match="sigma_degrees must be finite and non-negative"):
         IsotropicMosaicity(sigma_degrees=float("nan"))
+    with pytest.raises(ValueError, match="sigma_degrees must be finite and non-negative"):
+        IsotropicMosaicity(sigma_degrees=float("inf"))

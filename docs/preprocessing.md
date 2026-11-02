@@ -222,23 +222,25 @@ it would be in a single perfectly oriented crystal. Mosaicity therefore broadens
 rocking curve and changes the integrated intensity, especially for reflections whose excitation
 condition varies rapidly with angle.
 
-With `blochwave.incoherent_mosaicity: true`, diffBloch reads the apparent mosaicity in degrees from the source
-`.cif_pets` and converts it to an internal sampled-tilt span using
+With `blochwave.incoherent_mosaicity: true`, diffBloch reads the apparent mosaicity {math}`\sigma`
+in degrees from the source `.cif_pets` and treats it as the standard deviation of a 2-D isotropic
+Gaussian spread of mosaic-block orientations. It represents that spread with
+`blochwave.mosaicity_samples` (default 5) extra tilts: one untilted centre sample and the rest evenly
+spaced around a ring at {math}`2\sigma` from it, weighted 1/2 for the centre and 1/2 shared over the
+ring. That placement reproduces the Gaussian's mean squared and mean fourth-power tilt
+({math}`2\sigma^2` and {math}`8\sigma^4`) in every direction. `mosaicity_samples` must therefore be
+1 (no spread) or at least 4.
 
-```{math}
-\Delta\theta = \frac{2\theta_{\mathrm{semi}}}{N}, \qquad
-s = \operatorname{round}\left(\frac{m}{\Delta\theta}\right).
-```
+Every rocking-curve tilt is composed with every mosaic tilt and the weighted intensities are summed.
+Each mosaic sample is a whole extra set of Bloch-wave solves through the full thickness, so the cost
+of preprocessing and refinement scales with `mosaicity_samples`: the default 5 is five times the
+solves of a run without mosaicity.
 
-{math}`\theta_{\mathrm{semi}}` is the rocking-curve integration semiangle, the tilt half-width
-around each orientation's nominal angle. {math}`N` is `rocking_curve_sampling`, the number of tilt
-samples spanning that full range. {math}`\Delta\theta` is the resulting angular spacing between
-adjacent tilt samples. {math}`m` is the apparent mosaicity in degrees read from `.cif_pets`.
-{math}`s` is the internal sample span, rounded to the nearest integer.
-
-The calculated rocking curve is averaged over that span before integration. A span of zero or one
-leaves the curve unchanged. This uses the existing {math}`N` Bloch wave solves rather than
-adding orientations, so enabling mosaicity adds no preprocessing or refinement cost.
+`refinement.trainable.mosaicity_sigma: true` refines {math}`\sigma` alongside the structure, starting
+from the PETS value, with one {math}`\sigma` per dataset. It requires
+`blochwave.incoherent_mosaicity: true` and `mosaicity_samples` of at least 4. The beam sets are
+selected at the PETS value, so if the refined {math}`\sigma` moves far from it, re-run preprocessing
+with the refined value before relying on the result.
 
 Set `blochwave.incoherent_mosaicity: false` (the default) to evaluate only the nominal tilt orientations and
 sum their intensities without mosaic broadening. In that mode any PETS mosaicity value is ignored.

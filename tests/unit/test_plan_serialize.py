@@ -24,7 +24,7 @@ from tests.unit.test_inference import (
     _simulated_intensities,
 )
 
-from diffBloch.core.products import MosaicSmoothed, PatternBatch
+from diffBloch.core.products import MosaicSmoothed, PatternBatch, WeightedSum
 from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess.orientation import rocking_curve_tilts
@@ -110,6 +110,32 @@ def test_segmented_plan_round_trips_with_scored_set_and_reduction(tmp_path) -> N
     assert reloaded_op.alignment.hkl.tolist() == op.alignment.hkl.tolist()  # scored set preserved
     assert isinstance(reloaded_op.tilt_reduction, MosaicSmoothed)
     assert reloaded_op.tilt_reduction.samples == 3
+
+
+@pytest.mark.parametrize("coupled", [False, True])
+def test_weighted_sum_reduction_round_trips_its_weights(tmp_path, coupled: bool) -> None:
+    """Isotropic mosaicity's per-tilt weights survive a checkpoint, not collapse to a plain sum."""
+    grid, *_ = _silicon()
+    weights = WeightedSum(weights=torch.tensor([0.5, 0.5, 0.125, 0.125], dtype=torch.float64))
+    common = {"energy": _ENERGY, "thickness": (300.0,), "tilts": _TILTS, "tilt_reduction": weights}
+    op = (
+        CoupledOrientationPlan.build(
+            grid,
+            [(_BEAM_HKL, (0, 1)), (_BEAM_HKL, (2, 3))],
+            _pattern(),
+            u0=0.0,
+            orientation=np.eye(3),
+            **common,
+        )
+        if coupled
+        else OrientationPlan.build(grid, _BEAM_HKL, _pattern(), **common)
+    )
+    plan = Plan(structure_factor_grid=grid, orientations=(op,), provenance=())
+
+    (reloaded,) = _assert_round_trips(plan, tmp_path).orientations
+
+    assert isinstance(reloaded.tilt_reduction, WeightedSum)
+    assert torch.equal(reloaded.tilt_reduction.weights, weights.weights)
 
 
 def test_mixed_plan_round_trips(tmp_path) -> None:
