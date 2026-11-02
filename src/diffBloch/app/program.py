@@ -62,7 +62,6 @@ from diffBloch.config import (
     write_refinement_lock,
 )
 from diffBloch.config.schema import dataset_checkpoint_stem
-from diffBloch.core.constraints import positive
 from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import (
@@ -711,7 +710,7 @@ def _report_refinement_outcome(
             )
     for mosaicity_nn in mosaicity_nns:
         params = result.best_model.component_params[mosaicity_nn.key]
-        sigma = float(positive(params["unconstrained_sigma"]).reshape(()).item())
+        sigma = float(mosaicity_nn.sigma_degrees(params).item())
         # The component's own key is "isotropic_mosaicity[<ref>]"; the label is just <ref>.
         label = mosaicity_nn.key.removeprefix("isotropic_mosaicity[").removesuffix("]")
         logger.report(

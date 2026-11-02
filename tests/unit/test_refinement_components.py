@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Mapping
 
 import pytest
@@ -10,7 +11,6 @@ import torch
 from tests.unit.test_engine import _engine, _observed_pattern, _params
 from torch import Tensor
 
-from diffBloch.core.constraints import positive
 from diffBloch.engine import (
     ApparentThicknessNN,
     AtomSelection,
@@ -27,7 +27,6 @@ from diffBloch.engine import (
     mean_plan_thickness,
     run_refinement_model,
 )
-from diffBloch.engine.components import _positive_inverse
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.preprocess.orientation import (
     compose_mosaic_tilts,
@@ -640,7 +639,8 @@ def _mosaic_engine(sigma: float, samples: int = 4) -> RefinementEngine:
 
 
 def _at_sigma(component: TrainableIsotropicMosaicity, sigma: float) -> dict[str, Tensor]:
-    return {"unconstrained_sigma": _positive_inverse(torch.tensor([sigma], dtype=torch.float64))}
+    scale = math.log(sigma / component.init_sigma_degrees) / component.log_rate
+    return {"log_sigma_scale": torch.tensor([scale], dtype=torch.float64)}
 
 
 def test_trainable_isotropic_mosaicity_validates_construction() -> None:
@@ -674,9 +674,31 @@ def test_trainable_isotropic_mosaicity_validates_construction() -> None:
 def test_trainable_isotropic_mosaicity_initial_params_round_trips_the_seed_sigma() -> None:
     component = _mosaicity(sigma=0.024)
     params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    assert torch.allclose(
-        positive(params["unconstrained_sigma"]), torch.tensor([0.024], dtype=torch.float64)
+    assert torch.allclose(component.sigma_degrees(params), torch.tensor(0.024, dtype=torch.float64))
+
+
+def test_trainable_isotropic_mosaicity_sigma_can_travel_far_at_the_default_step_budget() -> None:
+    # The default refinement (Adam, lr 1e-3, 40 steps) must be able to move sigma well away from
+    # the PETS seed: a softplus leaf at sigma = 0.05 could move at most ~4% in that budget.
+    component = _mosaicity(sigma=0.05)
+    raw = (
+        component.initial_params(dtype=torch.float64, device=torch.device("cpu"))["log_sigma_scale"]
+        .clone()
+        .requires_grad_(True)
     )
+    optimizer = torch.optim.Adam([raw], lr=1e-3)
+    for _ in range(40):
+        optimizer.zero_grad()
+        (component.sigma_degrees({"log_sigma_scale": raw}) - 0.5).square().backward()
+        optimizer.step()
+    sigma = float(component.sigma_degrees({"log_sigma_scale": raw.detach()}))
+    assert sigma > 2.0 * 0.05
+
+
+def test_trainable_isotropic_mosaicity_rejects_a_nonpositive_log_rate() -> None:
+    for rate in (0.0, -1.0, math.inf):
+        with pytest.raises(ValueError, match="log_rate must be finite and positive"):
+            _mosaicity(log_rate=rate)
 
 
 def test_trainable_isotropic_mosaicity_forward_context_is_empty_outside_its_rotation_range() -> (
@@ -781,11 +803,11 @@ def test_widened_mosaicity_moves_the_tilts_of_every_coupled_segment() -> None:
 def test_widened_mosaicity_routes_a_finite_gradient_to_sigma() -> None:
     engine = _mosaic_engine(0.1)
     component = _mosaicity(sigma=0.1, samples=4)
-    raw = _positive_inverse(torch.tensor([0.3], dtype=torch.float64)).requires_grad_(True)
+    raw = _at_sigma(component, 0.3)["log_sigma_scale"].clone().requires_grad_(True)
     model = build_refinement_model(
         initial=_params(),
         components=(component,),
-        component_params={component.key: {"unconstrained_sigma": raw}},
+        component_params={component.key: {"log_sigma_scale": raw}},
     )
 
     engine.objective_value_model(model).total.backward()
@@ -793,7 +815,8 @@ def test_widened_mosaicity_routes_a_finite_gradient_to_sigma() -> None:
     assert raw.grad is not None
     assert torch.isfinite(raw.grad).all()
     assert float(raw.grad.abs().sum()) > 0.0
-    assert float(positive(raw.detach())) == pytest.approx(0.3)  # not mutated by the forward
+    # Not mutated by the forward.
+    assert float(component.sigma_degrees({"log_sigma_scale": raw.detach()})) == pytest.approx(0.3)
 
 
 def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
@@ -801,12 +824,12 @@ def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
     component = _mosaicity(sigma=0.1, samples=4)
 
     def grad(checkpointed: bool) -> Tensor:
-        raw = _positive_inverse(torch.tensor([0.3], dtype=torch.float64)).requires_grad_(True)
+        raw = _at_sigma(component, 0.3)["log_sigma_scale"].clone().requires_grad_(True)
         params = _params(requires_grad=True)
         model = build_refinement_model(
             initial=params,
             components=(component,),
-            component_params={component.key: {"unconstrained_sigma": raw}},
+            component_params={component.key: {"log_sigma_scale": raw}},
         )
         dataclasses.replace(engine, checkpoint_activations=checkpointed).objective_value_model(
             model
@@ -817,10 +840,10 @@ def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
     assert torch.allclose(grad(True), grad(False))
 
 
-def test_trainable_isotropic_mosaicity_forward_context_requires_unconstrained_sigma() -> None:
+def test_trainable_isotropic_mosaicity_forward_context_requires_log_sigma_scale() -> None:
     engine = _engine()
     component = _mosaicity(samples=1)
-    with pytest.raises(ValueError, match="requires an 'unconstrained_sigma' tensor"):
+    with pytest.raises(ValueError, match="requires a 'log_sigma_scale' tensor"):
         component.forward_context({}, rotation_index=0, orientation=_orientation_at(engine, 0))
 
 

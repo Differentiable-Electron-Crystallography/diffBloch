@@ -353,8 +353,15 @@ class TrainableIsotropicMosaicity:
     these tilts (:attr:`~diffBloch.engine.forward.ForwardContext.tilts`), so sigma gets a gradient
     through the Bloch geometry itself.
 
-    The beam sets, F-gathers, and the baked per-sample density weights stay as built: the weights
-    depend only on ``polar / sigma``, which the move preserves, and the gather does not depend on the
+    Sigma is stored as ``log_sigma_scale`` with ``sigma = init_sigma_degrees *
+    exp(log_rate * log_sigma_scale)``, starting at 0. Adam moves a leaf by roughly the learning rate
+    per step whatever its gradient's size, so sigma's *relative* step is about ``log_rate * lr``: the
+    default 25 gives ~2.5% per step at the default ``lr = 1e-3`` (up to ~e-fold over 40 steps), where
+    a plain softplus leaf at a small sigma would move only ~0.1% per step and could not get far from
+    the PETS seed. It also keeps sigma positive with no bound to hit.
+
+    The beam sets, F-gathers, and the baked per-sample weights stay as built: the weights depend
+    only on ``polar / sigma``, which the move preserves, and the gather does not depend on the
     tilt. The beam sets were selected at ``init_sigma_degrees``, so a sigma that grows well past it
     tilts into beams the solve does not include -- re-settle the ``Plan`` at the refined value
     before trusting a large change.
@@ -371,6 +378,7 @@ class TrainableIsotropicMosaicity:
     init_sigma_degrees: float
     rotation_range: tuple[int, int]
     key: str = "isotropic_mosaicity"
+    log_rate: float = 25.0
 
     def __post_init__(self) -> None:
         if not self.polar_degrees:
@@ -382,6 +390,8 @@ class TrainableIsotropicMosaicity:
         start, end = self.rotation_range
         if start < 0 or end <= start:
             raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+        if not (math.isfinite(self.log_rate) and self.log_rate > 0.0):
+            raise ValueError("log_rate must be finite and positive")
 
     def initial_params(
         self,
@@ -389,8 +399,14 @@ class TrainableIsotropicMosaicity:
         dtype: torch.dtype,
         device: torch.device,
     ) -> Mapping[str, Tensor]:
-        sigma = torch.tensor([self.init_sigma_degrees], dtype=dtype, device=device)
-        return {"unconstrained_sigma": _positive_inverse(sigma)}
+        return {"log_sigma_scale": torch.zeros(1, dtype=dtype, device=device)}
+
+    def sigma_degrees(self, params: Mapping[str, Tensor]) -> Tensor:
+        """The physical sigma (degrees, scalar float64) that ``params`` encode."""
+        if "log_sigma_scale" not in params:
+            raise ValueError("isotropic mosaicity component requires a 'log_sigma_scale' tensor")
+        raw = params["log_sigma_scale"].reshape(()).to(torch.float64)
+        return self.init_sigma_degrees * torch.exp(self.log_rate * raw)
 
     def forward_context(
         self,
@@ -405,11 +421,8 @@ class TrainableIsotropicMosaicity:
         if source_index < start or source_index >= end:
             # Another dataset's rotation: the component that does claim it supplies the tilts.
             return ForwardContext()
-        if "unconstrained_sigma" not in params:
-            raise ValueError(
-                "isotropic mosaicity component requires an 'unconstrained_sigma' tensor"
-            )
-        raw = params["unconstrained_sigma"]
+        sigma = self.sigma_degrees(params)
+        raw = params["log_sigma_scale"]
         n_tilts = int(orientation.tilts.shape[0])
         n_mosaic = len(self.polar_degrees)
         if n_tilts % n_mosaic != 0:
@@ -417,7 +430,6 @@ class TrainableIsotropicMosaicity:
                 f"orientation has {n_tilts} tilts, not a multiple of the {n_mosaic} mosaic "
                 "samples this component was built from"
             )
-        sigma = positive(raw).reshape(()).to(torch.float64)
         scale = sigma / self.init_sigma_degrees
         azimuth = torch.deg2rad(raw.new_tensor(self.azimuth_degrees, dtype=torch.float64))
         polar = torch.deg2rad(raw.new_tensor(self.polar_degrees, dtype=torch.float64))
