@@ -124,15 +124,14 @@ def test_rocking_curve_rejects_invalid_geometry_and_bounds() -> None:
 def test_isotropic_mosaicity_defaults() -> None:
     mosaicity = IsotropicMosaicity(sigma_degrees=0.1)
     assert mosaicity.samples == 5
-    assert mosaicity.placement == "golden_spiral"
 
 
-def test_isotropic_mosaicity_symmetric_placement_needs_one_or_at_least_four_samples() -> None:
+def test_isotropic_mosaicity_needs_one_or_at_least_four_samples() -> None:
     for samples in (2, 3):
         with pytest.raises(ValueError, match="samples == 1 or >= 4"):
-            IsotropicMosaicity(sigma_degrees=0.1, samples=samples, placement="symmetric")
+            IsotropicMosaicity(sigma_degrees=0.1, samples=samples)
     for samples in (1, 4, 5):
-        IsotropicMosaicity(sigma_degrees=0.1, samples=samples, placement="symmetric")
+        IsotropicMosaicity(sigma_degrees=0.1, samples=samples)
 
 
 def test_isotropic_mosaicity_rejects_invalid_bounds() -> None:

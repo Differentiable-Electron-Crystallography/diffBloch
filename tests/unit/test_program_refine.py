@@ -152,7 +152,7 @@ def test_mosaicity_components_partition_the_pooled_rotation_space() -> None:
                 "exp_data": ["a.cif_pets", "sub/b.cif_pets"],
                 "multi_dataset": True,
             },
-            "blochwave": {"incoherent_mosaicity": True, "mosaicity_samples": 3},
+            "blochwave": {"incoherent_mosaicity": True, "mosaicity_samples": 4},
             "refinement": {"trainable": {"mosaicity_sigma": True}},
         }
     )
@@ -170,8 +170,8 @@ def test_mosaicity_components_partition_the_pooled_rotation_space() -> None:
     ]
     assert [component.rotation_range for component in components] == [(0, 2), (2, 5)]
     assert [component.init_sigma_degrees for component in components] == [0.02, 0.03]
-    assert len(components[0].polar_degrees) == 3
-    assert len(components[0].azimuth_degrees) == 3
+    assert len(components[0].polar_degrees) == 4
+    assert len(components[0].azimuth_degrees) == 4
 
 
 def test_mosaicity_components_is_empty_when_trainable_sigma_is_off() -> None:

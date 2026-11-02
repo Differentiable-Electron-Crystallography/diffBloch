@@ -330,7 +330,6 @@ def setup_datasets(
             config.blochwave.to_rocking_curve(integration),
             model="isotropic",
             isotropic_samples=config.blochwave.mosaicity_samples,
-            isotropic_placement=config.blochwave.mosaicity_placement,
         )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
@@ -421,15 +420,12 @@ def resolve_dataset_mosaicity(
     degrees_override: float | None = None,
     model: Literal["axis_smoothed", "isotropic"] = "axis_smoothed",
     isotropic_samples: int = 5,
-    isotropic_placement: Literal["golden_spiral", "symmetric"] = "golden_spiral",
 ) -> MosaicSmoothed | IsotropicMosaicity | None:
     """Resolve apparent mosaicity to the applied tilt geometry, or ``None`` when disabled.
 
     ``enabled`` is ``blochwave.incoherent_mosaicity``: the only mosaicity switch exposed in
     ``experiment.yaml``, always the isotropic model at the PETS-reported apparent mosaicity and
-    ``blochwave.mosaicity_samples`` samples (default 5) placed per ``blochwave.mosaicity_placement``
-    (``isotropic_placement``). ``degrees_override``
-    and ``model`` are Python-level knobs for callers that need something other than that default
+    ``blochwave.mosaicity_samples`` samples (default 5). ``degrees_override`` and ``model`` are Python-level knobs for callers that need something other than that default
     (e.g. the ``axis_smoothed`` model, or a non-PETS sigma); they are not themselves config
     fields.
 
@@ -459,11 +455,7 @@ def resolve_dataset_mosaicity(
     if mosaicity_degrees == 0.0:
         return None
     if model == "isotropic":
-        return IsotropicMosaicity(
-            sigma_degrees=mosaicity_degrees,
-            samples=isotropic_samples,
-            placement=isotropic_placement,
-        )
+        return IsotropicMosaicity(sigma_degrees=mosaicity_degrees, samples=isotropic_samples)
     degrees_per_sample = 2.0 * rocking.integration.semiangle / rocking.sampling
     samples = round(mosaicity_degrees / degrees_per_sample)
     if samples <= 1:

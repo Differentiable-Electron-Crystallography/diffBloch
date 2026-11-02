@@ -290,10 +290,10 @@ class IsotropicMosaicity:
     :class:`~diffBloch.core.products.MosaicSmoothed` only ever averages *along* the existing
     rocking-curve tilts, so it cannot capture spread transverse to that axis. This instead composes
     ``samples`` additional tilts, scattered over a 2-D isotropic Gaussian orientation distribution of
-    standard deviation ``sigma_degrees`` around the identity (quantile-placed, not a hard cutoff --
-    see :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`), onto *every* rocking-curve
+    standard deviation ``sigma_degrees`` around the identity (see
+    :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`), onto *every* rocking-curve
     tilt -- the forward model then sums intensities over the full ``rocking.sampling * samples``
-    combined tilt set, weighted by each mosaic sample's relative Gaussian density
+    combined tilt set, weighted per mosaic sample
     (:class:`~diffBloch.core.products.WeightedSum`; a joint incoherent integration over both the
     rocking sweep and the mosaic spread -- the fitted intensity scale absorbs the overall sum's
     magnitude, only the relative weighting matters).
@@ -303,27 +303,22 @@ class IsotropicMosaicity:
     value, this samples a genuinely new tilt set, so ``sigma_degrees`` is any angular spread you want
     to test (e.g. a value refined elsewhere against the data).
 
-    ``placement`` chooses where the samples go
-    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`): ``"golden_spiral"``
-    puts each sample at its own Rayleigh-quantile polar angle on a golden-angle azimuth spiral,
-    weighted by Gaussian density; ``"symmetric"`` puts one sample at the centre and the other
-    ``samples - 1`` evenly round a ring at ``2 * sigma_degrees``, weighted 1/2 and 1/2 in total --
-    zero mean tilt, an isotropic spread, and the 2-D Gaussian's second and fourth radial moments.
-    A ring needs at least 3 points to be isotropic, so ``"symmetric"`` takes ``samples == 1`` (no
-    spread) or ``samples >= 4``.
+    The samples are one at the centre and the other ``samples - 1`` evenly round a ring at
+    ``2 * sigma_degrees``, weighted 1/2 and 1/2 in total
+    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`): zero mean tilt, an
+    isotropic spread, and the 2-D Gaussian's second and fourth radial moments. A ring needs at
+    least 3 points to be isotropic, so ``samples`` is 1 (no spread) or at least 4.
     """
 
     sigma_degrees: float
     samples: int = 5
-    placement: Literal["golden_spiral", "symmetric"] = "golden_spiral"
 
     def __post_init__(self) -> None:
         if self.samples < 1:
             raise ValueError("samples must be >= 1")
-        if self.placement == "symmetric" and self.samples in (2, 3):
+        if self.samples in (2, 3):
             raise ValueError(
-                "symmetric mosaicity placement needs samples == 1 or >= 4 (a centre plus a ring "
-                "of at least 3)"
+                "isotropic mosaicity needs samples == 1 or >= 4 (a centre plus a ring of at least 3)"
             )
         if not (self.sigma_degrees >= 0.0):  # catches NaN too
             raise ValueError("sigma_degrees must be finite and non-negative")

@@ -190,11 +190,11 @@ def test_build_orientation_plans_composes_isotropic_mosaic_tilts_onto_rocking_ti
     assert torch.equal(weights[:5], weights[5:10])
 
 
-def test_build_orientation_plans_uses_the_symmetric_placement_weights() -> None:
+def test_build_orientation_plans_uses_the_centre_and_ring_weights() -> None:
     plan, config, integration, _mosaicity = _quartz_train_plan()
     pruned = select_beams(config.blochwave.to_beam_selection(integration))(plan)
     rocking = config.blochwave.to_rocking_curve(integration)
-    mosaicity = IsotropicMosaicity(sigma_degrees=0.1, samples=5, placement="symmetric")
+    mosaicity = IsotropicMosaicity(sigma_degrees=0.1, samples=5)
 
     built = build_orientation_plans(rocking, mosaicity)(pruned).orientations[0]
 

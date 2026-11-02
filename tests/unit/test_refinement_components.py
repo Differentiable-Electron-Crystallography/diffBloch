@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from typing import Literal
 
 import pytest
 import torch
@@ -620,12 +619,11 @@ def test_structure_only_model_keeps_quartz_objective_exactly_unchanged() -> None
 
 def _mosaicity(
     sigma: float = 0.1,
-    samples: int = 2,
+    samples: int = 4,
     rotation_range: tuple[int, int] = (0, 1),
-    placement: Literal["golden_spiral", "symmetric"] = "golden_spiral",
     **kwargs: object,
 ) -> TrainableIsotropicMosaicity:
-    azimuth, polar = isotropic_mosaic_directions(sigma, samples, placement)
+    azimuth, polar = isotropic_mosaic_directions(sigma, samples)
     return TrainableIsotropicMosaicity(
         azimuth_degrees=tuple(azimuth.tolist()),
         polar_degrees=tuple(polar.tolist()),
@@ -635,13 +633,9 @@ def _mosaicity(
     )
 
 
-def _mosaic_engine(
-    sigma: float,
-    samples: int = 3,
-    placement: Literal["golden_spiral", "symmetric"] = "golden_spiral",
-) -> RefinementEngine:
+def _mosaic_engine(sigma: float, samples: int = 4) -> RefinementEngine:
     """An engine whose one orientation carries 4 rocking tilts x ``samples`` mosaic tilts at sigma."""
-    mosaic, _, _ = isotropic_mosaic_tilts(sigma, samples, placement)
+    mosaic, _, _ = isotropic_mosaic_tilts(sigma, samples)
     return _engine(tilts=compose_mosaic_tilts(rocking_curve_tilts(0.5, 4), mosaic))
 
 
@@ -700,7 +694,7 @@ def test_trainable_isotropic_mosaicity_forward_context_is_empty_outside_its_rota
 
 def test_trainable_isotropic_mosaicity_at_its_seed_sigma_reproduces_the_built_tilts() -> None:
     engine = _mosaic_engine(0.1)
-    component = _mosaicity(sigma=0.1, samples=3)
+    component = _mosaicity(sigma=0.1, samples=4)
     params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
 
     context = component.forward_context(
@@ -713,7 +707,7 @@ def test_trainable_isotropic_mosaicity_at_its_seed_sigma_reproduces_the_built_ti
 
 def test_trainable_isotropic_mosaicity_moves_tilts_to_the_widened_gaussian() -> None:
     # Widening from 0.1 to 0.25 degrees must land exactly on the tilts placed at 0.25 directly.
-    component = _mosaicity(sigma=0.1, samples=3)
+    component = _mosaicity(sigma=0.1, samples=4)
     context = component.forward_context(
         _at_sigma(component, 0.25),
         rotation_index=0,
@@ -726,15 +720,13 @@ def test_trainable_isotropic_mosaicity_moves_tilts_to_the_widened_gaussian() -> 
     )
 
 
-@pytest.mark.parametrize(("placement", "samples"), [("golden_spiral", 3), ("symmetric", 5)])
-def test_widened_mosaicity_solve_matches_a_plan_built_at_that_sigma(
-    placement: Literal["golden_spiral", "symmetric"], samples: int
-) -> None:
+@pytest.mark.parametrize("samples", [4, 5])
+def test_widened_mosaicity_solve_matches_a_plan_built_at_that_sigma(samples: int) -> None:
     # Physics oracle: moving the tilts in the forward is the same Bloch solve, per reflection, as
     # building the plan at the new sigma over the same beams -- and differs from the seed plan.
-    seed = _mosaic_engine(0.1, samples, placement)
-    target = _mosaic_engine(0.6, samples, placement)
-    component = _mosaicity(sigma=0.1, samples=samples, placement=placement)
+    seed = _mosaic_engine(0.1, samples)
+    target = _mosaic_engine(0.6, samples)
+    component = _mosaicity(sigma=0.1, samples=samples)
     params = _params()
     fgb = seed.fgb(params)
     thickness = seed.orientations[0].thickness
@@ -771,7 +763,7 @@ def _coupled_at(sigma: float) -> RefinementEngine:
 def test_widened_mosaicity_moves_the_tilts_of_every_coupled_segment() -> None:
     # The union/per-tilt paths solve segments over covered tilts; each must take its own slice.
     seed, target = _coupled_at(0.1), _coupled_at(0.6)
-    component = _mosaicity(sigma=0.1, samples=3)
+    component = _mosaicity(sigma=0.1, samples=4)
     fgb = seed.fgb(_params())
     thickness = seed.orientations[0].thickness
     context = component.forward_context(
@@ -788,7 +780,7 @@ def test_widened_mosaicity_moves_the_tilts_of_every_coupled_segment() -> None:
 
 def test_widened_mosaicity_routes_a_finite_gradient_to_sigma() -> None:
     engine = _mosaic_engine(0.1)
-    component = _mosaicity(sigma=0.1, samples=3)
+    component = _mosaicity(sigma=0.1, samples=4)
     raw = _positive_inverse(torch.tensor([0.3], dtype=torch.float64)).requires_grad_(True)
     model = build_refinement_model(
         initial=_params(),
@@ -806,7 +798,7 @@ def test_widened_mosaicity_routes_a_finite_gradient_to_sigma() -> None:
 
 def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
     engine = _mosaic_engine(0.1)
-    component = _mosaicity(sigma=0.1, samples=3)
+    component = _mosaicity(sigma=0.1, samples=4)
 
     def grad(checkpointed: bool) -> Tensor:
         raw = _positive_inverse(torch.tensor([0.3], dtype=torch.float64)).requires_grad_(True)
@@ -833,11 +825,11 @@ def test_trainable_isotropic_mosaicity_forward_context_requires_unconstrained_si
 
 
 def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_its_samples() -> None:
-    tilts = rocking_curve_tilts(0.5, 3)  # 3 tilts, not a multiple of 2 mosaic samples
+    tilts = rocking_curve_tilts(0.5, 6)  # 6 tilts, not a multiple of 4 mosaic samples
     engine = _engine(tilts=tilts)
-    component = _mosaicity(samples=2)
+    component = _mosaicity(samples=4)
     params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
-    with pytest.raises(ValueError, match="not a multiple of the 2 mosaic"):
+    with pytest.raises(ValueError, match="not a multiple of the 4 mosaic"):
         component.forward_context(params, rotation_index=0, orientation=_orientation_at(engine, 0))
 
 

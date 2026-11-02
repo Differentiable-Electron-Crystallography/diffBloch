@@ -97,13 +97,9 @@ class BlochwaveConfig(_StrictConfig):
     incoherent_mosaicity: bool = False
     # Each additional sample is a whole extra Bloch wave calculation solved through the full
     # thickness, so this scales preprocessing/refinement runtime linearly and only matters when
-    # incoherent_mosaicity is true.
+    # incoherent_mosaicity is true. A centre sample plus an evenly spaced ring at 2*sigma
+    # (diffBloch.specs.IsotropicMosaicity), so it must be 1 or >= 4.
     mosaicity_samples: int = 5
-    # Where the mosaicity_samples tilts go (diffBloch.specs.IsotropicMosaicity.placement):
-    # golden_spiral (one sample per radius on a golden-angle spiral, density-weighted) or symmetric
-    # (a centre sample plus an evenly spaced ring at 2*sigma, matching the Gaussian's moments with
-    # zero mean tilt; needs mosaicity_samples == 1 or >= 4).
-    mosaicity_placement: Literal["golden_spiral", "symmetric"] = "golden_spiral"
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
@@ -152,10 +148,8 @@ class BlochwaveConfig(_StrictConfig):
             raise ValueError("rocking_curve_sampling must be >= 1")
         if self.mosaicity_samples < 1:
             raise ValueError("mosaicity_samples must be >= 1")
-        # Sigma comes from PETS later; the samples/placement pairing is checkable now.
-        IsotropicMosaicity(
-            sigma_degrees=0.0, samples=self.mosaicity_samples, placement=self.mosaicity_placement
-        )
+        # Sigma comes from PETS later; the sample count is checkable now.
+        IsotropicMosaicity(sigma_degrees=0.0, samples=self.mosaicity_samples)
         self.to_policy()
         self.to_orientation_selection()
         self.to_absorption()

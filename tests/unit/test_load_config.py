@@ -36,7 +36,7 @@ def test_incoherent_mosaicity_config_accepts_only_booleans() -> None:
 
 def test_mosaicity_samples_defaults_to_five_and_rejects_nonpositive_values() -> None:
     assert BlochwaveConfig.model_validate({}).mosaicity_samples == 5
-    assert BlochwaveConfig.model_validate({"mosaicity_samples": 3}).mosaicity_samples == 3
+    assert BlochwaveConfig.model_validate({"mosaicity_samples": 4}).mosaicity_samples == 4
     with pytest.raises(ValidationError, match="mosaicity_samples must be >= 1"):
         BlochwaveConfig.model_validate({"mosaicity_samples": 0})
 

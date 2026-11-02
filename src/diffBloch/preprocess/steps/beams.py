@@ -150,7 +150,7 @@ def build_orientation_plans(
         assert rocking is not None and plain_tilts is not None  # narrowed above
         n_rocking = plain_tilts.shape[0]
         mosaic_tilts, mosaic_weights, _mosaic_polar = isotropic_mosaic_tilts(
-            mosaicity.sigma_degrees, mosaicity.samples, mosaicity.placement
+            mosaicity.sigma_degrees, mosaicity.samples
         )
         plain_tilts = compose_mosaic_tilts(plain_tilts, mosaic_tilts)
         # index = r * M + m (compose_mosaic_tilts): the same per-mosaic-sample weights repeat for

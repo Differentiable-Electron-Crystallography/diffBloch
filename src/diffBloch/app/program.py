@@ -792,13 +792,10 @@ def _mosaicity_components(
             cfg.blochwave.to_rocking_curve(integration),
             model="isotropic",
             isotropic_samples=cfg.blochwave.mosaicity_samples,
-            isotropic_placement=cfg.blochwave.mosaicity_placement,
         )
         if not isinstance(resolved, IsotropicMosaicity):
             continue
-        azimuth, polar = isotropic_mosaic_directions(
-            resolved.sigma_degrees, resolved.samples, resolved.placement
-        )
+        azimuth, polar = isotropic_mosaic_directions(resolved.sigma_degrees, resolved.samples)
         components.append(
             TrainableIsotropicMosaicity(
                 azimuth_degrees=tuple(float(a) for a in azimuth.tolist()),

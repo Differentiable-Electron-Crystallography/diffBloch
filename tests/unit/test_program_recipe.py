@@ -224,7 +224,6 @@ def test_recipe_records_resolved_mosaicity_not_the_config_request() -> None:
         "__type__": "IsotropicMosaicity",
         "sigma_degrees": 0.6,
         "samples": 5,
-        "placement": "golden_spiral",
     }
 
 

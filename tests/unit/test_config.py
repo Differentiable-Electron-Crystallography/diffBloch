@@ -544,19 +544,14 @@ def test_blochwave_has_one_complete_default() -> None:
     assert cfg.blochwave.to_policy() == UnionCoupling()
 
 
-def test_mosaicity_placement_parses_and_fails_fast_on_a_ring_too_small() -> None:
+def test_mosaicity_samples_fail_fast_on_a_ring_too_small() -> None:
     base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
-    assert ExperimentConfig.model_validate(base).blochwave.mosaicity_placement == "golden_spiral"
-    cfg = ExperimentConfig.model_validate(
-        {**base, "blochwave": {"incoherent_mosaicity": True, "mosaicity_placement": "symmetric"}}
-    )
-    assert cfg.blochwave.mosaicity_placement == "symmetric"
-    with pytest.raises(ValidationError, match="samples == 1 or >= 4"):
-        ExperimentConfig.model_validate(
-            {**base, "blochwave": {"mosaicity_placement": "symmetric", "mosaicity_samples": 3}}
-        )
+    for samples in (2, 3):
+        with pytest.raises(ValidationError, match="samples == 1 or >= 4"):
+            ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_samples": samples}})
+    # The placement is no longer a choice, so the old key is an unknown field.
     with pytest.raises(ValidationError):
-        ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_placement": "ring"}})
+        ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_placement": "symmetric"}})
 
 
 def test_coupling_policy_override_parses() -> None:
