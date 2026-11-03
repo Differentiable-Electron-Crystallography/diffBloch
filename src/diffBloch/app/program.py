@@ -967,6 +967,14 @@ def _write_refinement_outputs(
         for component_key, parameters in result.best_model.component_params.items()
         for parameter_name, parameter in parameters.items()
     }
+    # The refined mosaicity sigma in degrees, so the artifact is readable without knowing the
+    # component's init_sigma_degrees and log_rate.
+    for component in result.best_model.components:
+        if isinstance(component, TrainableIsotropicMosaicity):
+            sigma = component.sigma_degrees(result.best_model.component_params[component.key])
+            component_arrays[f"{component.key}__sigma_degrees"] = np.asarray(
+                [float(sigma.detach().cpu())]
+            )
     if component_arrays:
         np.savez_compressed(str(components_path), **component_arrays)  # type: ignore[arg-type]
 
