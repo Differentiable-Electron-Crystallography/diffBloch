@@ -324,7 +324,6 @@ def convergence_test_experiment(
             plan = pipeline(
                 [
                     build_orientation_plans(
-                        rocking,
                         scoring_selection=cfg.blochwave.to_beam_selection(dataset.integration),
                     ),
                 ]
