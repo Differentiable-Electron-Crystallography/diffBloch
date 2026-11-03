@@ -196,7 +196,8 @@ def test_busing_levy_rejects_degenerate_cells() -> None:
 
 
 def test_isotropic_mosaic_tilts_are_proper_rotations() -> None:
-    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 5)
+    tilts, weights = isotropic_mosaic_tilts(0.1, 5)
+    _, polar = isotropic_mosaic_directions(0.1, 5)
     assert tilts.shape == (5, 3, 3)
     assert weights.shape == (5,)
     assert polar.shape == (5,)
@@ -207,11 +208,13 @@ def test_isotropic_mosaic_tilts_are_proper_rotations() -> None:
 
 
 def test_isotropic_mosaic_tilts_degenerate_cases_are_the_identity_with_unit_weight() -> None:
-    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 1)
+    tilts, weights = isotropic_mosaic_tilts(0.1, 1)
+    _, polar = isotropic_mosaic_directions(0.1, 1)
     assert np.allclose(tilts, np.eye(3)[None])
     assert np.allclose(weights, [1.0])
     assert np.allclose(polar, [0.0])
-    tilts, weights, polar = isotropic_mosaic_tilts(0.0, 5)
+    tilts, weights = isotropic_mosaic_tilts(0.0, 5)
+    _, polar = isotropic_mosaic_directions(0.0, 5)
     assert np.allclose(tilts, np.eye(3)[None])
     assert np.allclose(weights, [1.0])
     assert np.allclose(polar, [0.0])
@@ -227,7 +230,8 @@ def test_isotropic_mosaic_tilts_rejects_invalid_inputs() -> None:
 @pytest.mark.parametrize("samples", [4, 5, 7])
 def test_isotropic_mosaic_placement_matches_the_gaussian_moments(samples: int) -> None:
     sigma = 0.05
-    tilts, weights, polar = isotropic_mosaic_tilts(sigma, samples)
+    tilts, weights = isotropic_mosaic_tilts(sigma, samples)
+    _, polar = isotropic_mosaic_directions(sigma, samples)
     azimuth, _ = isotropic_mosaic_directions(sigma, samples)
     angle = np.rad2deg(
         np.arccos(np.clip((np.trace(tilts, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0))
@@ -251,14 +255,15 @@ def test_isotropic_mosaic_placement_needs_a_centre_and_a_ring_of_at_least_three(
     for samples in (2, 3):
         with pytest.raises(ValueError, match="samples == 1 or >= 4"):
             isotropic_mosaic_tilts(0.1, samples)
-    tilts, weights, polar = isotropic_mosaic_tilts(0.1, 1)
+    tilts, weights = isotropic_mosaic_tilts(0.1, 1)
+    _, polar = isotropic_mosaic_directions(0.1, 1)
     assert np.allclose(tilts, np.eye(3)[None])
     assert np.allclose(weights, [1.0]) and np.allclose(polar, [0.0])
 
 
 def test_compose_mosaic_tilts_is_every_rocking_tilt_times_every_mosaic_tilt() -> None:
     rocking = rocking_curve_tilts(1.0, 4)
-    mosaic, _weights, _polar = isotropic_mosaic_tilts(0.1, 4)
+    mosaic, _weights = isotropic_mosaic_tilts(0.1, 4)
     combined = compose_mosaic_tilts(rocking, mosaic)
     assert combined.shape == (16, 3, 3)
     assert np.allclose(np.linalg.det(combined), 1.0)

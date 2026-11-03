@@ -140,7 +140,7 @@ def test_enabled_pets_mosaicity_resolves_sample_span_from_actual_tilt_spacing() 
     record = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
         update={"mosaicity_degrees": 0.6}
     )
-    reduction = resolve_dataset_mosaicity(True, record, rocking)
+    reduction = resolve_dataset_mosaicity(True, record, rocking, model="axis_smoothed")
     assert reduction == MosaicSmoothed(samples=3)  # round(0.6 / (2 / 11))
 
 
@@ -151,7 +151,7 @@ def test_pets_mosaicity_below_one_sample_uses_plain_sum() -> None:
     record = read_experimental_data(QUARTZ / "exp_data.cif_pets").model_copy(
         update={"mosaicity_degrees": 0.05}
     )
-    assert resolve_dataset_mosaicity(True, record, rocking) is None
+    assert resolve_dataset_mosaicity(True, record, rocking, model="axis_smoothed") is None
 
 
 def test_build_orientation_plans_rejects_reduction_or_coupling_without_rocking() -> None:

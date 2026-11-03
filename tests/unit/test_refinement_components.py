@@ -634,7 +634,7 @@ def _mosaicity(
 
 def _mosaic_engine(sigma: float, samples: int = 4) -> RefinementEngine:
     """An engine whose one orientation carries 4 rocking tilts x ``samples`` mosaic tilts at sigma."""
-    mosaic, _, _ = isotropic_mosaic_tilts(sigma, samples)
+    mosaic, _ = isotropic_mosaic_tilts(sigma, samples)
     return _engine(tilts=compose_mosaic_tilts(rocking_curve_tilts(0.5, 4), mosaic))
 
 

@@ -328,7 +328,6 @@ def setup_datasets(
             config.blochwave.incoherent_mosaicity,
             record,
             config.blochwave.to_rocking_curve(integration),
-            model="isotropic",
             isotropic_samples=config.blochwave.mosaicity_samples,
         )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
@@ -417,19 +416,17 @@ def resolve_dataset_mosaicity(
     record: ExperimentalRecord,
     rocking: RockingCurve,
     *,
-    degrees_override: float | None = None,
-    model: Literal["axis_smoothed", "isotropic"] = "axis_smoothed",
+    model: Literal["axis_smoothed", "isotropic"] = "isotropic",
     isotropic_samples: int = 5,
 ) -> MosaicSmoothed | IsotropicMosaicity | None:
     """Resolve apparent mosaicity to the applied tilt geometry, or ``None`` when disabled.
 
     ``enabled`` is ``blochwave.incoherent_mosaicity``: the only mosaicity switch exposed in
     ``experiment.yaml``, always the isotropic model at the PETS-reported apparent mosaicity and
-    ``blochwave.mosaicity_samples`` samples (default 5). ``degrees_override`` and ``model`` are Python-level knobs for callers that need something other than that default
-    (e.g. the ``axis_smoothed`` model, or a non-PETS sigma); they are not themselves config
-    fields.
+    ``blochwave.mosaicity_samples`` samples (default 5). ``model`` is a Python-level knob for callers
+    that want the ``axis_smoothed`` model instead; it is not a config field.
 
-    ``model="isotropic"`` (the config path's only choice) returns an
+    ``model="isotropic"`` (the default and the config path's only choice) returns an
     :class:`~diffBloch.specs.IsotropicMosaicity` spec of ``isotropic_samples`` tilts scattered over a
     cone in every direction (see :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`).
     ``model="axis_smoothed"`` instead returns a :class:`~diffBloch.core.products.MosaicSmoothed`
@@ -439,9 +436,7 @@ def resolve_dataset_mosaicity(
     if not enabled:
         return None
     source = record.source_path if record.source_path is not None else "<experimental data>"
-    mosaicity_degrees = (
-        degrees_override if degrees_override is not None else record.mosaicity_degrees
-    )
+    mosaicity_degrees = record.mosaicity_degrees
     if mosaicity_degrees is None:
         raise ValueError(
             f"blochwave.incoherent_mosaicity=true requires a 'mosaicity:' value in {source}, and "

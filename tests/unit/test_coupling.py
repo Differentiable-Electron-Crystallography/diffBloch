@@ -238,7 +238,7 @@ def test_mosaic_composed_tilts_lose_no_excited_beam(rotation: int, adaptive: boo
     samples.
     """
     grid, rocking = _grid_and_tilts()
-    mosaic, _, _ = isotropic_mosaic_tilts(0.3, 5)
+    mosaic, _ = isotropic_mosaic_tilts(0.3, 5)
     tilts = compose_mosaic_tilts(rocking, mosaic)
     d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
     policy = UnionCoupling(union_adaptive=adaptive)

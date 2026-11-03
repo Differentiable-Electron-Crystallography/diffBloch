@@ -95,10 +95,11 @@ class BlochwaveConfig(_StrictConfig):
     # the PETS-reported apparent mosaicity -- see refinement.trainable.mosaicity_sigma to refine it
     # jointly with the structure instead of leaving it fixed at that value.
     incoherent_mosaicity: bool = False
-    # Each additional sample is a whole extra Bloch wave calculation solved through the full
-    # thickness, so this scales preprocessing/refinement runtime linearly and only matters when
-    # incoherent_mosaicity is true. A centre sample plus an evenly spaced ring at 2*sigma
-    # (diffBloch.specs.IsotropicMosaicity), so it must be 1 or >= 4.
+    # A centre sample plus an evenly spaced ring at 2*sigma (diffBloch.specs.IsotropicMosaicity),
+    # so it must be 1 or >= 4. Any value >= 4 already matches the Gaussian spread exactly; more
+    # samples only add directions around the same ring, not radial accuracy. Each sample is a
+    # whole extra Bloch wave calculation, so runtime scales linearly with it. Only matters when
+    # incoherent_mosaicity is true.
     mosaicity_samples: int = 5
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"

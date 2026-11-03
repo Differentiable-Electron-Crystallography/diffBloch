@@ -149,11 +149,8 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     return tilt
 
 
-def isotropic_mosaic_tilts(
-    sigma_degrees: float, samples: int
-) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Isotropic Gaussian mosaic-spread tilts, weights, and polar angles: ``(samples, 3, 3)``,
-    ``(samples,)``, ``(samples,)``.
+def isotropic_mosaic_tilts(sigma_degrees: float, samples: int) -> tuple[FloatArray, FloatArray]:
+    """Isotropic Gaussian mosaic-spread tilts and weights: ``(samples, 3, 3)`` and ``(samples,)``.
 
     Unlike :func:`rocking_curve_tilts` (tilts confined to one axis, x), this places ``samples``
     small rotations isotropically over *every* azimuth around the identity -- the physical picture
@@ -169,18 +166,17 @@ def isotropic_mosaic_tilts(
     ``samples = 1`` or ``sigma_degrees = 0`` is the identity with weight 1, so a unit/zero-spread
     mosaicity composes off.
 
-    The returned ``polar`` angles (degrees) are exposed separately from ``weights``; with the
-    azimuths from :func:`isotropic_mosaic_directions` they let
-    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity` move these same directions to a
-    refined sigma (every polar angle scales with sigma, and the weights do not change when it does).
+    The polar angles behind the tilts come from :func:`isotropic_mosaic_directions`, which
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity` uses to move the same
+    directions to a refined sigma.
     """
     azimuth, polar = isotropic_mosaic_directions(sigma_degrees, samples)
     if samples == 1 or sigma_degrees == 0.0:
-        return np.eye(3)[None], np.ones(1), polar
+        return np.eye(3)[None], np.ones(1)
     tilts = np.stack([hexagonal_tilt(az, po) for az, po in zip(azimuth, polar, strict=True)])
     weights = np.full(samples, 0.5 / (samples - 1))
     weights[0] = 0.5
-    return tilts, weights, polar
+    return tilts, weights
 
 
 def isotropic_mosaic_directions(

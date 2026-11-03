@@ -789,7 +789,6 @@ def _mosaicity_components(
             cfg.blochwave.incoherent_mosaicity,
             record,
             cfg.blochwave.to_rocking_curve(integration),
-            model="isotropic",
             isotropic_samples=cfg.blochwave.mosaicity_samples,
         )
         if not isinstance(resolved, IsotropicMosaicity):

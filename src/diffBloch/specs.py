@@ -308,7 +308,8 @@ class IsotropicMosaicity:
     ``2 * sigma_degrees``, weighted 1/2 and 1/2 in total
     (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`): zero mean tilt, an
     isotropic spread, and the 2-D Gaussian's second and fourth radial moments. A ring needs at
-    least 3 points to be isotropic, so ``samples`` is 1 (no spread) or at least 4.
+    least 3 points to be isotropic, so ``samples`` is 1 (no spread) or at least 4. Any count of 4 or
+    more already matches those moments exactly; extra samples only add directions on the same ring.
     """
 
     sigma_degrees: float
