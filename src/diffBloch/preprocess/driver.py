@@ -20,7 +20,7 @@ from diffBloch.observability import (
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
-from diffBloch.preprocess.steps.convergence import converge_scalar, simulation_rfactor
+from diffBloch.preprocess.steps.convergence import convergence_test_scalar, simulation_rfactor
 from diffBloch.preprocess.steps.coupling import couple_beams
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
@@ -31,7 +31,7 @@ from diffBloch.specs import (
     UnionCoupling,
 )
 
-__all__ = ["ConvergenceState", "converge_numerics", "run_convergence"]
+__all__ = ["ConvergenceState", "convergence_test_numerics", "run_convergence"]
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ class ConvergenceState:
     tilt_steps: int
 
 
-def converge_numerics(
+def convergence_test_numerics(
     test: ConvergenceTest,
     rocking: RockingCurve,
     simulation: UnionCoupling | PerTiltCoupling,
@@ -74,7 +74,7 @@ def converge_numerics(
         return converged
 
     return as_step(
-        "converge_numerics",
+        "convergence_test_numerics",
         {
             "test": test,
             "rocking": rocking,
@@ -214,7 +214,7 @@ def run_convergence(
                 trial_index += 1
                 return r_factor
 
-            values[control] = converge_scalar(
+            values[control] = convergence_test_scalar(
                 lambda value: value,
                 compare,
                 tolerance,

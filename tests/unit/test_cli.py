@@ -257,10 +257,10 @@ def test_infer_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_delegates_and_reports(
+def test_convergence_test_delegates_and_reports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def fake_converge_experiment(
+    def fake_convergence_test_experiment(
         experiment_dir: str,
         *,
         logger: object,
@@ -273,9 +273,9 @@ def test_converge_delegates_and_reports(
         assert n_orientations == 1
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
+    monkeypatch.setattr("diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment)
 
-    assert main(["converge", "/some/experiment"]) == 0
+    assert main(["convergence_test", "/some/experiment"]) == 0
     out = capsys.readouterr().out
     assert "CONVERGENCE COMPLETE" in out
     assert _summary_row(out, "g_max", "2.5")
@@ -590,16 +590,16 @@ def test_refine_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    """converge emits the sweep stream, so it takes the same sinks as every other subcommand."""
+def test_convergence_test_accepts_the_sink_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """convergence_test emits the sweep stream, so it takes the same sinks as every other subcommand."""
     seen: dict[str, object] = {}
 
-    def fake_converge_experiment(
+    def fake_convergence_test_experiment(
         experiment_dir: str, *, logger: object, device: object, n_orientations: int
     ) -> SimpleNamespace:
         seen["logger"] = logger
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["converge", "/some/experiment"]) == 0
+    monkeypatch.setattr("diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment)
+    assert main(["convergence_test", "/some/experiment"]) == 0
     assert isinstance(seen["logger"], ConsoleLogger)  # built by _build_logger, not hardcoded
