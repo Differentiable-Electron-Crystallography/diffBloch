@@ -72,7 +72,6 @@ from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
     klar_beam_mask,
     select_beams,
-    select_beams_sg,
 )
 from diffBloch.preprocess.steps.convergence import (
     convergence_test_sampling,
@@ -162,7 +161,6 @@ __all__ = [
     "run_inference",
     "score_orientations",
     "select_beams",
-    "select_beams_sg",
     "select_finite_loss_frames",
     "select_frames",
     "setup_datasets",

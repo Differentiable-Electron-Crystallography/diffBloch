@@ -111,7 +111,6 @@ from diffBloch.preprocess import (
     report_coupling,
     resolve_recipe,
     run_inference,
-    select_beams_sg,
     setup_datasets,
     step_records,
     validation_mask,
@@ -324,8 +323,11 @@ def convergence_test_experiment(
             starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
             plan = pipeline(
                 [
-                    select_beams_sg(simulation.sg_max),
-                    build_orientation_plans(),
+                    build_orientation_plans(
+                        rocking,
+                        coupling=cfg.blochwave.to_policy(),
+                        scoring_selection=cfg.blochwave.to_beam_selection(dataset.integration),
+                    ),
                 ]
             )(selected)
 
