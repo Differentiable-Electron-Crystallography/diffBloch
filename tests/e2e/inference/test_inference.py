@@ -115,7 +115,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
                 cfg.blochwave.to_rocking_curve(setup.integration),
                 setup.mosaicity,
                 coupling=replace(cfg.blochwave.to_policy(), union_adaptive=case.union_adaptive),
-                scoring=setup.integration,
+                scoring=cfg.blochwave.to_scoring_window(setup.integration),
             )
         ]
     )
