@@ -266,8 +266,6 @@ class SummaryLogger:
                 ", ".join(f"{semiangle:g}" for semiangle in experiment.integration_semiangles),
             ],
             ["Rocking-curve sampling", f"{experiment.rocking_curve_sampling:g}"],
-            ["D_sg", f"{experiment.dsg:g}"],
-            ["R_sg", f"{experiment.rsg:g}"],
             ["g_max (solve cutoff, A^-1)", f"{experiment.solve_g_max:g}"],
             [
                 "structure-factor support (2 x g_max, A^-1)",

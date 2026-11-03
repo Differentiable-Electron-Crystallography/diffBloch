@@ -34,6 +34,7 @@ from diffBloch.observability import (
     EventRecord,
     ExperimentDeclared,
     InferenceCompleted,
+    IntegratedRockingCurves,
     ObjectiveManifest,
     ObjectiveTerm,
     OrientationOptimizationStarted,
@@ -170,6 +171,31 @@ def _coupling(dataset: str, offset: int) -> Iterator[Event]:
         )
 
 
+def _rocking_curves(dataset: str) -> IntegratedRockingCurves:
+    """Three reflections across the first two frames: one scored in each, one in neither."""
+    angles = tuple(-2.0 + 0.15 * i for i in range(21))
+    crossings = (-1.1, 0.2, 0.95)
+
+    def curve(centre: float) -> tuple[float, ...]:
+        return tuple(round(2.718281828 ** (-(((a - centre) / 0.12) ** 2)), 6) for a in angles)
+
+    return IntegratedRockingCurves(
+        dataset=dataset,
+        rotation_indices=(0, 1),
+        frame_centres_deg=(-1.0, 0.0),
+        semiangle=1.0,
+        width_sg=0.003,
+        angles_deg=angles,
+        hkl=((1, 0, 1), (0, 1, 2), (2, 1, 0)),
+        scored_in=(0, 1, -1),
+        scored_elsewhere=(False, False, False),
+        half_width_deg=(0.1, 0.1, 0.1),
+        curves=tuple(curve(c) for c in crossings),
+        sg_zero_deg=tuple((c,) for c in crossings),
+        also_scored_in=((), (), ()),
+    )
+
+
 def build_events() -> list[Event]:
     """The whole golden run, in emission order."""
     declared = ExperimentDeclared(
@@ -180,8 +206,6 @@ def build_events() -> list[Event]:
         seed_thicknesses_by_dataset=(("a.cif_pets", (1000.0,)), ("b.cif_pets", (1000.0,))),
         integration_semiangles=(0.5, 0.5),
         rocking_curve_sampling=21,
-        dsg=0.0015,
-        rsg=0.9,
         solve_g_max=2.0,
         sg_max=0.01,
         absorption=False,
@@ -230,6 +254,7 @@ def build_events() -> list[Event]:
         *_preprocess_dataset("b.cif_pets", 2),
         *_coupling("a.cif_pets", 0),
         *_coupling("b.cif_pets", 2),
+        _rocking_curves("a.cif_pets"),
         CouplingSummary(
             measurements={
                 "n_orientations": 4.0,

@@ -215,7 +215,8 @@ class PatternBatch:
     Build with :meth:`from_experimental_record` from a validated ``io.ExperimentalRecord`` (optionally
     restricted to one PETS zone-axis row).
 
-    ``dataset`` is the ``inputs.exp_data`` ref this rotation was measured in, stamped once at
+    ``dataset`` is the ``inputs.exp_data`` ref this rotation was measured in, and
+    ``alpha_degrees`` is its PETS goniometer alpha value. Both are stamped once at
     :func:`~diffBloch.preprocess.setup_datasets` where the ref and the rotations are both in hand.
     It rides *with* the rotation rather than being looked up from a table of index ranges, so it
     survives multi-dataset pooling (which renumbers ``rotation_index`` into a global space), the
@@ -229,6 +230,7 @@ class PatternBatch:
     sigmas: Tensor
     rotation_index: int = 0
     dataset: str = ""
+    alpha_degrees: float = 0.0
 
     @classmethod
     def from_experimental_record(
@@ -254,6 +256,7 @@ class PatternBatch:
             sigmas=torch.as_tensor(select_s, dtype=torch.float64),
             rotation_index=rotation_index,
             dataset=dataset,
+            alpha_degrees=float(np.asarray(record.alphas)[rotation_index]),
         )
 
 

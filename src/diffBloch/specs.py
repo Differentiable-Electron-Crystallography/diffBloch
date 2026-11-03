@@ -29,6 +29,7 @@ __all__ = [
     "ConvergenceTest",
     "ConvergenceTolerance",
     "FrameSelection",
+    "IntegratedScoring",
     "IntegrationGeometry",
     "NelderMeadSearch",
     "OrientationSelection",
@@ -390,21 +391,22 @@ CouplingPolicy = TiltIndependent | UnionCoupling | PerTiltCoupling
 
 @dataclass(frozen=True)
 class ScoredHklSelection:
-    """The SCORED selector: the Klar window intersected with a scoring-resolution cap.
+    """The SCORED selector: the Bragg-crossing test intersected with a scoring-resolution cap.
 
     When a fit re-derives its reflection sets per trial under a coupling policy, the *scored* set is
     not the solve union -- it is the union filtered back down to the reflections actually compared
-    against the observed pattern. That is two filters: the Klar relative-excitation window followed
-    by a radial ``|g|`` cap. ``klar`` supplies the former (:class:`BeamSelection` -- ``rsg`` /
-    ``dsg`` + the shared :class:`IntegrationGeometry`), and ``g_max`` the latter. No lower-shell
-    bound is modelled; add one when a dataset needs it.
+    against the observed pattern. That is two filters: the per-frame scoring ``window`` -- an
+    :class:`IntegrationGeometry` for the Bragg-crossing test
+    (:func:`~diffBloch.preprocess.integrated.integrated_mask`), or a :class:`BeamSelection` for the
+    Klar ``rsg`` / ``dsg`` window -- and a radial ``|g|`` cap ``g_max``. No lower-shell bound is
+    modelled; add one when a dataset needs it.
 
     ``g_max`` is the *scoring*-resolution cap, given its own named home here so it is distinct from
     the seed beam-pool radius -- the two may be numerically equal but are separate quantities. It
     must be positive.
     """
 
-    klar: BeamSelection = field(default_factory=BeamSelection)
+    window: IntegrationGeometry | BeamSelection = field(default_factory=IntegrationGeometry)
     g_max: float = 1.6  # scoring-resolution cap on |g|
 
     def __post_init__(self) -> None:
@@ -429,7 +431,37 @@ class TrialCoupling:
     """
 
     policy: UnionCoupling | PerTiltCoupling
-    scored: ScoredHklSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
+    scored: ScoredHklSelection  # SCORED: Bragg crossing + resolution cap, re-selected per trial
+
+
+@dataclass(frozen=True)
+class IntegratedScoring:
+    """How the final scored set keeps only reflections a frame fully integrates, each once.
+
+    A reflection is scored in a rotation only when its Bragg crossing sits at least half a rocking-
+    curve width inside both edges of that frame, and each measured ``(hkl, I_exp)`` is scored in
+    only the one rotation where its crossing is most central. The width is measured, not set: the
+    ``Sg`` span holding ``fraction`` of each reflection's simulated rocking-curve intensity,
+    averaged (median) over reflections of ``width_rotations`` evenly spaced rotations, each
+    simulated over a sweep ``sweep_factor`` times the frame's own so the whole curve is in view.
+    """
+
+    fraction: float = 0.9
+    width_rotations: int = 5
+    sweep_factor: float = 3.0
+    # A reflection is scored only in a frame holding at least this share of its simulated rocking
+    # curve; its best frame falling short means no frame integrates it, so it is not scored.
+    min_inside: float = 0.9
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.fraction < 1.0:
+            raise ValueError("fraction must be in (0, 1)")
+        if not 0.0 <= self.min_inside <= 1.0:
+            raise ValueError("min_inside must be in [0, 1]")
+        if self.width_rotations < 1:
+            raise ValueError("width_rotations must be >= 1")
+        if self.sweep_factor < 1.0:
+            raise ValueError("sweep_factor must be >= 1")
 
 
 @dataclass(frozen=True)

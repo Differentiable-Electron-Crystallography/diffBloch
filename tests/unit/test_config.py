@@ -51,7 +51,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.split.train_test is False
     assert cfg.refinement.split.val_frac == 0.2
     assert cfg.blochwave.ignore_orientations == ()
-    assert cfg.blochwave.rsg == 0.66
+    assert cfg.blochwave.scoring.method == "integration-filter"
     assert cfg.blochwave.to_absorption() == Absorption()
     assert cfg.preprocess.optimize_orientation is True
     assert cfg.preprocess.optimize_thickness is True
@@ -661,10 +661,12 @@ def test_thickness_grid_bounds_are_validated() -> None:
 
 
 def test_numerics_beam_selection_cutoffs_are_validated() -> None:
-    # NumericsConfig delegates its beam-selection subset to BeamSelection (fail-fast at load).
+    # The Klar scoring option delegates its cutoffs to BeamSelection (fail-fast at load).
     base = {"name": "bad", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     with pytest.raises(ValidationError, match="rsg must be positive"):
-        ExperimentConfig.model_validate({**base, "blochwave": {"rsg": 0.0}})
+        ExperimentConfig.model_validate(
+            {**base, "blochwave": {"scoring": {"method": "klar", "rsg": 0.0}}}
+        )
 
 
 def test_orientation_correction_bound_parses_into_the_search() -> None:

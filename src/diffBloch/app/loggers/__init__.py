@@ -36,6 +36,7 @@ from diffBloch.observability import (
     Event,
     ExperimentDeclared,
     InferenceCompleted,
+    IntegratedRockingCurves,
     ObjectiveManifest,
     OrientationOptimizationStarted,
     OrientationOptimized,
@@ -224,6 +225,11 @@ class ConsoleLogger:
     _thickness_total: int = field(default=0, init=False, repr=False)
     _thickness_seen: int = field(default=0, init=False, repr=False)
     _thickness_started_at: float = field(default=0.0, init=False, repr=False)
+    # The previous preprocess stage's summary, so a resolution cut that removed nothing is not
+    # printed as a stage line identical to the one before it.
+    _last_stage_measurements: Mapping[str, float] | None = field(
+        default=None, init=False, repr=False
+    )
     # Accumulated for the PREPROCESS COMPLETE box: the orientation search's mean settled score and
     # the residual it was scored under. Empty when the run reused a checkpoint and ran no search.
     _orientation_scores: list[float] = field(default_factory=list, init=False, repr=False)
@@ -240,7 +246,8 @@ class ConsoleLogger:
             | RotationCoupling
             | RotationCouplingSegments
             | CouplingSummary
-            | RefinedReflectionIntensities,
+            | RefinedReflectionIntensities
+            | IntegratedRockingCurves,
         ):
             # High-cardinality payload for JSONL/notebook consumers. Logging it to the live console
             # breaks the in-place progress bars without adding human-readable progress.
@@ -527,6 +534,12 @@ class ConsoleLogger:
             )
             return
         elif isinstance(event, PlanStepCompleted):
+            previous = self._last_stage_measurements
+            self._last_stage_measurements = dict(event.measurements)
+            if event.channel == "restrict_scored_resolution" and previous == dict(
+                event.measurements
+            ):
+                return  # the |g| cap removed nothing
             stage = event.channel.replace("_", " ").title()
             _log.log(
                 self.level,

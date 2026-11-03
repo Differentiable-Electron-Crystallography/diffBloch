@@ -80,6 +80,18 @@ def _add_stage_flags(parser: argparse.ArgumentParser) -> None:
         "unbounded solve to machine precision); default derives a memory-safe block per beam "
         "count. Raise to fill a larger GPU, e.g. 1024 on a high-memory accelerator",
     )
+    parser.add_argument(
+        "--rocking-curves",
+        choices=("first2", "all"),
+        default="first2",
+        help="plot rocking curves for the first frame pair (default) or every frame pair",
+    )
+    parser.add_argument(
+        "--rocking-pairs",
+        type=int,
+        default=None,
+        help="with --rocking-curves all, plot only the first N adjacent frame pairs (default: all)",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -227,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
                     device=args.device,
                     workers=args.workers,
                     max_batch=args.max_batch,
+                    rocking_curves=args.rocking_curves,
+                    rocking_pairs=args.rocking_pairs,
                 )
         except _COMMAND_ERRORS as exc:
             if args.debug:
@@ -250,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
                     device=args.device,
                     workers=args.workers,
                     max_batch=args.max_batch,
+                    rocking_curves=args.rocking_curves,
+                    rocking_pairs=args.rocking_pairs,
                 )
         except _COMMAND_ERRORS as exc:
             if args.debug:
@@ -293,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
                     device=args.device,
                     workers=args.workers,
                     max_batch=args.max_batch,
+                    rocking_curves=args.rocking_curves,
+                    rocking_pairs=args.rocking_pairs,
                     verbose=args.verbose_refinement,
                     profile=args.profile,
                     checkpoint_activations=not args.no_checkpoint_activations,
@@ -412,6 +430,7 @@ _PLOTTED_EVENTS = frozenset(
         "RefinedRotationMetrics",
         "RefinedReflectionIntensities",
         "ThicknessProfile",
+        "IntegratedRockingCurves",
     }
 )
 

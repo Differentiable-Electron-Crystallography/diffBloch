@@ -39,18 +39,20 @@ from diffBloch.core.products import PLAIN_SUM, MosaicSmoothed, TiltReduction
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.preprocess.coupling import build_coupling_segments
+from diffBloch.preprocess.integrated import integrated_mask
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import CandidatePlan, Plan, require_candidate_plans
 from diffBloch.specs import (
     BeamSelection,
+    IntegrationGeometry,
     PerTiltCoupling,
     RockingCurve,
     UnionCoupling,
     assert_grid_covers_coupling,
 )
 
-__all__ = ["build_orientation_plans", "klar_beam_mask", "select_beams"]
+__all__ = ["build_orientation_plans", "klar_beam_mask", "scored_window_mask", "select_beams"]
 
 
 def select_beams(selection: BeamSelection) -> PlanStep:
@@ -84,7 +86,7 @@ def build_orientation_plans(
     mosaicity: MosaicSmoothed | None = None,
     *,
     coupling: UnionCoupling | PerTiltCoupling | None = None,
-    scoring_selection: BeamSelection | None = None,
+    scoring: IntegrationGeometry | BeamSelection | None = None,
     workers: int = 1,
 ) -> PlanStep:
     """Build each candidate's final tilted Bloch geometry and intensity reduction.
@@ -104,8 +106,10 @@ def build_orientation_plans(
     ``rocking``. When ``coupling`` is supplied, each segment's beam set is selected from the full
     support grid by ``|g| < g_max`` and ``|Sg| < sg_max`` at its boundary tilts, then the ordinary
     alignment intersects the resulting simulator HKLs with the PETS experimental data.
-    ``scoring_selection`` optionally applies the former Klar ``rsg``/``dsg``/semiangle filter to
-    the candidate scoring pool before that intersection; it does not alter the coupled SOLVE beams.
+    ``scoring`` optionally restricts the candidate scoring pool, before that intersection, to the
+    reflections whose Bragg condition the frame crosses
+    (:func:`~diffBloch.preprocess.integrated.integrated_mask`), or to the Klar ``rsg``/``dsg`` window
+    when given a :class:`~diffBloch.specs.BeamSelection`; it does not alter the coupled SOLVE beams.
     ``workers`` fans independent rotation builds over threads while preserving input order. It is
     execution-only and therefore intentionally absent from the step's provenance record.
     Omitting ``coupling`` preserves the simple builder used by focused APIs/tests.
@@ -171,7 +175,7 @@ def build_orientation_plans(
                     coupled_tilts,
                     reduction,
                     coupling,
-                    scoring_selection=scoring_selection,
+                    scoring=scoring,
                     structure_factor_hkl=structure_factor_hkl,
                     structure_factor_indices=source,
                     gather_cache=gather_cache,
@@ -194,7 +198,7 @@ def build_orientation_plans(
                 "rocking": rocking,
                 "mosaicity": mosaicity,
                 "coupling": coupling,
-                "scoring_selection": scoring_selection,
+                "scoring": scoring,
             }
         ),
         run,
@@ -208,7 +212,7 @@ def _build_coupled_candidate(
     reduction: TiltReduction,
     coupling: UnionCoupling | PerTiltCoupling,
     *,
-    scoring_selection: BeamSelection | None,
+    scoring: IntegrationGeometry | BeamSelection | None,
     structure_factor_hkl: NDArray[np.int64],
     structure_factor_indices: NDArray[np.int64],
     gather_cache: dict[bytes, StructureFactorGather],
@@ -224,14 +228,7 @@ def _build_coupled_candidate(
         energy=candidate.energy,
         u0=candidate.u0,
     )
-    scored_hkl = (
-        None
-        if scoring_selection is None
-        else np.asarray(
-            _reselect(np.asarray(grid.cell), candidate, scoring_selection).beam_hkl,
-            dtype=np.int64,
-        )
-    )
+    scored_hkl = None if scoring is None else _scored_hkl(np.asarray(grid.cell), candidate, scoring)
     gathers: list[StructureFactorGather] = []
     for segment in segments:
         key = np.ascontiguousarray(segment.union_hkl).tobytes()
@@ -261,6 +258,45 @@ def _build_coupled_candidate(
         scored_hkl=scored_hkl,
         gathers=gathers,
     )
+
+
+def scored_window_mask(
+    g: NDArray[np.float64],
+    *,
+    energy: float,
+    u0: float,
+    window: IntegrationGeometry | BeamSelection,
+) -> NDArray[np.bool_]:
+    """Keep-mask of the reflections ``g`` a frame scores under ``window``.
+
+    An :class:`~diffBloch.specs.IntegrationGeometry` keeps the reflections whose Bragg condition
+    the frame crosses (:func:`~diffBloch.preprocess.integrated.integrated_mask`); a
+    :class:`~diffBloch.specs.BeamSelection` keeps the Klar ``rsg`` / ``dsg`` window
+    (:func:`klar_beam_mask`).
+    """
+    if isinstance(window, BeamSelection):
+        return klar_beam_mask(
+            g,
+            energy=energy,
+            u0=u0,
+            rsg=window.rsg,
+            dsg=window.dsg,
+            semiangle=window.integration.semiangle,
+            geometry=window.integration.geometry,
+        )
+    keep, _ = integrated_mask(g, energy=energy, u0=u0, integration=window)
+    return keep
+
+
+def _scored_hkl(
+    cell: NDArray[np.float64], cp: CandidatePlan, window: IntegrationGeometry | BeamSelection
+) -> NDArray[np.int64]:
+    """The candidate's beams its frame scores under ``window`` (000 kept to anchor psi0)."""
+    beam_hkl = np.asarray(cp.beam_hkl, dtype=np.int64)
+    g = g_vectors(beam_hkl, orientation_basis(cell, np.asarray(cp.orientation)))
+    keep = scored_window_mask(g, energy=cp.energy, u0=cp.u0, window=window)
+    keep |= (beam_hkl == 0).all(axis=1)
+    return beam_hkl[keep]
 
 
 def _reselect(

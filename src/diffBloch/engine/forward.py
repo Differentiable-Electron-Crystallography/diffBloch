@@ -697,6 +697,29 @@ class RefinementEngine:
         more tilts than any single chunk holds -- and the result is returned as an ordinary
         :class:`BlochSolution` over the union beam set, so ``align`` / scoring are unchanged.
         """
+        thicknesses = thicknesses.to(device=fgb.device, dtype=torch.float32)
+        curve = self.segmented_rocking_curve(plan, fgb, thicknesses)
+        total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
+        # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
+        # store the magnitude sqrt(total) in the solve's complex64 format (matching the
+        # static/batched paths).
+        return BlochSolution(
+            total.sqrt().to(torch.complex64),
+            total,
+            plan.beam_hkl.to(fgb.device),
+            thicknesses,
+        )
+
+    def segmented_rocking_curve(
+        self, plan: CoupledOrientationPlan, fgb: Tensor, thicknesses: Tensor
+    ) -> Tensor:
+        """The unreduced per-tilt intensities ``(N_tilts, T, N_union)`` of a coupled plan.
+
+        Each segment is solved over its covered tilts with the batched propagator and scattered
+        onto the shared union curve (a beam absent from a chunk stays 0 at that chunk's tilts).
+        :meth:`_solve_segmented` reduces this over the tilts; callers that need the rocking curve
+        itself, such as the integrated-scoring check, use it directly.
+        """
         device = fgb.device
         thicknesses = thicknesses.to(device=device, dtype=torch.float32)
         n_tilts = int(plan.tilts.shape[0])
@@ -733,13 +756,7 @@ class RefinementEngine:
             block = curve[cover]  # (C, T, n_union) gathered copy
             block[:, :, union_beam_index] = intensities(amplitudes)
             curve[cover] = block
-        total = reduce_tilts(curve, plan.tilt_reduction)  # (T, n_union)
-        # The reassembled curve is an intensity sum, so its per-tilt amplitudes were never coherent;
-        # store the magnitude sqrt(total) in the solve's complex64 format (matching the
-        # static/batched paths).
-        return BlochSolution(
-            total.sqrt().to(torch.complex64), total, plan.beam_hkl.to(device), thicknesses
-        )
+        return curve
 
 
 @dataclass(frozen=True)

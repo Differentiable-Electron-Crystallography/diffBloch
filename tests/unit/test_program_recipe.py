@@ -243,6 +243,7 @@ def test_stage_order_default_runs_thickness_before_orientation() -> None:
         "build_orientation_plans",
         "optimize_thickness",
         "optimize_orientation",
+        "score_integrated_reflections",
     ]
 
 
@@ -264,6 +265,7 @@ def test_fork_is_transparent_to_recipe_identity() -> None:
         "build_orientation_plans",
         "optimize_orientation",
         "optimize_thickness",
+        "score_integrated_reflections",
     ]
     assert [r.name for r in small] == names == [r.name for r in large]
     # identical params too (optimize_orientation records only {search, coupling}; no validate)
@@ -291,6 +293,7 @@ def test_stage_order_thickness_first_runs_thickness_before_orientation() -> None
         "build_orientation_plans",
         "optimize_thickness",
         "optimize_orientation",
+        "score_integrated_reflections",
     ]
 
 
@@ -366,4 +369,5 @@ def test_fit_stages_can_be_enabled_independently() -> None:
     assert [record.name for record in records] == [
         "build_orientation_plans",
         "optimize_orientation",
+        "score_integrated_reflections",
     ]

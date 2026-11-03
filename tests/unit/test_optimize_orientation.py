@@ -29,7 +29,6 @@ from diffBloch.preprocess import RefinementSetup, hexagonal_tilt, optimize_orien
 from diffBloch.preprocess.orientation import rocking_curve_tilts
 from diffBloch.preprocess.plan import Plan
 from diffBloch.specs import (
-    BeamSelection,
     NelderMeadSearch,
     ScoredHklSelection,
     TrialCoupling,
@@ -270,9 +269,7 @@ def test_fit_orientation_coupled_guard_rejects_a_grid_too_small_for_the_coupling
     """
     grid, asu_plan, spec, numbers = _silicon()  # g_max = 0.45
     matched = _self_consistent(grid, asu_plan, spec, numbers, np.eye(3, dtype=np.float64))
-    coupling = TrialCoupling(
-        policy=UnionCoupling(), scored=ScoredHklSelection(klar=BeamSelection(), g_max=0.3)
-    )
+    coupling = TrialCoupling(policy=UnionCoupling(), scored=ScoredHklSelection(g_max=0.3))
     with pytest.raises(ValueError, match="silently gather zeros|grid g_max"):
         optimize_orientation(
             _refinement(asu_plan, spec, numbers), NelderMeadSearch(), coupling=coupling

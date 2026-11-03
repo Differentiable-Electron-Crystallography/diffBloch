@@ -959,6 +959,8 @@ def _minimal(cls: type) -> dict[str, object]:
         "bool": False,
         "tuple[float, ...]": (0.5,),
         "tuple[int, ...]": (1,),
+        "tuple[bool, ...]": (False,),
+        "tuple[tuple[float, ...], ...]": ((0.5,),),
         "tuple[tuple[int, int, int], ...]": ((1, 0, 0),),
         "tuple[str, ...]": ("x",),
         "tuple[tuple[str, tuple[float, ...]], ...]": (("x", (0.5,)),),
