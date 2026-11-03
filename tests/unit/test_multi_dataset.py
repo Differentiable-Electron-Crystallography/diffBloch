@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import yaml
 
-from diffBloch.app.program import _read_experimental_data, converge_experiment
+from diffBloch.app.program import _read_experimental_data, convergence_test_experiment
 from diffBloch.config import ExperimentConfig, input_lock_for, load_config
 from diffBloch.core.crystal import cell_matrix_from_parameters
 from diffBloch.io import (
@@ -241,7 +241,7 @@ def test_multi_dataset_over_5pct_between_combined_files_raises() -> None:
     assert "a:" in message
 
 
-# --- converge_experiment: per-dataset sweeps ---
+# --- convergence_test_experiment: per-dataset sweeps ---
 
 
 def _multi_experiment(tmp_path: Path) -> Path:
@@ -271,7 +271,7 @@ def _multi_experiment(tmp_path: Path) -> Path:
     return exp
 
 
-def test_converge_experiment_sweeps_per_dataset_and_returns_the_elementwise_max(
+def test_convergence_test_experiment_sweeps_per_dataset_and_returns_the_elementwise_max(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     exp = _multi_experiment(tmp_path)
@@ -288,13 +288,13 @@ def test_converge_experiment_sweeps_per_dataset_and_returns_the_elementwise_max(
         return plan, next(settled)
 
     monkeypatch.setattr("diffBloch.app.program.run_convergence", fake_run_convergence)
-    result = converge_experiment(exp, device="cpu")
+    result = convergence_test_experiment(exp, device="cpu")
 
     assert len(starting) == 2  # one sweep per dataset
     assert result == ConvergenceState(g_max=1.4, sg_max=0.02, tilt_steps=60)
 
 
-def test_converge_starting_g_max_falls_back_per_dataset_when_dstar_max_is_missing(
+def test_convergence_test_starting_g_max_falls_back_per_dataset_when_dstar_max_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A file without a dstar_max tag anchors at the configured g_max -- never at another file's."""
@@ -323,7 +323,7 @@ def test_converge_starting_g_max_falls_back_per_dataset_when_dstar_max_is_missin
         return plan, state
 
     monkeypatch.setattr("diffBloch.app.program.run_convergence", fake_run_convergence)
-    converge_experiment(exp, device="cpu")
+    convergence_test_experiment(exp, device="cpu")
 
     assert starting[0].g_max == 1.4  # dataset a: its own dstar_max
     assert starting[1].g_max == cfg.blochwave.g_max  # dataset b: configured fallback

@@ -8,13 +8,13 @@ before and orthogonally to the accuracy fit. This module has three layers:
 
 - :func:`simulation_rfactor` -- the measurement: ``(previous, current) -> float``, the mean
   per-orientation R-factor between two Plans' simulations (0 when they are identical).
-- :func:`converge_scalar` -- the parameter-agnostic driver: given a ``build(value) -> object`` and a
+- :func:`convergence_test_scalar` -- the parameter-agnostic driver: given a ``build(value) -> object`` and a
   ``measure`` it clicks a scalar knob upward until two consecutive builds stop changing (the
   R-factor drops below threshold), or a hard cap raises. It knows nothing about beams (or even
   Plans); adapters instantiate it.
-- :func:`converge_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
+- :func:`convergence_test_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
   ``integration_semiangle`` until the pattern stabilises, re-running ``select_beams`` from the seed.
-- :func:`converge_sampling` -- the forward-model lever: refines the rocking-curve tilt count
+- :func:`convergence_test_sampling` -- the forward-model lever: refines the rocking-curve tilt count
   (``rocking_curve_sampling``) until the integrated pattern stabilises. Independent of the beam
   levers (the tilt count does not touch the ``Fgb`` support), so it composes as an ordinary lever.
 
@@ -51,9 +51,9 @@ from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
 
 __all__ = [
-    "converge_beams",
-    "converge_sampling",
-    "converge_scalar",
+    "convergence_test_beams",
+    "convergence_test_sampling",
+    "convergence_test_scalar",
     "simulation_converged",
     "simulation_rfactor",
 ]
@@ -118,7 +118,7 @@ def simulation_converged(
     compared against ``tolerance.r_factor_threshold``. This is the boolean
     :data:`~diffBloch.preprocess.pipeline.ConvergenceCheck` that
     :func:`~diffBloch.preprocess.pipeline.iterate_until` drives to a fixpoint (the cross-lever
-    composition); :func:`converge_scalar` uses the underlying float measure directly, applying the
+    composition); :func:`convergence_test_scalar` uses the underlying float measure directly, applying the
     same threshold inline.
     """
     measure = simulation_rfactor(refinement, method=method)
@@ -129,7 +129,7 @@ def simulation_converged(
     return check
 
 
-def converge_scalar[T](
+def convergence_test_scalar[T](
     build: Callable[[float], T],
     measure: Callable[[T, T], float],
     tolerance: ConvergenceTolerance,
@@ -162,10 +162,10 @@ def converge_scalar[T](
         if r < tolerance.r_factor_threshold:
             return candidate if accept_converged_candidate else current
         current = candidate
-    raise RuntimeError(f"converge_scalar did not converge within {tolerance.max_iterations} steps")
+    raise RuntimeError(f"convergence_test_scalar did not converge within {tolerance.max_iterations} steps")
 
 
-def converge_beams(
+def convergence_test_beams(
     selection: BeamSelection,
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
@@ -182,7 +182,7 @@ def converge_beams(
     the
     previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
     sweep starts at ``selection.integration.semiangle`` and clicks up by ``step`` (degrees) until
-    :func:`converge_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
+    :func:`convergence_test_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
     are
     held fixed. ``step`` must be positive.
     """
@@ -196,14 +196,14 @@ def converge_beams(
             selected = select_beams(replace(selection, integration=geometry))(seed)
             return build_orientation_plans()(selected)
 
-        return converge_scalar(
+        return convergence_test_scalar(
             build, measure, tolerance, start=selection.integration.semiangle, step=step
         )
 
     return run
 
 
-def converge_sampling(
+def convergence_test_sampling(
     rocking: RockingCurve,
     refinement: RefinementSetup,
     tolerance: ConvergenceTolerance,
@@ -218,7 +218,7 @@ def converge_sampling(
     via :func:`~diffBloch.preprocess.steps.rocking_curve.integrate_rocking_curve`, so the summed
     ``|psi|^2`` over tilts approaches the continuous rotation-frame integral. The sweep starts at
     ``rocking.sampling`` and clicks up by ``step`` (rounded to a whole tilt count) until
-    :func:`converge_scalar` settles the pattern (first sub-threshold step wins): it settles when a
+    :func:`convergence_test_scalar` settles the pattern (first sub-threshold step wins): it settles when a
     finer tilt grid stops moving the integrated intensities. Only ``sampling`` is swept -- the tilt
     span (``rocking.integration.semiangle``) and ``rocking.integration.geometry`` are held fixed.
     Re-integrating from the
@@ -238,7 +238,7 @@ def converge_sampling(
             tilts = replace(rocking, sampling=int(round(sampling)))
             return integrate_rocking_curve(tilts)(seed)
 
-        return converge_scalar(build, measure, tolerance, start=float(rocking.sampling), step=step)
+        return convergence_test_scalar(build, measure, tolerance, start=float(rocking.sampling), step=step)
 
     return run
 

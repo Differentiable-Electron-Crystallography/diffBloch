@@ -438,7 +438,7 @@ def test_refined_rotation_scores_marks_held_out_rotations() -> None:
     assert labels == ["train", "validation"]
 
 
-def _converge_report() -> list[EventRecord]:
+def _convergence_test_report() -> list[EventRecord]:
     """One pass sweeping two controls, each settling on its third candidate."""
     events: list[object] = [
         ConvergencePassStarted(
@@ -470,7 +470,7 @@ def _converge_report() -> list[EventRecord]:
 
 
 def test_convergence_sweeps_panels_each_control_against_the_threshold() -> None:
-    figure = plot_convergence_sweeps(_converge_report())
+    figure = plot_convergence_sweeps(_convergence_test_report())
 
     assert figure is not None
     # No titles: each panel names its control on its own x axis.
@@ -488,7 +488,7 @@ def test_convergence_sweeps_panels_each_control_against_the_threshold() -> None:
 
 def test_convergence_sweeps_marks_the_first_candidate_under_the_threshold() -> None:
     """The crossing is the settled value -- the reason the ladder is plotted at all."""
-    figure = plot_convergence_sweeps(_converge_report())
+    figure = plot_convergence_sweeps(_convergence_test_report())
 
     assert figure is not None
     settled = [

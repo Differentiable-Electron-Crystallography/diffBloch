@@ -412,7 +412,7 @@ class PreprocessConfig(_StrictConfig):
     Grouping, not composition: each block configures one preprocess step. Only steps the default run
     composes get a config block here: ``optimize_orientation`` under ``orientation`` and
     ``optimize_thickness`` under ``thickness``. The optional
-    ``converge_numerics``
+    ``convergence_test_numerics``
     driver is *not* in the default recipe, so it has no config block -- a caller that composes it
     constructs :class:`~diffBloch.specs.ConvergenceTest` /
     :class:`~diffBloch.specs.ConvergenceTolerance` at the composition site (which carry their own

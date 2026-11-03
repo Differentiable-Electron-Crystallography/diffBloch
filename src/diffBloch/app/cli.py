@@ -24,7 +24,7 @@ from diffBloch import __version__
 from diffBloch.app.loggers import ConsoleLogger, ReportLogger, print_summary_box
 from diffBloch.app.loggers.summary import SummaryLogger
 from diffBloch.app.program import (
-    converge_experiment,
+    convergence_test_experiment,
     preprocess_experiment,
     refine_experiment,
     run_experiment,
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog=(
             "a typical workflow:\n"
             "  diffbloch validate experiment/experiment.yaml\n"
-            "  diffbloch converge experiment/\n"
+            "  diffbloch convergence_test experiment/\n"
             "  diffbloch preprocess experiment/\n"
             "  diffbloch refine experiment/\n"
             "\n"
@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     p_lock_experiment.add_argument("experiment_directory", help="Path to the experiment directory")
 
     p_converge = sub.add_parser(
-        "converge", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
+        "convergence_test", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
     )
     p_converge.add_argument("experiment_directory", help="Path to the experiment directory")
     p_converge.add_argument(
@@ -308,13 +308,13 @@ def main(argv: list[str] | None = None) -> int:
         _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
-    if args.command == "converge":
+    if args.command == "convergence_test":
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
         try:
             with _reported_run(args.experiment_directory) as run:
-                settled = converge_experiment(
+                settled = convergence_test_experiment(
                     args.experiment_directory,
                     logger=run.logger,
                     device=args.device,

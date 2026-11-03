@@ -306,6 +306,31 @@ def _reselect(
     return replace(cp, beam_hkl=beam_hkl[keep])
 
 
+def select_beams_sg(sg_max: float) -> PlanStep:
+    """Return a ``Plan -> Plan`` step that keeps each candidate's beams with ``|Sg| <= sg_max``.
+
+    Beam selection on the excitation-error cutoff alone; no scoring window is involved. The 000
+    beam is retained. ``sg_max`` must be non-negative.
+    """
+    if sg_max < 0.0:
+        raise ValueError("sg_max must be non-negative")
+
+    def run(plan: Plan) -> Plan:
+        cell = np.asarray(plan.structure_factor_grid.cell)
+        candidates = tuple(_reselect_sg(cell, cp, sg_max) for cp in require_candidate_plans(plan))
+        return replace(plan, orientations=candidates)
+
+    return as_step("select_beams_sg", {"sg_max": sg_max}, run)
+
+
+def _reselect_sg(cell: NDArray[np.float64], cp: CandidatePlan, sg_max: float) -> CandidatePlan:
+    beam_hkl = np.asarray(cp.beam_hkl, dtype=np.int64)
+    g = g_vectors(beam_hkl, orientation_basis(cell, np.asarray(cp.orientation)))
+    keep = np.abs(excitation_errors(g, cp.energy, u0=cp.u0)) <= sg_max
+    keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
+    return replace(cp, beam_hkl=beam_hkl[keep])
+
+
 def klar_beam_mask(
     g: NDArray[np.float64],
     *,

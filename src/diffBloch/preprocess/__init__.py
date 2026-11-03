@@ -8,11 +8,11 @@ preprocess.
 
 The core pieces are the :class:`~diffBloch.preprocess.plan.Plan` value object, the
 :mod:`diffBloch.preprocess.pipeline` combinators (``pipeline`` sequencing + ``iterate_until``
-fixpoint), the steps (``converge_numerics`` / ``optimize_orientation`` / ``optimize_thickness`` and the rest),
+fixpoint), the steps (``convergence_test_numerics`` / ``optimize_orientation`` / ``optimize_thickness`` and the rest),
 and ``from_experiment`` construction from typed records.
 """
 
-from diffBloch.preprocess.driver import converge_numerics
+from diffBloch.preprocess.driver import convergence_test_numerics
 from diffBloch.preprocess.experiment import (
     DatasetSetup,
     ExperimentSetup,
@@ -72,11 +72,12 @@ from diffBloch.preprocess.steps.beams import (
     build_orientation_plans,
     klar_beam_mask,
     select_beams,
+    select_beams_sg,
 )
 from diffBloch.preprocess.steps.convergence import (
-    converge_beams,
-    converge_sampling,
-    converge_scalar,
+    convergence_test_beams,
+    convergence_test_sampling,
+    convergence_test_scalar,
     simulation_converged,
     simulation_rfactor,
 )
@@ -127,10 +128,10 @@ __all__ = [
     "build_engine",
     "build_orientation_plans",
     "busing_levy_matrix",
-    "converge_beams",
-    "converge_numerics",
-    "converge_sampling",
-    "converge_scalar",
+    "convergence_test_beams",
+    "convergence_test_numerics",
+    "convergence_test_sampling",
+    "convergence_test_scalar",
     "cover_beams",
     "optimize_orientation",
     "optimize_thickness",
@@ -163,6 +164,7 @@ __all__ = [
     "run_inference",
     "score_orientations",
     "select_beams",
+    "select_beams_sg",
     "select_finite_loss_frames",
     "select_frames",
     "setup_datasets",
