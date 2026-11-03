@@ -330,6 +330,16 @@ def setup_datasets(
             config.blochwave.to_rocking_curve(integration),
             isotropic_samples=config.blochwave.mosaicity_samples,
         )
+        if config.blochwave.incoherent_mosaicity and record.mosaicity_degrees == 0.0:
+            source = (
+                record.source_path if record.source_path is not None else f"dataset {dataset_index}"
+            )
+            _log.warning(
+                "WARNING: %s reports a PETS mosaicity of 0; incoherent mosaicity is off for this "
+                "dataset (as if blochwave.incoherent_mosaicity were false), and its mosaicity sigma "
+                "is not refined.",
+                source,
+            )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
         if energy not in u0_by_energy:
             u0_by_energy[energy] = _mean_inner_potential(
