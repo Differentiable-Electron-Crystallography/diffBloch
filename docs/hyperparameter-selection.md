@@ -17,7 +17,7 @@ Some values are deliberately **not** config fields in diffBloch, they are read f
 | UB orientation matrix | None; required | `.cif_pets` `_diffrn_orient_matrix_UB_*` | The UB matrix and each rotation's goniometer angles supply its starting orientation. |
 | Data-collection geometry | None; required  | `.cif_pets` `_diffrn_measurement_details`, line `data collection geometry:` | PETS values `continuous rotation` and `precession`, respectively. |
 | Integration semiangle | None; required | Per-rotation `.cif_pets` `_diffrn_zone_axis_precession_angle` | Interpreted as the continuous-rotation tilt half-width or the fixed precession-cone angle. I|
-| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.incoherent_mosaicity: true`; a missing value then raises rather than defaulting silently. |
+| Apparent mosaicity (degrees) | None | `.cif_pets` `_diffrn_measurement_details`, line `mosaicity:` | Only used when `blochwave.mosaicity: true`; a missing value then raises rather than defaulting silently. |
 
 
 
@@ -52,8 +52,7 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `rsg` | `0.66` | Relative excitation-error cutoff. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `dsg` | `0.0015` | Absolute excitation-error margin. See [`rsg` and `dsg`](#rsg-and-dsg). |
 | `rocking_curve_sampling` | `50` | Tilt samples integrated per rocking curve. See [Convergence testing](convergence-testing.md). |
-| `incoherent_mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and adds `mosaicity_samples` tilts spread isotropically around each rotation. See [Rocking curves and mosaicity](preprocessing.md#rocking-curves-and-mosaicity-inside-a-plan). |
-| `mosaicity_samples` | `5` | Mosaic tilts per rotation: a centre plus a ring, so 1 or at least 4. Each is a full extra set of Bloch-wave solves, so cost scales linearly with it. |
+| `mosaicity` | `false` | `true` reads the apparent mosaicity in degrees from `.cif_pets` and converts it into an internal moving-average sample span. No additional orientations are simulated. |
 | `coupling_mode` | `"union"` | See [Union coupling](#union-coupling). |
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
@@ -183,7 +182,6 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 | `positions` | `"all"` | `"all"` or `"none"`: whether atomic positions are refined. |
 | `adp` | `"all"` | `"all"` or `"none"`: whether atomic displacement parameters are refined. |
 | `occupancy` | `"none"` | `"all"` or `"none"`: whether site occupancies are refined. |
-| `mosaicity_sigma` | `false` | Refine the mosaicity {math}`\sigma`, one per dataset, starting from the PETS value. Requires `blochwave.incoherent_mosaicity: true` and `mosaicity_samples` of at least 4. |
 
 ### `refinement.split`
 
