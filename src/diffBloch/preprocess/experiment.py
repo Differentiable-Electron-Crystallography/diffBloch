@@ -335,9 +335,7 @@ def setup_datasets(
                 record.source_path if record.source_path is not None else f"dataset {dataset_index}"
             )
             _log.warning(
-                "WARNING: %s reports a PETS mosaicity of 0; incoherent mosaicity is off for this "
-                "dataset (as if blochwave.incoherent_mosaicity were false), and its mosaicity sigma "
-                "is not refined.",
+                "WARNING: %s has PETS mosaicity 0; mosaicity turned off.",
                 source,
             )
         energy = snap_to_standard_energy(wavelength2energy(record.wavelength))
