@@ -341,7 +341,9 @@ def test_convergence_test_delegates_and_reports(
         assert n_orientations == 1
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment)
+    monkeypatch.setattr(
+        "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
+    )
 
     assert main(["convergence_test", str(exp_dir)]) == 0
     out = capsys.readouterr().out
@@ -692,7 +694,9 @@ def test_convergence_test_builds_console_and_report_sinks(
         seen["logger"] = logger
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment)
+    monkeypatch.setattr(
+        "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
+    )
     assert main(["convergence_test", str(exp_dir)]) == 0
     logger = seen["logger"]
     assert isinstance(logger, MultiLogger)

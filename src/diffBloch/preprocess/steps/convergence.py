@@ -162,7 +162,9 @@ def convergence_test_scalar[T](
         if r < tolerance.r_factor_threshold:
             return candidate if accept_converged_candidate else current
         current = candidate
-    raise RuntimeError(f"convergence_test_scalar did not converge within {tolerance.max_iterations} steps")
+    raise RuntimeError(
+        f"convergence_test_scalar did not converge within {tolerance.max_iterations} steps"
+    )
 
 
 def convergence_test_beams(
@@ -238,7 +240,9 @@ def convergence_test_sampling(
             tilts = replace(rocking, sampling=int(round(sampling)))
             return integrate_rocking_curve(tilts)(seed)
 
-        return convergence_test_scalar(build, measure, tolerance, start=float(rocking.sampling), step=step)
+        return convergence_test_scalar(
+            build, measure, tolerance, start=float(rocking.sampling), step=step
+        )
 
     return run
 
