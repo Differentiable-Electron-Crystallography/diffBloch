@@ -15,7 +15,7 @@ from_experiment ──▶ Plan ──▶ [ steps… ] ──▶ Plan ──▶ r
 
 `from_experiment` (spine) seeds the initial complete `Plan`; each step returns a sharpened `Plan`;
 `refine` consumes the final one. Convergence is **entirely optional by construction** — a full run
-needs no `converge_*`/`cover_*` step at all.
+needs no `convergence_test_*`/`cover_*` step at all.
 
 ## The steps
 
@@ -25,11 +25,11 @@ needs no `converge_*`/`cover_*` step at all.
 | `optimize_orientation.py` | `optimize_orientation` | refine each rotation's crystal orientation to the data |
 | `optimize_thickness.py` | `optimize_thickness` | fit the sample thickness to the data |
 | `rocking_curve.py` | `integrate_rocking_curve` | bake rocking-curve tilt integration into the geometry |
-| `convergence.py` | `converge_beams` / `converge_pool` / `converge_sampling` | grow a numerics knob until consecutive *simulations* stop moving (self-stability) |
+| `convergence.py` | `convergence_test_pool` / `convergence_test_sampling` | grow a numerics knob until consecutive *simulations* stop moving (self-stability) |
 | `coverage.py` | `cover_beams` / `cover_pool` | grow a beam knob until it stops recovering new *observed* reflections (match-count) |
 
 `convergence.py` and `coverage.py` also hold the parameter-agnostic drivers their adapters use
-(`converge_scalar`, `maximize_scalar`) and the measures (`simulation_rfactor` / `plan_coverage`).
+(`convergence_test_scalar`, `maximize_scalar`) and the measures (`simulation_rfactor` / `plan_coverage`).
 
 ## Layering (why there are no import cycles)
 

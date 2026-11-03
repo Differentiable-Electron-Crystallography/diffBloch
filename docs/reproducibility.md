@@ -17,7 +17,7 @@ file change. This prevents a calculation from using input files that differ from
 the experiment.
 
 `experiment.lock` is a raw-input blessing gate. It is created automatically, from the current input
-files, the first time any command (`converge`, `preprocess`, `infer`, `refine`) runs against an
+files, the first time any command (`convergence_test`, `preprocess`, `infer`, `refine`) runs against an
 experiment directory that doesn't have one yet. After that, if an input file's contents change, the
 lock is not rewritten automatically. The mismatch is exactly the drift this file exists to catch, so
 the command fails instead.

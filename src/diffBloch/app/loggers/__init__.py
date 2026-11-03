@@ -445,7 +445,7 @@ class ConsoleLogger:
             return
         if isinstance(event, ConvergenceTrial):
             label = "gmax" if event.control == "g_max" else event.control
-            # Mark the trial that fell under the pass threshold -- the comparison converge_scalar
+            # Mark the trial that fell under the pass threshold -- the comparison convergence_test_scalar
             # actually settles on. Printing the threshold once in the pass header and then leaving
             # the reader to check each R against it by eye is the arithmetic this saves.
             settled = (
