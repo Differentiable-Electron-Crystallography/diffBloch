@@ -328,7 +328,7 @@ def convergence_test_experiment(
             starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
             plan = pipeline(
                 [
-                    select_beams_sg(simulation.sg_max),
+                    select_beams_sg(simulation.sg_max, rocking),
                     build_orientation_plans(),
                 ]
             )(selected)

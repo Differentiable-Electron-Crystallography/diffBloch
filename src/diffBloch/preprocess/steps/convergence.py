@@ -4,7 +4,7 @@ A convergence sweep is *self-referential* -- unlike ``optimize_orientation`` / `
 match the simulation to *observed* data), it asks whether two *consecutive* simulations still
 differ,
 so it is a numerical resolution study (has the calculation stopped depending on the knob?), run
-before and orthogonally to the accuracy fit. This module has three layers:
+before and orthogonally to the accuracy fit. This module has these layers:
 
 - :func:`simulation_rfactor` -- the measurement: ``(previous, current) -> float``, the mean
   per-orientation R-factor between two Plans' simulations (0 when they are identical).
@@ -12,8 +12,6 @@ before and orthogonally to the accuracy fit. This module has three layers:
   ``measure`` it clicks a scalar knob upward until two consecutive builds stop changing (the
   R-factor drops below threshold), or a hard cap raises. It knows nothing about beams (or even
   Plans); adapters instantiate it.
-- :func:`convergence_test_beams` -- the beam-window adapter: a ``Plan -> Plan`` step that widens
-  ``integration_semiangle`` until the pattern stabilises, re-running ``select_beams`` from the seed.
 - :func:`convergence_test_sampling` -- the forward-model lever: refines the rocking-curve tilt count
   (``rocking_curve_sampling``) until the integrated pattern stabilises. Independent of the beam
   levers (the tilt count does not touch the ``Fgb`` support), so it composes as an ordinary lever.
@@ -43,15 +41,10 @@ from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import ConvergenceCheck, PlanStep
 from diffBloch.preprocess.plan import Plan
 from diffBloch.preprocess.scoring import build_engine
-from diffBloch.preprocess.steps.beams import (
-    build_orientation_plans,
-    select_beams,
-)
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, RockingCurve
+from diffBloch.specs import ConvergenceTolerance, RockingCurve
 
 __all__ = [
-    "convergence_test_beams",
     "convergence_test_sampling",
     "convergence_test_scalar",
     "simulation_converged",
@@ -167,44 +160,6 @@ def convergence_test_scalar[T](
     )
 
 
-def convergence_test_beams(
-    selection: BeamSelection,
-    refinement: RefinementSetup,
-    tolerance: ConvergenceTolerance,
-    *,
-    step: float,
-    method: SolverMethod = "matrix_exp",
-) -> PlanStep:
-    """Return a ``Plan -> Plan`` step: widen ``integration_semiangle`` until the pattern stabilises.
-
-    The window lever of beam-set convergence (the physically primary "how many near-Ewald beams").
-    Each candidate re-runs :func:`~diffBloch.preprocess.steps.beams.select_beams` from the incoming
-    *seed*
-    Plan at a wider ``integration_semiangle`` -- selecting from the fixed seed each time, not from
-    the
-    previous (already-pruned) candidate, so widening can admit beams a narrower window dropped. The
-    sweep starts at ``selection.integration.semiangle`` and clicks up by ``step`` (degrees) until
-    :func:`convergence_test_scalar` settles the pattern (first sub-threshold step wins); ``rsg`` / ``dsg``
-    are
-    held fixed. ``step`` must be positive.
-    """
-    if step <= 0.0:
-        raise ValueError("step must be positive")
-    measure = simulation_rfactor(refinement, method=method)
-
-    def run(seed: Plan) -> Plan:
-        def build(semiangle: float) -> Plan:
-            geometry = replace(selection.integration, semiangle=semiangle)
-            selected = select_beams(replace(selection, integration=geometry))(seed)
-            return build_orientation_plans()(selected)
-
-        return convergence_test_scalar(
-            build, measure, tolerance, start=selection.integration.semiangle, step=step
-        )
-
-    return run
-
-
 def convergence_test_sampling(
     rocking: RockingCurve,
     refinement: RefinementSetup,
@@ -305,8 +260,8 @@ def _fixed_reflections(
             f"first missing hkl {missing[0]}"
         )
     return (
-        torch.tensor([previous_position[tuple(row)] for row in targets]),
-        torch.tensor([current_position[tuple(row)] for row in targets]),
+        torch.tensor([previous_position[tuple(row)] for row in targets], dtype=torch.long),
+        torch.tensor([current_position[tuple(row)] for row in targets], dtype=torch.long),
     )
 
 

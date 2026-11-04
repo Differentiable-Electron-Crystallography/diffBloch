@@ -1,5 +1,5 @@
 """Slice 11: the convergence machinery -- ``simulation_converged``, ``convergence_test_scalar``,
-``convergence_test_beams``, ``convergence_test_sampling``.
+``convergence_test_sampling``.
 
 Uses the same fast synthetic silicon system as ``test_fit_thickness`` (no heavy fixture sim). The
 check compares two *simulations*, so the orientations' observed patterns are irrelevant
@@ -9,8 +9,7 @@ tolerance threshold gates, and that identical Plans read as converged.
 
 ``convergence_test_scalar`` (the parameter-agnostic driver) is tested purely with a scripted R-factor
 sequence and an identity ``build`` -- no simulation -- so the first-below-threshold / cap logic is
-pinned in isolation. ``convergence_test_beams`` is then exercised end-to-end: widening the Klar window over
-a richer seed until the pattern saturates. ``convergence_test_sampling`` refines the rocking-curve tilt
+pinned in isolation. ``convergence_test_sampling`` refines the rocking-curve tilt
 count until the integrated pattern settles.
 """
 
@@ -23,7 +22,6 @@ from tests.unit.synthetic import (
     CELL,
     ENERGY,
     THICKNESS,
-    beam_count,
     make_constraint_spec,
     seed_system,
     silicon_params,
@@ -36,15 +34,13 @@ from diffBloch.params import ConstraintSpec
 from diffBloch.preprocess import (
     RefinementSetup,
     build_orientation_plans,
-    convergence_test_beams,
     convergence_test_sampling,
     convergence_test_scalar,
     integrate_rocking_curve,
-    select_beams,
     simulation_converged,
 )
 from diffBloch.preprocess.plan import Plan
-from diffBloch.specs import BeamSelection, ConvergenceTolerance, IntegrationGeometry, RockingCurve
+from diffBloch.specs import ConvergenceTolerance, IntegrationGeometry, RockingCurve
 
 _FULL_BEAMS = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
 _PRUNED_BEAMS = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)  # one fewer coupled beam
@@ -150,60 +146,6 @@ def test_convergence_test_scalar_raises_when_it_never_settles() -> None:
     measure = _scripted_measure([0.02, 0.02, 0.02])
     with pytest.raises(RuntimeError, match="did not converge within 3 steps"):
         convergence_test_scalar(lambda v: v, measure, tolerance, start=1.0, step=0.1)
-
-
-# --- convergence_test_beams: the beam-window adapter, exercised end-to-end on a richer synthetic seed ---
-# The shared seed system lives in tests.unit.synthetic: a seed Plan rich enough (full hkl cube)
-# that widening a beam knob admits beams progressively then saturates.
-
-
-def test_convergence_test_beams_widens_the_window_until_the_pattern_saturates() -> None:
-    refinement, seed = seed_system()
-    # Step wide enough to cross the intermediate count plateaus (the seed admits beams in bands as
-    # the window widens: 15 -> 39 -> 43); the sweep then saturates and the trailing nulls settle it
-    # on the fully-selected beam set.
-    selection = BeamSelection(rsg=0.9, integration=IntegrationGeometry(semiangle=0.68))
-    step = convergence_test_beams(
-        selection,
-        refinement,
-        ConvergenceTolerance(r_factor_threshold=0.05, max_iterations=20),
-        step=0.6,
-    )
-    converged = step(seed)
-
-    # It widened past the starting selection, all the way to the fully-reachable (saturated) set.
-    started = select_beams(selection)(seed)
-    saturated = select_beams(
-        BeamSelection(rsg=selection.rsg, integration=IntegrationGeometry(semiangle=5.0))
-    )(seed)
-    assert beam_count(started) < beam_count(converged) == beam_count(saturated)
-
-
-def test_convergence_test_beams_fine_step_stops_early_at_an_intermediate_plateau() -> None:
-    refinement, seed = seed_system()
-    # Faithful first-dip stop is step-sensitive: too fine a step lets the consecutive-sim R-factor
-    # dip below threshold on an intermediate count plateau, stopping short of the saturated set.
-    # This is the documented discrete-plateau sensitivity (managed by step choice, not patience).
-    selection = BeamSelection(rsg=0.9, integration=IntegrationGeometry(semiangle=0.68))
-    step = convergence_test_beams(
-        selection,
-        refinement,
-        ConvergenceTolerance(r_factor_threshold=0.005, max_iterations=20),
-        step=0.06,
-    )
-    converged = step(seed)
-
-    started = select_beams(selection)(seed)
-    saturated = select_beams(
-        BeamSelection(rsg=selection.rsg, integration=IntegrationGeometry(semiangle=5.0))
-    )(seed)
-    assert beam_count(started) < beam_count(converged) < beam_count(saturated)
-
-
-def test_convergence_test_beams_rejects_non_positive_step() -> None:
-    refinement, seed = seed_system()
-    with pytest.raises(ValueError, match="step must be positive"):
-        convergence_test_beams(BeamSelection(), refinement, ConvergenceTolerance(), step=0.0)
 
 
 # --- convergence_test_sampling: the rocking-curve tilt-count (rocking_curve_sampling) lever ---

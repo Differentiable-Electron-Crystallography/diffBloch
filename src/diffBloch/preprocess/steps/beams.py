@@ -56,7 +56,7 @@ from diffBloch.specs import (
     assert_grid_covers_coupling,
 )
 
-__all__ = ["build_orientation_plans", "klar_beam_mask", "select_beams"]
+__all__ = ["build_orientation_plans", "klar_beam_mask", "select_beams", "select_beams_sg"]
 
 
 def select_beams(selection: BeamSelection) -> PlanStep:
@@ -306,29 +306,45 @@ def _reselect(
     return replace(cp, beam_hkl=beam_hkl[keep])
 
 
-def select_beams_sg(sg_max: float) -> PlanStep:
-    """Return a ``Plan -> Plan`` step that keeps each candidate's beams with ``|Sg| <= sg_max``.
+def select_beams_sg(sg_max: float, rocking: RockingCurve) -> PlanStep:
+    """Return a ``Plan -> Plan`` step keeping beams with ``|Sg| <= sg_max`` at any rocking tilt.
 
-    Beam selection on the excitation-error cutoff alone; no scoring window is involved. The 000
-    beam is retained. ``sg_max`` must be non-negative.
+    A reflection is kept when its excitation error drops to ``sg_max`` or below at *some* tilt of
+    the frame's rocking curve (``rocking.sampling`` tilts over ``+/- rocking.integration.semiangle``
+    about the goniometer axis), not only at the frame centre. This matches what ``couple_beams``
+    solves across the sweep; a reflection off the Ewald sphere at the centre but crossing it
+    mid-frame is kept. No scoring window is involved. The 000 beam always passes (``Sg = 0``).
+    ``sg_max`` must be non-negative.
     """
     if sg_max < 0.0:
         raise ValueError("sg_max must be non-negative")
+    tilts = rocking_curve_tilts(
+        rocking.integration.semiangle, rocking.sampling, geometry=rocking.integration.geometry
+    )
 
     def run(plan: Plan) -> Plan:
         cell = np.asarray(plan.structure_factor_grid.cell)
-        candidates = tuple(_reselect_sg(cell, cp, sg_max) for cp in require_candidate_plans(plan))
+        candidates = tuple(
+            _reselect_sg(cell, cp, sg_max, tilts) for cp in require_candidate_plans(plan)
+        )
         return replace(plan, orientations=candidates)
 
-    return as_step("select_beams_sg", {"sg_max": sg_max}, run)
+    return as_step("select_beams_sg", {"seed_sg_max": sg_max, "rocking": rocking}, run)
 
 
-def _reselect_sg(cell: NDArray[np.float64], cp: CandidatePlan, sg_max: float) -> CandidatePlan:
+def _reselect_sg(
+    cell: NDArray[np.float64],
+    cp: CandidatePlan,
+    sg_max: float,
+    tilts: NDArray[np.float64],
+) -> CandidatePlan:
     beam_hkl = np.asarray(cp.beam_hkl, dtype=np.int64)
-    g = g_vectors(beam_hkl, orientation_basis(cell, np.asarray(cp.orientation)))
-    keep = np.abs(excitation_errors(g, cp.energy, u0=cp.u0)) <= sg_max
-    keep |= (beam_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
-    return replace(cp, beam_hkl=beam_hkl[keep])
+    orientation = np.asarray(cp.orientation)
+    min_sg = np.full(beam_hkl.shape[0], np.inf)
+    for tilt in tilts:
+        g = g_vectors(beam_hkl, orientation_basis(cell, tilt @ orientation))
+        min_sg = np.minimum(min_sg, np.abs(excitation_errors(g, cp.energy, u0=cp.u0)))
+    return replace(cp, beam_hkl=beam_hkl[min_sg <= sg_max])
 
 
 def klar_beam_mask(

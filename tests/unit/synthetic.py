@@ -96,8 +96,8 @@ def seed_system() -> tuple[RefinementSetup, Plan]:
     )
     pattern = PatternBatch(
         hkl=torch.tensor(SEED_BEAMS, dtype=torch.int64),
-        intensities=torch.zeros(len(SEED_BEAMS), dtype=torch.float64),
-        sigmas=torch.ones(len(SEED_BEAMS), dtype=torch.float64),
+        intensities=torch.ones(len(SEED_BEAMS), dtype=torch.float64),
+        sigmas=torch.full((len(SEED_BEAMS),), 0.1, dtype=torch.float64),
     )
     candidate = CandidatePlan.seed(SEED_BEAMS, pattern, energy=ENERGY, thickness=(THICKNESS,))
     return refinement, Plan(structure_factor_grid=grid, orientations=(candidate,))

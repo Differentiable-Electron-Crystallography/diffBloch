@@ -345,7 +345,7 @@ def test_convergence_test_delegates_and_reports(
         "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
     )
 
-    assert main(["convergence_test", str(exp_dir)]) == 0
+    assert main(["convergence-test", str(exp_dir)]) == 0
     out = capsys.readouterr().out
     assert "CONVERGENCE COMPLETE" in out
     assert _summary_row(out, "g_max", "2.5")
@@ -697,7 +697,7 @@ def test_convergence_test_builds_console_and_report_sinks(
     monkeypatch.setattr(
         "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
     )
-    assert main(["convergence_test", str(exp_dir)]) == 0
+    assert main(["convergence-test", str(exp_dir)]) == 0
     logger = seen["logger"]
     assert isinstance(logger, MultiLogger)
     assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]

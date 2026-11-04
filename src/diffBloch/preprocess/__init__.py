@@ -75,7 +75,6 @@ from diffBloch.preprocess.steps.beams import (
     select_beams_sg,
 )
 from diffBloch.preprocess.steps.convergence import (
-    convergence_test_beams,
     convergence_test_sampling,
     convergence_test_scalar,
     simulation_converged,
@@ -128,7 +127,6 @@ __all__ = [
     "build_engine",
     "build_orientation_plans",
     "busing_levy_matrix",
-    "convergence_test_beams",
     "convergence_test_numerics",
     "convergence_test_sampling",
     "convergence_test_scalar",

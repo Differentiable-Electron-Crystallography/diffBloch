@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog=(
             "a typical workflow:\n"
             "  diffbloch validate experiment/experiment.yaml\n"
-            "  diffbloch convergence_test experiment/\n"
+            "  diffbloch convergence-test experiment/\n"
             "  diffbloch preprocess experiment/\n"
             "  diffbloch refine experiment/\n"
             "\n"
@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     p_lock_experiment.add_argument("experiment_directory", help="Path to the experiment directory")
 
     p_converge = sub.add_parser(
-        "convergence_test", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
+        "convergence-test", help="Test convergence of g_max, sg_max, and rocking-curve tilt steps"
     )
     p_converge.add_argument("experiment_directory", help="Path to the experiment directory")
     p_converge.add_argument(
@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_notebooks(_write_stage_notebooks(run.report_path, args.experiment_directory))
         return 0
 
-    if args.command == "convergence_test":
+    if args.command == "convergence-test":
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
         )
