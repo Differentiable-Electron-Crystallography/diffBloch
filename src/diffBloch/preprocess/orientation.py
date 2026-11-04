@@ -37,8 +37,11 @@ type FloatArray = NDArray[np.float64]
 
 __all__ = [
     "busing_levy_matrix",
+    "compose_mosaic_tilts",
     "goniometer_rotation",
     "hexagonal_tilt",
+    "isotropic_mosaic_directions",
+    "isotropic_mosaic_tilts",
     "orientation_basis",
     "orientation_matrices",
     "rocking_curve_tilts",
@@ -144,6 +147,82 @@ def hexagonal_tilt(azimuth: float, polar: float) -> FloatArray:
     )
     tilt: FloatArray = rz @ rx @ rz.T  # rz.T = R_z(-azimuth)
     return tilt
+
+
+def isotropic_mosaic_tilts(sigma_degrees: float, samples: int) -> tuple[FloatArray, FloatArray]:
+    """Isotropic Gaussian mosaic-spread tilts and weights: ``(samples, 3, 3)`` and ``(samples,)``.
+
+    Unlike :func:`rocking_curve_tilts` (tilts confined to one axis, x), this places ``samples``
+    small rotations isotropically over *every* azimuth around the identity -- the physical picture
+    of mosaic-block orientation spread (:class:`~diffBloch.specs.IsotropicMosaicity`), not a 1-D
+    approximation of it. ``sigma_degrees`` is the standard deviation of a 2-D isotropic Gaussian
+    orientation distribution (the usual crystallographic mosaicity convention). The directions are
+    a centre sample plus an evenly spaced ring (see :func:`isotropic_mosaic_directions`), each
+    becoming a :func:`hexagonal_tilt` (the tilt taking the pole to that direction).
+
+    The returned ``weights`` are 1/2 on the centre and ``1 / (2 * (samples - 1))`` on each ring
+    sample, for :class:`~diffBloch.core.products.WeightedSum`; with the ring at ``2 * sigma_degrees``
+    that reproduces the Gaussian's ``<rho^2> = 2 sigma^2`` and ``<rho^4> = 8 sigma^4``.
+    ``samples = 1`` or ``sigma_degrees = 0`` is the identity with weight 1, so a unit/zero-spread
+    mosaicity composes off.
+
+    The polar angles behind the tilts come from :func:`isotropic_mosaic_directions`, which
+    :class:`~diffBloch.engine.components.TrainableIsotropicMosaicity` uses to move the same
+    directions to a refined sigma.
+    """
+    azimuth, polar = isotropic_mosaic_directions(sigma_degrees, samples)
+    if samples == 1 or sigma_degrees == 0.0:
+        return np.eye(3)[None], np.ones(1)
+    tilts = np.stack([hexagonal_tilt(az, po) for az, po in zip(azimuth, polar, strict=True)])
+    weights = np.full(samples, 0.5 / (samples - 1))
+    weights[0] = 0.5
+    return tilts, weights
+
+
+def isotropic_mosaic_directions(
+    sigma_degrees: float, samples: int
+) -> tuple[FloatArray, FloatArray]:
+    """The ``(azimuth, polar)`` angles (degrees, ``(samples,)`` each) of the isotropic mosaic tilts.
+
+    The placement :func:`isotropic_mosaic_tilts` builds its tilts from: one sample at the centre and
+    ``n = samples - 1`` at azimuths ``360 k / n`` on a ring of polar angle ``2 * sigma_degrees``.
+    With the centre weighted 1/2 and the ring 1/2 in total, that matches the 2-D Gaussian's
+    ``<rho^2> = 2 sigma^2`` and ``<rho^4> = 8 sigma^4`` with zero mean tilt and, for ``n >= 3``, the
+    same spread in every direction; ``samples`` of 2 or 3 is rejected. Every polar angle is
+    proportional to ``sigma_degrees``. ``samples = 1`` or ``sigma_degrees = 0`` is the single
+    untilted direction ``(0, 0)``.
+    """
+    if samples < 1:
+        raise ValueError("samples must be >= 1")
+    if not (np.isfinite(sigma_degrees) and sigma_degrees >= 0.0):
+        raise ValueError("sigma_degrees must be finite and non-negative")
+    if samples in (2, 3):
+        raise ValueError("isotropic mosaicity needs samples == 1 or >= 4")
+    if samples == 1 or sigma_degrees == 0.0:
+        return np.zeros(1), np.zeros(1)
+    ring = samples - 1
+    ring_azimuth = 360.0 * np.arange(ring, dtype=np.float64) / ring
+    azimuth: FloatArray = np.concatenate(([0.0], ring_azimuth))
+    polar: FloatArray = np.concatenate(([0.0], np.full(ring, 2.0 * sigma_degrees)))
+    return azimuth, polar
+
+
+def compose_mosaic_tilts(rocking_tilts: FloatArray, mosaic_tilts: FloatArray) -> FloatArray:
+    """Every rocking-curve tilt composed with every mosaic tilt: ``(R * M, 3, 3)``.
+
+    ``rocking_tilts`` (``R`` of them, from :func:`rocking_curve_tilts`) sweep the goniometer/beam
+    through the Ewald sphere; ``mosaic_tilts`` (``M``, from :func:`isotropic_mosaic_tilts`) perturb
+    which way an individual mosaic block happens to point. Every block sees the same rocking sweep,
+    so each mosaic tilt is applied to the *base* orientation first and the rocking sweep composed on
+    top (``rocking_tilts[i] @ mosaic_tilts[j]``, matching the ``R_tilt @ orientation``
+    left-multiply convention both already use) -- physically a block-orientation offset, then the
+    beam sweeping across it, not the other way round. Flattened as ``index = m * R + r`` (``r``
+    fastest), so each mosaic sample's ``R`` tilts are one contiguous, monotonic rocking sweep -- the
+    beam coupling's segment unions are only valid over consecutive tilts that are neighbours in
+    angle (:func:`~diffBloch.preprocess.coupling.build_coupling_segments`).
+    """
+    composed: FloatArray = np.einsum("rij,mjk->mrik", rocking_tilts, mosaic_tilts).reshape(-1, 3, 3)
+    return composed
 
 
 def rocking_curve_tilts(

@@ -32,6 +32,7 @@ from diffBloch.specs import (
     ApparentThicknessNetwork,
     BeamSelection,
     IntegrationGeometry,
+    IsotropicMosaicity,
     NelderMeadSearch,
     OrientationSelection,
     PerTiltCoupling,
@@ -76,8 +77,8 @@ class BlochwaveConfig(_StrictConfig):
     separate smaller radius. ``rsg`` / ``dsg`` are
     the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
     integration semi-angle is read from the PETS experimental data rather than configured.
-    ``mosaicity: true`` opts into PETS-derived angular mosaic averaging, while the default ``false``
-    disables it.
+    ``incoherent_mosaicity: true`` opts into PETS-derived isotropic mosaic broadening, while the
+    default ``false`` disables it.
     """
 
     # One solver for every phase (preprocessing search, refinement, and inference/scoring) --
@@ -88,7 +89,18 @@ class BlochwaveConfig(_StrictConfig):
     rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
     dsg: float = _BEAM_SELECTION_DEFAULTS.dsg
     rocking_curve_sampling: int = 42
-    mosaicity: bool = False
+    # Isotropic incoherent mosaicity (Palatinus, Acta Cryst. 2024 A80 e225):
+    # mosaicity_samples tilts placed over a 2-D Gaussian orientation distribution, each solved
+    # independently through the full thickness and summed as intensities. Sigma always comes from
+    # the PETS-reported apparent mosaicity -- see refinement.trainable.mosaicity_sigma to refine it
+    # jointly with the structure instead of leaving it fixed at that value.
+    incoherent_mosaicity: bool = False
+    # A centre sample plus an evenly spaced ring at 2*sigma (diffBloch.specs.IsotropicMosaicity),
+    # so it must be 1 or >= 4. Any value >= 4 already matches the Gaussian spread exactly; more
+    # samples only add directions around the same ring, not radial accuracy. Each sample is a
+    # whole extra Bloch wave calculation, so runtime scales linearly with it. Only matters when
+    # incoherent_mosaicity is true.
+    mosaicity_samples: int = 5
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
@@ -135,6 +147,10 @@ class BlochwaveConfig(_StrictConfig):
             raise ValueError("rsg must be positive")
         if self.rocking_curve_sampling < 1:
             raise ValueError("rocking_curve_sampling must be >= 1")
+        if self.mosaicity_samples < 1:
+            raise ValueError("mosaicity_samples must be >= 1")
+        # Sigma comes from PETS later; the sample count is checkable now.
+        IsotropicMosaicity(sigma_degrees=0.0, samples=self.mosaicity_samples)
         self.to_policy()
         self.to_orientation_selection()
         self.to_absorption()
@@ -257,6 +273,11 @@ class TrainableConfig(_StrictConfig):
     positions: Literal["all", "none"] = "all"
     adp: Literal["all", "none"] = "all"
     occupancy: Literal["all", "none"] = "none"
+    # Refines blochwave.incoherent_mosaicity's sigma jointly with the structure instead of leaving
+    # it fixed at the PETS-reported value (diffBloch.engine.components.TrainableIsotropicMosaicity).
+    # Not part of TrainableSpec/to_spec() below -- that value-type selects structure atom groups
+    # only; a component's trainability is decided by whether it's composed in at all, in program.py.
+    mosaicity_sigma: bool = False
 
     def to_spec(self) -> TrainableSpec:
         """Parse into the ``TrainableSpec`` the refinement optimizer consumes."""
@@ -523,6 +544,23 @@ class ExperimentConfig(_StrictConfig):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _mosaicity_cross_checks(self) -> ExperimentConfig:
+        # Refining sigma needs a mosaic spread to refine: without the switch no component is built,
+        # and with one sample the only tilt is the identity, so sigma would have no gradient.
+        if self.refinement.trainable.mosaicity_sigma:
+            if not self.blochwave.incoherent_mosaicity:
+                raise ValueError(
+                    "refinement.trainable.mosaicity_sigma requires "
+                    "blochwave.incoherent_mosaicity: true"
+                )
+            if self.blochwave.mosaicity_samples == 1:
+                raise ValueError(
+                    "refinement.trainable.mosaicity_sigma requires blochwave.mosaicity_samples >= 4"
+                    " (one sample is the untilted identity, which sigma cannot move)"
+                )
+        return self
+
     def to_declaration(
         self, integrations: Sequence[IntegrationGeometry], *, experiment_directory: str = ""
     ) -> ExperimentDeclared:
@@ -562,6 +600,7 @@ class ExperimentConfig(_StrictConfig):
             solve_g_max=self.blochwave.g_max,
             sg_max=self.blochwave.sg_max,
             absorption=self.blochwave.absorption,
+            incoherent_mosaicity=self.blochwave.incoherent_mosaicity,
             steps=self.refinement.steps,
             learning_rate=self.refinement.optimizer.lr,
         )

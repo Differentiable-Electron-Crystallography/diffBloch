@@ -18,6 +18,7 @@ a TUI or batch runner) can wrap these raising constructors without changing the 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -30,6 +31,7 @@ __all__ = [
     "ConvergenceTolerance",
     "FrameSelection",
     "IntegrationGeometry",
+    "IsotropicMosaicity",
     "NelderMeadSearch",
     "OrientationSelection",
     "PerTiltCoupling",
@@ -278,6 +280,50 @@ class RockingCurve:
     def __post_init__(self) -> None:
         if self.sampling < 1:
             raise ValueError("sampling must be >= 1")
+
+
+@dataclass(frozen=True)
+class IsotropicMosaicity:
+    """Isotropic mosaic-block orientation spread: samples scattered over a cone, not one axis.
+
+    A real mosaic crystal is a set of small blocks whose orientations are scattered in every
+    direction around the nominal orientation, not just along the goniometer/rocking axis --
+    :class:`~diffBloch.core.products.MosaicSmoothed` only ever averages *along* the existing
+    rocking-curve tilts, so it cannot capture spread transverse to that axis. This instead composes
+    ``samples`` additional tilts, scattered over a 2-D isotropic Gaussian orientation distribution of
+    standard deviation ``sigma_degrees`` around the identity (see
+    :func:`~diffBloch.preprocess.orientation.isotropic_mosaic_tilts`), onto *every* rocking-curve
+    tilt -- the forward model then sums intensities over the full ``rocking.sampling * samples``
+    combined tilt set, weighted per mosaic sample
+    (:class:`~diffBloch.core.products.WeightedSum`; a joint incoherent integration over both the
+    rocking sweep and the mosaic spread -- the fitted intensity scale absorbs the overall sum's
+    magnitude, only the relative weighting matters).
+
+    ``sigma_degrees`` does not have to be the raw PETS-reported apparent mosaicity -- unlike
+    ``MosaicSmoothed``, which resolves a *sample span* on the existing rocking-curve grid from that
+    value, this samples a genuinely new tilt set, so ``sigma_degrees`` is any angular spread you want
+    to test (e.g. a value refined elsewhere against the data).
+
+    The samples are one at the centre and the other ``samples - 1`` evenly round a ring at
+    ``2 * sigma_degrees``, weighted 1/2 and 1/2 in total
+    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`): zero mean tilt, an
+    isotropic spread, and the 2-D Gaussian's second and fourth radial moments. A ring needs at
+    least 3 points to be isotropic, so ``samples`` is 1 (no spread) or at least 4. Any count of 4 or
+    more already matches those moments exactly; extra samples only add directions on the same ring.
+    """
+
+    sigma_degrees: float
+    samples: int = 5
+
+    def __post_init__(self) -> None:
+        if self.samples < 1:
+            raise ValueError("samples must be >= 1")
+        if self.samples in (2, 3):
+            raise ValueError(
+                "isotropic mosaicity needs samples == 1 or >= 4 (a centre plus a ring of at least 3)"
+            )
+        if not (math.isfinite(self.sigma_degrees) and self.sigma_degrees >= 0.0):
+            raise ValueError("sigma_degrees must be finite and non-negative")
 
 
 @dataclass(frozen=True)

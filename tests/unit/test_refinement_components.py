@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Mapping
 
 import pytest
@@ -13,18 +14,26 @@ from torch import Tensor
 from diffBloch.engine import (
     ApparentThicknessNN,
     AtomSelection,
+    CoupledOrientationPlan,
     ForwardContext,
     PerOrientationThickness,
     QuadraticThicknessProfile,
     RefinementEngine,
     RefinementProblem,
     ThicknessBounds,
+    TrainableIsotropicMosaicity,
     TrainableSpec,
     build_refinement_model,
     mean_plan_thickness,
     run_refinement_model,
 )
 from diffBloch.engine.plan import OrientationPlanLike
+from diffBloch.preprocess.orientation import (
+    compose_mosaic_tilts,
+    isotropic_mosaic_directions,
+    isotropic_mosaic_tilts,
+    rocking_curve_tilts,
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -605,3 +614,268 @@ def test_structure_only_model_keeps_quartz_objective_exactly_unchanged() -> None
     wrapped = engine.objective_value_model(build_refinement_model(initial=params))
 
     assert torch.allclose(wrapped.total, legacy.total, rtol=0.0, atol=0.0)
+
+
+def _mosaicity(
+    sigma: float = 0.1,
+    samples: int = 4,
+    rotation_range: tuple[int, int] = (0, 1),
+    **kwargs: object,
+) -> TrainableIsotropicMosaicity:
+    azimuth, polar = isotropic_mosaic_directions(sigma, samples)
+    return TrainableIsotropicMosaicity(
+        azimuth_degrees=tuple(azimuth.tolist()),
+        polar_degrees=tuple(polar.tolist()),
+        init_sigma_degrees=sigma,
+        rotation_range=rotation_range,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _mosaic_engine(sigma: float, samples: int = 4) -> RefinementEngine:
+    """An engine whose one orientation carries 4 rocking tilts x ``samples`` mosaic tilts at sigma."""
+    mosaic, _ = isotropic_mosaic_tilts(sigma, samples)
+    return _engine(tilts=compose_mosaic_tilts(rocking_curve_tilts(0.5, 4), mosaic))
+
+
+def _at_sigma(component: TrainableIsotropicMosaicity, sigma: float) -> dict[str, Tensor]:
+    scale = math.log(sigma / component.init_sigma_degrees) / component.log_rate
+    return {"log_sigma_scale": torch.tensor([scale], dtype=torch.float64)}
+
+
+def test_trainable_isotropic_mosaicity_validates_construction() -> None:
+    with pytest.raises(ValueError, match="polar_degrees must be non-empty"):
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(), polar_degrees=(), init_sigma_degrees=0.1, rotation_range=(0, 1)
+        )
+    with pytest.raises(ValueError, match="one entry per sample"):
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(0.0,),
+            polar_degrees=(0.0, 0.1),
+            init_sigma_degrees=0.1,
+            rotation_range=(0, 1),
+        )
+    with pytest.raises(ValueError, match="init_sigma_degrees must be finite and positive"):
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(0.0, 90.0),
+            polar_degrees=(0.0, 0.1),
+            init_sigma_degrees=0.0,
+            rotation_range=(0, 1),
+        )
+    with pytest.raises(ValueError, match="must include a tilted sample"):
+        # One sample: the untilted identity, which no sigma moves.
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(0.0,),
+            polar_degrees=(0.0,),
+            init_sigma_degrees=0.1,
+            rotation_range=(0, 1),
+        )
+    with pytest.raises(ValueError, match="rotation_range must be"):
+        TrainableIsotropicMosaicity(
+            azimuth_degrees=(0.0, 90.0),
+            polar_degrees=(0.0, 0.1),
+            init_sigma_degrees=0.1,
+            rotation_range=(1, 1),
+        )
+
+
+def test_trainable_isotropic_mosaicity_initial_params_round_trips_the_seed_sigma() -> None:
+    component = _mosaicity(sigma=0.024)
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+    assert torch.allclose(component.sigma_degrees(params), torch.tensor(0.024, dtype=torch.float64))
+
+
+def test_trainable_isotropic_mosaicity_sigma_can_travel_far_at_the_default_step_budget() -> None:
+    # The default refinement (Adam, lr 1e-3, 40 steps) must be able to move sigma well away from
+    # the PETS seed: a softplus leaf at sigma = 0.05 could move at most ~4% in that budget.
+    component = _mosaicity(sigma=0.05)
+    raw = (
+        component.initial_params(dtype=torch.float64, device=torch.device("cpu"))["log_sigma_scale"]
+        .clone()
+        .requires_grad_(True)
+    )
+    optimizer = torch.optim.Adam([raw], lr=1e-3)
+    for _ in range(40):
+        optimizer.zero_grad()
+        (component.sigma_degrees({"log_sigma_scale": raw}) - 0.5).square().backward()
+        optimizer.step()
+    sigma = float(component.sigma_degrees({"log_sigma_scale": raw.detach()}))
+    assert sigma > 2.0 * 0.05
+
+
+def test_trainable_isotropic_mosaicity_rejects_a_nonpositive_log_rate() -> None:
+    for rate in (0.0, -1.0, math.inf):
+        with pytest.raises(ValueError, match="log_rate must be finite and positive"):
+            _mosaicity(log_rate=rate)
+
+
+def test_trainable_isotropic_mosaicity_forward_context_is_empty_outside_its_rotation_range() -> (
+    None
+):
+    engine = _engine()
+    component = _mosaicity(samples=4, rotation_range=(5, 7))
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+
+    context = component.forward_context(
+        params, rotation_index=1, orientation=_orientation_at(engine, 1)
+    )
+    assert context.tilts is None
+
+
+def test_trainable_isotropic_mosaicity_at_its_seed_sigma_reproduces_the_built_tilts() -> None:
+    engine = _mosaic_engine(0.1)
+    component = _mosaicity(sigma=0.1, samples=4)
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+
+    context = component.forward_context(
+        params, rotation_index=0, orientation=engine.orientations[0]
+    )
+
+    assert context.tilts is not None
+    assert torch.allclose(context.tilts, engine.orientations[0].tilts, rtol=0.0, atol=1e-14)
+
+
+def test_trainable_isotropic_mosaicity_moves_tilts_to_the_widened_gaussian() -> None:
+    # Widening from 0.1 to 0.25 degrees must land exactly on the tilts placed at 0.25 directly.
+    component = _mosaicity(sigma=0.1, samples=4)
+    context = component.forward_context(
+        _at_sigma(component, 0.25),
+        rotation_index=0,
+        orientation=_mosaic_engine(0.1).orientations[0],
+    )
+
+    assert context.tilts is not None
+    assert torch.allclose(
+        context.tilts, _mosaic_engine(0.25).orientations[0].tilts, rtol=0.0, atol=1e-14
+    )
+
+
+@pytest.mark.parametrize("samples", [4, 5])
+def test_widened_mosaicity_solve_matches_a_plan_built_at_that_sigma(samples: int) -> None:
+    # Physics oracle: moving the tilts in the forward is the same Bloch solve, per reflection, as
+    # building the plan at the new sigma over the same beams -- and differs from the seed plan.
+    seed = _mosaic_engine(0.1, samples)
+    target = _mosaic_engine(0.6, samples)
+    component = _mosaicity(sigma=0.1, samples=samples)
+    params = _params()
+    fgb = seed.fgb(params)
+    thickness = seed.orientations[0].thickness
+    context = component.forward_context(
+        _at_sigma(component, 0.6), rotation_index=0, orientation=seed.orientations[0]
+    )
+
+    moved = seed._solve(seed.orientations[0], fgb, thickness, tilts=context.tilts).intensities
+    built = target._solve(target.orientations[0], fgb, thickness).intensities
+    unmoved = seed._solve(seed.orientations[0], fgb, thickness).intensities
+
+    assert torch.allclose(moved, built, rtol=1e-5, atol=1e-7)
+    assert not torch.allclose(unmoved, built, rtol=1e-5, atol=1e-7)
+
+
+def _coupled_at(sigma: float) -> RefinementEngine:
+    """``_mosaic_engine(sigma)``'s orientation rebuilt as two coupled tilt segments."""
+    engine = _mosaic_engine(sigma)
+    plain = engine.orientations[0]
+    n_tilts = int(plain.tilts.shape[0])
+    coupled = CoupledOrientationPlan.build(
+        engine.grid,
+        [(plain.beam_hkl.numpy(), range(0, 5)), (plain.beam_hkl.numpy(), range(5, n_tilts))],
+        plain.pattern,
+        energy=plain.energy,
+        thickness=plain.thickness,
+        u0=plain.u0,
+        orientation=plain.orientation.numpy(),
+        tilts=plain.tilts.numpy(),
+    )
+    return dataclasses.replace(engine, orientations=(coupled,))
+
+
+def test_widened_mosaicity_moves_the_tilts_of_every_coupled_segment() -> None:
+    # The union/per-tilt paths solve segments over covered tilts; each must take its own slice.
+    seed, target = _coupled_at(0.1), _coupled_at(0.6)
+    component = _mosaicity(sigma=0.1, samples=4)
+    fgb = seed.fgb(_params())
+    thickness = seed.orientations[0].thickness
+    context = component.forward_context(
+        _at_sigma(component, 0.6), rotation_index=0, orientation=seed.orientations[0]
+    )
+
+    moved = seed._solve(seed.orientations[0], fgb, thickness, tilts=context.tilts).intensities
+    built = target._solve(target.orientations[0], fgb, thickness).intensities
+    unmoved = seed._solve(seed.orientations[0], fgb, thickness).intensities
+
+    assert torch.allclose(moved, built, rtol=1e-5, atol=1e-7)
+    assert not torch.allclose(unmoved, built, rtol=1e-5, atol=1e-7)
+
+
+def test_widened_mosaicity_routes_a_finite_gradient_to_sigma() -> None:
+    engine = _mosaic_engine(0.1)
+    component = _mosaicity(sigma=0.1, samples=4)
+    raw = _at_sigma(component, 0.3)["log_sigma_scale"].clone().requires_grad_(True)
+    model = build_refinement_model(
+        initial=_params(),
+        components=(component,),
+        component_params={component.key: {"log_sigma_scale": raw}},
+    )
+
+    engine.objective_value_model(model).total.backward()
+
+    assert raw.grad is not None
+    assert torch.isfinite(raw.grad).all()
+    assert float(raw.grad.abs().sum()) > 0.0
+    # Not mutated by the forward.
+    assert float(component.sigma_degrees({"log_sigma_scale": raw.detach()})) == pytest.approx(0.3)
+
+
+def test_widened_mosaicity_gradient_survives_activation_checkpointing() -> None:
+    engine = _mosaic_engine(0.1)
+    component = _mosaicity(sigma=0.1, samples=4)
+
+    def grad(checkpointed: bool) -> Tensor:
+        raw = _at_sigma(component, 0.3)["log_sigma_scale"].clone().requires_grad_(True)
+        params = _params(requires_grad=True)
+        model = build_refinement_model(
+            initial=params,
+            components=(component,),
+            component_params={component.key: {"log_sigma_scale": raw}},
+        )
+        dataclasses.replace(engine, checkpoint_activations=checkpointed).objective_value_model(
+            model
+        ).total.backward()
+        assert raw.grad is not None
+        return raw.grad
+
+    assert torch.allclose(grad(True), grad(False))
+
+
+def test_trainable_isotropic_mosaicity_forward_context_requires_log_sigma_scale() -> None:
+    engine = _engine()
+    component = _mosaicity(samples=4)
+    with pytest.raises(ValueError, match="requires a 'log_sigma_scale' tensor"):
+        component.forward_context({}, rotation_index=0, orientation=_orientation_at(engine, 0))
+
+
+def test_trainable_isotropic_mosaicity_rejects_a_tilt_count_not_a_multiple_of_its_samples() -> None:
+    tilts = rocking_curve_tilts(0.5, 6)  # 6 tilts, not a multiple of 4 mosaic samples
+    engine = _engine(tilts=tilts)
+    component = _mosaicity(samples=4)
+    params = component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+    with pytest.raises(ValueError, match="not a multiple of the 4 mosaic"):
+        component.forward_context(params, rotation_index=0, orientation=_orientation_at(engine, 0))
+
+
+def test_overlapping_mosaicity_components_reject_duplicate_tilts() -> None:
+    # Its single orientation carries rotation_index 0, with one tilt per mosaic sample.
+    engine = _engine(tilts=rocking_curve_tilts(0.5, 4))
+    first = _mosaicity(samples=4, key="isotropic_mosaicity[a.cif_pets]")
+    second = _mosaicity(samples=4, key="isotropic_mosaicity[b.cif_pets]")
+    params = _params()
+    component_params = {
+        component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+        for component in (first, second)
+    }
+    clashing = build_refinement_model(
+        initial=params, components=(first, second), component_params=component_params
+    )
+    with pytest.raises(ValueError, match="multiple refinement components provided tilts"):
+        engine.objective_value_model(clashing)
