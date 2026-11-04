@@ -113,7 +113,7 @@ from diffBloch.preprocess import (
     report_coupling,
     resolve_recipe,
     run_inference,
-    select_beams,
+    select_beams_sg,
     setup_datasets,
     step_records,
     validation_mask,
@@ -134,7 +134,7 @@ from diffBloch.specs import (
 )
 
 __all__ = [
-    "converge_experiment",
+    "convergence_test_experiment",
     "preprocess_experiment",
     "refine_experiment",
     "run_experiment",
@@ -269,7 +269,7 @@ def _select_device(device: Device | None, *, logger: Logger = NULL_LOGGER) -> De
 _LARGE_CELL_THRESHOLD_A3 = 1000.0
 
 
-def converge_experiment(
+def convergence_test_experiment(
     experiment_dir: str | Path,
     *,
     logger: Logger = NULL_LOGGER,
@@ -328,7 +328,7 @@ def converge_experiment(
             starting_g_max = record.dstar_max if record.dstar_max is not None else simulation.g_max
             plan = pipeline(
                 [
-                    select_beams(cfg.blochwave.to_beam_selection(dataset.integration)),
+                    select_beams_sg(simulation.sg_max, rocking),
                     build_orientation_plans(),
                 ]
             )(selected)

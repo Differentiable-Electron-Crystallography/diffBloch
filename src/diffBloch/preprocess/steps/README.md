@@ -15,21 +15,21 @@ from_experiment ──▶ Plan ──▶ [ steps… ] ──▶ Plan ──▶ r
 
 `from_experiment` (spine) seeds the initial complete `Plan`; each step returns a sharpened `Plan`;
 `refine` consumes the final one. Convergence is **entirely optional by construction** — a full run
-needs no `converge_*`/`cover_*` step at all.
+needs no `convergence_test_*`/`cover_*` step at all.
 
 ## The steps
 
 | Module | Public step(s) | What it fits / does |
 |---|---|---|
-| `beams.py` | `select_beams` | prune to the active Klar-window beam set (`klar_beam_mask`) |
+| `beams.py` | `select_beams` / `select_beams_sg` / `build_orientation_plans` | prune to the Klar-window beam set (`klar_beam_mask`), or to beams within `sg_max` of the Ewald sphere somewhere in the sweep; then build |
 | `optimize_orientation.py` | `optimize_orientation` | refine each rotation's crystal orientation to the data |
 | `optimize_thickness.py` | `optimize_thickness` | fit the sample thickness to the data |
 | `rocking_curve.py` | `integrate_rocking_curve` | bake rocking-curve tilt integration into the geometry |
-| `convergence.py` | `converge_beams` / `converge_pool` / `converge_sampling` | grow a numerics knob until consecutive *simulations* stop moving (self-stability) |
-| `coverage.py` | `cover_beams` / `cover_pool` | grow a beam knob until it stops recovering new *observed* reflections (match-count) |
+| `convergence.py` | `convergence_test_scalar` / `convergence_test_sampling` / `simulation_rfactor` | grow a numerics knob until consecutive *simulations* stop moving (self-stability) |
+| `coverage.py` | `cover_beams` / `maximize_scalar` | grow a beam knob until it stops recovering new *observed* reflections (match-count) |
 
 `convergence.py` and `coverage.py` also hold the parameter-agnostic drivers their adapters use
-(`converge_scalar`, `maximize_scalar`) and the measures (`simulation_rfactor` / `plan_coverage`).
+(`convergence_test_scalar`, `maximize_scalar`) and the measures (`simulation_rfactor` / `plan_coverage`).
 
 ## Layering (why there are no import cycles)
 
