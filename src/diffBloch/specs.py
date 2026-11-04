@@ -37,6 +37,7 @@ __all__ = [
     "PerTiltCoupling",
     "RockingCurve",
     "ScoredHklSelection",
+    "ScoredResolutionCap",
     "ThicknessGrid",
     "TiltIndependent",
     "UnionCoupling",
@@ -476,6 +477,24 @@ class TrialCoupling:
 
     policy: UnionCoupling | PerTiltCoupling
     scored: ScoredHklSelection  # SCORED: the Klar window + resolution cap, re-selected per trial
+
+
+@dataclass(frozen=True)
+class ScoredResolutionCap:
+    """A maximum ``|g|`` (Angstrom^-1, ``1/d``) on the SCORED reflection set.
+
+    The reflections compared against the observed pattern -- by the orientation and thickness fits,
+    the refinement objective, and the refined-model report alike -- are cut to ``|g| <= g_max``.
+    It narrows only what is scored, never what is solved: beams beyond the cap still couple in the
+    Bloch solve (``blochwave.g_max``), so the scored set stays a subset of the solve set. ``g_max``
+    must be positive.
+    """
+
+    g_max: float
+
+    def __post_init__(self) -> None:
+        if self.g_max <= 0.0:
+            raise ValueError("scored resolution cap g_max must be positive")
 
 
 @dataclass(frozen=True)
