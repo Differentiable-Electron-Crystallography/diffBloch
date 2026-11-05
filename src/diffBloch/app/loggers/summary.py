@@ -273,6 +273,7 @@ class SummaryLogger:
             ],
             ["sg_max (A^-1)", f"{experiment.sg_max:g}"],
             ["Absorption (T/F)", "T" if experiment.absorption else "F"],
+            ["Mosaicity (T/F)", "T" if experiment.incoherent_mosaicity else "F"],
             ["Seed thickness (A)", seed_thickness],
             ["Epochs (configured)", f"{experiment.steps:g}"],
             ["Best epoch", best_epoch],

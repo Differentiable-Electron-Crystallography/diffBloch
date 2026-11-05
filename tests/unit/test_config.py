@@ -132,6 +132,40 @@ def test_multi_dataset_mean_thicknesses_are_keyed_by_exp_data() -> None:
         )
 
 
+def test_refining_mosaicity_sigma_needs_a_mosaic_spread_to_refine() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    refine_sigma = {"trainable": {"mosaicity_sigma": True}}
+
+    with pytest.raises(ValidationError, match="requires blochwave.incoherent_mosaicity: true"):
+        ExperimentConfig.model_validate({**base, "refinement": refine_sigma})
+    with pytest.raises(ValidationError, match="requires blochwave.mosaicity_samples >= 4"):
+        ExperimentConfig.model_validate(
+            {
+                **base,
+                "blochwave": {"incoherent_mosaicity": True, "mosaicity_samples": 1},
+                "refinement": refine_sigma,
+            }
+        )
+    ExperimentConfig.model_validate(
+        {**base, "blochwave": {"incoherent_mosaicity": True}, "refinement": refine_sigma}
+    )
+
+
+def test_declaration_records_the_incoherent_mosaicity_switch() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    geometry = (IntegrationGeometry(semiangle=1.0),)
+
+    off = ExperimentConfig.model_validate(base).to_declaration(geometry)
+    on = ExperimentConfig.model_validate(
+        {**base, "blochwave": {"incoherent_mosaicity": True}}
+    ).to_declaration(geometry)
+
+    assert off.incoherent_mosaicity is False
+    assert off.measurements["incoherent_mosaicity"] == 0.0
+    assert on.incoherent_mosaicity is True
+    assert on.measurements["incoherent_mosaicity"] == 1.0
+
+
 def test_sample_thicknesses_must_be_finite() -> None:
     base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
 
@@ -434,7 +468,11 @@ def test_optimizer_rejects_unconsumed_line_search_field() -> None:
 
 def test_trainable_group_keysets_do_not_drift() -> None:
     assert set(_TRAINABLE_FIELDS) == {field.name for field in fields(TrainableSpec)}
-    assert set(_TRAINABLE_FIELDS) == set(TrainableConfig.model_fields)
+    # mosaicity_sigma is a deliberate, documented exception: it is not a structure atom-group
+    # selection (TrainableSpec's concern), it decides whether a component gets composed into the
+    # refinement model at all (see program.py's _mosaicity_components), so it has no TrainableSpec
+    # counterpart by design.
+    assert set(_TRAINABLE_FIELDS) | {"mosaicity_sigma"} == set(TrainableConfig.model_fields)
 
 
 def test_refinement_trainable_replaces_string_targets() -> None:
@@ -523,6 +561,16 @@ def test_blochwave_has_one_complete_default() -> None:
         {"name": "quartz", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
     )
     assert cfg.blochwave.to_policy() == UnionCoupling()
+
+
+def test_mosaicity_samples_fail_fast_on_a_ring_too_small() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    for samples in (2, 3):
+        with pytest.raises(ValidationError, match="samples == 1 or >= 4"):
+            ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_samples": samples}})
+    # The placement is no longer a choice, so the old key is an unknown field.
+    with pytest.raises(ValidationError):
+        ExperimentConfig.model_validate({**base, "blochwave": {"mosaicity_placement": "symmetric"}})
 
 
 def test_coupling_policy_override_parses() -> None:

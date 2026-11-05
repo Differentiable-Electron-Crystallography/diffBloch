@@ -139,6 +139,12 @@ def build_coupling_segments(
     ``g = candidate_beam_hkl @ orientation_basis(cell, tilt @ orientation)``. Segment ``i`` couples the
     union of the masks at boundary tilts ``i`` and ``i + 1`` and covers the half-open tilt range
     between them; the final segment includes the end, so the covers tile ``0 .. B - 1`` exactly.
+
+    That endpoint union only bounds the tilts between two boundaries when those tilts sweep
+    monotonically. A tilt list composed of several sweeps (isotropic mosaicity puts one rocking
+    sweep per mosaic sample, :func:`~diffBloch.preprocess.orientation.compose_mosaic_tilts`) is
+    therefore split into its contiguous sweeps first (:func:`_contiguous_sweeps`) and each sweep is
+    segmented on its own, so no segment spans the jump between two sweeps.
     """
     candidate_beam_hkl = np.asarray(candidate_beam_hkl, dtype=np.int64)
     cell = np.asarray(cell, dtype=np.float64)
@@ -191,23 +197,57 @@ def build_coupling_segments(
             for i in range(n_tilts)
         )
 
-    if policy.union_adaptive:
-        # Adaptive boundaries by recursive bisection (fixed_n_segments ignored). Each segment's beam
-        # set is the union of its own inclusive endpoints; the covers tile every tilt exactly once.
-        ranges = _adaptive_segment_ranges(n_tilts, excited_mask, policy.union_max_new_beams_pct)
-        return tuple(
-            Segment(
-                union_hkl=pool[excited_mask(a) | excited_mask(b)].copy(),
-                covered_tilt_indices=tuple(range(a, b + 1)),
-            )
-            for a, b in ranges
-        )
+    segments: list[Segment] = []
+    for start, stop in _contiguous_sweeps(tilts):
+        n_sweep = stop - start
 
-    boundaries = _fixed_segment_ranges(n_tilts, policy.fixed_n_segments)
-    segments = []
-    for i in range(len(boundaries) - 1):
-        a, b = int(boundaries[i]), int(boundaries[i + 1])
-        union = excited_mask(a) | excited_mask(b)
-        cover = tuple(range(a, n_tilts if i == len(boundaries) - 2 else b))
-        segments.append(Segment(union_hkl=pool[union].copy(), covered_tilt_indices=cover))
+        def sweep_mask(i: int, start: int = start) -> NDArray[np.bool_]:
+            return excited_mask(start + i)
+
+        if policy.union_adaptive:
+            # Adaptive boundaries by recursive bisection (fixed_n_segments ignored). Each segment's
+            # beam set is the union of its own inclusive endpoints; the covers tile every tilt once.
+            ranges = _adaptive_segment_ranges(n_sweep, sweep_mask, policy.union_max_new_beams_pct)
+            segments.extend(
+                Segment(
+                    union_hkl=pool[sweep_mask(a) | sweep_mask(b)].copy(),
+                    covered_tilt_indices=tuple(range(start + a, start + b + 1)),
+                )
+                for a, b in ranges
+            )
+            continue
+
+        boundaries = _fixed_segment_ranges(n_sweep, policy.fixed_n_segments)
+        for i in range(len(boundaries) - 1):
+            a, b = int(boundaries[i]), int(boundaries[i + 1])
+            union = sweep_mask(a) | sweep_mask(b)
+            cover = tuple(range(start + a, start + (n_sweep if i == len(boundaries) - 2 else b)))
+            segments.append(Segment(union_hkl=pool[union].copy(), covered_tilt_indices=cover))
     return tuple(segments)
+
+
+def _contiguous_sweeps(tilts: NDArray[np.float64]) -> list[tuple[int, int]]:
+    """Split ``tilts`` ``(B, 3, 3)`` into half-open ``[start, stop)`` runs of one even sweep.
+
+    A rocking sweep steps by the same rotation angle between every pair of consecutive tilts, so
+    the run continues while the step angle matches the run's first step; a different step (the
+    jump from the end of one mosaic sample's sweep to the start of the next) begins a new run. A
+    single sweep -- every tilt list without mosaicity -- is one run covering all ``B`` tilts.
+    """
+    n_tilts = tilts.shape[0]
+    if n_tilts < 3:
+        return [(0, n_tilts)]
+    relative = np.einsum("bij,bkj->bik", tilts[1:], tilts[:-1])  # tilts[k+1] @ tilts[k].T
+    cos_angle = np.clip((np.trace(relative, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0)
+    steps = np.arccos(cos_angle)
+    runs: list[tuple[int, int]] = []
+    start = 0
+    k = 0
+    while k < n_tilts - 1:
+        # steps[k] is the step from tilt k to k + 1; tilt `start` opens the run.
+        if k > start and not np.isclose(steps[k], steps[start], rtol=1e-6, atol=1e-12):
+            runs.append((start, k + 1))
+            start = k + 1
+        k += 1
+    runs.append((start, n_tilts))
+    return runs

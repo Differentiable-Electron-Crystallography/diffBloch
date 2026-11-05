@@ -35,6 +35,7 @@ from diffBloch.observability import (
     ExperimentDeclared,
     InferenceCompleted,
     IntegratedRockingCurves,
+    IsotropicMosaicityRefined,
     ObjectiveManifest,
     ObjectiveTerm,
     OrientationOptimizationStarted,
@@ -409,6 +410,7 @@ def build_events() -> list[Event]:
             )
             for k in range(4)
         ),
+        IsotropicMosaicityRefined(label="a.cif_pets", sigma_degrees=0.021, pets_sigma_degrees=0.02),
         *(
             ThicknessProfile(
                 form="linear",

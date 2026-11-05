@@ -18,6 +18,7 @@ from diffBloch.core.dynamical.assembly import (
     grid_source_indices,
     stack_beam_plans,
     structure_matrix,
+    tilted_beam_geometry,
 )
 from diffBloch.core.dynamical.primitives import (
     STANDARD_MICROSCOPE_ENERGIES_EV,
@@ -53,6 +54,7 @@ __all__ = [
     "stack_beam_plans",
     "structure_matrix",
     "structure_matrix_prefactor",
+    "tilted_beam_geometry",
     "wavelength2energy",
     "wavevector_magnitude",
 ]

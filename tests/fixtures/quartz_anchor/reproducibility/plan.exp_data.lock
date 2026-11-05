@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "f3013b3b8967a3c86add8243321693b4337d929706ae7effca61144493b2c037",
-  "code_version": "0.2.0rc1+g969ef22.dirty",
+  "config_digest": "33508017c4b0cb472efcb88265bfcf2987135f8eab605b4c751011be9e2f0659",
+  "code_version": "0.2.0rc1+g8a2524f.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -115,8 +115,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.exp_data.npz",
-    "sha256": "88acd52ce45b26ae1d08a2e4cbba1901c2fa7785aabd43f353056d997300932c",
-    "bytes": 585324,
+    "sha256": "84d084f9e2548481030945b81662d3a152012d25026c9e03eec5095338b085d9",
+    "bytes": 585323,
     "media_type": "application/octet-stream"
   }
 }
