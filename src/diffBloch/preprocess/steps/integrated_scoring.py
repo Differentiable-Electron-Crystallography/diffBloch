@@ -46,6 +46,7 @@ from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     NO_ABSORPTION,
     Absorption,
+    BeamSelection,
     IntegratedScoring,
     RockingCurve,
     UnionCoupling,
@@ -95,10 +96,11 @@ def score_integrated_reflections(
             g = g_vectors(hkl, orientation_basis(cell, np.asarray(op.orientation)))
             # Every frame whose sweep contains the crossing is a candidate; the one whose centre is
             # closest wins below. A crossing near a frame's edge therefore goes to the neighbour
-            # it is more central in, and at the ends of the data the edge frame keeps it.
+            # it is more central in.
             keep, margin = integrated_mask(
                 g, energy=op.energy, u0=op.u0, integration=rocking.integration
             )
+            keep &= _inside_outer_limit(ops, index, g, op, rocking)
             for row in np.flatnonzero(keep).tolist():
                 h, k, ell = (int(v) for v in hkl[row])
                 key = (h, k, ell, float(i_exp[row]))
@@ -189,6 +191,7 @@ def rocking_curve_report(
     max_batch: int | None = None,
     which: Literal["first2", "all"] = "first2",
     max_pairs: int | None = None,
+    klar: BeamSelection | None = None,
 ) -> tuple[IntegratedRockingCurves, ...]:
     """The report's rocking-curve events for a settled ``plan``, whatever its scoring method.
 
@@ -196,7 +199,9 @@ def rocking_curve_report(
     with ``which="all"`` one per overlapping adjacent pair (0-1, 1-2, 2-3, ...). Empty for a plan
     of fewer than two rotations. A
     reflection one scoring method scores in several frames (the Klar window can) lists the others
-    in ``also_scored_in``. Report-only: nothing here changes the plan.
+    in ``also_scored_in``. ``klar`` is the Klar ``rsg`` / ``dsg`` window when that scored the plan;
+    each event then carries every reflection's acceptance half-width (``klar_window_deg``) so the
+    report can shade it. Report-only: nothing here changes the plan.
     """
     ops = require_built_plans(plan)
     if len(ops) < 2:
@@ -219,6 +224,7 @@ def rocking_curve_report(
             IntegratedScoring(),
             start=start,
             report_mode=which,
+            klar=klar,
             rocking=rocking,
             solve_g_max=solve_g_max,
             sg_max=sg_max,
@@ -268,6 +274,7 @@ def _rocking_curves_event(
     *,
     start: int = 0,
     report_mode: Literal["first2", "all"] = "first2",
+    klar: BeamSelection | None = None,
     rocking: RockingCurve,
     solve_g_max: float,
     sg_max: float,
@@ -395,7 +402,24 @@ def _rocking_curves_event(
         curves=tuple(tuple(float(v) for v in curves[:, column[h]]) for h in hkl),
         sg_zero_deg=tuple(zeros),
         report_mode=report_mode,
+        klar_window_deg=() if klar is None else _klar_window_deg(lever, semi, klar),
     )
+
+
+def _klar_window_deg(
+    lever: NDArray[np.float64], semiangle: float, klar: BeamSelection
+) -> tuple[float, ...]:
+    """Each reflection's Klar acceptance half-width in tilt (degrees) about a frame centre.
+
+    With ``Sg ~ lever * (alpha - crossing)`` over a frame and ``sg_sweep = lever * semiangle``,
+    ``|Sg| / sg_sweep < rsg`` reads ``|crossing - centre| < rsg * semiangle`` and
+    ``sg_sweep - |Sg| > dsg`` reads ``|crossing - centre| < semiangle - dsg / lever``. The window is
+    the tighter of the two, floored at 0 (a reflection on the rock axis is never accepted).
+    """
+    with np.errstate(divide="ignore"):
+        dsg_limit = semiangle - np.rad2deg(klar.dsg / lever)
+    window = np.clip(np.minimum(klar.rsg * semiangle, dsg_limit), 0.0, None)
+    return tuple(float(w) for w in window)
 
 
 def _tilt_intensities(
@@ -565,6 +589,42 @@ def _drop_spilling(
         if total <= 0.0 or curve[inside].sum() / total >= fraction:
             keep.append(row)
     return _keep_rows(op, keep), int(hkl.shape[0] - len(keep))
+
+
+def _inside_outer_limit(
+    ops: tuple[OrientationPlanLike, ...],
+    index: int,
+    g: NDArray[np.float64],
+    op: OrientationPlanLike,
+    rocking: RockingCurve,
+) -> NDArray[np.bool_]:
+    """Keep-mask limiting a dataset's first and last frame on their open (outer) side.
+
+    An interior frame only wins crossings within about half a frame step of its centre: past that,
+    the neighbour is more central. The first and last frame of a dataset have no neighbour on their
+    outer side, so without this they would keep crossings out to the frame edge, where a camera can
+    record the end of the sweep twice. Holding the outer side to the same half-step as the inner side
+    treats every frame alike. Interior frames, and a dataset of one frame, keep everything.
+
+    The frame's local tilt runs in the same direction as the PETS alpha axis, so the neighbour lies
+    on the side of ``sign(alpha_neighbour - alpha_frame)``.
+    """
+    dataset = op.pattern.dataset
+    before = index > 0 and ops[index - 1].pattern.dataset == dataset
+    after = index + 1 < len(ops) and ops[index + 1].pattern.dataset == dataset
+    if before == after:
+        return np.ones(g.shape[0], dtype=np.bool_)
+    neighbour = ops[index - 1] if before else ops[index + 1]
+    step = float(neighbour.pattern.alpha_degrees) - float(op.pattern.alpha_degrees)
+    if step == 0.0:
+        return np.ones(g.shape[0], dtype=np.bool_)
+    crossing = bragg_crossing_angles(
+        g, energy=op.energy, u0=op.u0, semiangle=rocking.integration.semiangle
+    )
+    inward = np.sign(step) * crossing  # positive toward the neighbour
+    with np.errstate(invalid="ignore"):
+        too_far_out: NDArray[np.bool_] = inward < -abs(step) / 2.0
+    return ~too_far_out
 
 
 def _keep_rows(op: OrientationPlanLike, rows: list[int]) -> OrientationPlanLike:

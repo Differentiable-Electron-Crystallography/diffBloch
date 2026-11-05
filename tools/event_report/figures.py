@@ -653,6 +653,8 @@ def plot_rotation_epoch_heatmap(records: Sequence[EventRecord]) -> Figure | None
 
 
 _RATIO_BINS = 15
+# Klar acceptance bars for the first and second frame of a pair.
+_KLAR_COLOURS = (SERIES[0], SERIES[5])
 _RATIO_MIN_PER_BIN = 10
 
 
@@ -1008,6 +1010,22 @@ def plot_integrated_rocking_curves(records: Sequence[EventRecord], page: int = 0
                 },
                 zorder=5,
             )
+        # Klar runs: a thick bar on each frame's arrow row marks the tilt range its rsg / dsg window
+        # accepts for this reflection; the frame scores it when the black Sg = 0 line is under it.
+        klar_window = getattr(event, "klar_window_deg", ())
+        if klar_window:
+            for level, centre in enumerate(frame_centres):
+                ax.plot(
+                    [centre - klar_window[i], centre + klar_window[i]],
+                    [1.14 + level * 0.22] * 2,
+                    color=_KLAR_COLOURS[level],
+                    linewidth=9,
+                    alpha=0.45,
+                    solid_capstyle="butt",
+                    transform=ax.get_xaxis_transform(),
+                    clip_on=False,
+                    zorder=4,
+                )
         curve = event.curves[i]
         top = max(curve) or 1.0
         also = event.also_scored_in[i] if event.also_scored_in else ()
@@ -1073,6 +1091,9 @@ def plot_integrated_rocking_curves(records: Sequence[EventRecord], page: int = 0
         labels.append("never scored" if all_mode else "another virtual frame, or none")
     handles.append(Line2D([0], [0], color=INK, marker="o", linestyle="None", markersize=10))
     labels.append(r"$S_g = 0$")
+    if any(getattr(event, "klar_window_deg", ()) for event, _ in panels):
+        handles.append(Line2D([0], [0], color=_KLAR_COLOURS[0], linewidth=9, alpha=0.45))
+        labels.append("Klar window")
     fig.legend(
         handles,
         labels,

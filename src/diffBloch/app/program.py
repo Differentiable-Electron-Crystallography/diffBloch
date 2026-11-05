@@ -126,6 +126,7 @@ from diffBloch.preprocess.plan import require_built_plans, unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
+    BeamSelection,
     IntegrationGeometry,
     ScoredHklSelection,
     TrialCoupling,
@@ -1089,6 +1090,8 @@ def _preprocess(
                 )
             # The report's rocking curves, for whichever scoring method settled this plan (and on
             # a reused checkpoint too). Report-only: the plan is not changed.
+            window = cfg.blochwave.to_scoring_window(dataset.integration)
+            klar_window = window if isinstance(window, BeamSelection) else None
             for event in rocking_curve_report(
                 prepared,
                 refinement_setup,
@@ -1101,6 +1104,7 @@ def _preprocess(
                 max_batch=max_batch,
                 which=rocking_curves,
                 max_pairs=rocking_pairs,
+                klar=klar_window,
             ):
                 logger.report(event)
             prepared_plans.append(prepared)

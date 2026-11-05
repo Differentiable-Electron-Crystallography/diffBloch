@@ -1175,6 +1175,11 @@ class IntegratedRockingCurves:
     # ``all`` makes the report plot every frame pair; defaulted for reports written before it was
     # recorded so they retain the ordinary two-frame rendering.
     report_mode: Literal["first2", "all"] = "first2"
+    # Under Klar scoring, each reflection's acceptance half-width in tilt (degrees) about a frame
+    # centre: min(rsg * semiangle, semiangle - dsg / lever), the angle form of the rsg / dsg cuts
+    # with Sg ~ lever * (alpha - crossing). A frame scores the reflection when its Sg = 0 crossing
+    # lies within this distance of the frame centre. Empty for other scoring methods.
+    klar_window_deg: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         lengths = {

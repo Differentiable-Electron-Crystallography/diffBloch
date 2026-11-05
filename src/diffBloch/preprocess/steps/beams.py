@@ -333,13 +333,13 @@ def klar_beam_mask(
     """Boolean keep-mask for reflections ``g`` ``(N, 3)`` under the Klar (2023) rsg/dsg filter.
 
     Each reflection's excitation error ``|Sg|`` (Spence & Zuo, via :func:`excitation_errors`; beam
-    along ``-z``) is compared against ``sg_max``, the excitation-error span it sweeps during
-    integration: ``sg_max = |g_lever| * deg2rad(semiangle)``. The lever arm depends on ``geometry``
-    -- for ``continuous_rotation`` the rock is about the goniometer ``x`` axis, so
+    along ``-z``) is compared against ``sg_sweep``, the excitation-error span it sweeps from the
+    frame centre to the frame edge: ``sg_sweep = |g_lever| * deg2rad(semiangle)``. It is unrelated
+    to the ``blochwave.sg_max`` solve-beam cutoff. The lever arm depends on ``geometry`` -- for ``continuous_rotation`` the rock is about the goniometer ``x`` axis, so
     ``g_lever = (g_y, g_z)`` (distance from the rock axis); for ``precession`` (cone about the beam)
     it is ``g_lever = (g_x, g_y)`` (distance from the ``-z`` beam). A reflection is kept when both
-    ``|Sg| / sg_max < rsg`` (relative excitation error small) and ``sg_max - |Sg| > dsg`` (a minimum
-    absolute margin). Reflections with ``sg_max = 0`` (on the rock axis, resp. optic axis) fail the
+    ``|Sg| / sg_sweep < rsg`` (relative excitation error small) and ``sg_sweep - |Sg| > dsg`` (a minimum
+    absolute margin). Reflections with ``sg_sweep = 0`` (on the rock axis, resp. optic axis) fail the
     relative test and are dropped -- they never sweep through the Ewald sphere; the 000-beam
     retention required by the Bloch system is handled by the caller.
     """
@@ -353,8 +353,8 @@ def klar_beam_mask(
     else:
         raise ValueError("geometry must be 'continuous_rotation' or 'precession'")
     sg = np.abs(excitation_errors(g_array, energy, u0=u0))
-    sg_max = np.linalg.norm(g_lever, axis=1) * np.deg2rad(semiangle)
+    sg_sweep = np.linalg.norm(g_lever, axis=1) * np.deg2rad(semiangle)
     with np.errstate(divide="ignore", invalid="ignore"):
-        rel_error = np.where(sg_max > 0.0, sg / sg_max, np.inf)
-    mask: NDArray[np.bool_] = (rel_error < rsg) & (sg_max - sg > dsg)
+        rel_error = np.where(sg_sweep > 0.0, sg / sg_sweep, np.inf)
+    mask: NDArray[np.bool_] = (rel_error < rsg) & (sg_sweep - sg > dsg)
     return mask
