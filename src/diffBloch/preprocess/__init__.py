@@ -87,6 +87,10 @@ from diffBloch.preprocess.steps.coverage import (
     plan_coverage,
 )
 from diffBloch.preprocess.steps.frames import select_finite_loss_frames, select_frames
+from diffBloch.preprocess.steps.integrated_scoring import (
+    rocking_curve_report,
+    score_integrated_reflections,
+)
 from diffBloch.preprocess.steps.optimize_orientation import optimize_orientation
 from diffBloch.preprocess.steps.optimize_thickness import optimize_thickness
 from diffBloch.preprocess.steps.report_coupling import report_coupling
@@ -147,6 +151,8 @@ __all__ = [
     "dataset_of",
     "orientation_basis",
     "orientation_matrices",
+    "rocking_curve_report",
+    "score_integrated_reflections",
     "rotation_axis_correction",
     "pipeline",
     "plan_coverage",

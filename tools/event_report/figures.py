@@ -32,13 +32,16 @@ import torch
 from matplotlib.axes import Axes
 from matplotlib.axis import Axis
 from matplotlib.figure import Figure
-from matplotlib.ticker import MaxNLocator
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator, MultipleLocator
+from matplotlib.transforms import Bbox
 
 from diffBloch.core import rbragg
 from diffBloch.observability import (
     ConvergencePassStarted,
     ConvergenceTrial,
     EventRecord,
+    IntegratedRockingCurves,
     OrientationOptimized,
     OrientationSearchTrace,
     RefinedReflectionIntensities,
@@ -650,6 +653,8 @@ def plot_rotation_epoch_heatmap(records: Sequence[EventRecord]) -> Figure | None
 
 
 _RATIO_BINS = 15
+# Klar acceptance bars for the first and second frame of a pair.
+_KLAR_COLOURS = (SERIES[0], SERIES[5])
 _RATIO_MIN_PER_BIN = 10
 
 
@@ -872,6 +877,271 @@ def plot_resolution_shells(records: Sequence[EventRecord]) -> Figure | None:
     return fig
 
 
+def _hkl_label(hkl: Sequence[int]) -> str:
+    parts = [rf"\overline{{{abs(v)}}}" if v < 0 else str(v) for v in hkl]
+    return "$(" + r"\,".join(parts) + ")$"
+
+
+_PANELS_PER_PAGE = 12
+# Deliberately alarm-like rather than another frame colour: this curve is counted in more than one
+# virtual frame, so it must not imply ownership by either frame.
+_DUPLICATE_SCORE_COLOUR = "#ff1a1a"
+# Enough page slots for `--rocking-curves all` on a large dataset; empty slots render nothing.
+_ROCKING_PAGES = 400
+_rocking_pages_cache: dict[int, tuple[Sequence[EventRecord], list[list[tuple[Any, int]]]]] = {}
+
+
+def _rocking_pages(records: Sequence[EventRecord]) -> list[list[tuple[Any, int]]]:
+    """Every page as individual ``(event, panel index)`` entries, 12 per page, in order.
+
+    Parsed once per report and reused by every page's builder.
+    """
+    cached = _rocking_pages_cache.get(id(records))
+    if cached is not None and cached[0] is records:
+        return cached[1]
+    events = events_of(records, IntegratedRockingCurves)
+    # One panel per reflection. Pairs overlap, so a reflection can be crossed by several pairs: it
+    # goes on the first pair whose frames score it, otherwise on the first pair that shows it.
+    chosen: dict[tuple[str, tuple[int, int, int]], tuple[int, int, int]] = {}
+    for event_index, event in enumerate(events):
+        for i, hkl in enumerate(event.hkl):
+            owned = event.scored_in[i] != -1 and not event.scored_elsewhere[i]
+            rank = 0 if owned else 1
+            key = (event.dataset, hkl)
+            if key not in chosen or rank < chosen[key][0]:
+                chosen[key] = (rank, event_index, i)
+    # Order every panel of a dataset by its absolute Bragg crossing (the plotted black Sg = 0 line,
+    # on the PETS alpha axis), not by frame pair, so the order does not depend on which frames score
+    # a reflection. Old reports without crossings fall back to the dynamical intensity peak.
+    keyed: list[tuple[str, float, tuple[int, int, int], Any, int]] = []
+    for event_index, event in enumerate(events):
+        angles = event.angles_deg
+        for index, hkl in enumerate(event.hkl):
+            if chosen[(event.dataset, hkl)][1:] != (event_index, index):
+                continue
+            if event.sg_zero_deg and event.sg_zero_deg[index]:
+                crossing = event.sg_zero_deg[index][0]
+            else:
+                curve = event.curves[index]
+                crossing = angles[max(range(len(curve)), key=curve.__getitem__)]
+            keyed.append((event.dataset, crossing, hkl, event, index))
+    keyed.sort(key=lambda row: row[:3])
+    panel_stream: list[tuple[Any, int]] = [(event, index) for *_, event, index in keyed]
+    pages = [
+        panel_stream[start : start + _PANELS_PER_PAGE]
+        for start in range(0, len(panel_stream), _PANELS_PER_PAGE)
+    ]
+    _rocking_pages_cache.clear()
+    _rocking_pages_cache[id(records)] = (records, pages)
+    return pages
+
+
+@styled
+def plot_integrated_rocking_curves(records: Sequence[EventRecord], page: int = 0) -> Figure | None:
+    """One page (12 panels) of rocking curves across two consecutive frames.
+
+    One panel per reflection either frame crosses, on the PETS absolute alpha axis and spanning
+    exactly the two frames. For each frame, dashed lines in its colour mark
+    its edges less the reflection's half-width: a frame integrates the reflection only when the
+    Bragg crossing falls between its two lines. A curve takes the colour of the frame that scores
+    it; bright-red curves are scored in more than one frame; grey ones are scored in neither.
+    """
+    pages = _rocking_pages(records)
+    if page >= len(pages):
+        return None
+    panels = pages[page]
+    all_mode = panels[0][0].report_mode == "all"
+    # Fixed grid on every page, so a short last page keeps the same size; unused slots are hidden.
+    n_cols = 4
+    n_rows = math.ceil(_PANELS_PER_PAGE / n_cols)
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(FIGURE_WIDTH * 1.6, 4.2 * n_rows + 1.6), squeeze=False
+    )
+    for ax, (event, i) in zip(axes.flat, panels, strict=False):
+        angles = event.angles_deg
+        # Reports written before this diagnostic became two-frame contain a third frame. Render
+        # only the first pair so opening an old report follows the current presentation.
+        rotation_indices = event.rotation_indices[:2]
+        frame_centres = event.frame_centres_deg[:2]
+        frame_colours = dict(
+            zip(
+                rotation_indices,
+                (MUTED, MUTED) if all_mode else (SERIES[0], SERIES[5]),
+                strict=True,
+            )
+        )
+        semi = event.semiangle
+        for span_level, (rotation, centre) in enumerate(
+            zip(rotation_indices, frame_centres, strict=True)
+        ):
+            left_edge = centre - semi
+            right_edge = centre + semi
+            # Above the axes, one row per frame; the boxed label sits on its arrow.
+            arrow_y = 1.14 + span_level * 0.22
+            for edge in (left_edge, right_edge):
+                ax.axvline(edge, color=frame_colours[rotation], linestyle=":", linewidth=2.0)
+            ax.annotate(
+                "",
+                xy=(left_edge, arrow_y),
+                xytext=(right_edge, arrow_y),
+                xycoords=("data", "axes fraction"),
+                textcoords=("data", "axes fraction"),
+                arrowprops={"arrowstyle": "<->", "color": frame_colours[rotation], "lw": 1.8},
+                annotation_clip=False,
+            )
+            # Boxed on its arrow so the span reads as one labelled bracket.
+            ax.text(
+                centre,
+                arrow_y,
+                f"VF {rotation}",
+                color=frame_colours[rotation],
+                fontsize=13,
+                fontweight="bold",
+                ha="center",
+                va="center",
+                transform=ax.get_xaxis_transform(),
+                clip_on=False,
+                bbox={
+                    "boxstyle": "square,pad=0.3",
+                    "facecolor": "white",
+                    "edgecolor": frame_colours[rotation],
+                    "linewidth": 1.5,
+                    "alpha": 0.95,
+                },
+                zorder=5,
+            )
+        # Klar runs: a thick bar on each frame's arrow row marks the tilt range its rsg / dsg window
+        # accepts for this reflection; the frame scores it when the black Sg = 0 line is under it.
+        klar_window = getattr(event, "klar_window_deg", ())
+        if klar_window:
+            for level, centre in enumerate(frame_centres):
+                ax.plot(
+                    [centre - klar_window[i], centre + klar_window[i]],
+                    [1.14 + level * 0.22] * 2,
+                    color=_KLAR_COLOURS[level],
+                    linewidth=9,
+                    alpha=0.45,
+                    solid_capstyle="butt",
+                    transform=ax.get_xaxis_transform(),
+                    clip_on=False,
+                    zorder=4,
+                )
+        curve = event.curves[i]
+        top = max(curve) or 1.0
+        also = event.also_scored_in[i] if event.also_scored_in else ()
+        duplicated = bool(also)
+        colour = (
+            _DUPLICATE_SCORE_COLOUR
+            if duplicated
+            else SERIES[0]
+            if all_mode and event.scored_in[i] != -1
+            else frame_colours.get(event.scored_in[i], MUTED)
+        )
+        ax.plot(angles, [v / top for v in curve], color=colour, linewidth=3.0)
+        if event.sg_zero_deg:
+            for zero in event.sg_zero_deg[i]:
+                ax.axvline(zero, color=INK, linewidth=1.0)
+        owner = event.scored_in[i]
+        note = "\nnot scored in any frame" if owner == -1 else f"\nscored in virtual frame {owner}"
+        if duplicated:
+            frames = ", ".join(str(frame) for frame in (owner, *also))
+            note = f"\nscored in virtual frames {frames}"
+        ax.set_title(_hkl_label(event.hkl[i]) + note, fontsize=22, y=1.52)
+        ax.set_ylim(0.0, 1.05)
+        ax.set_yticks(())
+        ax.xaxis.set_major_locator(MultipleLocator(1.0))
+        ax.tick_params(labelsize=20)
+        ax.set_xlim(min(frame_centres) - semi - 0.1, max(frame_centres) + semi + 0.1)
+    for ax in list(axes.flat)[len(panels) :]:
+        ax.set_visible(False)
+    reference_event = panels[0][0]
+    reference_indices = reference_event.rotation_indices[:2]
+    reference_colours = dict(zip(reference_indices, (SERIES[0], SERIES[5]), strict=True))
+    # One entry per frame: its scored curves and its dotted edges share the frame's colour.
+    handles = (
+        [Line2D([0], [0], color=SERIES[0], marker="o", linestyle="None", markersize=10)]
+        if all_mode
+        else [
+            Line2D(
+                [0], [0], color=reference_colours[r], marker="o", linestyle="None", markersize=10
+            )
+            for r in reference_indices
+        ]
+    )
+    labels = ["scored"] if all_mode else [f"virtual frame {r}" for r in reference_indices]
+    n_duplicated = sum(bool(also) for event, i in panels for also in (event.also_scored_in[i],))
+    if n_duplicated:
+        handles.append(
+            Line2D(
+                [0],
+                [0],
+                color=_DUPLICATE_SCORE_COLOUR,
+                marker="o",
+                linestyle="None",
+                markersize=10,
+            )
+        )
+        labels.append("scored in multiple")
+    n_other = sum(
+        owner not in reference_colours for event, i in panels for owner in (event.scored_in[i],)
+    )
+    n_never_scored = sum(owner == -1 for event, i in panels for owner in (event.scored_in[i],))
+    if n_never_scored if all_mode else n_other:
+        handles.append(Line2D([0], [0], color=MUTED, marker="o", linestyle="None", markersize=10))
+        labels.append("never scored" if all_mode else "another virtual frame, or none")
+    handles.append(Line2D([0], [0], color=INK, marker="o", linestyle="None", markersize=10))
+    labels.append(r"$S_g = 0$")
+    if any(getattr(event, "klar_window_deg", ()) for event, _ in panels):
+        handles.append(Line2D([0], [0], color=_KLAR_COLOURS[0], linewidth=9, alpha=0.45))
+        labels.append("Klar window")
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
+        ncol=len(handles),
+        fontsize=22,
+    )
+    n_pages = len(pages)
+    frames = "all virtual frames" if all_mode else ", ".join(str(r) for r in reference_indices)
+    label = (
+        "Virtual-frame selection criterion for the reflections with I_exp > 3σ: "
+        f"integrated rocking curves, {frames} ({page + 1} of {n_pages})"
+    )
+    if page == 0:
+        if not all_mode:
+            label += (
+                ". Only the first two frames are shown; run preprocess with --rocking-curves all "
+                "to see every frame pair"
+            )
+        label += (
+            ". Preprocessing diagnostic only: quick simulations use the starting structure and "
+            "preprocessing thickness, not the refined structure or final thickness."
+        )
+    fig.set_label(label)
+    fig.set_gid(_FIXED_EXTENT_GID)
+    # Compact fixed gutters keep the panels dominant rather than letting large shared text expand
+    # whitespace between them.
+    fig.subplots_adjust(
+        left=0.07,
+        right=0.99,
+        bottom=0.11,
+        top=0.78,
+        wspace=0.22,
+        hspace=1.45,
+    )
+    fig.supxlabel(r"Tilt angle $\alpha$ (°)", fontsize=28, y=0.015)
+    fig.supylabel("Simulated intensity (normalised)", fontsize=28, x=0.001)
+    return fig
+
+
+def _rocking_page(page: int) -> Callable[[Sequence[EventRecord]], Figure | None]:
+    def build(records: Sequence[EventRecord]) -> Figure | None:
+        return plot_integrated_rocking_curves(records, page)
+
+    return build
+
+
 @dataclass(frozen=True)
 class Section:
     """One headed group of figures, and the event types that place it in the run."""
@@ -905,6 +1175,14 @@ SECTIONS = (
         "Preprocess — per-orientation thickness fit",
         (("thickness_grids", plot_thickness_grids),),
         (ThicknessOptimized,),
+    ),
+    Section(
+        "Preprocess — integrated scoring",
+        tuple(
+            (f"integrated_rocking_curves_{page + 1}", _rocking_page(page))
+            for page in range(_ROCKING_PAGES)
+        ),
+        (IntegratedRockingCurves,),
     ),
     Section(
         "Refinement — epoch history",
@@ -986,6 +1264,21 @@ def build_figures(records: Sequence[EventRecord]) -> dict[str, Figure]:
     }
 
 
+def _save_extent(figure: Figure) -> dict[str, Any]:
+    """Save options that keep a figure's full page. Rocking-curve pages are fixed-size grids, so
+    cropping them to their content would zoom a sparse last page to fill the image."""
+    if figure.get_gid() != _FIXED_EXTENT_GID:
+        return {"bbox_inches": "tight"}
+    # An explicit full-figure box: the report style sets savefig.bbox to tight, which would crop.
+    # The full page, grown to include any artist (panel titles, arrows) that sits past its edge.
+    renderer = figure.canvas.get_renderer()
+    page = Bbox.union([figure.bbox, figure.get_tightbbox(renderer)])
+    return {"bbox_inches": page.transformed(figure.dpi_scale_trans.inverted())}
+
+
+_FIXED_EXTENT_GID = "fixed-extent"
+
+
 def figure_dropdown_html(figure: Figure) -> str:
     """The figure as a collapsible HTML block: its title (the figure's label) is the toggle.
 
@@ -995,7 +1288,7 @@ def figure_dropdown_html(figure: Figure) -> str:
     buffer = io.BytesIO()
     # Fonts and mathtext resolve at draw time, so the style has to be active here too.
     with plt.rc_context(cast(Any, REPORT_RC)):
-        figure.savefig(buffer, format="png", bbox_inches="tight", dpi=150)
+        figure.savefig(buffer, format="png", **_save_extent(figure), dpi=150)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     title = html.escape(str(figure.get_label() or "Figure"))
     return (
@@ -1017,6 +1310,6 @@ def export_figures(
         for suffix in formats:
             path = output_dir / f"{name}.{suffix}"
             with plt.rc_context(cast(Any, REPORT_RC)):
-                figure.savefig(path, bbox_inches="tight", dpi=160)
+                figure.savefig(path, **_save_extent(figure), dpi=160)
             written.append(path)
     return written

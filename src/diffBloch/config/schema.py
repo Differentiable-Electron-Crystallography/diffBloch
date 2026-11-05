@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -31,6 +31,7 @@ from diffBloch.specs import (
     Absorption,
     ApparentThicknessNetwork,
     BeamSelection,
+    IntegratedScoring,
     IntegrationGeometry,
     IsotropicMosaicity,
     NelderMeadSearch,
@@ -48,7 +49,6 @@ from diffBloch.specs import (
 _NELDER_MEAD_DEFAULTS = NelderMeadSearch()
 _THICKNESS_GRID_DEFAULTS = ThicknessGrid()
 _THICKNESS_NN_DEFAULTS = ApparentThicknessNetwork()
-_BEAM_SELECTION_DEFAULTS = BeamSelection()
 
 
 class _StrictConfig(BaseModel):
@@ -65,6 +65,44 @@ class _StrictConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class IntegratedScoringConfig(_StrictConfig):
+    """Score each measured intensity once, in the virtual frame that integrates it (the default).
+
+    See :class:`~diffBloch.specs.IntegratedScoring`. ``min_inside`` is the share of a reflection's
+    simulated rocking curve its frame must hold for it to be scored.
+    """
+
+    method: Literal["integration-filter"] = "integration-filter"
+    min_inside: float = IntegratedScoring().min_inside
+
+    def to_spec(self) -> IntegratedScoring:
+        """Parse into the validated scoring value-type."""
+        return IntegratedScoring(min_inside=self.min_inside)
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> IntegratedScoringConfig:
+        self.to_spec()
+        return self
+
+
+class KlarScoringConfig(_StrictConfig):
+    """Score the reflections inside the Klar ``rsg`` / ``dsg`` excitation-error window.
+
+    The filter the default replaced, kept for comparison: a reflection is scored in every frame
+    whose window admits it, so one measurement can be scored in several frames. Parses into a
+    :class:`~diffBloch.specs.BeamSelection`.
+    """
+
+    method: Literal["klar"]
+    rsg: float = BeamSelection().rsg
+    dsg: float = BeamSelection().dsg
+
+    @model_validator(mode="after")
+    def _parse_fails_fast(self) -> KlarScoringConfig:
+        BeamSelection(rsg=self.rsg, dsg=self.dsg)
+        return self
+
+
 class BlochwaveConfig(_StrictConfig):
     """The beam-selection, coupling, and dynamical-solver settings for the Bloch-wave simulation.
 
@@ -74,8 +112,10 @@ class BlochwaveConfig(_StrictConfig):
     (one beam cutoff, support derived). The orientation-independent seed pool
     (``from_experiment``'s difference-safe candidate set) and the scored-reflection cap
     (``optimize_orientation``'s trial-coupling window) both read ``g_max`` directly, rather than a
-    separate smaller radius. ``rsg`` / ``dsg`` are
-    the Klar beam-selection cutoffs and ``rocking_curve_sampling`` the tilt count. The shared
+    separate smaller radius. ``rocking_curve_sampling`` is the tilt count. ``scoring`` chooses which
+    reflections each virtual frame scores: integrated (the default, each measurement once, in the
+    frame that integrates it; :class:`~diffBloch.specs.IntegratedScoring`) or the Klar ``rsg`` /
+    ``dsg`` window, kept for comparison. The shared
     integration semi-angle is read from the PETS experimental data rather than configured.
     ``incoherent_mosaicity: true`` opts into PETS-derived isotropic mosaic broadening, while the
     default ``false`` disables it.
@@ -86,8 +126,6 @@ class BlochwaveConfig(_StrictConfig):
     # method fails fast at config load rather than deep in the forward model.
     solver: SolverMethod = "matrix_exp"
     absorption: bool = False
-    rsg: float = _BEAM_SELECTION_DEFAULTS.rsg
-    dsg: float = _BEAM_SELECTION_DEFAULTS.dsg
     rocking_curve_sampling: int = 42
     # Isotropic incoherent mosaicity (Palatinus, Acta Cryst. 2024 A80 e225):
     # mosaicity_samples tilts placed over a 2-D Gaussian orientation distribution, each solved
@@ -104,6 +142,10 @@ class BlochwaveConfig(_StrictConfig):
     fixed_n_segments: int = 12
     coupling_mode: Literal["union", "per_tilt"] = "union"
     g_max: float = 2.25
+    # Which reflections each virtual frame scores: integrated (default) or the Klar rsg/dsg window.
+    scoring: Annotated[
+        IntegratedScoringConfig | KlarScoringConfig, Field(discriminator="method")
+    ] = Field(default_factory=IntegratedScoringConfig)
     sg_max: float = 0.01
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
@@ -114,8 +156,24 @@ class BlochwaveConfig(_StrictConfig):
         return Absorption(enabled=self.absorption)
 
     def to_beam_selection(self, integration: IntegrationGeometry) -> BeamSelection:
-        """Assemble the ``select_beams`` value-type: the Klar cutoffs + the shared integration."""
-        return BeamSelection(rsg=self.rsg, dsg=self.dsg, integration=integration)
+        """Assemble the ``select_beams`` value-type for the ``converge`` beam windows.
+
+        The Klar cutoffs of ``scoring: {method: klar}`` when that is chosen, otherwise
+        :class:`~diffBloch.specs.BeamSelection`'s own defaults.
+        """
+        if isinstance(self.scoring, KlarScoringConfig):
+            return BeamSelection(
+                rsg=self.scoring.rsg, dsg=self.scoring.dsg, integration=integration
+            )
+        return BeamSelection(integration=integration)
+
+    def to_scoring_window(
+        self, integration: IntegrationGeometry
+    ) -> IntegrationGeometry | BeamSelection:
+        """The per-frame scoring window: the Bragg-crossing test, or the Klar window."""
+        if isinstance(self.scoring, KlarScoringConfig):
+            return self.to_beam_selection(integration)
+        return integration
 
     def to_rocking_curve(self, integration: IntegrationGeometry) -> RockingCurve:
         """Assemble the ``integrate_rocking_curve`` value-type: tilt count + the shared integration.
@@ -143,8 +201,6 @@ class BlochwaveConfig(_StrictConfig):
 
     @model_validator(mode="after")
     def _parse_fails_fast(self) -> BlochwaveConfig:
-        if self.rsg <= 0.0:
-            raise ValueError("rsg must be positive")
         if self.rocking_curve_sampling < 1:
             raise ValueError("rocking_curve_sampling must be >= 1")
         if self.mosaicity_samples < 1:
@@ -595,8 +651,6 @@ class ExperimentConfig(_StrictConfig):
             seed_thicknesses_by_dataset=seed_thicknesses_by_dataset,
             integration_semiangles=tuple(integration.semiangle for integration in integrations),
             rocking_curve_sampling=self.blochwave.rocking_curve_sampling,
-            dsg=self.blochwave.dsg,
-            rsg=self.blochwave.rsg,
             solve_g_max=self.blochwave.g_max,
             sg_max=self.blochwave.sg_max,
             absorption=self.blochwave.absorption,

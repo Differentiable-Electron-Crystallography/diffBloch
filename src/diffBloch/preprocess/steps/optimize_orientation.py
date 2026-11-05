@@ -19,8 +19,8 @@ step therefore couples the search to the integrated model; with rocking off the 
 identity, identical to a static search.
 
 **Coupling (opt-in, ``coupling=TrialCoupling(...)``)** re-derives the excitation-selected SOLVE
-beams *and* re-selects the SCORED set at every trial's own orientation (``coupling.scored``'s Klar
-rsg/dsg window + resolution cap, reapplied to that trial's fresh lab-frame geometry) -- mirroring
+beams *and* re-selects the SCORED set at every trial's own orientation (``coupling.scored``'s
+Bragg-crossing test + resolution cap, reapplied to that trial's fresh lab-frame geometry) -- mirroring
 the reference implementation's per-trial ``filter_hkls``, rather than pinning scoring to the seed's
 selection. A trial's matched-reflection count can therefore differ from the seed's and from other
 trials'; the default wR2 formula itself has no reflection-count term
@@ -83,7 +83,7 @@ from diffBloch.preprocess.plan import (
     unique_hkl_count,
 )
 from diffBloch.preprocess.scoring import active_structure_factor_indices, build_engine
-from diffBloch.preprocess.steps.beams import klar_beam_mask
+from diffBloch.preprocess.steps.beams import scored_window_mask
 from diffBloch.specs import (
     NO_ABSORPTION,
     Absorption,
@@ -518,8 +518,8 @@ def _coupled_trial(
     """Re-couple the solve union and re-select the scored set, both at ``orientation`` (one trial).
 
     One objective evaluation: (1) ``build_coupling_segments`` re-derives the per-tilt-segment
-    excitation union at ``orientation`` (the SOLVE set); (2) ``coupling.scored`` (the Klar
-    rsg/dsg window + resolution cap) is re-applied to that fresh union's own lab-frame geometry at
+    excitation union at ``orientation`` (the SOLVE set); (2) ``coupling.scored`` (the
+    Bragg-crossing test + resolution cap) is re-applied to that fresh union's own lab-frame geometry at
     this orientation, giving the SCORED set its own fresh selection every trial -- mirroring the
     reference implementation's per-trial ``filter_hkls`` -- rather than pinning it to the seed's.
     The observed ``pattern``, ``thickness``, and ``tilt_reduction`` are carried from ``op``
@@ -547,15 +547,7 @@ def _coupled_trial(
     union_hkl = np.unique(np.concatenate([segment.union_hkl for segment in segments]), axis=0)
     basis = orientation_basis(cell, orientation)
     g = g_vectors(union_hkl, basis)
-    keep = klar_beam_mask(
-        g,
-        energy=op.energy,
-        u0=op.u0,
-        rsg=coupling.scored.klar.rsg,
-        dsg=coupling.scored.klar.dsg,
-        semiangle=coupling.scored.klar.integration.semiangle,
-        geometry=coupling.scored.klar.integration.geometry,
-    )
+    keep = scored_window_mask(g, energy=op.energy, u0=op.u0, window=coupling.scored.window)
     keep &= np.linalg.norm(g, axis=1) <= coupling.scored.g_max
     keep |= (union_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     scored_hkl = union_hkl[keep]

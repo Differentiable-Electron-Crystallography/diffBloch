@@ -18,8 +18,8 @@
     120.0
   ],
   "ignored_rotations": [],
-  "config_digest": "657eef99ffd3d4c3f4331c044bd24b38dbac0208b4341c331d15638ac08674f7",
-  "code_version": "0.2.0rc1+gb9b01d9.dirty",
+  "config_digest": "33508017c4b0cb472efcb88265bfcf2987135f8eab605b4c751011be9e2f0659",
+  "code_version": "0.2.0rc1+g8a2524f.dirty",
   "recipe": [
     {
       "name": "build_orientation_plans",
@@ -42,7 +42,7 @@
           "union_adaptive": true,
           "union_max_new_beams_pct": 0.01
         },
-        "scoring_selection": {
+        "scoring": {
           "__type__": "BeamSelection",
           "rsg": 0.9,
           "dsg": 0.0015,
@@ -78,7 +78,7 @@
           },
           "scored": {
             "__type__": "ScoredHklSelection",
-            "klar": {
+            "window": {
               "__type__": "BeamSelection",
               "rsg": 0.9,
               "dsg": 0.0015,
@@ -115,8 +115,8 @@
   ],
   "plan": {
     "path": "reproducibility/plan.exp_data.npz",
-    "sha256": "57c769bad95cedfc07eb605efb482dc36ab467487b6beb15fc9c2653605a85fd",
-    "bytes": 584504,
+    "sha256": "84d084f9e2548481030945b81662d3a152012d25026c9e03eec5095338b085d9",
+    "bytes": 585323,
     "media_type": "application/octet-stream"
   }
 }

@@ -35,7 +35,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import gemmi
 import numpy as np
@@ -112,7 +112,9 @@ from diffBloch.preprocess import (
     read_plan,
     report_coupling,
     resolve_recipe,
+    rocking_curve_report,
     run_inference,
+    score_integrated_reflections,
     select_beams,
     setup_datasets,
     step_records,
@@ -123,10 +125,11 @@ from diffBloch.preprocess.driver import ConvergenceState, run_convergence
 from diffBloch.preprocess.experiment import RefinementSetup, resolve_dataset_mosaicity
 from diffBloch.preprocess.inference import InferenceResult
 from diffBloch.preprocess.orientation import isotropic_mosaic_directions
-from diffBloch.preprocess.plan import unique_hkl_count
+from diffBloch.preprocess.plan import require_built_plans, unique_hkl_count
 from diffBloch.preprocess.scoring import build_engine
 from diffBloch.specs import (
     ApparentThicknessNetwork,
+    BeamSelection,
     IntegrationGeometry,
     IsotropicMosaicity,
     ScoredHklSelection,
@@ -365,6 +368,8 @@ def preprocess_experiment(
     device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
+    rocking_curves: Literal["first2", "all"] = "first2",
+    rocking_pairs: int | None = None,
 ) -> Plan:
     """Load and preprocess the experiment at ``experiment_dir``, returning the settled ``Plan``.
 
@@ -425,6 +430,8 @@ def preprocess_experiment(
         device=device,
         workers=workers,
         max_batch=max_batch,
+        rocking_curves=rocking_curves,
+        rocking_pairs=rocking_pairs,
     ).plan
 
 
@@ -437,6 +444,8 @@ def run_experiment(
     device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
+    rocking_curves: Literal["first2", "all"] = "first2",
+    rocking_pairs: int | None = None,
 ) -> InferenceResult:
     """Load, preprocess, and score every rotation of the experiment at ``experiment_dir``.
 
@@ -460,6 +469,8 @@ def run_experiment(
             device=device,
             workers=workers,
             max_batch=max_batch,
+            rocking_curves=rocking_curves,
+            rocking_pairs=rocking_pairs,
         )
         return run_inference(
             outcome.plan,
@@ -481,6 +492,8 @@ def refine_experiment(
     device: Device | None = "cuda",
     workers: int = 1,
     max_batch: int | None = None,
+    rocking_curves: Literal["first2", "all"] = "first2",
+    rocking_pairs: int | None = None,
     verbose: bool = False,
     profile: bool = False,
     checkpoint_activations: bool = True,
@@ -535,6 +548,8 @@ def refine_experiment(
             device=device,
             workers=workers,
             max_batch=max_batch,
+            rocking_curves=rocking_curves,
+            rocking_pairs=rocking_pairs,
         )
         refinement, prepared = outcome.refinement, outcome.plan
         validation_rotation_indices = outcome.validation_rotation_indices
@@ -1009,6 +1024,33 @@ def _write_refinement_outputs(
     return replace(result, artifacts=artifacts)
 
 
+def _scored_measurement_counts(orientations: tuple[OrientationPlanLike, ...]) -> tuple[int, int]:
+    """Scored rows over every rotation, and how many distinct ``(dataset, hkl, I_exp)`` they are.
+
+    A measurement scored in more than one rotation counts once in the second number, so the
+    difference is the number of duplicate scorings.
+    """
+    keys: list[tuple[object, ...]] = []
+    for op in orientations:
+        intensities = op.pattern.intensities[op.alignment.pattern_index].tolist()
+        keys.extend(
+            (op.pattern.dataset, *hkl, intensity)
+            for hkl, intensity in zip(op.alignment.hkl.tolist(), intensities, strict=True)
+        )
+    return len(keys), len(set(keys))
+
+
+def _multiply_scored_measurement_count(orientations: tuple[OrientationPlanLike, ...]) -> int:
+    """How many distinct measured reflections are scored in more than one rotation."""
+    rotations_by_measurement: dict[tuple[object, ...], set[int]] = {}
+    for op in orientations:
+        intensities = op.pattern.intensities[op.alignment.pattern_index].tolist()
+        for hkl, intensity in zip(op.alignment.hkl.tolist(), intensities, strict=True):
+            key = (op.pattern.dataset, *hkl, intensity)
+            rotations_by_measurement.setdefault(key, set()).add(op.pattern.rotation_index)
+    return sum(len(rotations) > 1 for rotations in rotations_by_measurement.values())
+
+
 @dataclass(frozen=True)
 class PreprocessOutcome:
     """Everything :func:`_preprocess` settles, named rather than positional.
@@ -1040,6 +1082,8 @@ def _preprocess(
     device: Device | None,
     workers: int,
     max_batch: int | None,
+    rocking_curves: Literal["first2", "all"] = "first2",
+    rocking_pairs: int | None = None,
 ) -> PreprocessOutcome:
     """Shared spine of the public entry points: read inputs, run the recipe per dataset, pool.
 
@@ -1108,6 +1152,33 @@ def _preprocess(
                 refresh=refresh,
                 logger=logger,
             )
+            duplicated = _multiply_scored_measurement_count(require_built_plans(prepared))
+            if duplicated:
+                _log.warning(
+                    "WARNING: %d reflection(s) are scored in more than one virtual frame across "
+                    "the whole dataset %s; consider lowering rsg or switching to integration-filter mode.",
+                    duplicated,
+                    ref,
+                )
+            # The report's rocking curves, for whichever scoring method settled this plan (and on
+            # a reused checkpoint too). Report-only: the plan is not changed.
+            window = cfg.blochwave.to_scoring_window(dataset.integration)
+            klar_window = window if isinstance(window, BeamSelection) else None
+            for event in rocking_curve_report(
+                prepared,
+                refinement_setup,
+                rocking=cfg.blochwave.to_rocking_curve(dataset.integration),
+                solve_g_max=cfg.blochwave.g_max,
+                sg_max=cfg.blochwave.sg_max,
+                method=cfg.blochwave.solver,
+                absorption=cfg.blochwave.to_absorption(),
+                device=device,
+                max_batch=max_batch,
+                which=rocking_curves,
+                max_pairs=rocking_pairs,
+                klar=klar_window,
+            ):
+                logger.report(event)
             prepared_plans.append(prepared)
             lock_sha256s.append(lock_sha256)
         if checkpoint:
@@ -1140,6 +1211,13 @@ def _preprocess(
                 matched_hkl=unique_hkl_count(op.alignment.hkl for op in built),
                 steps=tuple((record.name, record.params) for record in pooled.provenance),
             )
+        )
+        n_scored, n_distinct = _scored_measurement_counts(built)
+        _log.info(
+            "Scored reflections: %d rows, %d distinct measurements (hkl, I_exp), %d duplicates",
+            n_scored,
+            n_distinct,
+            n_scored - n_distinct,
         )
         return PreprocessOutcome(
             refinement=refinement_setup,
@@ -1241,7 +1319,7 @@ def _recipe_steps(
             cfg.blochwave.to_rocking_curve(integration),
             mosaicity,
             coupling=cfg.blochwave.to_policy(),
-            scoring_selection=cfg.blochwave.to_beam_selection(integration),
+            scoring=cfg.blochwave.to_scoring_window(integration),
             workers=workers,
         )
     )
@@ -1265,19 +1343,35 @@ def _recipe_steps(
         if cfg.preprocess.optimize_thickness:
             fitting_steps.append(thickness_fit())
     steps.extend(fitting_steps)
+    # Last, on the settled orientations and thicknesses: score each measured intensity once, in the
+    # frame that integrates it. The Klar window scores per frame and has no such step.
+    if cfg.blochwave.scoring.method == "integration-filter":
+        steps.append(
+            score_integrated_reflections(
+                refinement,
+                cfg.blochwave.scoring.to_spec(),
+                rocking=cfg.blochwave.to_rocking_curve(integration),
+                solve_g_max=cfg.blochwave.g_max,
+                sg_max=cfg.blochwave.sg_max,
+                method=cfg.blochwave.solver,
+                absorption=cfg.blochwave.to_absorption(),
+                device=device,
+                max_batch=max_batch,
+            )
+        )
     return steps
 
 
 def _trial_coupling(cfg: ExperimentConfig, integration: IntegrationGeometry) -> TrialCoupling:
     """Assemble the per-trial beam-union policy from the top-level Bloch-wave config.
 
-    The SCORED set reuses the same Klar window as ``select_beams`` and the config's solve cutoff
-    (``g_max``) as the scoring-resolution cap.
+    The SCORED set uses the configured scoring window (integrated by default, or the Klar window)
+    and the config's solve cutoff (``g_max``) as the scoring-resolution cap.
     """
     return TrialCoupling(
         policy=cfg.blochwave.to_policy(),
         scored=ScoredHklSelection(
-            klar=cfg.blochwave.to_beam_selection(integration),
+            window=cfg.blochwave.to_scoring_window(integration),
             g_max=cfg.blochwave.g_max,
         ),
     )

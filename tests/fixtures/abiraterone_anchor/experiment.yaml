@@ -18,8 +18,10 @@ blochwave:
   # the forward-parity value below (rotation-0 R_obs 0.09697) was pinned when the public path
   # still scored against a separate, smaller g_max_refine=1.0 -- re-verify parity.
   rocking_curve_sampling: 30
-  dsg: 0.0025
-  rsg: 0.6
+  scoring:
+    method: klar
+    dsg: 0.0025
+    rsg: 0.6
   # The forward-parity coupling the anchor test composes explicitly (the public app path wires
   # couple_beams only inside the fit steps). Declared here so from_experiment derives the SF grid
   # (2 * 1.5 + 0.5 = 3.5) the coupled forward needs. g_max is the post-#154 solve cutoff

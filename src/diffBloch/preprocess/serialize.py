@@ -53,7 +53,7 @@ from diffBloch.preprocess.plan import Plan, require_built_plans
 
 __all__ = ["plan_is_readable", "read_plan", "write_plan"]
 
-_FORMAT_VERSION = 7
+_FORMAT_VERSION = 8
 
 
 def write_plan(plan: Plan, path: str | Path) -> None:
@@ -72,6 +72,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
             "u0": op.u0,
             "rotation_index": op.pattern.rotation_index,
             "dataset": op.pattern.dataset,
+            "alpha_degrees": op.pattern.alpha_degrees,
             "tilt_reduction": _dump_reduction(op.tilt_reduction),
         }
         if isinstance(op, CoupledOrientationPlan):
@@ -146,6 +147,7 @@ def _read_orientation(
         sigmas=torch.as_tensor(data[f"pat_sig_{i}"]),
         rotation_index=int(entry["rotation_index"]),
         dataset=str(entry["dataset"]),
+        alpha_degrees=float(entry["alpha_degrees"]),
     )
     energy = float(entry["energy"])
     thickness = torch.as_tensor(data[f"thickness_{i}"])

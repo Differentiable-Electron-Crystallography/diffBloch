@@ -53,6 +53,7 @@ __all__ = [
     "EventRecord",
     "ExperimentDeclared",
     "InferenceCompleted",
+    "IntegratedRockingCurves",
     "IsotropicMosaicityRefined",
     "Logger",
     "MultiLogger",
@@ -1022,8 +1023,6 @@ class ExperimentDeclared:
     # One semiangle per inputs.exp_data entry, in that order -- pooled datasets may differ.
     integration_semiangles: tuple[float, ...]
     rocking_curve_sampling: int
-    dsg: float
-    rsg: float
     solve_g_max: float
     sg_max: float
     absorption: bool
@@ -1053,8 +1052,6 @@ class ExperimentDeclared:
         return {
             **semiangles,
             "rocking_curve_sampling": float(self.rocking_curve_sampling),
-            "dsg": self.dsg,
-            "rsg": self.rsg,
             # Scoped per the SOLVE/SCORED/support rule: a bare g_max has no owning object here.
             "solve_g_max": self.solve_g_max,
             "sg_max": self.sg_max,
@@ -1145,6 +1142,70 @@ class RefinedReflectionIntensities:
     @property
     def measurements(self) -> Mapping[str, float]:
         return {"n_reflections": float(len(self.hkl)), "scale": self.scale}
+
+
+@dataclass(frozen=True)
+class IntegratedRockingCurves:
+    """Simulated rocking curves across two consecutive frames, and where each is scored.
+
+    Emitted once by the integrated-scoring step, for the first two rotations of the plan. Every
+    reflection whose Bragg condition either frame crosses gets its simulated rocking
+    curve over one sweep covering both frames, on the PETS absolute alpha axis in degrees;
+    ``frame_centres_deg`` places each frame on it and ``semiangle`` is each frame's
+    half-width). ``scored_in`` is the ``rotation_index`` of the frame that scores the reflection --
+    one of the three or any other -- or ``-1`` when no frame does; ``scored_elsewhere`` marks the
+    ones scored in a frame other than the three. ``half_width_deg`` is each reflection's rocking-curve half-width as a tilt
+    angle -- the margin a crossing needs inside a frame's edges to count as integrated -- from the
+    measured ``width_sg`` (Angstrom^-1 in ``Sg``). Columns are parallel tuples, one per reflection.
+    """
+
+    channel: ClassVar[str] = "rocking curve report"
+    dataset: str
+    rotation_indices: tuple[int, ...]
+    frame_centres_deg: tuple[float, ...]
+    semiangle: float
+    width_sg: float
+    angles_deg: tuple[float, ...]
+    hkl: tuple[tuple[int, int, int], ...]
+    scored_in: tuple[int, ...]
+    scored_elsewhere: tuple[bool, ...]
+    half_width_deg: tuple[float, ...]
+    curves: tuple[tuple[float, ...], ...]
+    # Every tilt (same axis) where the reflection's excitation error crosses zero; a reflection
+    # near the goniometer axis can cross twice. Defaulted so older reports still read back.
+    sg_zero_deg: tuple[tuple[float, ...], ...] = ()
+    # The other frames that also score each reflection -- the Klar window can score one
+    # measurement in several; empty under integrated scoring. Defaulted for older reports.
+    also_scored_in: tuple[tuple[int, ...], ...] = ()
+    # ``all`` makes the report plot every frame pair; defaulted for reports written before it was
+    # recorded so they retain the ordinary two-frame rendering.
+    report_mode: Literal["first2", "all"] = "first2"
+    # Under Klar scoring, each reflection's acceptance half-width in tilt (degrees) about a frame
+    # centre: min(rsg * semiangle, semiangle - dsg / lever), the angle form of the rsg / dsg cuts
+    # with Sg ~ lever * (alpha - crossing). A frame scores the reflection when its Sg = 0 crossing
+    # lies within this distance of the frame centre. Empty for other scoring methods.
+    klar_window_deg: tuple[float, ...] = ()
+
+    def __post_init__(self) -> None:
+        lengths = {
+            len(self.hkl),
+            len(self.scored_in),
+            len(self.scored_elsewhere),
+            len(self.half_width_deg),
+            len(self.curves),
+        }
+        if len(lengths) > 1:
+            raise ValueError("integrated rocking-curve columns must have equal length")
+        if len(self.rotation_indices) != len(self.frame_centres_deg):
+            raise ValueError("one frame centre per rotation index")
+
+    @property
+    def step(self) -> int | None:
+        return None
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {"n_reflections": float(len(self.hkl)), "width_sg": self.width_sg}
 
 
 @dataclass(frozen=True)

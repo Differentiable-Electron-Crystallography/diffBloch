@@ -76,7 +76,15 @@ def test_golden_report_rebuilds_into_this_checkouts_events(golden: list[EventRec
 
 def test_golden_report_renders_every_table_and_figure(golden: list[EventRecord]) -> None:
     """The golden run has the events for *all* of them, so none may silently decline."""
-    every_figure = {name for section in SECTIONS for name, _ in section.builders}
+    # The rocking-curve section reserves many page slots; the golden run fills only the first.
+    every_figure = {
+        name
+        for section in SECTIONS
+        for name, _ in section.builders
+        if not (
+            name.startswith("integrated_rocking_curves_") and name != "integrated_rocking_curves_1"
+        )
+    }
     sections = build_sections(golden)
 
     assert {name for _, figures in sections for name in figures} == every_figure
@@ -84,6 +92,7 @@ def test_golden_report_renders_every_table_and_figure(golden: list[EventRecord])
         "Convergence",
         "Preprocess — orientation optimization",
         "Preprocess — per-orientation thickness fit",
+        "Preprocess — integrated scoring",
         "Refinement — epoch history",
         "Refinement — per-orientation scores",
         "Refinement — datasets",
