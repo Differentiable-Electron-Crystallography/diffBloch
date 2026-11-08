@@ -192,9 +192,7 @@ class RefinementSetup:
             reciprocal_basis=torch.tensor(reciprocal_basis, dtype=torch.float64),
         )
         return cls(
-            asu_plan=build_asu_expansion_plan(
-                structure.frac_positions, structure.symops_R, structure.symops_t
-            ),
+            asu_plan=_structure_asu_expansion_plan(structure),
             spec=spec,
             params=RefinableParams(
                 asu_positions=positions.clone(), uij_raw=uij_raw, u_iso_raw=u_iso_raw
@@ -202,6 +200,58 @@ class RefinementSetup:
             numbers=torch.tensor(structure.numbers, dtype=torch.int64),
             cell_parameters=cell_parameters,
         )
+
+
+def _structure_asu_expansion_plan(structure: StructureRecord) -> AsuExpansionPlan:
+    """Build symmetry membership while preserving valid substitutionally disordered sites.
+
+    A CIF may represent a mixed site as multiple atom rows at the same fractional coordinates,
+    with their occupancies summing to at most one. Those rows are separate scattering terms and
+    must survive expansion. Other cross-row symmetry equivalences remain errors: accepting them
+    would hide a malformed or redundantly expanded asymmetric unit.
+    """
+    probe = build_asu_expansion_plan(
+        structure.frac_positions,
+        structure.symops_R,
+        structure.symops_t,
+        on_duplicates="keep",
+    )
+    if not probe.duplicate_sites:
+        return probe
+
+    positions = np.asarray(structure.frac_positions, dtype=np.float64)
+    occupancies = np.asarray(structure.occupancies, dtype=np.float64)
+    groups: list[set[int]] = []
+    for duplicate in probe.duplicate_sites:
+        pair = {duplicate.existing_asu_index, duplicate.candidate_asu_index}
+        delta = positions[duplicate.existing_asu_index] - positions[duplicate.candidate_asu_index]
+        periodic_delta = np.remainder(delta + 0.5, 1.0) - 0.5
+        if not np.all(np.abs(periodic_delta) < 1e-3):
+            raise ValueError(
+                "scaled_positions "
+                f"{duplicate.existing_asu_index} and {duplicate.candidate_asu_index} are equivalent"
+            )
+        overlapping = [group for group in groups if group & pair]
+        merged = set(pair)
+        for group in overlapping:
+            merged.update(group)
+            groups.remove(group)
+        groups.append(merged)
+
+    for group in groups:
+        total = float(occupancies[list(group)].sum())
+        if total > 1.0 + 1e-6:
+            rows = ", ".join(str(index) for index in sorted(group))
+            raise ValueError(
+                f"co-located ASU rows {rows} have total occupancy {total:g}, expected <= 1"
+            )
+
+    return build_asu_expansion_plan(
+        structure.frac_positions,
+        structure.symops_R,
+        structure.symops_t,
+        on_duplicates="preserve",
+    )
 
 
 @dataclass(frozen=True)

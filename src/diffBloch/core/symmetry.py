@@ -10,7 +10,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
-type DuplicatePolicy = Literal["error", "keep", "replace"]
+type DuplicatePolicy = Literal["error", "keep", "preserve", "replace"]
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def build_asu_expansion_plan(
     """
     if symprec <= 0.0:
         raise ValueError("symprec must be positive")
-    if on_duplicates not in {"error", "keep", "replace"}:
+    if on_duplicates not in {"error", "keep", "preserve", "replace"}:
         raise ValueError(f"unsupported duplicate policy: {on_duplicates!r}")
 
     positions = np.asarray(frac_positions, dtype=np.float64)
@@ -109,6 +109,19 @@ def build_asu_expansion_plan(
                 for duplicate_index in cross_asu_duplicates
             )
             if on_duplicates == "keep":
+                continue
+            if on_duplicates == "preserve":
+                # Different partially occupied ASU rows may intentionally describe distinct
+                # scatterers at the same crystallographic site (substitutional disorder). Keep one
+                # membership per symmetry image for the candidate row so structure-factor
+                # assembly can sum their occupancy-weighted atomic factors. If this candidate row
+                # already contributed the image through another symmetry operator, it is a special
+                # position duplicate and must still be collapsed.
+                if any(asu_indices[index] == asu_index for index in duplicate_indices):
+                    continue
+                sites.append(site)
+                asu_indices.append(asu_index)
+                symop_indices.append(symop_index)
                 continue
             if on_duplicates == "replace":
                 if len(cross_asu_duplicates) > 1:
