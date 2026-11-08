@@ -82,6 +82,24 @@ def apply_adp_constraints(uij: Tensor, constraints: AdpConstraints) -> Tensor:
     return result
 
 
+def apply_adp_site_average(uij_star: Tensor, site_average: Tensor) -> Tensor:
+    """Project each atom's ``U*`` onto its site-symmetry-invariant subspace.
+
+    ``uij_star`` is ``(N, 3, 3)`` in the reciprocal ``U*`` frame (fractional displacement
+    covariance, transforming as ``R U* R^T`` under a fractional rotation ``R``); ``site_average`` is
+    the per-atom ``(N, 9, 9)`` Reynolds operator ``(1/|S|) * sum_{R in S} kron(R, R)`` over the
+    site stabilizer ``S`` (built by :func:`diffBloch.io.symmetry_setup.symmetry_constraints`),
+    acting on the row-major flattened tensor. The result is ``(1/|S|) * sum R U* R^T``: invariant
+    under the site group (so it satisfies the special-position ``Uij`` equalities), idempotent, and
+    -- as an average of congruences -- positive-definite whenever the input is. Copying dependent
+    components instead (:func:`apply_adp_constraints`) gives the same invariant subspace but can
+    leave it. Linear, so gradients flow to every input component; general-position atoms carry the
+    identity and pass through unchanged.
+    """
+    flat = uij_star.reshape(*uij_star.shape[:-2], 9, 1)
+    return (site_average @ flat).reshape(uij_star.shape)
+
+
 def diagonal_projection(mask: Tensor, fixed: Tensor) -> tuple[Tensor, Tensor]:
     """Build ``(projection, offset)`` for the axis-aligned special case from a 0/1 mask.
 

@@ -32,7 +32,11 @@ class SymmetryConstraints:
     :func:`diffBloch.core.constraints.apply_symmetry_projection`). A general-position atom yields
     ``P = I`` (unconstrained). ``adp_constraints`` holds, per atom, the
     ``(i, j, src_i, src_j, coeff)`` ADP equalities ``Uij[i,j] = coeff * Uij[src_i, src_j]`` (empty
-    for an unconstrained ADP).
+    for an unconstrained ADP). ``adp_site_average`` is the per-atom ``(N, 9, 9)`` Reynolds operator
+    ``(1/|S|) * sum_{R in S} kron(R, R)`` acting on the row-major flattened ``U*`` (fractional
+    displacement covariance, which transforms as ``R U* R^T``); it maps any ``U*`` onto the
+    site-symmetry-invariant subspace and, being an average of congruences, keeps a positive-definite
+    tensor positive-definite. The identity for a general-position atom.
     """
 
     n_asymmetric_sites: int
@@ -40,6 +44,7 @@ class SymmetryConstraints:
     position_projection: NDArray[np.float64]
     position_offset: NDArray[np.float64]
     adp_constraints: AdpConstraints
+    adp_site_average: NDArray[np.float64]
 
 
 def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> SymmetryConstraints:
@@ -52,6 +57,13 @@ def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> S
     ``P @ raw + offset`` keeps the atom on its site for any ``raw``. The projector is built from the
     record's symmetry operators (no diffpy); the ADP (``Uij``) equalities are extracted from diffpy
     ``SymmetryConstraints.Ueqns`` keyed on the record's H-M symbol.
+
+    A CIF routinely rounds special coordinates (``0.3333`` for 1/3). The site is recognised within
+    ``symprec``, then each atom is snapped onto the exact special position -- the average of its
+    stabilizer images -- and that exact position feeds both the offset and diffpy (with the same
+    ``symprec``). Without the snap, diffpy's much tighter default tolerance finds only part of the
+    site group and returns incomplete ADP constraints (e.g. U13/U23 left free on a 3m site), while
+    the position projector correctly treats the atom as special.
     """
     if symprec <= 0.0:
         raise ValueError("symprec must be positive")
@@ -62,18 +74,23 @@ def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> S
     identity = np.eye(3, dtype=np.float64)
     projection = np.empty((positions.shape[0], 3, 3), dtype=np.float64)
     offset = np.empty((positions.shape[0], 3), dtype=np.float64)
+    adp_site_average = np.empty((positions.shape[0], 9, 9), dtype=np.float64)
+    snapped = np.empty_like(positions)
     for index, position in enumerate(positions):
         stabilizer = _site_stabilizer(position, rotations, translations, symprec=symprec)
+        snapped[index] = _snap_to_site(position, rotations, translations, symprec=symprec)
         projector = stabilizer.mean(axis=0)
         projection[index] = projector
-        offset[index] = (identity - projector) @ position
+        offset[index] = (identity - projector) @ snapped[index]
+        adp_site_average[index] = np.mean([np.kron(r, r) for r in stabilizer], axis=0)
 
     return SymmetryConstraints(
         n_asymmetric_sites=record.n_atoms,
         n_symops=record.n_symops,
         position_projection=projection,
         position_offset=offset,
-        adp_constraints=_adp_constraints(record, positions),
+        adp_constraints=_adp_constraints(record, snapped, symprec=symprec),
+        adp_site_average=adp_site_average,
     )
 
 
@@ -117,6 +134,30 @@ def _site_stabilizer(
     return np.stack(stabilizer)
 
 
+def _snap_to_site(
+    position: NDArray[np.float64],
+    rotations: NDArray[np.float64],
+    translations: NDArray[np.float64],
+    *,
+    symprec: float,
+) -> NDArray[np.float64]:
+    """The exact special position near ``position``: the mean of its stabilizer images.
+
+    Each stabilizing operator maps ``position`` to within ``symprec`` of itself (mod 1); unwrapped
+    back next to ``position``, those images average to the point the whole site group fixes
+    exactly (e.g. ``0.3333 -> 1/3``). A general position has only the identity and is unchanged.
+    """
+    images: list[NDArray[np.float64]] = []
+    for rotation, translation in zip(rotations, translations, strict=True):
+        image = rotation @ position + translation
+        displacement = image - position
+        displacement = displacement - np.round(displacement)
+        if np.all(np.abs(displacement) < symprec):
+            images.append(position + displacement)
+    snapped: NDArray[np.float64] = np.mean(images, axis=0)
+    return snapped
+
+
 # CIF anisotropic-ADP component -> (row, col) in the symmetric 3x3 Uij tensor.
 _UIJ_COMPONENT = {
     "11": (0, 0),
@@ -130,10 +171,12 @@ _UIJ_COMPONENT = {
 _UEQN_TERM = re.compile(r"^([+-]?)(\d*\.?\d+)?\*?U(\d)(\d)\d*$")
 
 
-def _adp_constraints(record: StructureRecord, positions: NDArray[np.float64]) -> AdpConstraints:
+def _adp_constraints(
+    record: StructureRecord, positions: NDArray[np.float64], *, symprec: float
+) -> AdpConstraints:
     """Extract per-atom ``Uij`` equality tuples from the space-group ADP constraints (diffpy)."""
     space_group = _space_group(record)
-    diffpy_constraints = _DiffpyConstraints(space_group, positions=positions.tolist())
+    diffpy_constraints = _DiffpyConstraints(space_group, positions=positions.tolist(), eps=symprec)
     return tuple(_atom_adp_constraints(equations) for equations in diffpy_constraints.Ueqns)
 
 
