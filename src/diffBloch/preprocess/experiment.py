@@ -189,6 +189,7 @@ class RefinementSetup:
             occupancies=torch.tensor(structure.occupancies, dtype=torch.float64),
             adp_kind=adp.kind,
             adp_constraints=constraints.adp_constraints,
+            adp_site_average=torch.tensor(constraints.adp_site_average, dtype=torch.float64),
             reciprocal_basis=torch.tensor(reciprocal_basis, dtype=torch.float64),
         )
         return cls(

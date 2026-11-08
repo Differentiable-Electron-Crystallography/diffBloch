@@ -26,6 +26,7 @@ from diffBloch.core.adp import (
 from diffBloch.core.constraints import (
     AdpConstraints,
     apply_adp_constraints,
+    apply_adp_site_average,
     apply_symmetry_projection,
     positive,
     unit_interval,
@@ -101,6 +102,11 @@ class ConstraintSpec:
     ``Uij[i,j] = coeff * Uij[src_i, src_j]`` (empty per atom when the ADP is unconstrained;
     ``None`` when no ADP constraints apply at all), enforced by
     :func:`diffBloch.core.constraints.apply_adp_constraints` in the CIF ``Uij`` frame.
+
+    ``adp_site_average`` (``(N, 9, 9)``, from the same symmetry setup) supersedes
+    ``adp_constraints`` when present: each atom's ``U*`` is averaged over its site stabilizer
+    (:func:`diffBloch.core.constraints.apply_adp_site_average`). That satisfies the same equalities
+    but, unlike copying components, keeps the Cholesky-built tensor positive-definite.
     """
 
     position_projection: Tensor
@@ -108,6 +114,7 @@ class ConstraintSpec:
     occupancies: Tensor
     adp_kind: tuple[AdpKind, ...] | None = None
     adp_constraints: AdpConstraints | None = None
+    adp_site_average: Tensor | None = None
     reciprocal_basis: Tensor | None = None
 
 
@@ -173,6 +180,8 @@ def _validate_shapes(params: RefinableParams, spec: ConstraintSpec) -> None:
         raise ValueError("adp_kind must have one entry per atom")
     if spec.adp_constraints is not None and len(spec.adp_constraints) != n_atoms:
         raise ValueError("adp_constraints must have one entry per atom")
+    if spec.adp_site_average is not None and spec.adp_site_average.shape != (n_atoms, 9, 9):
+        raise ValueError("adp_site_average must have shape (N, 9, 9)")
     if spec.adp_kind is not None and "missing" in spec.adp_kind:
         raise ValueError("missing ADPs require an explicit initialization policy")
     if (_requires_uani(spec) or spec.adp_kind is None) and (
@@ -198,7 +207,7 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
     if spec.adp_kind is None:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required when adp_kind is not provided")
-        return cif_adp_to_star(_constrained_cif_uij(params.uij_raw, spec), reciprocal_lengths)
+        return _constrained_uani_star(params.uij_raw, spec, reciprocal_lengths)
 
     uij = torch.zeros((n_atoms, 3, 3), dtype=dtype, device=device)
 
@@ -206,7 +215,7 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
         if params.uij_raw is None:
             raise ValueError("uij_raw is required for Uani ADPs")
         mask = _kind_mask(spec.adp_kind, "Uani", device=device)
-        star = cif_adp_to_star(_constrained_cif_uij(params.uij_raw, spec), reciprocal_lengths)
+        star = _constrained_uani_star(params.uij_raw, spec, reciprocal_lengths)
         uij = torch.where(mask[:, None, None], star, uij)
 
     if _requires_uiso(spec):
@@ -217,6 +226,22 @@ def _constrain_adps(params: RefinableParams, spec: ConstraintSpec) -> Tensor:
         uij = torch.where(mask[:, None, None], star, uij)
 
     return uij
+
+
+def _constrained_uani_star(
+    uij_raw: Tensor, spec: ConstraintSpec, reciprocal_lengths: Tensor
+) -> Tensor:
+    """Raw Cholesky ADP parameters -> site-symmetric, positive-definite ``U*``.
+
+    With ``adp_site_average`` the Cholesky tensor goes to ``U*`` and is averaged over each atom's
+    site stabilizer there (positive-definite by construction). Otherwise falls back to the CIF-frame
+    component equalities of :func:`_constrained_cif_uij`, which do not preserve positivity.
+    """
+    if spec.adp_site_average is None:
+        return cif_adp_to_star(_constrained_cif_uij(uij_raw, spec), reciprocal_lengths)
+    star = cif_adp_to_star(cholesky_adp(uij_raw), reciprocal_lengths)
+    average = spec.adp_site_average.to(dtype=star.dtype, device=star.device)
+    return apply_adp_site_average(star, average)
 
 
 def _constrained_cif_uij(uij_raw: Tensor, spec: ConstraintSpec) -> Tensor:

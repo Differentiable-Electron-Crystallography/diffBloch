@@ -168,3 +168,60 @@ def test_native_projector_matches_diffpy_oracle(cif: Path) -> None:
         # The dimension of freedom (rank of P) must match diffpy's free-parameter count -- this is
         # what catches a coupled site as well as any CIF-symops vs diffpy setting/origin mismatch.
         assert np.linalg.matrix_rank(p, tol=1e-9) == n_free
+
+
+def _rounded_quartz_si() -> tuple[object, int]:
+    """Quartz with Si's special ``z = 5/6`` rounded as CIFs do."""
+    record = read_structure(QUARTZ)
+    si = list(record.labels).index("Si1")
+    positions = np.array(record.frac_positions, copy=True)
+    positions[si, 2] = 0.8333
+    return record.model_copy(update={"frac_positions": positions}), si
+
+
+def test_rounded_special_coordinate_gives_the_same_adp_constraints_and_exact_site() -> None:
+    exact = symmetry_constraints(read_structure(QUARTZ))
+    record, si = _rounded_quartz_si()
+
+    rounded = symmetry_constraints(record)
+
+    assert rounded.adp_constraints[si] == exact.adp_constraints[si]
+    assert rounded.position_offset[si, 2] == pytest.approx(5.0 / 6.0, abs=1e-12)
+
+
+@pytest.mark.parametrize("cif", [QUARTZ, PYRITE])
+def test_special_position_adps_stay_positive_definite_for_any_raw(cif: Path) -> None:
+    setup = RefinementSetup.from_structure(read_structure(cif))
+    assert setup.params.uij_raw is not None
+    generator = torch.Generator().manual_seed(0)
+    for _ in range(50):
+        noise = torch.randn(setup.params.uij_raw.shape, generator=generator, dtype=torch.float64)
+        raw = setup.params.uij_raw + 0.2 * noise
+        state = constrain(replace(setup.params, uij_raw=raw), setup.spec)
+        assert torch.linalg.eigvalsh(state.uij_star).min() > 0.0
+
+
+@pytest.mark.parametrize("cif", [QUARTZ, PYRITE])
+def test_site_average_keeps_seeded_adps_and_is_idempotent(cif: Path) -> None:
+    record = read_structure(cif)
+    setup = RefinementSetup.from_structure(record)
+    average = setup.spec.adp_site_average
+    assert average is not None
+    state = constrain(setup.params, setup.spec)
+    flat = state.uij_star.reshape(-1, 9, 1)
+
+    assert torch.allclose(average @ flat, flat, atol=1e-14, rtol=0.0)
+    assert torch.allclose(average @ average, average, atol=1e-12, rtol=0.0)
+
+
+@pytest.mark.parametrize("cif", [QUARTZ, PYRITE])
+def test_site_average_routes_gradients_to_the_adp_leaves(cif: Path) -> None:
+    setup = RefinementSetup.from_structure(read_structure(cif))
+    assert setup.params.uij_raw is not None
+    raw = setup.params.uij_raw.clone().requires_grad_(True)
+
+    constrain(replace(setup.params, uij_raw=raw), setup.spec).uij_star.square().sum().backward()
+
+    assert raw.grad is not None
+    assert torch.isfinite(raw.grad).all()
+    assert raw.grad.abs().sum(dim=(1, 2)).min() > 0.0
