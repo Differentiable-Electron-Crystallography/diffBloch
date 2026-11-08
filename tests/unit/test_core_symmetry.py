@@ -132,6 +132,27 @@ def test_build_asu_expansion_plan_replace_policy_uses_later_duplicate() -> None:
     assert len(plan.duplicate_sites) == 1
 
 
+def test_preserve_policy_keeps_mixed_site_rows_and_collapses_special_positions() -> None:
+    positions = np.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float64)
+    rotations = np.asarray([np.eye(3), -np.eye(3)], dtype=np.float64)
+    translations = np.zeros((2, 3), dtype=np.float64)
+    plan = build_asu_expansion_plan(positions, rotations, translations, on_duplicates="preserve")
+    refined_positions = torch.tensor(positions, dtype=torch.float64, requires_grad=True)
+    occupancies = torch.tensor([0.4, 0.6], dtype=torch.float64, requires_grad=True)
+
+    expanded = expand_asu(plan, refined_positions, occupancies=occupancies)
+    assert plan.asu_indices.tolist() == [0, 1]
+    assert plan.symop_indices.tolist() == [0, 0]
+    assert expanded.occupancies is not None
+    assert expanded.occupancies.tolist() == pytest.approx([0.4, 0.6])
+
+    (expanded.positions.sum() + expanded.occupancies.sum()).backward()
+    assert refined_positions.grad is not None
+    assert torch.isfinite(refined_positions.grad).all()
+    assert occupancies.grad is not None
+    assert occupancies.grad.tolist() == pytest.approx([1.0, 1.0])
+
+
 def test_expand_asu_validates_input_shapes() -> None:
     plan = build_asu_expansion_plan(
         np.asarray([[0.0, 0.0, 0.0]], dtype=np.float64),
