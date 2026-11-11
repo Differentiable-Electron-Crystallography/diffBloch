@@ -23,6 +23,7 @@ __all__ = [
     "PerOrientationThickness",
     "QuadraticThicknessProfile",
     "ThicknessBounds",
+    "TrainableIsotropicMosaicity",
 ]
 
 
@@ -333,6 +334,135 @@ class ApparentThicknessNN:
         )[local_index].to(w0.device)
         thickness = F.softplus(mu + sigma * epsilon)
         return ForwardContext(thickness=thickness)
+
+
+@dataclass(frozen=True)
+class TrainableIsotropicMosaicity:
+    """One trainable isotropic-mosaicity sigma, shared across every rotation in the dataset.
+
+    Mosaicity is a bulk property of the crystal, not of any one orientation, so unlike thickness
+    there is a single free parameter here, not one per rotation. It refines by *widening* the mosaic
+    Gaussian: each mosaic tilt was placed when the ``Plan`` was built at azimuth
+    ``azimuth_degrees[m]`` and polar angle ``polar_degrees[m]`` for ``init_sigma_degrees``
+    (:func:`~diffBloch.preprocess.orientation.isotropic_mosaic_directions`), and every polar angle
+    is proportional to sigma, so a refined sigma moves tilt ``m`` to polar angle
+    ``polar_degrees[m] * sigma / init_sigma_degrees`` along its own azimuth. The composed
+    rocking-and-mosaic tilt ``k = m * R + r`` becomes ``tilts[k] @ R(axis_m, (s - 1) * polar_m)``
+    with ``s = sigma / init_sigma_degrees`` -- the built mosaic rotation undone and the scaled one
+    applied, both about the same in-plane axis. The forward recomputes the excitation errors from
+    these tilts (:attr:`~diffBloch.engine.forward.ForwardContext.tilts`), so sigma gets a gradient
+    through the Bloch geometry itself.
+
+    Sigma is stored as ``log_sigma_scale`` with ``sigma = init_sigma_degrees *
+    exp(log_rate * log_sigma_scale)``, starting at 0. Adam moves a leaf by roughly the learning rate
+    per step whatever its gradient's size, so sigma's *relative* step is about ``log_rate * lr``: the
+    default 25 gives ~2.5% per step at the default ``lr = 1e-3`` (up to ~e-fold over 40 steps), where
+    a plain softplus leaf at a small sigma would move only ~0.1% per step and could not get far from
+    the PETS seed. It also keeps sigma positive with no bound to hit.
+
+    The beam sets, F-gathers, and the baked per-sample weights stay as built: the weights depend
+    only on ``polar / sigma``, which the move preserves, and the gather does not depend on the
+    tilt. The beam sets were selected at ``init_sigma_degrees``, so a sigma that grows well past it
+    tilts into beams the solve does not include -- re-settle the ``Plan`` at the refined value
+    before trusting a large change.
+
+    ``rotation_range`` scopes this component to one dataset's half-open ``[start, end)`` pooled
+    source-rotation indices, exactly like :class:`ApparentThicknessNN`: a pooled multi-dataset
+    experiment gets one component per dataset (each with its own resolved sigma/samples), and a
+    rotation outside a given component's range gets no override from it, falling through to
+    whichever component does claim it.
+    """
+
+    azimuth_degrees: tuple[float, ...]
+    polar_degrees: tuple[float, ...]
+    init_sigma_degrees: float
+    rotation_range: tuple[int, int]
+    key: str = "isotropic_mosaicity"
+    log_rate: float = 25.0
+
+    def __post_init__(self) -> None:
+        if not self.polar_degrees:
+            raise ValueError("polar_degrees must be non-empty")
+        if len(self.azimuth_degrees) != len(self.polar_degrees):
+            raise ValueError("azimuth_degrees and polar_degrees must have one entry per sample")
+        if not (math.isfinite(self.init_sigma_degrees) and self.init_sigma_degrees > 0.0):
+            raise ValueError("init_sigma_degrees must be finite and positive")
+        if not any(polar != 0.0 for polar in self.polar_degrees):
+            # Every tilt is the identity, so no sigma moves it: the parameter would have no gradient.
+            raise ValueError("polar_degrees must include a tilted sample for sigma to refine")
+        start, end = self.rotation_range
+        if start < 0 or end <= start:
+            raise ValueError("rotation_range must be a non-empty [start, end) with start >= 0")
+        if not (math.isfinite(self.log_rate) and self.log_rate > 0.0):
+            raise ValueError("log_rate must be finite and positive")
+
+    def initial_params(
+        self,
+        *,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> Mapping[str, Tensor]:
+        return {"log_sigma_scale": torch.zeros(1, dtype=dtype, device=device)}
+
+    def sigma_degrees(self, params: Mapping[str, Tensor]) -> Tensor:
+        """The physical sigma (degrees, scalar float64) that ``params`` encode."""
+        if "log_sigma_scale" not in params:
+            raise ValueError("isotropic mosaicity component requires a 'log_sigma_scale' tensor")
+        raw = params["log_sigma_scale"].reshape(()).to(torch.float64)
+        return self.init_sigma_degrees * torch.exp(self.log_rate * raw)
+
+    def forward_context(
+        self,
+        params: Mapping[str, Tensor],
+        *,
+        rotation_index: int,
+        orientation: OrientationPlanLike,
+    ) -> ForwardContext:
+        _ = rotation_index
+        source_index = orientation.pattern.rotation_index
+        start, end = self.rotation_range
+        if source_index < start or source_index >= end:
+            # Another dataset's rotation: the component that does claim it supplies the tilts.
+            return ForwardContext()
+        sigma = self.sigma_degrees(params)
+        raw = params["log_sigma_scale"]
+        n_tilts = int(orientation.tilts.shape[0])
+        n_mosaic = len(self.polar_degrees)
+        if n_tilts % n_mosaic != 0:
+            raise ValueError(
+                f"orientation has {n_tilts} tilts, not a multiple of the {n_mosaic} mosaic "
+                "samples this component was built from"
+            )
+        scale = sigma / self.init_sigma_degrees
+        azimuth = torch.deg2rad(raw.new_tensor(self.azimuth_degrees, dtype=torch.float64))
+        polar = torch.deg2rad(raw.new_tensor(self.polar_degrees, dtype=torch.float64))
+        delta = _in_plane_rotation(azimuth, (scale - 1.0) * polar)  # (M, 3, 3)
+        built = orientation.tilts.to(device=raw.device, dtype=torch.float64)
+        # index = m * R + r (compose_mosaic_tilts): mosaic sample m covers R consecutive tilts.
+        tilts = built @ delta.repeat_interleave(n_tilts // n_mosaic, dim=0)
+        return ForwardContext(tilts=tilts)
+
+
+def _in_plane_rotation(azimuth: Tensor, angle: Tensor) -> Tensor:
+    """Rotations ``(M, 3, 3)`` by ``angle`` about the in-plane axis ``(cos az, sin az, 0)``.
+
+    Rodrigues' formula for ``R_z(az) R_x(angle) R_z(-az)`` -- the
+    :func:`~diffBloch.preprocess.orientation.hexagonal_tilt` convention -- differentiable in
+    ``angle``. Both arguments are radians, shape ``(M,)``.
+    """
+    ax, ay = torch.cos(azimuth), torch.sin(azimuth)
+    zero = torch.zeros_like(ax)
+    k = torch.stack(
+        (
+            torch.stack((zero, zero, ay), dim=-1),
+            torch.stack((zero, zero, -ax), dim=-1),
+            torch.stack((-ay, ax, zero), dim=-1),
+        ),
+        dim=-2,
+    )
+    eye = torch.eye(3, dtype=k.dtype, device=k.device).expand_as(k)
+    sin, cos = torch.sin(angle)[:, None, None], torch.cos(angle)[:, None, None]
+    return eye + sin * k + (1.0 - cos) * (k @ k)
 
 
 def _positive_inverse(value: Tensor) -> Tensor:

@@ -35,7 +35,13 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from diffBloch.core.products import MosaicSmoothed, PatternBatch, PlainSum, TiltReduction
+from diffBloch.core.products import (
+    MosaicSmoothed,
+    PatternBatch,
+    PlainSum,
+    TiltReduction,
+    WeightedSum,
+)
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
@@ -47,7 +53,7 @@ from diffBloch.preprocess.plan import Plan, require_built_plans
 
 __all__ = ["plan_is_readable", "read_plan", "write_plan"]
 
-_FORMAT_VERSION = 6
+_FORMAT_VERSION = 7
 
 
 def write_plan(plan: Plan, path: str | Path) -> None:
@@ -188,7 +194,12 @@ def _numpy(tensor: Tensor) -> np.ndarray:
 def _dump_reduction(reduction: TiltReduction) -> dict[str, Any]:
     if isinstance(reduction, MosaicSmoothed):
         return {"kind": "mosaic", "samples": reduction.samples}
-    return {"kind": "plain"}
+    if isinstance(reduction, WeightedSum):
+        # JSON float repr round-trips exactly, so the weights read back bit-identical.
+        return {"kind": "weighted", "weights": reduction.weights.tolist()}
+    if isinstance(reduction, PlainSum):
+        return {"kind": "plain"}
+    raise TypeError(f"no checkpoint form for tilt reduction {type(reduction).__name__}")
 
 
 def _load_reduction(payload: dict[str, Any]) -> TiltReduction:
@@ -196,4 +207,8 @@ def _load_reduction(payload: dict[str, Any]) -> TiltReduction:
         samples = payload["samples"]
         assert isinstance(samples, int)
         return MosaicSmoothed(samples=samples)
-    return PlainSum()
+    if payload["kind"] == "weighted":
+        return WeightedSum(weights=torch.tensor(payload["weights"], dtype=torch.float64))
+    if payload["kind"] == "plain":
+        return PlainSum()
+    raise ValueError(f"unknown checkpoint tilt reduction {payload['kind']!r}")

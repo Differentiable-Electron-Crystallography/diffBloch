@@ -12,13 +12,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from diffBloch.core.crystal import cell_matrix_from_parameters
+from diffBloch.core.crystal import cell_matrix_from_parameters, reciprocal_cell
 from diffBloch.io import read_experimental_data
 from diffBloch.preprocess import resolve_dataset_orientations
 from diffBloch.preprocess.orientation import (
     busing_levy_matrix,
+    compose_mosaic_tilts,
     goniometer_rotation,
     hexagonal_tilt,
+    isotropic_mosaic_directions,
+    isotropic_mosaic_tilts,
     orientation_basis,
     orientation_matrices,
     rocking_curve_tilts,
@@ -132,6 +135,31 @@ def test_busing_levy_determinant_is_inverse_volume(golden: dict[str, np.ndarray]
     assert np.linalg.det(busing_levy_matrix(golden["cell_params"])) == pytest.approx(1.0 / volume)
 
 
+TRICLINIC_CELL = np.array([8.77478, 9.26455, 11.55388, 74.53492, 81.54956, 89.0115])
+
+
+def test_busing_levy_matches_the_reciprocal_metric_for_a_triclinic_cell() -> None:
+    """``B.T @ B`` is the reciprocal metric.
+
+    ``B[2, 1]`` scales with ``cos(alpha) - cos(beta) cos(gamma)``, which vanishes for orthogonal,
+    hexagonal and standard-setting monoclinic cells, so only a triclinic cell exercises its sign;
+    the determinant test above is blind to it.
+    """
+    recip = reciprocal_cell(cell_matrix_from_parameters(TRICLINIC_CELL))
+    b_matrix = busing_levy_matrix(TRICLINIC_CELL)
+    assert np.allclose(b_matrix.T @ b_matrix, recip @ recip.T, rtol=1e-12, atol=1e-15)
+
+
+def test_u_matrix_recovers_the_rotation_for_a_triclinic_cell() -> None:
+    """``u_matrix`` recovers ``U`` from an independent PETS-style UB (columns ``a*, b*, c*``).
+
+    Only a triclinic cell exercises the sign of ``B[2, 1]`` (see the metric test above).
+    """
+    rotation = goniometer_rotation(12.0, -7.0, 33.0)
+    ub = rotation @ reciprocal_cell(cell_matrix_from_parameters(TRICLINIC_CELL)).T
+    assert np.allclose(u_matrix(ub, TRICLINIC_CELL), rotation, atol=1e-12)
+
+
 def test_orientation_basis_matches_oracle() -> None:
     # orientation_basis is the convention home; pin it against the (independently generated)
     # orientation oracle, which stored rotated reciprocal bases for known orientation matrices.
@@ -165,6 +193,84 @@ def test_busing_levy_rejects_degenerate_cells() -> None:
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 90.0, 90.0, 180.0]))
     with pytest.raises(ValueError, match="geometrically inconsistent"):
         busing_levy_matrix(np.array([5.0, 5.0, 5.0, 20.0, 20.0, 170.0]))
+
+
+def test_isotropic_mosaic_tilts_are_proper_rotations() -> None:
+    tilts, weights = isotropic_mosaic_tilts(0.1, 5)
+    _, polar = isotropic_mosaic_directions(0.1, 5)
+    assert tilts.shape == (5, 3, 3)
+    assert weights.shape == (5,)
+    assert polar.shape == (5,)
+    assert np.allclose(np.linalg.det(tilts), 1.0)
+    assert np.allclose(tilts @ np.swapaxes(tilts, 1, 2), np.eye(3))
+    # Not all identical -- the samples actually scatter, not collapse to one point.
+    assert not np.allclose(tilts[0], tilts[1])
+
+
+def test_isotropic_mosaic_tilts_degenerate_cases_are_the_identity_with_unit_weight() -> None:
+    tilts, weights = isotropic_mosaic_tilts(0.1, 1)
+    _, polar = isotropic_mosaic_directions(0.1, 1)
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0])
+    assert np.allclose(polar, [0.0])
+    tilts, weights = isotropic_mosaic_tilts(0.0, 5)
+    _, polar = isotropic_mosaic_directions(0.0, 5)
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0])
+    assert np.allclose(polar, [0.0])
+
+
+def test_isotropic_mosaic_tilts_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="samples must be >= 1"):
+        isotropic_mosaic_tilts(0.1, 0)
+    with pytest.raises(ValueError, match="sigma_degrees must be finite and non-negative"):
+        isotropic_mosaic_tilts(-0.1, 5)
+
+
+@pytest.mark.parametrize("samples", [4, 5, 7])
+def test_isotropic_mosaic_placement_matches_the_gaussian_moments(samples: int) -> None:
+    sigma = 0.05
+    tilts, weights = isotropic_mosaic_tilts(sigma, samples)
+    _, polar = isotropic_mosaic_directions(sigma, samples)
+    azimuth, _ = isotropic_mosaic_directions(sigma, samples)
+    angle = np.rad2deg(
+        np.arccos(np.clip((np.trace(tilts, axis1=1, axis2=2) - 1.0) / 2.0, -1.0, 1.0))
+    )
+    assert np.allclose(angle, polar)
+    # A centre sample plus a ring at 2 sigma, evenly spaced, weighted 1/2 and 1/2.
+    assert polar[0] == 0.0 and np.allclose(polar[1:], 2.0 * sigma)
+    assert np.allclose(np.diff(azimuth[1:]), 360.0 / (samples - 1))
+    assert weights[0] == 0.5 and np.allclose(weights[1:], 0.5 / (samples - 1))
+    # Each sample's lean as a 2-D vector: zero mean, isotropic per-axis variance sigma^2, and the
+    # 2-D Gaussian's fourth radial moment 8 sigma^4.
+    lean = polar[:, None] * np.stack((np.cos(np.deg2rad(azimuth)), np.sin(np.deg2rad(azimuth))), 1)
+    w = weights / weights.sum()
+    assert np.allclose(w @ lean, 0.0, atol=1e-15)
+    second = (w[:, None, None] * lean[:, :, None] * lean[:, None, :]).sum(axis=0)
+    assert np.allclose(second, sigma**2 * np.eye(2), rtol=1e-12, atol=1e-18)
+    assert w @ (polar**4) == pytest.approx(8.0 * sigma**4, rel=1e-12)
+
+
+def test_isotropic_mosaic_placement_needs_a_centre_and_a_ring_of_at_least_three() -> None:
+    for samples in (2, 3):
+        with pytest.raises(ValueError, match="samples == 1 or >= 4"):
+            isotropic_mosaic_tilts(0.1, samples)
+    tilts, weights = isotropic_mosaic_tilts(0.1, 1)
+    _, polar = isotropic_mosaic_directions(0.1, 1)
+    assert np.allclose(tilts, np.eye(3)[None])
+    assert np.allclose(weights, [1.0]) and np.allclose(polar, [0.0])
+
+
+def test_compose_mosaic_tilts_is_every_rocking_tilt_times_every_mosaic_tilt() -> None:
+    rocking = rocking_curve_tilts(1.0, 4)
+    mosaic, _weights = isotropic_mosaic_tilts(0.1, 4)
+    combined = compose_mosaic_tilts(rocking, mosaic)
+    assert combined.shape == (16, 3, 3)
+    assert np.allclose(np.linalg.det(combined), 1.0)
+    # index = m * R + r: each mosaic sample is one contiguous rocking sweep.
+    for r in range(4):
+        for m in range(4):
+            assert np.allclose(combined[m * 4 + r], rocking[r] @ mosaic[m])
 
 
 def test_rocking_curve_tilts_are_x_axis_rotations_spanning_the_semiangle() -> None:
