@@ -14,7 +14,7 @@ from diffBloch.core.dynamical import (
     stack_beam_plans,
 )
 from diffBloch.core.reciprocal import g_vectors
-from diffBloch.core.solver import memory_safe_max_batch, propagate
+from diffBloch.core.solver import _propagate_matrix_exp, memory_safe_max_batch, propagate
 
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
 _GRID_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
@@ -288,3 +288,39 @@ def test_propagate_matches_oracle_oblique() -> None:
     assert torch.allclose(flux, torch.ones_like(flux), atol=1e-5)
     gap = (psi_me - psi_be).abs().max().item()
     assert 1e-5 < gap < 1e-2  # obliquity-scale disagreement, not complex64 noise
+
+
+@pytest.mark.parametrize("max_batch", [None, 2])
+@pytest.mark.parametrize("batched", [False, True])
+def test_matrix_exp_on_a_real_operator_matches_the_complex_path(
+    batched: bool, max_batch: int | None
+) -> None:
+    # Real structure factors (a centrosymmetric crystal, no absorption): A is real symmetric. The
+    # thick slabs push the 1-norm well past 1, so the double-angle squaring loop runs many times.
+    factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex64, requires_grad=True)
+    thicknesses = torch.tensor([0.0, 12.0, 137.0, 900.0, 2500.0], requires_grad=True)
+
+    def solve(complex_path: bool) -> tuple[torch.Tensor, ...]:
+        system = _batched_system((1.0, 1.002, 0.998), factors) if batched else _system(factors)
+        psi = (
+            _propagate_matrix_exp(system, thicknesses, max_batch=max_batch)
+            if complex_path
+            else propagate(system, thicknesses, max_batch=max_batch)
+        )
+        loss = (psi.abs().square() * torch.arange(psi.shape[-1])).sum()
+        return (psi.detach(), *torch.autograd.grad(loss, (factors, thicknesses)))
+
+    direct, real = solve(complex_path=True), solve(complex_path=False)
+    assert real[0].dtype == torch.complex64
+    for got, want in zip(real, direct, strict=True):
+        assert torch.allclose(got, want, rtol=1e-3, atol=1e-4)
+
+
+def test_matrix_exp_on_a_complex_operator_takes_the_complex_path() -> None:
+    system = _system(torch.tensor([0.0, 1.0 + 0.5j, 1.0 - 0.5j], dtype=torch.complex64))
+    thicknesses = torch.tensor([12.0, 137.0])
+
+    real = propagate(system, thicknesses, method="matrix_exp")
+    direct = _propagate_matrix_exp(system, thicknesses)
+
+    assert torch.equal(real, direct)
