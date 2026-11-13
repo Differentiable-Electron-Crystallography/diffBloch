@@ -273,6 +273,12 @@ class SummaryLogger:
                 "structure-factor support (2 x g_max, A^-1)",
                 f"{2.0 * experiment.solve_g_max:g}",
             ],
+            [
+                "gmax_refine (scored cutoff, A^-1)",
+                "off (scores up to g_max)"
+                if experiment.gmax_refine is None
+                else f"{experiment.gmax_refine:g}",
+            ],
             ["sg_max (A^-1)", f"{experiment.sg_max:g}"],
             ["Absorption (T/F)", "T" if experiment.absorption else "F"],
             ["Mosaicity (T/F)", "T" if experiment.incoherent_mosaicity else "F"],
