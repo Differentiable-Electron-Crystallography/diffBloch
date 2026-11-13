@@ -4,9 +4,9 @@ A ``Plan -> Plan`` step that drops every scored reflection with ``|g| > cap.g_ma
 rotation's ``alignment``, leaving the solve beam set (and so the Bloch solve itself) untouched: it
 narrows *what is scored*, not *what is solved*. ``|g| = |hkl . B|`` is read from the shared grid's
 reciprocal basis, so it is orientation-independent and the cut holds through any later orientation
-change. Every later rebuild pins the scored set it is given (``with_orientation``, coupling, and
-the checkpoint round trip all carry ``alignment.hkl`` forward), so running this once right after
-``build_orientation_plans`` is enough for the fits, the refinement objective, and the report.
+change. ``with_orientation`` and the checkpoint round trip carry ``alignment.hkl`` forward, but the
+orientation fit re-selects the scored set per trial, so its ``TrialCoupling.scored.g_max`` must carry
+the same cap (it uses the same orientation-independent ``|g|``).
 """
 
 from __future__ import annotations
@@ -28,8 +28,7 @@ def restrict_scored_resolution(cap: ScoredResolutionCap) -> PlanStep:
     """Return a ``Plan -> Plan`` step scoring only reflections with ``|g| <= cap.g_max``.
 
     Requires built plans (it narrows ``alignment``, which a :class:`CandidatePlan` does not have).
-    A rotation left with no scored reflection keeps an empty alignment; the fits and the objective
-    already handle an unmatched rotation.
+    Raises ``ValueError`` if the cap leaves any rotation with no scored reflection.
     """
 
     def run(plan: Plan) -> Plan:
@@ -45,6 +44,11 @@ def _restrict(op: OrientationPlanLike, basis: torch.Tensor, g_max: float) -> Ori
     hkl = alignment.hkl
     g = torch.linalg.norm(hkl.to(torch.float64) @ basis.to(hkl.device), dim=-1)
     keep = g <= g_max
+    if not bool(keep.any()):
+        raise ValueError(
+            f"scored resolution cap g_max={g_max} leaves rotation "
+            f"{op.pattern.rotation_index} with no scored reflection"
+        )
     return replace(
         op,
         alignment=AlignmentPlan(

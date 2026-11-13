@@ -556,7 +556,9 @@ def _coupled_trial(
         semiangle=coupling.scored.klar.integration.semiangle,
         geometry=coupling.scored.klar.integration.geometry,
     )
-    keep &= np.linalg.norm(g, axis=1) <= coupling.scored.g_max
+    # Cap on the orientation-independent |g| (grid reciprocal basis), matching restrict_scored_resolution.
+    g_cap = np.linalg.norm(union_hkl @ np.asarray(grid.reciprocal_basis, dtype=np.float64), axis=1)
+    keep &= g_cap <= coupling.scored.g_max
     keep |= (union_hkl == 0).all(axis=1)  # 000 anchors psi0; retained when present
     scored_hkl = union_hkl[keep]
     gathers = None

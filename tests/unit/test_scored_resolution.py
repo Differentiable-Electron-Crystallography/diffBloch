@@ -8,6 +8,8 @@ trip.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 import torch
@@ -17,6 +19,7 @@ from tests.unit.test_inference import _BEAM_HKL, _ENERGY, _silicon
 from tests.unit.test_plan_serialize import _TILTS, _pattern
 
 from diffBloch.config.schema import ExperimentConfig
+from diffBloch.core.products import AlignmentPlan
 from diffBloch.engine import CoupledOrientationPlan
 from diffBloch.engine.plan import OrientationPlan
 from diffBloch.preprocess import pipeline, restrict_scored_resolution
@@ -96,9 +99,38 @@ def test_cap_needs_built_plans() -> None:
         restrict_scored_resolution(ScoredResolutionCap(g_max=1.0))(candidates)
 
 
-def test_cap_must_be_positive() -> None:
-    with pytest.raises(ValueError, match="must be positive"):
-        ScoredResolutionCap(g_max=0.0)
+@pytest.mark.parametrize("g_max", [0.0, -1.0, float("nan"), float("inf")])
+def test_cap_must_be_finite_and_positive(g_max: float) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        ScoredResolutionCap(g_max=g_max)
+
+
+def test_cap_that_empties_a_rotation_raises() -> None:
+    grid, *_ = _silicon()
+    op = _plain(grid)
+    keep = op.alignment.hkl.abs().sum(dim=1) > 0  # drop 000, as in a pattern without a 000 row
+    no_000 = replace(
+        op,
+        alignment=AlignmentPlan(
+            hkl=op.alignment.hkl[keep],
+            solution_index=op.alignment.solution_index[keep],
+            pattern_index=op.alignment.pattern_index[keep],
+        ),
+    )
+    plan = Plan(structure_factor_grid=grid, orientations=(no_000,))
+
+    with pytest.raises(ValueError, match="no scored reflection"):
+        restrict_scored_resolution(ScoredResolutionCap(g_max=0.1))(plan)
+
+
+def test_config_rejects_a_nan_cap() -> None:
+    base = {"name": "q", "inputs": {"structure": "q.cif", "exp_data": "q.cif_pets"}}
+    config = None
+    with pytest.raises(ValueError, match="finite and positive"):
+        config = ExperimentConfig.model_validate(
+            {**base, "blochwave": {"g_max": 2.0, "gmax_refine": float("nan")}}
+        )
+        config.blochwave.to_scored_resolution_cap()
 
 
 def test_config_cap_parses_and_may_not_exceed_the_solve_cutoff() -> None:

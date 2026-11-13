@@ -493,8 +493,8 @@ class ScoredResolutionCap:
     g_max: float
 
     def __post_init__(self) -> None:
-        if self.g_max <= 0.0:
-            raise ValueError("scored resolution cap g_max must be positive")
+        if not math.isfinite(self.g_max) or self.g_max <= 0.0:
+            raise ValueError("scored resolution cap g_max must be finite and positive")
 
 
 @dataclass(frozen=True)
