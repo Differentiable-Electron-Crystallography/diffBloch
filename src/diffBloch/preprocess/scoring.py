@@ -23,7 +23,8 @@ import torch
 from torch import Tensor
 
 from diffBloch.core import StructureFactorGather
-from diffBloch.core.solver import SolverMethod
+from diffBloch.core.solver import OperatorKind, SolverMethod
+from diffBloch.core.symmetry import AsuExpansionPlan
 from diffBloch.engine import (
     CoupledOrientationPlan,
     LossFn,
@@ -112,7 +113,25 @@ def build_engine(
         active_structure_factor_indices=active_indices,
         profile=profile,
         checkpoint_activations=checkpoint_activations,
+        operator_kind=operator_kind(refinement.asu_plan, absorption),
     )
+
+
+def operator_kind(asu_plan: AsuExpansionPlan, absorption: Absorption) -> OperatorKind:
+    """What the structure matrix ``A`` is, from the structure alone (no structure factors).
+
+    Absorption makes ``A`` non-Hermitian. Without it, ``A`` is real symmetric exactly when every
+    ``F_g`` is real, which the symmetry guarantees -- for any refined positions -- when the space
+    group holds the inversion through the origin (``-x, -y, -z``); otherwise it is Hermitian.
+    """
+    if absorption.enabled:
+        return "general"
+    rotations = asu_plan.rotations.detach().cpu().to(torch.float64)
+    translations = asu_plan.translations.detach().cpu().to(torch.float64)
+    eye = torch.eye(3, dtype=torch.float64)
+    inversion = (rotations + eye).abs().amax(dim=(-2, -1)) < 1e-6
+    at_origin = ((translations - translations.round()).abs() < 1e-6).all(dim=-1)
+    return "real" if bool((inversion & at_origin).any()) else "hermitian"
 
 
 def active_structure_factor_indices(

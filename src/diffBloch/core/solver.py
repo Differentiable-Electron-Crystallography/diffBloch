@@ -27,6 +27,10 @@ from diffBloch.core.dynamical.assembly import BlochSystem, _fill_diagonal
 
 type SolverMethod = Literal["matrix_exp", "bloch_eigen"]
 type Thicknesses = float | Sequence[float] | Tensor
+# What is known about A ahead of the solve: "real" (centrosymmetric about the origin, no absorption
+# -- real symmetric), "hermitian" (no absorption), "general" (absorptive). Decided once per engine
+# (see RefinementEngine.operator_kind); None makes each solve inspect A itself, which syncs the host.
+type OperatorKind = Literal["real", "hermitian", "general"]
 
 # `matrix_exp` scaling-and-squaring holds several N*N temporaries per matrix (Pade numerator/
 # denominator, the linear solve). This conservative multiplier estimates the live footprint of one
@@ -46,6 +50,7 @@ def propagate(
     *,
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
+    operator_kind: OperatorKind | None = None,
 ) -> Tensor:
     """Propagate ``system.psi0`` to each thickness, returning the exit wavefunction.
 
@@ -79,7 +84,7 @@ def propagate(
     if method == "matrix_exp":
         # Real A (centrosymmetric, no absorption) takes the real-arithmetic path; anything else
         # falls back to the complex torch.matrix_exp inside it.
-        return _propagate_matrix_exp_real(system, t, max_batch=max_batch)
+        return _propagate_matrix_exp_real(system, t, max_batch=max_batch, kind=operator_kind)
     if method == "bloch_eigen":
         return _propagate_bloch_eigen(system, t)
     raise ValueError(f"method must be 'matrix_exp' or 'bloch_eigen', got {method!r}")
@@ -154,11 +159,22 @@ _COS_TAYLOR = tuple((-1) ** k / math.factorial(2 * k) for k in range(7))
 _SIN_TAYLOR = tuple((-1) ** k / math.factorial(2 * k + 1) for k in range(7))
 
 
+def _operator_kind(a: Tensor) -> OperatorKind:
+    """Inspect ``A`` (host-syncing): the fallback when the caller has not decided the kind."""
+    if not a.is_complex():
+        return "real"
+    a = a.detach()
+    if float(a.imag.abs().max()) <= _REAL_OPERATOR_RTOL * max(float(a.real.abs().max()), 1e-30):
+        return "real"
+    return "hermitian" if torch.allclose(a, a.mH) else "general"
+
+
 def _propagate_matrix_exp_real(
     system: BlochSystem,
     thicknesses: Tensor,
     *,
     max_batch: int | None = None,
+    kind: OperatorKind | None = None,
 ) -> Tensor:
     """``matrix_exp`` for a real symmetric ``A`` in real arithmetic: ``exp(i theta A) = cos(theta A)
     + i sin(theta A)``.
@@ -171,12 +187,9 @@ def _propagate_matrix_exp_real(
     to :func:`_propagate_matrix_exp` when ``A`` is not real (non-centrosymmetric or absorptive).
     """
     a = system.a
-    if a.is_complex():
-        imag = float(a.imag.detach().abs().max())
-        if imag > _REAL_OPERATOR_RTOL * max(float(a.real.detach().abs().max()), 1e-30):
-            return _propagate_matrix_exp(system, thicknesses, max_batch=max_batch)
-        a = a.real
-    a = a.to(torch.float32)
+    if (kind or _operator_kind(a)) != "real":
+        return _propagate_matrix_exp(system, thicknesses, max_batch=max_batch)
+    a = (a.real if a.is_complex() else a).to(torch.float32)
     n = a.shape[-1]
     psi0 = system.psi0
     psi0 = (psi0.real if psi0.is_complex() else psi0).to(device=a.device, dtype=torch.float32)
