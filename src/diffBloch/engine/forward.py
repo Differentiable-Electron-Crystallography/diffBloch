@@ -48,6 +48,7 @@ from diffBloch.core.products import (
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.scattering import structure_factors
 from diffBloch.core.solver import (
+    OperatorKind,
     SolverMethod,
     memory_safe_max_batch,
     propagate,
@@ -224,6 +225,9 @@ class RefinementEngine:
     # disabling it trades that memory headroom for one fewer full recompute per step. Gradients are
     # identical either way -- checkpointing changes only what is retained, never any value.
     checkpoint_activations: bool = True
+    # What A is, decided once from the structure (build_engine): lets the solver pick its real path
+    # without inspecting A on every solve (each inspection syncs the host).
+    operator_kind: OperatorKind | None = None
 
     def _max_batch_for(self, n_beams: int) -> int:
         """The matrix_exp block cap for a solve over ``n_beams`` beams (explicit pin, else safe)."""
@@ -674,6 +678,7 @@ class RefinementEngine:
                 build_bloch_system(orientation.beam_plans[0], fgb, self.absorption),
                 thicknesses,
                 method=self.method,
+                operator_kind=self.operator_kind,
                 max_batch=self._max_batch_for(beam_hkl.shape[0]),
             )
             return BlochSolution.from_propagation(amplitudes, beam_hkl, thicknesses)
@@ -695,6 +700,7 @@ class RefinementEngine:
                 ),
                 thicknesses_,
                 method=self.method,
+                operator_kind=self.operator_kind,
                 max_batch=self._max_batch_for(beam_hkl.shape[0]),
             )
 
@@ -790,6 +796,7 @@ class RefinementEngine:
                     ),
                     thicknesses_,
                     method=self.method,
+                    operator_kind=self.operator_kind,
                     max_batch=self._max_batch_for(n_segment_beams_),
                 )
 
