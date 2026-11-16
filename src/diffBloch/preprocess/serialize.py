@@ -67,6 +67,7 @@ def write_plan(plan: Plan, path: str | Path) -> None:
         arrays[f"pat_hkl_{i}"] = _numpy(op.pattern.hkl)
         arrays[f"pat_int_{i}"] = _numpy(op.pattern.intensities)
         arrays[f"pat_sig_{i}"] = _numpy(op.pattern.sigmas)
+        arrays[f"scored_hkl_{i}"] = _numpy(op.alignment.hkl)  # the pinned scored set
         entry: dict[str, Any] = {
             "energy": op.energy,
             "u0": op.u0,
@@ -77,7 +78,6 @@ def write_plan(plan: Plan, path: str | Path) -> None:
         if isinstance(op, CoupledOrientationPlan):
             entry["kind"] = "segmented"
             entry["n_segments"] = len(op.segments)
-            arrays[f"scored_hkl_{i}"] = _numpy(op.alignment.hkl)  # the pinned scored set
             for j, segment in enumerate(op.segments):
                 arrays[f"union_hkl_{i}_{j}"] = _numpy(segment.plan.beam_hkl)
                 arrays[f"covered_tilt_indices_{i}_{j}"] = _numpy(segment.cover)
@@ -183,6 +183,7 @@ def _read_orientation(
         orientation=orientation,
         tilts=tilts,
         tilt_reduction=reduction,
+        scored_hkl=np.asarray(data[f"scored_hkl_{i}"]),
     )
 
 

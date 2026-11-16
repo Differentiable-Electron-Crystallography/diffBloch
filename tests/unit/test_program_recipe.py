@@ -198,6 +198,38 @@ def test_coupling_config_flows_into_the_fit_orientation_record() -> None:
     assert fit.params["coupling"]["policy"]["fixed_n_segments"] == 4
 
 
+def test_gmax_refine_adds_the_cap_step_and_caps_the_orientation_search() -> None:
+    """``blochwave.gmax_refine`` reaches both places the scored set is chosen.
+
+    The cap step runs right after the build (so the thickness fit, refinement, and report see it)
+    and the per-trial orientation search scores under the same cap rather than ``g_max``.
+    """
+    root = FIXTURES / "quartz_anchor"
+    cfg, _ = load_experiment(root)
+    cfg = cfg.model_copy(
+        update={"blochwave": cfg.blochwave.model_copy(update={"gmax_refine": 1.2})}
+    )
+    structure = read_structure(root / cfg.inputs.structure)
+    experimental_data = read_experimental_data(root / cfg.inputs.exp_data)
+    setup = from_experiment(structure, experimental_data, cfg)
+    steps = _recipe_steps(cfg, setup.refinement, setup.integration, setup.mosaicity, NULL_LOGGER)
+    records = step_records(resolve_recipe(steps, SimpleNamespace(cell_volume=100.0)))
+
+    names = [r.name for r in records]
+    assert names[names.index("build_orientation_plans") + 1] == "restrict_scored_resolution"
+    assert records[names.index("restrict_scored_resolution")].params["g_max"] == 1.2
+    fit = next(r for r in records if r.name == "optimize_orientation")
+    assert fit.params["coupling"]["scored"]["g_max"] == 1.2
+
+
+def test_recipe_has_no_cap_step_by_default() -> None:
+    names = [
+        r.name for r in step_records(resolve_recipe(_steps(), SimpleNamespace(cell_volume=100.0)))
+    ]
+
+    assert "restrict_scored_resolution" not in names
+
+
 def test_recipe_records_resolved_mosaicity_not_the_config_request() -> None:
     root = FIXTURES / "quartz_anchor"
     cfg, _ = load_experiment(root)

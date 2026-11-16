@@ -1033,6 +1033,9 @@ class ExperimentDeclared:
     # blochwave.incoherent_mosaicity. Defaulted (False, the behaviour before the switch existed) so
     # reports written before it was recorded still read back.
     incoherent_mosaicity: bool = False
+    # blochwave.gmax_refine, the scored-reflection |g| cap; None when scoring runs up to the solve
+    # cutoff. Defaulted so reports written before it was recorded still read back.
+    gmax_refine: float | None = None
 
     @property
     def step(self) -> int | None:
@@ -1060,6 +1063,7 @@ class ExperimentDeclared:
             "sg_max": self.sg_max,
             "absorption": float(self.absorption),
             "incoherent_mosaicity": float(self.incoherent_mosaicity),
+            **({} if self.gmax_refine is None else {"gmax_refine": self.gmax_refine}),
             "steps": float(self.steps),
             "learning_rate": self.learning_rate,
         }

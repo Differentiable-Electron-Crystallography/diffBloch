@@ -181,6 +181,7 @@ class OrientationPlan:
         gather: StructureFactorGather | None = None,
         validate: bool = True,
         build_alignment: bool = True,
+        scored_hkl: NDArray[np.int64] | None = None,
     ) -> OrientationPlan:
         """Assemble an orientation's plans against the shared grid (enforces grid coupling).
 
@@ -224,6 +225,11 @@ class OrientationPlan:
         :func:`~diffBloch.core.dynamical.build_structure_factor_gather` when it builds the gather
         here -- pass ``False`` only on a hot rebuild loop whose grid coverage an upstream ``g_max``
         guard already guarantees. Ignored when a precomputed ``gather`` is supplied.
+
+        ``scored_hkl`` ``(S, 3)`` optionally pins the **scored** reflection set (``build_alignment_plan``'s
+        ``restrict_to``), as :meth:`CoupledOrientationPlan.build` does: a rebuild over the same beams
+        passes the current ``alignment.hkl`` so a narrowed scored set (``restrict_scored_resolution``)
+        survives it. ``None`` scores every observed reflection the beam set solves.
         """
         beam_hkl = np.asarray(beam_hkl, dtype=np.int64)
         if gather is None:
@@ -274,7 +280,11 @@ class OrientationPlan:
             beam_plans=beam_plans,
             pattern=pattern,
             alignment=(
-                build_alignment_plan(beam_hkl_t, pattern.hkl)
+                build_alignment_plan(
+                    beam_hkl_t,
+                    pattern.hkl,
+                    restrict_to=None if scored_hkl is None else torch.as_tensor(scored_hkl),
+                )
                 if build_alignment
                 else AlignmentPlan(
                     hkl=torch.empty((0, 3), dtype=torch.int64),
@@ -291,7 +301,8 @@ class OrientationPlan:
         """Rebuild this plan at a new ``orientation``, reusing everything else (F-gather included).
 
         The pure rebuild verb an orientation search needs: same beam set, tilts, thickness,
-        reduction, ``pattern`` / ``alignment`` -- only ``orientation`` changes, so only the
+        reduction, ``pattern`` / scored set (pinned, so a narrowed one survives) -- only
+        ``orientation`` changes, so only the
         orientation-dependent beam bases are recomputed while the orientation-free
         :class:`~diffBloch.core.dynamical.StructureFactorGather` (shared across the tilts) is reused
         via ``gather=``. ``grid`` is required because the plan does not own the shared support the
@@ -310,6 +321,7 @@ class OrientationPlan:
             tilts=np.asarray(self.tilts),
             tilt_reduction=self.tilt_reduction,
             gather=self.beam_plans[0].gather,
+            scored_hkl=np.asarray(self.alignment.hkl),
         )
 
 
