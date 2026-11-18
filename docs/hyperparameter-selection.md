@@ -57,6 +57,8 @@ Bloch wave simulation hyperparameters (`BlochwaveConfig`).
 | `union_adaptive` | `true` | Choose union sections adaptively. See [Union coupling](#union-coupling). |
 | `fixed_n_segments` | `12` | Number of union sections when adaptive splitting is disabled. See [Union coupling](#union-coupling). |
 | `union_max_new_beams_pct` | `0.01` | Threshold for adaptive splitting. See [Union coupling](#union-coupling). |
+| `union_cost_select` | `true` | With adaptive splitting, replace the bisection's groups with the cheapest even split. See [Union coupling](#union-coupling). |
+| `union_segment_overhead_beams` | `500` | Per-group overhead, in beams, used by `union_cost_select`. See [Union coupling](#union-coupling). |
 | `g_max` | `2.25` | Largest reflection {math}`g` vector simulated (Å⁻¹). Off-diagonal structure factors extend to {math}`2g_\mathrm{max}`. |
 | `gmax_refine` | `null` | Largest reflection {math}`g` (Å⁻¹) that is *scored*: the orientation and thickness fits, refinement, and the report compare only reflections up to it. Beams beyond it still couple in the simulation (`g_max`). Must not exceed `g_max`; `null` scores up to `g_max`. |
 | `sg_max` | `0.01` | Maximum excitation-error magnitude (Å⁻¹) for a beam to enter the simulation at a sampled tilt. |
@@ -118,6 +120,18 @@ and the chunk is split in two and recursed into if the midpoint would add more t
 `union_max_new_beams_pct` of new beams beyond that union. Adaptive chunking costs more beam-set
 unions up front (to evaluate the split predicate) but generally solves fewer total beams than a
 fixed split sized conservatively enough to avoid under-coupling.
+
+Bisection stops at roughly the fewest groups that pass this check, which is not the fastest or
+lightest choice: a solve scales with the number of beams cubed, so a few wide groups can dominate
+runtime and peak memory, while each extra group adds a fixed overhead. With
+`union_cost_select: true` (the default), the bisection's group count `n0` is kept as a minimum, and
+every even split from `n0` up to one group per tilt is scored by
+`sum(K^3 + tilts_in_group * beams_in_group^3)`, where `K` is `union_segment_overhead_beams`. The
+cheapest split is used. The choice depends only on beam counts, so it is the same on every machine;
+`K` only affects how good the choice is. `K = 500` was chosen by timing one refinement
+forward+backward for every even split on borane and CsPbBr3: it picks the fastest split (borane:
+15 groups instead of bisection's 4, about half the time and a quarter of the peak memory). Larger
+`K` keeps fewer, wider groups; smaller `K` splits further.
 
 With `union_adaptive: false`, `fixed_n_segments` sets the number of equal groups regardless of how
 much the beam set actually changes across them -- more predictable when a fixed, known chunk count

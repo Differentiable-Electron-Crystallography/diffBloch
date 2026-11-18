@@ -259,3 +259,93 @@ def test_mosaic_composed_tilts_lose_no_excited_beam(rotation: int, adaptive: boo
     assert _missing_beams(segments, per_tilt) == 0
     covered = sorted(t for segment in segments for t in segment.covered_tilt_indices)
     assert covered == list(range(tilts.shape[0]))
+
+
+# --- cost-selected even split (union_cost_select) ---------------------------------------------------
+
+
+def _brute_force_cost_pick(n_sweep, mask_of, n_floor, overhead):
+    from diffBloch.preprocess.coupling import _fixed_segment_ranges, _split_cost
+
+    costs = {
+        n: _split_cost(_fixed_segment_ranges(n_sweep, n), n_sweep, mask_of, overhead)
+        for n in range(n_floor, n_sweep + 1)
+    }
+    best = min(costs.values())
+    return _fixed_segment_ranges(n_sweep, min(n for n, c in costs.items() if c == best))
+
+
+@pytest.mark.parametrize("overhead", [0.0, 1.0, 3.0, 1e6])
+def test_cost_split_picks_the_cheapest_even_split_at_or_above_the_floor(overhead: float) -> None:
+    from diffBloch.preprocess.coupling import _cost_segment_boundaries
+
+    rng = np.random.default_rng(0)
+    masks = rng.random((12, 40)) < 0.3
+    mask_of = lambda i: masks[i]  # noqa: E731 -- terse test stub
+    picked = _cost_segment_boundaries(12, mask_of, n_floor=3, overhead_beams=overhead)
+    np.testing.assert_array_equal(picked, _brute_force_cost_pick(12, mask_of, 3, overhead))
+    assert len(picked) - 1 >= 3
+
+
+def test_cost_split_with_a_huge_overhead_keeps_the_floor_count() -> None:
+    from diffBloch.preprocess.coupling import _cost_segment_boundaries
+
+    masks = np.random.default_rng(1).random((10, 30)) < 0.3
+    picked = _cost_segment_boundaries(10, lambda i: masks[i], n_floor=4, overhead_beams=1e9)
+    assert len(picked) - 1 == 4
+
+
+@pytest.mark.parametrize("rotation", ROTATIONS)
+def test_cost_split_tiles_tilts_and_is_never_fewer_than_bisection(rotation: int) -> None:
+    grid, tilts = _grid_and_tilts()
+    d = np.load(REPLAY_ROOT / f"rot_{rotation}.npz")
+
+    def build(policy: UnionCoupling) -> tuple[Segment, ...]:
+        return build_coupling_segments(
+            policy,
+            np.asarray(grid.structure_factor_hkl),
+            cell=np.asarray(grid.cell),
+            orientation=d["orientation"],
+            tilts=tilts,
+            energy=ENERGY_EV,
+            u0=float(d["u0"]),
+        )
+
+    cost = build(UnionCoupling(union_adaptive=True, union_cost_select=True))
+    bisection = build(UnionCoupling(union_adaptive=True, union_cost_select=False))
+    covered = [t for segment in cost for t in segment.covered_tilt_indices]
+    assert covered == list(range(42))
+    assert len(cost) >= len(bisection)
+    for segment in cost:
+        assert (0, 0, 0) in _as_set(segment.union_hkl)
+
+
+def test_policy_rejects_negative_segment_overhead() -> None:
+    with pytest.raises(ValueError, match="union_segment_overhead_beams"):
+        UnionCoupling(union_segment_overhead_beams=-1.0)
+
+
+def test_cost_split_cache_is_filled_once_and_reused() -> None:
+    grid, tilts = _grid_and_tilts()
+    d = np.load(REPLAY_ROOT / f"rot_{ROTATIONS[0]}.npz")
+    hkl = np.asarray(grid.structure_factor_hkl)
+
+    def build(cache: dict[int, np.ndarray] | None) -> tuple[Segment, ...]:
+        return build_coupling_segments(
+            UnionCoupling(),
+            hkl,
+            cell=np.asarray(grid.cell),
+            orientation=d["orientation"],
+            tilts=tilts,
+            energy=ENERGY_EV,
+            u0=float(d["u0"]),
+            split_cache=cache,
+        )
+
+    cache: dict[int, np.ndarray] = {}
+    covers = [s.covered_tilt_indices for s in build(cache)]
+    assert list(cache) == [0]
+    assert covers == [s.covered_tilt_indices for s in build(None)]
+    # A planted cache entry is used as-is, so the search is skipped.
+    cache[0] = np.asarray([0, tilts.shape[0] - 1])
+    assert len(build(cache)) == 1

@@ -355,6 +355,12 @@ class UnionCoupling:
     where the excited set drifts and sparse where it is stable. In the adaptive mode
     ``fixed_n_segments`` is ignored.
 
+    ``union_cost_select`` (adaptive mode only) keeps the bisection's segment count ``n0`` as a floor,
+    then scores every even split from ``n0`` up to one segment per tilt by
+    ``sum(K^3 + n_tilts_in_segment * n_beams_in_segment^3)`` with ``K =
+    union_segment_overhead_beams``, and uses the cheapest. The choice depends only on beam counts,
+    so it reproduces on any machine; ``K`` affects only how good the choice is.
+
     The defaults suit the standard rocking-curve recipe (12 fixed even-sized chunks, fixed mode).
     """
 
@@ -365,6 +371,10 @@ class UnionCoupling:
     sg_max: float = 0.01  # excitation-error cutoff: a beam couples at a tilt when |Sg| < sg_max
     union_adaptive: bool = True  # place chunk boundaries by recursive bisection, not even splits
     union_max_new_beams_pct: float = 0.01  # adaptive: split while a midpoint adds > this fraction
+    # adaptive: take the bisection count as a floor, then pick the even split of lowest beam cost
+    union_cost_select: bool = True
+    # per-segment overhead in beams (K) in the cost sum(K^3 + n_tilts * n_beams^3)
+    union_segment_overhead_beams: float = 500.0
 
     def __post_init__(self) -> None:
         if self.fixed_n_segments < 1:
@@ -373,6 +383,8 @@ class UnionCoupling:
             raise ValueError("g_max and sg_max must be positive")
         if not 0.0 < self.union_max_new_beams_pct <= 1.0:
             raise ValueError("union_max_new_beams_pct must be in (0, 1]")
+        if not self.union_segment_overhead_beams >= 0.0:
+            raise ValueError("union_segment_overhead_beams must be >= 0")
 
 
 @dataclass(frozen=True)
