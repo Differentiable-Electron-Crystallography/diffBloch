@@ -111,9 +111,6 @@ def build_structure_factor_gather(
     """
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
 
-    # Ordering convention: gmh[i, j] = beam_j - beam_i, so A[i, j] = F(beam_j - beam_i).
-    gmh = (beams[None] - beams[:, None]).reshape(-1, 3)
-
     if structure_factor_indices is None:
         grid = _beam_index_array(structure_factor_hkl, name="structure_factor_hkl")
         source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
@@ -134,6 +131,7 @@ def build_structure_factor_gather(
         # span the difference support (the realistic failure: gpts sized to the beam g_max, not 2x).
         # Catch it here with a clear message rather than letting ravel_hkl(gmh, ...) raise numpy's
         # cryptic "invalid entry in coordinates array".
+        gmh = _beam_differences(beams)
         gpts_box = np.asarray(gpts, dtype=np.int64)
         shifted = gmh + gpts_box // 2
         out_of_box = np.any((shifted < 0) | (shifted >= gpts_box), axis=1)
@@ -145,11 +143,11 @@ def build_structure_factor_gather(
                 "(size gpts to span the difference support, ~2x the beam g_max)"
             )
 
-    destination = ravel_hkl(gmh, gpts)  # validate=False backstop: raises here on an out-of-box gmh
+    destination = _difference_indices(beams, gpts)
     if validate:
         uncovered = np.isin(destination, source, invert=True)
         if uncovered.any():
-            missing = gmh[uncovered][0]
+            missing = _beam_differences(beams)[uncovered][0]
             raise ValueError(
                 "structure_factor_hkl must cover every beam difference hkl_j - hkl_i; "
                 f"missing {tuple(int(component) for component in missing)} "
@@ -163,6 +161,39 @@ def build_structure_factor_gather(
         buffer_size=int(np.prod(gpts)),
         gpts=(int(gpts[0]), int(gpts[1]), int(gpts[2])),
     )
+
+
+def _beam_differences(beams: IntArray) -> IntArray:
+    """``(N^2, 3)`` beam differences, row ``i * N + j`` = ``beams[j] - beams[i]``.
+
+    The ordering convention of every gather: ``A[i, j] = F(beam_j - beam_i)``.
+    """
+    differences: IntArray = (beams[None] - beams[:, None]).reshape(-1, 3)
+    return differences
+
+
+def _difference_indices(beams: IntArray, gpts: tuple[int, int, int]) -> NDArray[np.intp]:
+    """Raveled :func:`_beam_differences` of ``beams`` on the centered ``gpts`` box.
+
+    :func:`~diffBloch.core.reciprocal.ravel_hkl` is ``L(hkl) + L(gpts // 2)`` with ``L`` linear,
+    so ``ravel(beams[j] - beams[i]) = L(beams[j]) - L(beams[i]) + L(gpts // 2)``: the ``N^2``
+    indices come from ``N`` raveled beams instead of raveling the ``(N^2, 3)`` differences. That
+    holds only while every difference lies in the box, which on each axis is set by the beams'
+    extent alone (the differences span ``+/-(max - min)``); outside it this falls back to
+    ``ravel_hkl``, which raises on an out-of-box difference (the ``validate=False`` backstop).
+    """
+    box = np.asarray(gpts, dtype=np.int64)
+    shift = box // 2
+    if beams.shape[0] == 0:
+        return np.zeros(0, dtype=np.intp)
+    extent = beams.max(axis=0) - beams.min(axis=0)
+    if np.any(shift + extent >= box) or np.any(shift - extent < 0):
+        return ravel_hkl(_beam_differences(beams), gpts)
+    weights = np.asarray((box[1] * box[2], box[2], 1), dtype=np.int64)
+    linear = beams @ weights
+    offset = int(shift @ weights)
+    destination: NDArray[np.intp] = (linear[None, :] - linear[:, None]).reshape(-1) + offset
+    return destination
 
 
 def gather_structure_factors(
@@ -298,6 +329,53 @@ def build_beam_plan(
     )
 
 
+def build_tilt_beam_plans(
+    beam_hkl: IntArray,
+    bases: FloatArray,
+    *,
+    energy: float,
+    gather: StructureFactorGather,
+    u0: float = 0.0,
+) -> tuple[BeamPlan, ...]:
+    """One :class:`BeamPlan` per reciprocal basis in ``bases`` ``(B, 3, 3)``, over one beam set.
+
+    The same per-plan values as calling :func:`build_beam_plan` once per basis with this
+    ``gather``, computed for all ``B`` tilts at once: ``g``, ``Mii`` and ``Sg`` are evaluated over
+    the stacked ``(B * N, 3)`` beam vectors, and the plans share one ``psi0``, ``mask`` and
+    ``gather``. A rocking curve's tilts (``B`` in the tens to hundreds) then cost a handful of array
+    operations instead of ``B`` Python-level builds.
+    """
+    beams = _beam_index_array(beam_hkl, name="beam_hkl")
+    basis_stack = np.asarray(bases, dtype=np.float64)
+    if basis_stack.ndim != 3 or basis_stack.shape[1:] != (3, 3):
+        raise ValueError(f"bases must have shape (B, 3, 3), got {basis_stack.shape}")
+    if gather.n_beams != beams.shape[0]:
+        raise ValueError("gather does not match this beam_hkl")
+    n_tilts, n_beams = basis_stack.shape[0], beams.shape[0]
+    g = np.stack([g_vectors(beams, basis) for basis in basis_stack]).reshape(-1, 3)
+    mii = mii_factors(g, energy, u0=u0)
+    sg = excitation_errors(g, energy, u0=u0)
+    k_n = wavevector_magnitude(energy, u0=u0)
+    prefactor = structure_matrix_prefactor(energy)
+    diagonal = 2.0 * k_n * sg * mii
+    mii_t = torch.tensor(mii.reshape(n_tilts, n_beams), dtype=torch.float64)
+    diagonal_t = torch.tensor(diagonal.reshape(n_tilts, n_beams), dtype=torch.float64)
+    psi0 = torch.tensor(np.all(beams == 0, axis=1), dtype=torch.complex128)
+    mask = torch.ones(n_beams, dtype=torch.bool)
+    return tuple(
+        BeamPlan(
+            gather=gather,
+            mii=mii_t[index],
+            prefactor=prefactor,
+            diagonal=diagonal_t[index],
+            k_n=k_n,
+            psi0=psi0,
+            mask=mask,
+        )
+        for index in range(n_tilts)
+    )
+
+
 def structure_matrix(
     plan: BeamPlan, structure_factors: Tensor, absorption: Absorption = NO_ABSORPTION
 ) -> Tensor:
@@ -423,10 +501,11 @@ def stack_beam_plans(plans: Sequence[BeamPlan]) -> BeamPlanBatch:
         raise ValueError("stack_beam_plans requires at least one beam plan")
     first = plans[0]
     for plan in plans[1:]:
-        shares_beams = torch.equal(
-            plan.gather.beam_difference_indices, first.gather.beam_difference_indices
-        ) and torch.equal(
-            plan.gather.structure_factor_indices, first.gather.structure_factor_indices
+        shares_beams = plan.gather is first.gather or (
+            torch.equal(plan.gather.beam_difference_indices, first.gather.beam_difference_indices)
+            and torch.equal(
+                plan.gather.structure_factor_indices, first.gather.structure_factor_indices
+            )
         )
         if not shares_beams:
             raise ValueError("stack_beam_plans requires plans sharing one beam set (gather)")

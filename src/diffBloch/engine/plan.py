@@ -22,8 +22,8 @@ from diffBloch.core.crystal import orientation_basis, reciprocal_cell
 from diffBloch.core.dynamical import (
     BeamPlan,
     StructureFactorGather,
-    build_beam_plan,
     build_structure_factor_gather,
+    build_tilt_beam_plans,
 )
 from diffBloch.core.products import (
     PLAIN_SUM,
@@ -257,17 +257,10 @@ class OrientationPlan:
             # pinv(A @ tilt.T).T == pinv(A).T @ tilt.T, so derive the nominal reciprocal basis once
             # and rotate it instead of performing one pseudoinverse per sub-tilt.
             bases = [nominal_basis @ tilt.T for tilt in tilt_mats]
-        beam_plans = tuple(
-            build_beam_plan(
-                beam_hkl,
-                np.asarray(grid.structure_factor_hkl),
-                basis,
-                energy=energy,
-                gpts=grid.gpts,
-                u0=u0,
-                gather=gather,
-            )
-            for basis in bases
+        if gather.gpts != tuple(int(p) for p in grid.gpts):
+            raise ValueError("precomputed gather does not match this grid's gpts")
+        beam_plans = build_tilt_beam_plans(
+            beam_hkl, np.stack(bases), energy=energy, gather=gather, u0=u0
         )
         beam_hkl_t = torch.tensor(beam_hkl, dtype=torch.int64)
         return cls(

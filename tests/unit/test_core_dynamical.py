@@ -492,3 +492,40 @@ def test_tilted_beam_geometry_is_differentiable_in_the_tilts() -> None:
 
     assert angle.grad is not None and torch.isfinite(angle.grad)
     assert float(angle.grad) != 0.0
+
+
+def test_difference_indices_match_raveling_every_beam_difference() -> None:
+    from diffBloch.core.dynamical.assembly import _beam_differences, _difference_indices
+    from diffBloch.core.reciprocal import ravel_hkl
+
+    beams = np.random.default_rng(0).integers(-8, 9, (200, 3))
+    for gpts in [(41, 37, 35), (40, 36, 34)]:
+        np.testing.assert_array_equal(
+            _difference_indices(beams, gpts), ravel_hkl(_beam_differences(beams), gpts)
+        )
+    with pytest.raises(ValueError):  # a difference outside the box still raises
+        _difference_indices(beams, (17, 17, 17))
+
+
+def test_tilt_beam_plans_match_one_build_per_tilt() -> None:
+    from diffBloch.core.dynamical import (
+        build_beam_plan,
+        build_structure_factor_gather,
+        build_tilt_beam_plans,
+    )
+
+    rng = np.random.default_rng(1)
+    beams = np.vstack([[0, 0, 0], rng.integers(-3, 4, (40, 3))])
+    beams = np.unique(beams, axis=0)
+    axis = np.arange(-6, 7)
+    grid = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    gpts = (13, 13, 13)
+    gather = build_structure_factor_gather(grid, beams, gpts)
+    bases = 0.2 * np.eye(3) + 0.01 * rng.standard_normal((5, 3, 3))
+    batched = build_tilt_beam_plans(beams, bases, energy=200e3, gather=gather, u0=0.1)
+    for plan, basis in zip(batched, bases, strict=True):
+        single = build_beam_plan(beams, grid, basis, energy=200e3, gpts=gpts, u0=0.1, gather=gather)
+        assert torch.equal(plan.mii, single.mii)
+        assert torch.equal(plan.diagonal, single.diagonal)
+        assert torch.equal(plan.psi0, single.psi0)
+        assert plan.k_n == single.k_n and plan.prefactor == single.prefactor

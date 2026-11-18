@@ -123,6 +123,7 @@ def build_coupling_segments(
     energy: float,
     u0: float,
     split_cache: dict[int, NDArray[np.int64]] | None = None,
+    sweeps: list[tuple[int, int]] | None = None,
 ) -> tuple[Segment, ...]:
     """Partition the rocking curve into boundary-union coupled segments (pure geometry).
 
@@ -144,12 +145,14 @@ def build_coupling_segments(
     That endpoint union only bounds the tilts between two boundaries when those tilts sweep
     monotonically. A tilt list composed of several sweeps (isotropic mosaicity puts one rocking
     sweep per mosaic sample, :func:`~diffBloch.preprocess.orientation.compose_mosaic_tilts`) is
-    therefore split into its contiguous sweeps first (:func:`_contiguous_sweeps`) and each sweep is
+    therefore split into its contiguous sweeps first (:func:`contiguous_sweeps`) and each sweep is
     segmented on its own, so no segment spans the jump between two sweeps.
 
     ``split_cache`` (``union_cost_select`` only) maps a sweep's first tilt to its chosen split
     boundaries. When given, a cached split is reused instead of searched again, so a search over
     many nearby orientations (the orientation fit) picks the split once, at its first trial.
+    ``sweeps`` is the precomputed :func:`contiguous_sweeps` of ``tilts``, for a caller that couples
+    the same tilts many times (the orientation fit); ``None`` derives it here.
     """
     candidate_beam_hkl = np.asarray(candidate_beam_hkl, dtype=np.int64)
     cell = np.asarray(cell, dtype=np.float64)
@@ -203,7 +206,7 @@ def build_coupling_segments(
         )
 
     segments: list[Segment] = []
-    for start, stop in _contiguous_sweeps(tilts):
+    for start, stop in contiguous_sweeps(tilts) if sweeps is None else sweeps:
         n_sweep = stop - start
 
         def sweep_mask(i: int, start: int = start) -> NDArray[np.bool_]:
@@ -322,7 +325,7 @@ def _cost_segment_boundaries(
     return best
 
 
-def _contiguous_sweeps(tilts: NDArray[np.float64]) -> list[tuple[int, int]]:
+def contiguous_sweeps(tilts: NDArray[np.float64]) -> list[tuple[int, int]]:
     """Split ``tilts`` ``(B, 3, 3)`` into half-open ``[start, stop)`` runs of one even sweep.
 
     A rocking sweep steps by the same rotation angle between every pair of consecutive tilts, so

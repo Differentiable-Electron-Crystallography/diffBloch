@@ -75,7 +75,7 @@ from diffBloch.observability import (
     OrientationSearchTrace,
 )
 from diffBloch.params import Device
-from diffBloch.preprocess.coupling import build_coupling_segments
+from diffBloch.preprocess.coupling import build_coupling_segments, contiguous_sweeps
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.orientation import goniometer_rotation
 from diffBloch.preprocess.pipeline import PlanStep, as_step
@@ -217,6 +217,8 @@ def optimize_orientation(
             )
             grid_inverse = torch.full((prod(sf_grid.gpts),), -1, dtype=torch.long)
             grid_inverse[grid_source] = torch.arange(grid_source.numel(), dtype=torch.long)
+            # Trial gathers live on the solve device (see _refine_one), so their lookups do too.
+            grid_inverse = grid_inverse.to(fgb.device)
 
         def refine(op: OrientationPlanLike) -> _FitResult:
             trial_fgb: Tensor | Callable[[OrientationPlanLike], Tensor] = fgb
@@ -241,16 +243,16 @@ def optimize_orientation(
                         return cached
                     seen_gathers.update(id(p.beam_plans[0].gather) for p in new)
                     assert grid_inverse is not None
-                    destinations = torch.unique(
+                    rows = grid_inverse[
                         torch.cat([p.beam_plans[0].gather.beam_difference_indices for p in new])
-                    )
-                    rows = grid_inverse[destinations]
+                    ]
                     if bool(torch.any(rows < 0)):
                         raise ValueError(
                             "a solve gather references an hkl outside the structure-factor grid"
                         )
-                    indices = torch.unique(rows).to(device=cached.device)
-                    missing = indices[~known.index_select(0, indices)]
+                    # Deduplicate only the rows not yet known (a few), not all N^2 differences.
+                    rows = rows.to(device=cached.device)
+                    missing = torch.unique(rows[~known.index_select(0, rows)])
                     if missing.numel():
                         with torch.no_grad():
                             values = engine.structure_factor_values(params, missing)
@@ -268,6 +270,7 @@ def optimize_orientation(
                 coupling=coupling,
                 validate=validate,
                 grid_source=grid_source,
+                device=fgb.device,
             )
 
         built = require_built_plans(plan)
@@ -415,6 +418,7 @@ def _refine_one(
     coupling: TrialCoupling | None,
     validate: bool = True,
     grid_source: Tensor | None = None,
+    device: torch.device | None = None,
 ) -> _FitResult:
     """Local Nelder-Mead search over the goniometer correction ``(alpha, beta, omega)``.
 
@@ -437,7 +441,11 @@ def _refine_one(
     # per-segment gathers are reused by beam set across this rotation's trials. The union split is
     # chosen once, at the seed (the search's first trial), and every later trial reuses it.
     gather_cache: dict[bytes, StructureFactorGather] = {}
+    # Trial gathers are moved to the solve device once, when built, instead of being copied there
+    # by every segment solve of every trial; the settled plan returned below keeps CPU gathers.
+    device_source = None if grid_source is None or device is None else grid_source.to(device)
     split_cache: dict[int, NDArray[np.int64]] = {}
+    sweeps = contiguous_sweeps(np.asarray(op.tilts, dtype=np.float64))
     seed_orientation = np.asarray(op.orientation, dtype=np.float64)
     # Every trial's solve beams come from the grid hkl inside |g| < g_max at that trial; this
     # superset of them is found once, so a trial scans it instead of the whole support grid.
@@ -477,7 +485,9 @@ def _refine_one(
         trial_n_matched_hkl.append(int(trial.alignment.pattern_index.shape[0]))
         trial_is_final.append(int(is_final))
 
-    def build_trial(orientation: NDArray[np.float64]) -> OrientationPlanLike:
+    def build_trial(
+        orientation: NDArray[np.float64], *, settled: bool = False
+    ) -> OrientationPlanLike:
         if coupling is None:
             return op.with_orientation(grid, orientation)
         return _coupled_trial(
@@ -485,10 +495,13 @@ def _refine_one(
             op,
             orientation,
             coupling,
-            gather_cache,
+            {} if settled else gather_cache,
             split_cache=split_cache,
+            sweeps=sweeps,
             candidate_hkl=candidate_hkl,
             grid_source=grid_source,
+            gather_device=None if settled else device,
+            device_source=None if settled else device_source,
             validate=validate,
         )
 
@@ -533,7 +546,7 @@ def _refine_one(
     )
     alpha, beta, omega = result.x
     best_orientation = seed_orientation @ goniometer_rotation(alpha, beta, omega)
-    current = build_trial(best_orientation)
+    current = build_trial(best_orientation, settled=True)
     n_trials += 1
     current_fgb = fgb(current) if callable(fgb) else fgb
     # result.fun is the comparable (penalized) score minimised above; report the plain score
@@ -622,8 +635,11 @@ def _coupled_trial(
     gather_cache: dict[bytes, StructureFactorGather] | None = None,
     *,
     split_cache: dict[int, NDArray[np.int64]] | None = None,
+    sweeps: list[tuple[int, int]] | None = None,
     candidate_hkl: NDArray[np.int64] | None = None,
     grid_source: Tensor | None = None,
+    gather_device: torch.device | None = None,
+    device_source: Tensor | None = None,
     validate: bool = True,
 ) -> CoupledOrientationPlan:
     """Re-couple the solve union and re-select the scored set, both at ``orientation`` (one trial).
@@ -645,7 +661,9 @@ def _coupled_trial(
     ``candidate_hkl`` (default: the whole support grid) is the beam pool the coupling scans, in
     grid order -- :func:`_trial_beam_candidates` for a search, which gives the same segments.
     ``grid_source`` is the run's shared :func:`~diffBloch.core.dynamical.grid_source_indices`
-    tensor for cache-miss gathers (default: raveled here, once per trial).
+    tensor for cache-miss gathers (default: raveled here, once per trial). With ``gather_device``,
+    each new gather's index tensors are moved there once (the grid side as the shared
+    ``device_source``), so the solve does not copy them on every call.
 
     ``validate`` (default ``True``) is forwarded to each cache-miss
     :func:`~diffBloch.core.dynamical.build_structure_factor_gather`; ``False`` skips its O(N^2)
@@ -666,6 +684,7 @@ def _coupled_trial(
         energy=op.energy,
         u0=op.u0,
         split_cache=split_cache,
+        sweeps=sweeps,
     )
     union_hkl = np.unique(np.concatenate([segment.union_hkl for segment in segments]), axis=0)
     basis = orientation_basis(cell, orientation)
@@ -705,6 +724,16 @@ def _coupled_trial(
                     validate=validate,
                     structure_factor_indices=source,
                 )
+                if gather_device is not None:
+                    gather = replace(
+                        gather,
+                        structure_factor_indices=(
+                            gather.structure_factor_indices.to(gather_device)
+                            if device_source is None
+                            else device_source
+                        ),
+                        beam_difference_indices=gather.beam_difference_indices.to(gather_device),
+                    )
                 gather_cache[key] = gather
             gathers.append(gather)
     return CoupledOrientationPlan.build(
