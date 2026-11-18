@@ -27,10 +27,6 @@ from diffBloch.core.dynamical.assembly import BlochSystem, _fill_diagonal
 
 type SolverMethod = Literal["matrix_exp", "bloch_eigen"]
 type Thicknesses = float | Sequence[float] | Tensor
-# What is known about A ahead of the solve: "real" (centrosymmetric about the origin, no absorption
-# -- real symmetric), "hermitian" (no absorption), "general" (absorptive). Decided once per engine
-# (see RefinementEngine.operator_kind); None makes each solve inspect A itself, which syncs the host.
-type OperatorKind = Literal["real", "hermitian", "general"]
 
 # `matrix_exp` scaling-and-squaring holds several N*N temporaries per matrix (Pade numerator/
 # denominator, the linear solve). This conservative multiplier estimates the live footprint of one
@@ -50,7 +46,7 @@ def propagate(
     *,
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
-    operator_kind: OperatorKind | None = None,
+    real_operator: bool = False,
 ) -> Tensor:
     """Propagate ``system.psi0`` to each thickness, returning the exit wavefunction.
 
@@ -72,6 +68,14 @@ def propagate(
     ~1 ulp: the result matches the unbounded solve *to machine precision*, never in accuracy. A
     memory knob, not a result knob. ``bloch_eigen`` ignores it (it diagonalises once, no
     ``(B, T, N, N)`` intermediate).
+
+    ``real_operator`` (``matrix_exp`` only) is the caller's guarantee that ``A`` is real symmetric
+    for *every* parameter value, not just the current one -- true when the space group holds the
+    inversion through the origin and absorption is off (see
+    :func:`diffBloch.core.symmetry.has_inversion_at_origin`). The solve then runs in real float32
+    arithmetic (:func:`_propagate_matrix_exp_real`), dropping ``Im A``. It is never inferred from
+    the values of ``A``: a structure that is only momentarily real would silently lose the gradient
+    through ``Im F``. ``False`` (the default) is the complex path. ``bloch_eigen`` ignores it.
     """
     if max_batch is not None and max_batch < 1:
         raise ValueError(f"max_batch must be a positive integer or None, got {max_batch}")
@@ -82,9 +86,9 @@ def propagate(
         raise ValueError("thicknesses must be a scalar or 1-D sequence")
 
     if method == "matrix_exp":
-        # Real A (centrosymmetric, no absorption) takes the real-arithmetic path; anything else
-        # falls back to the complex torch.matrix_exp inside it.
-        return _propagate_matrix_exp_real(system, t, max_batch=max_batch, kind=operator_kind)
+        if real_operator:
+            return _propagate_matrix_exp_real(system, t, max_batch=max_batch)
+        return _propagate_matrix_exp(system, t, max_batch=max_batch)
     if method == "bloch_eigen":
         return _propagate_bloch_eigen(system, t)
     raise ValueError(f"method must be 'matrix_exp' or 'bloch_eigen', got {method!r}")
@@ -150,23 +154,10 @@ def _propagate_matrix_exp(
     return torch.cat(amplitudes, dim=0).reshape(*a.shape[:-2], n_thick, n)  # (..., T, N)
 
 
-# A complex operator counts as real when its imaginary part is below this fraction of its real
-# part: float32 structure factors of a centrosymmetric crystal carry ~1e-7 relative imaginary noise.
-_REAL_OPERATOR_RTOL = 1e-6
 # Taylor coefficients of cos / sin in Z = Y^2 (|Y| <= 1 after scaling): cos(Y) = sum c_k Z^k,
 # sin(Y) = Y sum s_k Z^k, k = 0..6 -- truncation below 1/14! ~ 1e-11, far under float32 rounding.
 _COS_TAYLOR = tuple((-1) ** k / math.factorial(2 * k) for k in range(7))
 _SIN_TAYLOR = tuple((-1) ** k / math.factorial(2 * k + 1) for k in range(7))
-
-
-def _operator_kind(a: Tensor) -> OperatorKind:
-    """Inspect ``A`` (host-syncing): the fallback when the caller has not decided the kind."""
-    if not a.is_complex():
-        return "real"
-    a = a.detach()
-    if float(a.imag.abs().max()) <= _REAL_OPERATOR_RTOL * max(float(a.real.abs().max()), 1e-30):
-        return "real"
-    return "hermitian" if torch.allclose(a, a.mH) else "general"
 
 
 def _propagate_matrix_exp_real(
@@ -174,7 +165,6 @@ def _propagate_matrix_exp_real(
     thicknesses: Tensor,
     *,
     max_batch: int | None = None,
-    kind: OperatorKind | None = None,
 ) -> Tensor:
     """``matrix_exp`` for a real symmetric ``A`` in real arithmetic: ``exp(i theta A) = cos(theta A)
     + i sin(theta A)``.
@@ -183,12 +173,16 @@ def _propagate_matrix_exp_real(
     structure factors, so ``A`` is real symmetric. ``cos`` / ``sin`` are then evaluated with real
     matmuls only -- a scaled degree-6 Taylor series in ``Y^2`` (Paterson-Stockmeyer, 6 matmuls),
     then ``s`` double-angle steps ``S <- 2 S C``, ``C <- C^2 - S^2`` (3 matmuls each) -- where a
-    complex matmul costs 4 real ones. Differentiable by autograd through those real ops. Falls back
-    to :func:`_propagate_matrix_exp` when ``A`` is not real (non-centrosymmetric or absorptive).
+    complex matmul costs 4 real ones. Differentiable by autograd through those real ops. Only for a
+    caller that guarantees ``A`` is real (``propagate(real_operator=True)``); ``Im A`` is dropped.
+
+    Memory: forward plus backward holds about ``10 + 2 s`` float32 ``N x N`` matrices per operator
+    (``s`` squarings), i.e. ``40 + 8 s`` bytes per ``N**2``, against about 376 for complex
+    ``torch.matrix_exp`` (measured on CUDA, N = 512). The real path therefore stays under the
+    complex block budget up to ``s ~ 42`` -- a ``2**42`` operator norm, far past any crystal -- so it
+    reuses the caller's complex ``max_batch`` unchanged.
     """
     a = system.a
-    if (kind or _operator_kind(a)) != "real":
-        return _propagate_matrix_exp(system, thicknesses, max_batch=max_batch)
     a = (a.real if a.is_complex() else a).to(torch.float32)
     n = a.shape[-1]
     psi0 = system.psi0

@@ -72,6 +72,7 @@ from diffBloch.core.symmetry import (
     ExpandedAsu,
     build_asu_expansion_plan,
     expand_asu,
+    has_inversion_at_origin,
 )
 
 __all__ = [
@@ -106,6 +107,7 @@ __all__ = [
     "equivalent_isotropic_adp",
     "excitation_errors",
     "expand_asu",
+    "has_inversion_at_origin",
     "g_vector_lengths",
     "g_vectors",
     "gather_structure_factors",

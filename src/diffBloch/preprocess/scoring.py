@@ -22,9 +22,8 @@ from typing import cast
 import torch
 from torch import Tensor
 
-from diffBloch.core import StructureFactorGather
-from diffBloch.core.solver import OperatorKind, SolverMethod
-from diffBloch.core.symmetry import AsuExpansionPlan
+from diffBloch.core import StructureFactorGather, has_inversion_at_origin
+from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import (
     CoupledOrientationPlan,
     LossFn,
@@ -78,6 +77,11 @@ def build_engine(
     unbounded solve to machine precision (a pin is only needed for a specific device budget).
     Execution-only, like ``method``.
 
+    The engine's ``real_operator`` is decided here, once, from the structure: no absorption and an
+    inversion through the origin (:func:`~diffBloch.core.symmetry.has_inversion_at_origin`) make
+    ``A`` real symmetric for every parameter value, so ``matrix_exp`` runs in real arithmetic.
+    Everything else stays on the complex path.
+
     ``compact_structure_factors`` computes only support-grid rows referenced by the settled solve
     gathers and scatters them into the unchanged grid-shaped interface. It changes neither the
     solve nor its gradients; callers whose beam sets change dynamically may disable it or extend
@@ -113,25 +117,11 @@ def build_engine(
         active_structure_factor_indices=active_indices,
         profile=profile,
         checkpoint_activations=checkpoint_activations,
-        operator_kind=operator_kind(refinement.asu_plan, absorption),
+        # Absorption makes A non-Hermitian; without it, inversion at the origin makes every F_g
+        # real at any refined positions, so A is real symmetric and the solve can run in real
+        # arithmetic.
+        real_operator=not absorption.enabled and has_inversion_at_origin(refinement.asu_plan),
     )
-
-
-def operator_kind(asu_plan: AsuExpansionPlan, absorption: Absorption) -> OperatorKind:
-    """What the structure matrix ``A`` is, from the structure alone (no structure factors).
-
-    Absorption makes ``A`` non-Hermitian. Without it, ``A`` is real symmetric exactly when every
-    ``F_g`` is real, which the symmetry guarantees -- for any refined positions -- when the space
-    group holds the inversion through the origin (``-x, -y, -z``); otherwise it is Hermitian.
-    """
-    if absorption.enabled:
-        return "general"
-    rotations = asu_plan.rotations.detach().cpu().to(torch.float64)
-    translations = asu_plan.translations.detach().cpu().to(torch.float64)
-    eye = torch.eye(3, dtype=torch.float64)
-    inversion = (rotations + eye).abs().amax(dim=(-2, -1)) < 1e-6
-    at_origin = ((translations - translations.round()).abs() < 1e-6).all(dim=-1)
-    return "real" if bool((inversion & at_origin).any()) else "hermitian"
 
 
 def active_structure_factor_indices(
