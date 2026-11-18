@@ -122,6 +122,7 @@ def build_coupling_segments(
     tilts: NDArray[np.float64],
     energy: float,
     u0: float,
+    split_cache: dict[int, NDArray[np.int64]] | None = None,
 ) -> tuple[Segment, ...]:
     """Partition the rocking curve into boundary-union coupled segments (pure geometry).
 
@@ -145,6 +146,10 @@ def build_coupling_segments(
     sweep per mosaic sample, :func:`~diffBloch.preprocess.orientation.compose_mosaic_tilts`) is
     therefore split into its contiguous sweeps first (:func:`_contiguous_sweeps`) and each sweep is
     segmented on its own, so no segment spans the jump between two sweeps.
+
+    ``split_cache`` (``union_cost_select`` only) maps a sweep's first tilt to its chosen split
+    boundaries. When given, a cached split is reused instead of searched again, so a search over
+    many nearby orientations (the orientation fit) picks the split once, at its first trial.
     """
     candidate_beam_hkl = np.asarray(candidate_beam_hkl, dtype=np.int64)
     cell = np.asarray(cell, dtype=np.float64)
@@ -207,7 +212,20 @@ def build_coupling_segments(
         if policy.union_adaptive:
             # Adaptive boundaries by recursive bisection (fixed_n_segments ignored). Each segment's
             # beam set is the union of its own inclusive endpoints; the covers tile every tilt once.
+            if policy.union_cost_select and split_cache is not None and start in split_cache:
+                segments.extend(
+                    _fixed_segments(split_cache[start], start, n_sweep, sweep_mask, pool)
+                )
+                continue
             ranges = _adaptive_segment_ranges(n_sweep, sweep_mask, policy.union_max_new_beams_pct)
+            if policy.union_cost_select:
+                boundaries = _cost_segment_boundaries(
+                    n_sweep, sweep_mask, len(ranges), policy.union_segment_overhead_beams
+                )
+                if split_cache is not None:
+                    split_cache[start] = boundaries
+                segments.extend(_fixed_segments(boundaries, start, n_sweep, sweep_mask, pool))
+                continue
             segments.extend(
                 Segment(
                     union_hkl=pool[sweep_mask(a) | sweep_mask(b)].copy(),
@@ -218,12 +236,70 @@ def build_coupling_segments(
             continue
 
         boundaries = _fixed_segment_ranges(n_sweep, policy.fixed_n_segments)
-        for i in range(len(boundaries) - 1):
-            a, b = int(boundaries[i]), int(boundaries[i + 1])
-            union = sweep_mask(a) | sweep_mask(b)
-            cover = tuple(range(start + a, start + (n_sweep if i == len(boundaries) - 2 else b)))
-            segments.append(Segment(union_hkl=pool[union].copy(), covered_tilt_indices=cover))
+        segments.extend(_fixed_segments(boundaries, start, n_sweep, sweep_mask, pool))
     return tuple(segments)
+
+
+def _fixed_segments(
+    boundaries: NDArray[np.int64],
+    start: int,
+    n_sweep: int,
+    sweep_mask: Callable[[int], NDArray[np.bool_]],
+    pool: NDArray[np.int64],
+) -> list[Segment]:
+    """Endpoint-union segments for split ``boundaries`` of one sweep starting at tilt ``start``."""
+    out: list[Segment] = []
+    for i in range(len(boundaries) - 1):
+        a, b = int(boundaries[i]), int(boundaries[i + 1])
+        union = sweep_mask(a) | sweep_mask(b)
+        cover = tuple(range(start + a, start + (n_sweep if i == len(boundaries) - 2 else b)))
+        out.append(Segment(union_hkl=pool[union].copy(), covered_tilt_indices=cover))
+    return out
+
+
+def _split_cost(
+    boundaries: NDArray[np.int64],
+    n_sweep: int,
+    sweep_mask: Callable[[int], NDArray[np.bool_]],
+    overhead_beams: float,
+) -> float:
+    """Beam-count cost ``sum(K^3 + n_tilts * n_beams^3)`` of the even split at ``boundaries``."""
+    cost = 0.0
+    last = len(boundaries) - 2
+    for i in range(last + 1):
+        a, b = int(boundaries[i]), int(boundaries[i + 1])
+        n_beams = float((sweep_mask(a) | sweep_mask(b)).sum())
+        n_covered = (n_sweep if i == last else b) - a
+        cost += overhead_beams**3 + n_covered * n_beams**3
+    return cost
+
+
+def _cost_segment_boundaries(
+    n_sweep: int,
+    sweep_mask: Callable[[int], NDArray[np.bool_]],
+    n_floor: int,
+    overhead_beams: float,
+) -> NDArray[np.int64]:
+    """The even split of lowest beam cost with at least ``n_floor`` segments (``union_cost_select``).
+
+    ``n_floor`` is the bisection rule's segment count: fewer even segments under-couple, since a
+    fixed split's segments use endpoint unions only. Every count from ``n_floor`` up to one segment
+    per tilt is scored with :func:`_split_cost`; ties keep the fewer segments.
+    """
+    best: NDArray[np.int64] | None = None
+    best_cost = float("inf")
+    seen: set[bytes] = set()
+    for n in range(max(1, n_floor), max(n_floor, n_sweep) + 1):
+        boundaries = _fixed_segment_ranges(n_sweep, n)
+        key = boundaries.tobytes()
+        if key in seen:
+            continue
+        seen.add(key)
+        cost = _split_cost(boundaries, n_sweep, sweep_mask, overhead_beams)
+        if cost < best_cost:
+            best, best_cost = boundaries, cost
+    assert best is not None
+    return best
 
 
 def _contiguous_sweeps(tilts: NDArray[np.float64]) -> list[tuple[int, int]]:
