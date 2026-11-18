@@ -1,7 +1,7 @@
 """Coverage sweep: grow a beam knob to the minimum that recovers the most matched reflections.
 
 The *second* convergence operation (the first is self-stability in ``convergence.py``). Where a
-``converge_*`` sweep asks whether two consecutive *simulations* agree, a coverage sweep asks a
+``convergence_test_*`` sweep asks whether two consecutive *simulations* agree, a coverage sweep asks a
 cheaper, purely geometric question: how many of each orientation's *observed* reflections does the
 current beam set actually include? Growing a beam knob admits more beams; a candidate is accepted
 only while it *increases* that matched count, and the sweep stops at the first knob step that buys
@@ -14,7 +14,7 @@ no new match -- the minimal beam set that still covers the data.
 - :func:`maximize_scalar` -- the parameter-agnostic driver: click a scalar knob upward, keep the
   build while the objective strictly increases, return the last build at the first non-increase, or
   raise at a hard cap. The match-count analogue of
-  :func:`~diffBloch.preprocess.steps.convergence.converge_scalar`.
+  :func:`~diffBloch.preprocess.steps.convergence.convergence_test_scalar`.
 - :func:`cover_beams` -- the ``Plan -> Plan`` adapter for the Klar window
   (``integration_semiangle``) lever.
 

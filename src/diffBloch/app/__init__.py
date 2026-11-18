@@ -17,7 +17,7 @@ from diffBloch.app.loggers import (
 from diffBloch.app.loggers.comet import CometLogger
 from diffBloch.app.loggers.wandb import WandbLogger
 from diffBloch.app.program import (
-    converge_experiment,
+    convergence_test_experiment,
     preprocess_experiment,
     refine_experiment,
     run_experiment,
@@ -28,7 +28,7 @@ __all__ = [
     "ConsoleLogger",
     "ReportLogger",
     "WandbLogger",
-    "converge_experiment",
+    "convergence_test_experiment",
     "preprocess_experiment",
     "refine_experiment",
     "run_experiment",

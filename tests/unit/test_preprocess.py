@@ -33,7 +33,7 @@ def _plan(n_orientations: int = 1) -> Plan:
 
 
 # Synthetic steps using the orientation count as the observable: grow appends a copy of the first
-# orientation; truncate keeps only the first. (Real steps -- converge_numerics/fit_* -- come later.)
+# orientation; truncate keeps only the first. (Real steps -- convergence_test_numerics/fit_* -- come later.)
 def _grow(plan: Plan) -> Plan:
     return dataclasses.replace(plan, orientations=plan.orientations + plan.orientations[:1])
 
