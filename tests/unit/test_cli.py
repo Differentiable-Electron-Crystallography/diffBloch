@@ -321,13 +321,13 @@ def test_infer_failure_reports_the_error_and_leaves_no_report(
     assert not list((experiment_dir / "reproducibility" / "reports").glob("*.jsonl"))
 
 
-def test_converge_delegates_and_reports(
+def test_convergence_test_delegates_and_reports(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     exp_dir = tmp_path / "experiment"
     exp_dir.mkdir()
 
-    def fake_converge_experiment(
+    def fake_convergence_test_experiment(
         experiment_dir: str,
         *,
         logger: object,
@@ -341,9 +341,11 @@ def test_converge_delegates_and_reports(
         assert n_orientations == 1
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
+    monkeypatch.setattr(
+        "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
+    )
 
-    assert main(["converge", str(exp_dir)]) == 0
+    assert main(["convergence-test", str(exp_dir)]) == 0
     out = capsys.readouterr().out
     assert "CONVERGENCE COMPLETE" in out
     assert _summary_row(out, "g_max", "2.5")
@@ -678,7 +680,7 @@ def test_refine_missing_experiment_reports_concise_error(
     assert "Traceback" not in err
 
 
-def test_converge_builds_console_and_report_sinks(
+def test_convergence_test_builds_console_and_report_sinks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """converge renders to the console and emits a JSONL report, like every other command."""
@@ -686,14 +688,16 @@ def test_converge_builds_console_and_report_sinks(
     exp_dir = tmp_path / "experiment"
     exp_dir.mkdir()
 
-    def fake_converge_experiment(
+    def fake_convergence_test_experiment(
         experiment_dir: str, *, logger: object, device: object, n_orientations: int
     ) -> SimpleNamespace:
         seen["logger"] = logger
         return SimpleNamespace(g_max=2.5, sg_max=0.02, tilt_steps=46)
 
-    monkeypatch.setattr("diffBloch.app.cli.converge_experiment", fake_converge_experiment)
-    assert main(["converge", str(exp_dir)]) == 0
+    monkeypatch.setattr(
+        "diffBloch.app.cli.convergence_test_experiment", fake_convergence_test_experiment
+    )
+    assert main(["convergence-test", str(exp_dir)]) == 0
     logger = seen["logger"]
     assert isinstance(logger, MultiLogger)
     assert [type(s).__name__ for s in logger.loggers] == ["ConsoleLogger", "ReportLogger"]

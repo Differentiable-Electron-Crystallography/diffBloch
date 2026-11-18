@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 import numpy as np
+import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
+from diffBloch.core.products import PatternBatch
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlan, StructureFactorGrid
 from diffBloch.observability import (
@@ -20,7 +22,7 @@ from diffBloch.observability import (
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.pipeline import PlanStep, as_step
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
-from diffBloch.preprocess.steps.convergence import converge_scalar, simulation_rfactor
+from diffBloch.preprocess.steps.convergence import convergence_test_scalar, simulation_rfactor
 from diffBloch.preprocess.steps.coupling import couple_beams
 from diffBloch.preprocess.steps.rocking_curve import integrate_rocking_curve
 from diffBloch.specs import (
@@ -31,7 +33,7 @@ from diffBloch.specs import (
     UnionCoupling,
 )
 
-__all__ = ["ConvergenceState", "converge_numerics", "run_convergence"]
+__all__ = ["ConvergenceState", "convergence_test_numerics", "run_convergence"]
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,7 @@ class ConvergenceState:
     tilt_steps: int
 
 
-def converge_numerics(
+def convergence_test_numerics(
     test: ConvergenceTest,
     rocking: RockingCurve,
     simulation: UnionCoupling | PerTiltCoupling,
@@ -74,7 +76,7 @@ def converge_numerics(
         return converged
 
     return as_step(
-        "converge_numerics",
+        "convergence_test_numerics",
         {
             "test": test,
             "rocking": rocking,
@@ -157,7 +159,10 @@ def run_convergence(
         "tilt_steps": float(state.tilt_steps),
     }
     initial_plan = build(**values)
-    comparison_hkl = tuple(op.alignment.hkl for op in require_built_plans(initial_plan))
+    comparison_hkl = tuple(
+        _observed_hkl(op.pattern, reciprocal_basis, state.g_max)
+        for op in require_built_plans(initial_plan)
+    )
     n_compared_hkl = sum(int(hkl.shape[0]) for hkl in comparison_hkl)
     measure = simulation_rfactor(
         refinement,
@@ -214,7 +219,7 @@ def run_convergence(
                 trial_index += 1
                 return r_factor
 
-            values[control] = converge_scalar(
+            values[control] = convergence_test_scalar(
                 lambda value: value,
                 compare,
                 tolerance,
@@ -229,6 +234,28 @@ def run_convergence(
         tilt_steps=int(round(values["tilt_steps"])),
     )
     return build(settled.g_max, settled.sg_max, settled.tilt_steps), settled
+
+
+def _observed_hkl(
+    pattern: PatternBatch, reciprocal_basis: NDArray[np.float64], g_max: float
+) -> Tensor:
+    """Reflections PETS lists for this frame with I > sigma and |g| <= ``g_max``.
+
+    This is the fixed convergence comparison set: the measured reflections an R-factor can
+    depend on, taken straight from the experimental frame rather than from a solve or scoring
+    cutoff. ``g_max`` is the sweep's starting simulation cutoff.
+    """
+    hkl = np.asarray(pattern.hkl.detach().cpu().numpy(), dtype=np.int64)
+    intensity = pattern.intensities.detach().cpu().numpy()
+    sigma = pattern.sigmas.detach().cpu().numpy()
+    g = np.linalg.norm(hkl.astype(np.float64) @ reciprocal_basis, axis=1)
+    keep = (intensity > sigma) & (g <= g_max) & np.any(hkl != 0, axis=1)
+    if not keep.any():
+        raise ValueError(
+            f"rotation {pattern.rotation_index} has no observed reflection with I > sigma "
+            f"within g_max={g_max}; nothing to compare for convergence"
+        )
+    return pattern.hkl[torch.from_numpy(keep)]
 
 
 def _include_fixed_hkl(
