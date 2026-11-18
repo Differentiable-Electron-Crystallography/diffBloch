@@ -1,0 +1,26 @@
+name: colmey-2026-actacrysta-cspbbr3-no-abs
+
+inputs:
+  structure: cspbbr3.cif
+  exp_data: CsPbBr_P67-crot-050_dyn.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [440.0]
+
+blochwave:
+  g_max: 2.3
+  gmax_refine: 2.0
+  sg_max: 0.02
+  rocking_curve_sampling: 60
+
+preprocess:
+  optimize_thickness: false
+  orientation:
+    nelder_mead:
+      max_correction_degrees: 0.1
+      penalize_fewer_reflections: false
+
+refinement:
+  thickness_nn:
+    max_thickness: 700.0

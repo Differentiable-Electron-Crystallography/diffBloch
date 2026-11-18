@@ -51,7 +51,7 @@ uv sync --dev
 Run a fresh refinement of the smallest bundled example:
 
 ```bash
-EXPERIMENT=examples/Colmey_et_al_2026/data/quartz-no-abs
+EXPERIMENT=examples/Colmey_2026_ActaCrystA/data/quartz-no-abs
 
 uv run diffbloch refine "$EXPERIMENT" --refresh
 REPORT=$(ls -t "$EXPERIMENT"/reproducibility/reports/report-*.jsonl | head -n 1)
@@ -86,7 +86,7 @@ report to render, and does nothing else.
 The example was written with the checkpoint reused, so it has the refinement sections and the
 coupling geometry but no orientation or thickness search figures. It is a real report, not a
 generated one, so a schema change that stops it reading is fixed by re-running
-`diffbloch refine examples/Colmey_et_al_2026/data/quartz-no-abs` and copying the new report over
+`diffbloch refine examples/Colmey_2026_ActaCrystA/data/quartz-no-abs` and copying the new report over
 it; `tests/unit/test_event_report_tool.py` checks it still renders.
 
 The cell prints the path it settled on. To look at a different report, change `REPORT` and re-run

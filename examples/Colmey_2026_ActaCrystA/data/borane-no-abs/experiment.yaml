@@ -1,0 +1,26 @@
+name: colmey-2026-actacrysta-borane-no-abs
+
+inputs:
+  structure: borane_IAM_4.cif
+  exp_data: borane_dyn_final_16.cif_pets
+  load_hydrogens: true
+
+sample:
+  thicknesses: [1900.0]
+
+blochwave:
+  g_max: 1.9
+  gmax_refine: 1.7
+  rocking_curve_sampling: 125
+  dsg: 0.0
+
+preprocess:
+  optimize_thickness: false
+  orientation:
+    nelder_mead:
+      max_correction_degrees: 0.1
+      penalize_fewer_reflections: false
+
+refinement:
+  thickness_nn:
+    max_thickness: 2500.0

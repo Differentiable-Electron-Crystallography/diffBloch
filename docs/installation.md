@@ -43,7 +43,7 @@ The logging backends are optional extras, and the core never imports them:
 
 [Understand how experiments are structured](inputs.md) first. A run needs a directory containing
 `experiment.yaml`, the starting structure CIF, and the experimental `.cif_pets` data. The
-[examples directory](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026)
+[examples directory](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_2026_ActaCrystA)
 holds reference experiments against a variety of crystals.
 
 ```bash
@@ -64,7 +64,7 @@ git lfs install
 git clone https://github.com/Differentiable-Electron-Crystallography/diffBloch
 cd diffBloch && git lfs pull && uv sync --dev
 
-EXP=examples/Colmey_et_al_2026/data/quartz-no-abs
+EXP=examples/Colmey_2026_ActaCrystA/data/quartz-no-abs
 uv run diffbloch validate $EXP/experiment.yaml
 uv run diffbloch refine   $EXP --device cpu
 ```

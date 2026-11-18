@@ -6,10 +6,10 @@ Runnable examples are provided in `examples/`. Each experiment directory contain
 ## Colmey et al. (2026)
 
 The examples in
-[`examples/Colmey_et_al_2026`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_et_al_2026)
-reproduce the refinements from Colmey *et al.* (2026), *The role of absorption in
-three-dimensional electron diffraction dynamical structure refinement*
-([arXiv:2602.08935](https://arxiv.org/abs/2602.08935)).
+[`examples/Colmey_2026_ActaCrystA`](https://github.com/Differentiable-Electron-Crystallography/diffBloch/tree/main/examples/Colmey_2026_ActaCrystA)
+reproduce the refinements from Colmey *et al.* (2026), *The role of absorption in 3D electron
+diffraction dynamical structure refinement*, Acta Crystallographica A 82, 409–418
+([doi:10.1107/S2053273326009459](https://doi.org/10.1107/S2053273326009459)).
 
 Six experiments compare refinements with and without absorption:
 
@@ -28,15 +28,15 @@ determined by kappa refinement against 3D electron diffraction data*
 For example, run the absorptive quartz refinement with:
 
 ```bash
-uv run diffbloch preprocess examples/Colmey_et_al_2026/data/quartz-absorption
-uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-absorption
+uv run diffbloch preprocess examples/Colmey_2026_ActaCrystA/data/quartz-absorption
+uv run diffbloch refine examples/Colmey_2026_ActaCrystA/data/quartz-absorption
 ```
 
 Replace `quartz-absorption` with any directory listed above. Add `--refresh` to the `refine`
 command to rebuild preprocessing before refinement:
 
 ```bash
-uv run diffbloch refine examples/Colmey_et_al_2026/data/quartz-absorption --refresh
+uv run diffbloch refine examples/Colmey_2026_ActaCrystA/data/quartz-absorption --refresh
 ```
 
 ## Results

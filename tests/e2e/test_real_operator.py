@@ -22,7 +22,7 @@ from diffBloch.preprocess.scoring import build_engine
 pytestmark = pytest.mark.e2e
 
 EXPERIMENT = (
-    Path(__file__).parents[2] / "examples" / "Colmey_et_al_2026" / "data" / "cspbbr3-no-abs"
+    Path(__file__).parents[2] / "examples" / "Colmey_2026_ActaCrystA" / "data" / "cspbbr3-no-abs"
 )
 N_ROTATIONS = 3
 # Measured on 3 rotations (3602 reflection-thickness values): after one global scale, the largest

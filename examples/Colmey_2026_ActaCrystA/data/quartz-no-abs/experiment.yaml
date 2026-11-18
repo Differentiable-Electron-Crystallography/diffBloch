@@ -1,0 +1,28 @@
+name: colmey-2026-actacrysta-quartz-no-abs
+
+inputs:
+  structure: experimental_paper_files/enantiomer_1.cif
+  exp_data: quartz.cif_pets
+
+sample:
+  thicknesses: [850.0]
+
+blochwave:
+  g_max: 2.0
+  gmax_refine: 1.6
+  incoherent_mosaicity: true
+  rsg: 0.9
+
+preprocess:
+  optimize_thickness: false
+  orientation:
+    nelder_mead:
+      step_size: 0.1
+      max_correction_degrees: 0.5
+      penalize_fewer_reflections: false
+
+refinement:
+  thickness_nn:
+    max_thickness: 1000.0
+  trainable:
+    mosaicity_sigma: true

@@ -3,8 +3,8 @@
 ## Publications using diffBloch
 
 - Colmey, B., Doherty, T. A. S., Malik, S. A. & Midgley, P. A. (2026). *The role of absorption in
-  three-dimensional electron diffraction dynamical structure refinement.* Submitted to Acta
-  Crystallographica A. <https://arxiv.org/abs/2602.08935>
+  3D electron diffraction dynamical structure refinement.* Acta Crystallographica A 82, 409–418.
+  <https://doi.org/10.1107/S2053273326009459>
 
 - Malik, S. A., Doherty, T. A. S., Colmey, B., Roberts, S. J., Gal, Y. & Midgley, P. A. (2026).
   *Hybrid physics-machine learning models for quantitative electron diffraction refinements.*

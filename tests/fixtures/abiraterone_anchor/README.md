@@ -31,7 +31,7 @@ hardcoding them:
 
 `load_hydrogens` and `preprocess.coupling` are now both config fields, so the API gap that used to
 justify fixture status is gone. It stays a `tests/fixtures` asset and is **not** promoted to
-`examples/Colmey_et_al_2026/data/`.
+`examples/Colmey_2026_ActaCrystA/data/`.
 
 ## Config notes
 
