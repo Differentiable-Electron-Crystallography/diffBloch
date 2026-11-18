@@ -653,3 +653,25 @@ def test_missing_checkpoint_is_stale(tmp_path: Path) -> None:
     cfg, recipe, npz, lock = _lock_and_recipe(tmp_path)
     npz.unlink()
     assert preprocess_lock_status(lock, **_args(cfg, recipe, npz, tmp_path)) == "stale"
+
+
+def test_dataset_config_digest_restales_when_a_residual_definition_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A residual is recorded by name, so a definition change must change the digest by itself.
+
+    "wr2" changed meaning without the config changing; without the definitions version in the
+    digest, a plan fitted under the old "wr2" would be reused as if it were current.
+    """
+    import diffBloch.config.manifest as manifest
+
+    cfg = load_config(LOCKED / "experiment.yaml")
+    before = dataset_config_digest(cfg, exp_data=EXP_REF)
+    monkeypatch.setattr(manifest, "_RESIDUAL_DEFINITIONS", manifest._RESIDUAL_DEFINITIONS + 1)
+    assert dataset_config_digest(cfg, exp_data=EXP_REF) != before
+    # and the residual choice itself is part of the identity
+    monkeypatch.undo()
+    as_wr2 = cfg.model_copy(
+        update={"loss_metrics": cfg.loss_metrics.model_copy(update={"residual": "wr2"})}
+    )
+    assert dataset_config_digest(as_wr2, exp_data=EXP_REF) != before

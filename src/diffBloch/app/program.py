@@ -35,7 +35,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import gemmi
 import numpy as np
@@ -66,13 +66,18 @@ from diffBloch.core.crystal import cell_matrix_from_parameters, cell_volume
 from diffBloch.core.products import MosaicSmoothed
 from diffBloch.engine import (
     ApparentThicknessNN,
+    FitStatistics,
     ModelRefinementResult,
+    ParameterCount,
     RefinementEngine,
     ThicknessBounds,
     TrainableIsotropicMosaicity,
+    TrainableSpec,
     build_refinement_model,
     build_refinement_problem,
+    fit_statistics,
     run_refinement_model,
+    structural_parameter_count,
 )
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.io import (
@@ -85,6 +90,7 @@ from diffBloch.io import (
 from diffBloch.observability import (
     NULL_LOGGER,
     DeviceSelected,
+    FitStatisticsReported,
     IsotropicMosaicityRefined,
     Logger,
     PreprocessCompleted,
@@ -620,11 +626,12 @@ def refine_experiment(
         else:
             model = build_refinement_model(initial=initial)
         problem = build_refinement_problem()
+        trainable = cfg.refinement.trainable.to_spec()
         result = run_refinement_model(
             train_engine,
             model,
             problem,
-            trainable=cfg.refinement.trainable.to_spec(),
+            trainable=trainable,
             steps=cfg.refinement.steps,
             optimizer=cfg.refinement.optimizer.name,
             lr=cfg.refinement.optimizer.lr,
@@ -636,12 +643,23 @@ def refine_experiment(
         result = _write_refinement_outputs(
             root, cfg, refinement, result, plan_lock_sha256s=plan_lock_sha256s
         )
+        # Report-only: the p behind the GoF, itemised from what this run actually fitted.
+        n_fitted_frames = len(train_engine.orientations)
+        parameter_count = _fitted_parameter_count(
+            engine,
+            result,
+            trainable,
+            n_fitted_frames=n_fitted_frames,
+            per_frame_thickness=cfg.preprocess.optimize_thickness and not thickness_nns,
+            per_frame_orientation=cfg.preprocess.optimize_orientation,
+        )
         # The settled-result events, then the terminal artifact manifest for report sinks.
         _report_refinement_outcome(
             logger,
             engine,
             result,
             root=root,
+            parameter_count=parameter_count,
             validation_rotation_indices=validation_rotation_indices,
             thickness_nns=thickness_nns,
             mosaicity_nns=mosaicity_nns,
@@ -650,12 +668,91 @@ def refine_experiment(
         return result
 
 
+# Goniometer-correction angles optimize_orientation fits per frame: (alpha, beta, omega).
+_ORIENTATION_ANGLES_PER_FRAME = 3
+
+
+def _fitted_parameter_count(
+    engine: RefinementEngine,
+    result: ModelRefinementResult,
+    trainable: TrainableSpec,
+    *,
+    n_fitted_frames: int,
+    per_frame_thickness: bool,
+    per_frame_orientation: bool,
+) -> ParameterCount:
+    """Itemise the parameters this run fitted to the data, for the GoF's ``p``.
+
+    Structural parameters are counted after symmetry and constraints
+    (:func:`~diffBloch.engine.structural_parameter_count`); every trainable component tensor
+    element counts (thickness-network weights included -- an upper bound on its effective freedom);
+    a per-frame thickness counts only when the model actually uses the preprocess-fitted value (no
+    thickness network); orientation corrections count 3 per frame when ``optimize_orientation`` ran.
+    Per-frame scales are listed but not charged, following Jana2020.
+    """
+    best = result.best_model
+    return ParameterCount(
+        structural=structural_parameter_count(
+            best.structure.initial,
+            engine.spec,
+            trainable,
+            constraints=best.structure.constraints,
+            atomic_numbers=engine.numbers,
+        ),
+        components=sum(
+            int(tensor.numel())
+            for tensors in best.component_params.values()
+            for tensor in tensors.values()
+        ),
+        per_frame_thickness=n_fitted_frames if per_frame_thickness else 0,
+        per_frame_orientation=(
+            _ORIENTATION_ANGLES_PER_FRAME * n_fitted_frames if per_frame_orientation else 0
+        ),
+        per_frame_scales=n_fitted_frames,
+    )
+
+
+def _fit_statistics_event(statistics: FitStatistics) -> FitStatisticsReported:
+    """Flatten :class:`~diffBloch.engine.FitStatistics` into its report event."""
+
+    def gof(
+        subset: Literal["obs", "all"],
+        orientation: bool,
+        weights: Literal["jana", "inverse_variance"],
+    ) -> float:
+        return statistics.goodness_of_fit(subset, include_orientation=orientation, weights=weights)
+
+    p = statistics.parameters
+    return FitStatisticsReported(
+        r_obs_amplitude=statistics.r_factor("obs"),
+        wr_obs_amplitude=statistics.weighted_r_factor("obs"),
+        wr_all_amplitude=statistics.weighted_r_factor("all"),
+        gof_obs_without_orientation=gof("obs", False, "jana"),
+        gof_all_without_orientation=gof("all", False, "jana"),
+        gof_obs_with_orientation=gof("obs", True, "jana"),
+        gof_all_with_orientation=gof("all", True, "jana"),
+        gof_obs_inverse_variance_without_orientation=gof("obs", False, "inverse_variance"),
+        gof_all_inverse_variance_without_orientation=gof("all", False, "inverse_variance"),
+        gof_obs_inverse_variance_with_orientation=gof("obs", True, "inverse_variance"),
+        gof_all_inverse_variance_with_orientation=gof("all", True, "inverse_variance"),
+        n_obs=statistics.observed_reflections.n,
+        n_all=statistics.all_reflections.n,
+        n_frames=statistics.n_frames,
+        p_structural=p.structural,
+        p_components=p.components,
+        p_per_frame_thickness=p.per_frame_thickness,
+        p_per_frame_orientation=p.per_frame_orientation,
+        n_per_frame_scales=p.per_frame_scales,
+    )
+
+
 def _report_refinement_outcome(
     logger: Logger,
     engine: RefinementEngine,
     result: ModelRefinementResult,
     *,
     root: Path,
+    parameter_count: ParameterCount,
     validation_rotation_indices: frozenset[int],
     thickness_nns: tuple[ApparentThicknessNN, ...],
     mosaicity_nns: tuple[TrainableIsotropicMosaicity, ...],
@@ -671,13 +768,16 @@ def _report_refinement_outcome(
     itself keeps the absolute paths an API caller wants to open directly). Each row already knows
     its dataset ref (``RotationMetrics.dataset``, read off the rotation's own ``pattern``), so the
     per-dataset breakdown costs nothing here. The same scoring pass also carries each rotation's
-    matched reflections, reported as :class:`RefinedReflectionIntensities` for I_obs vs I_calc.
+    matched reflections, reported as :class:`RefinedReflectionIntensities` for I_obs vs I_calc, and
+    pooled over the fitted (non-validation) frames into the Jana2020-convention
+    :class:`FitStatisticsReported` -- from those same rows, so it costs no extra solve.
     """
     rows = engine.per_rotation_metrics(result.best_model)
     for row in rows:
         logger.report(
             RefinedRotationMetrics(
                 rotation_index=row.rotation_index,
+                wr=row.wr,
                 wr2=row.wr2,
                 r_obs=row.r_obs,
                 n_matched=row.n_matched,
@@ -699,6 +799,15 @@ def _report_refinement_outcome(
                 calculated=row.calculated,
             )
         )
+    statistics = fit_statistics(
+        (
+            (row.calculated, row.observed, row.sigmas)
+            for row in rows
+            if row.rotation_index not in validation_rotation_indices
+        ),
+        parameter_count,
+    )
+    logger.report(_fit_statistics_event(statistics))
     if raw_alphas is not None:
         # Each network filters the pooled orientations to its own rotation_range itself.
         for thickness_nn in thickness_nns:

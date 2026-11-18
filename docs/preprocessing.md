@@ -43,7 +43,8 @@ M_i' = M_i R_z(\Delta\omega)R_x(\Delta\alpha)R_y(\Delta\beta).
 ```
 
 The Bloch wave intensities are recalculated for each trial and compared with the observed
-intensities using `loss_metrics.residual`, which defaults to `wr2`.
+intensities using `loss_metrics.residual`, which defaults to `wr` (weighted R on amplitudes; see
+[Refinement](refinement.md)).
 
 ### Unit-cell authority
 

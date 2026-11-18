@@ -52,6 +52,7 @@ __all__ = [
     "Event",
     "EventRecord",
     "ExperimentDeclared",
+    "FitStatisticsReported",
     "InferenceCompleted",
     "IsotropicMosaicityRefined",
     "Logger",
@@ -518,6 +519,7 @@ class RotationScored:
     n_matched: int
     dataset: str = ""
     rotation_index: int | None = None
+    wr: float | None = None
 
     @property
     def step(self) -> int | None:
@@ -525,11 +527,11 @@ class RotationScored:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {
-            "r_obs": self.r_obs,
-            "wr2": self.wr2,
-            "n_matched": float(self.n_matched),
-        }
+        values = {"r_obs": self.r_obs}
+        if self.wr is not None:
+            values["wr"] = self.wr
+        values |= {"wr2": self.wr2, "n_matched": float(self.n_matched)}
+        return values
 
 
 @dataclass(frozen=True)
@@ -572,7 +574,7 @@ class OrientationOptimized:
     pool renumbers anything -- so a rotation index alone cannot disambiguate a pooled run; pair it
     with ``dataset``. ``score`` the final orientation's value
     under ``residual`` -- the :class:`~diffBloch.config.schema.LossMetricsConfig` name
-    (``"wr2"``/``"robs"``) that produced it, carried alongside so a consumer can label the number
+    (``"wr"``/``"wr2"``/``"robs"``) that produced it, carried alongside so a consumer can label the number
     correctly (:attr:`measurements` keys on it directly, e.g. ``{"wr2": ...}`` or ``{"robs": ...}``)
     rather than a generic, misleading ``wr2`` field under a different residual. ``seed_score`` is the
     same metric at the *unsearched* seed orientation (the goniometer correction fixed at
@@ -752,7 +754,7 @@ class ThicknessOptimized:
     ``ThicknessGrid`` in one segmented solve), so like :class:`OrientationOptimized` this makes it a
     progress stream rather than a silent block: ``rotation_index`` is the original zero-based PETS
     rotation index, ``score`` the baked thickness's value under ``residual`` -- the
-    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr2"``/``"robs"``) that produced
+    :class:`~diffBloch.config.schema.LossMetricsConfig` name (``"wr"``/``"wr2"``/``"robs"``) that produced
     it, carried alongside so a consumer can label the number correctly
     (:attr:`measurements` keys on it directly) rather than a generic, misleading ``wr2`` field
     under a different residual, and ``thickness`` that winning candidate (Angstrom).
@@ -981,6 +983,7 @@ class InferenceCompleted:
     n_evaluated: int
     mean_r_obs: float
     mean_wr2: float
+    mean_wr: float | None = None
 
     @property
     def step(self) -> int | None:
@@ -993,7 +996,7 @@ class InferenceCompleted:
             "n_evaluated": float(self.n_evaluated),
             "mean_r_obs": self.mean_r_obs,
             "mean_wr2": self.mean_wr2,
-        }
+        } | ({} if self.mean_wr is None else {"mean_wr": self.mean_wr})
 
 
 @dataclass(frozen=True)
@@ -1091,6 +1094,7 @@ class RefinedRotationMetrics:
     n_matched: int
     is_validation: bool
     dataset: str
+    wr: float | None = None
 
     @property
     def step(self) -> int | None:
@@ -1098,7 +1102,7 @@ class RefinedRotationMetrics:
 
     @property
     def measurements(self) -> Mapping[str, float]:
-        return {
+        return ({} if self.wr is None else {"wr": self.wr}) | {
             "wr2": self.wr2,
             "r_obs": self.r_obs,
             "n_matched": float(self.n_matched),
@@ -1149,6 +1153,93 @@ class RefinedReflectionIntensities:
     @property
     def measurements(self) -> Mapping[str, float]:
         return {"n_reflections": float(len(self.hkl)), "scale": self.scale}
+
+
+@dataclass(frozen=True)
+class FitStatisticsReported:
+    """Jana2020-convention fit statistics of the *final refined* model, emitted once after the loop.
+
+    Pooled over the frames the refinement objective was fitted to (held-out validation frames are
+    left out): R and wR on ``|F|`` with Jana weights ``1/(sigma(F)^2 + (0.01 Fo)^2)`` and one
+    weighted least-squares amplitude scale per frame, and goodness of fit
+    ``sqrt(sum w (Fo - Fc)^2 / (N - p))`` (see :mod:`diffBloch.engine.fit_statistics`). These are
+    directly comparable with Jana2020's ``R(obs)``, ``wR(obs)``, ``wR(all)``, ``GOF(obs)`` and
+    ``GOF(all)``. The per-epoch and per-rotation ``wr``/``wr2``/``r_obs`` reported elsewhere are
+    means of per-frame values, each frame at its own scale, so they differ slightly from these.
+
+    GoF is given at two parameter counts, ``p_without_orientation`` and ``p_with_orientation`` (the
+    latter also charges the per-frame orientation corrections fitted in preprocessing), and under
+    two weightings, Jana weights and ``1/sigma(F)^2``. ``n_obs``/``n_all`` count per-frame
+    measurements; ``n_per_frame_scales`` is reported but, as in Jana2020, never charged in ``p``.
+    Fractions, not percentages; ``nan`` where undefined.
+    """
+
+    channel: ClassVar[str] = "fit statistics"
+    r_obs_amplitude: float
+    wr_obs_amplitude: float
+    wr_all_amplitude: float
+    gof_obs_without_orientation: float
+    gof_all_without_orientation: float
+    gof_obs_with_orientation: float
+    gof_all_with_orientation: float
+    gof_obs_inverse_variance_without_orientation: float
+    gof_all_inverse_variance_without_orientation: float
+    gof_obs_inverse_variance_with_orientation: float
+    gof_all_inverse_variance_with_orientation: float
+    n_obs: int
+    n_all: int
+    n_frames: int
+    p_structural: int
+    p_components: int
+    p_per_frame_thickness: int
+    p_per_frame_orientation: int
+    n_per_frame_scales: int
+
+    @property
+    def p_without_orientation(self) -> int:
+        return self.p_structural + self.p_components + self.p_per_frame_thickness
+
+    @property
+    def p_with_orientation(self) -> int:
+        return self.p_without_orientation + self.p_per_frame_orientation
+
+    @property
+    def step(self) -> int | None:
+        return None  # a run-level aggregate
+
+    @property
+    def measurements(self) -> Mapping[str, float]:
+        return {
+            "r_obs_amplitude": self.r_obs_amplitude,
+            "wr_obs_amplitude": self.wr_obs_amplitude,
+            "wr_all_amplitude": self.wr_all_amplitude,
+            "gof_obs_without_orientation": self.gof_obs_without_orientation,
+            "gof_all_without_orientation": self.gof_all_without_orientation,
+            "gof_obs_with_orientation": self.gof_obs_with_orientation,
+            "gof_all_with_orientation": self.gof_all_with_orientation,
+            "gof_obs_inverse_variance_without_orientation": (
+                self.gof_obs_inverse_variance_without_orientation
+            ),
+            "gof_all_inverse_variance_without_orientation": (
+                self.gof_all_inverse_variance_without_orientation
+            ),
+            "gof_obs_inverse_variance_with_orientation": (
+                self.gof_obs_inverse_variance_with_orientation
+            ),
+            "gof_all_inverse_variance_with_orientation": (
+                self.gof_all_inverse_variance_with_orientation
+            ),
+            "n_obs": float(self.n_obs),
+            "n_all": float(self.n_all),
+            "n_frames": float(self.n_frames),
+            "p_without_orientation": float(self.p_without_orientation),
+            "p_with_orientation": float(self.p_with_orientation),
+            "p_structural": float(self.p_structural),
+            "p_components": float(self.p_components),
+            "p_per_frame_thickness": float(self.p_per_frame_thickness),
+            "p_per_frame_orientation": float(self.p_per_frame_orientation),
+            "n_per_frame_scales": float(self.n_per_frame_scales),
+        }
 
 
 @dataclass(frozen=True)
@@ -1342,8 +1433,8 @@ class RefinementStarted:
 class RefinementStep:
     """One refinement epoch.
 
-    ``wr2``/``r_obs`` are always-computed reporting diagnostics (mean weighted-R2 / R_obs across
-    orientations), free regardless of ``ExperimentConfig.loss_metrics`` (which decides what
+    ``wr``/``wr2``/``r_obs`` are always-computed reporting diagnostics (mean wR on ``|F|`` / wR2 on
+    intensities / R_obs across orientations), free regardless of ``ExperimentConfig.loss_metrics`` (which decides what
     ``loss`` actually minimises, not what gets reported here) -- so both are always shown. Contrast
     the preprocessing search's events (:class:`OrientationOptimized` / :class:`ThicknessOptimized`),
     which report only the configured residual, since computing the other would cost an extra solve.
@@ -1356,16 +1447,16 @@ class RefinementStep:
     absence is the reportable fact, and it is why the flattening is unconditional rather than keyed
     on a fixed term list.
 
-    ``wr2``/``r_obs`` are means over the rotations that produced a finite score, so each carries its
-    own denominator: ``n_rotations`` is how many the objective covered (the *training* set when a
-    validation split is on) and ``n_wr2_evaluated``/``n_r_obs_evaluated`` how many actually entered
-    each mean. They are separate counts because the two metrics are NaN-filtered independently -- a
+    ``wr``/``wr2``/``r_obs`` are means over the rotations that produced a finite score, so each
+    carries its own denominator: ``n_rotations`` is how many the objective covered (the *training*
+    set when a validation split is on) and ``n_wr_evaluated``/``n_wr2_evaluated``/
+    ``n_r_obs_evaluated`` how many actually entered each mean. They are separate counts because the two metrics are NaN-filtered independently -- a
     rotation can contribute to one and not the other -- and a mean whose denominator is implicit can
     improve simply by evaluating fewer rotations. Compare
     :class:`InferenceCompleted`, which has always reported ``n_evaluated`` beside its mean.
 
-    ``val_wr2``/``val_r_obs`` (and their own ``val_n_rotations``/``val_n_wr2_evaluated``/
-    ``val_n_r_obs_evaluated`` denominators) are the *same* diagnostics scored on the held-out
+    ``val_wr``/``val_wr2``/``val_r_obs`` (and their own ``val_n_rotations``/``val_n_wr_evaluated``/
+    ``val_n_wr2_evaluated``/``val_n_r_obs_evaluated`` denominators) are the *same* diagnostics scored on the held-out
     validation set, present only when ``run_refinement_model`` was given a ``selection_engine``
     (``refinement.split.train_test``). That scoring already happens every epoch purely to pick
     ``best_model`` -- reporting it here is free, and lets a sink show the training/validation curves
@@ -1395,6 +1486,10 @@ class RefinementStep:
     val_n_r_obs_evaluated: int | None = None
     position_rmsd: float | None = None
     ueq_rmsd: float | None = None
+    wr: float | None = None
+    n_wr_evaluated: int | None = None
+    val_wr: float | None = None
+    val_n_wr_evaluated: int | None = None
 
     def __post_init__(self) -> None:
         copied = {name: MappingProxyType(dict(values)) for name, values in self.components.items()}
@@ -1407,6 +1502,8 @@ class RefinementStep:
     @property
     def measurements(self) -> Mapping[str, float]:
         values: dict[str, float] = {}
+        if self.wr is not None:
+            values["wr"] = self.wr
         if self.wr2 is not None:
             values["wr2"] = self.wr2
         if self.r_obs is not None:
@@ -1417,6 +1514,12 @@ class RefinementStep:
             values["loss"] = self.loss
         if self.n_rotations is not None:
             values["n_rotations"] = float(self.n_rotations)
+        if self.n_wr_evaluated is not None:
+            values["n_wr_evaluated"] = float(self.n_wr_evaluated)
+        if self.val_wr is not None:
+            values["val_wr"] = self.val_wr
+        if self.val_n_wr_evaluated is not None:
+            values["val_n_wr_evaluated"] = float(self.val_n_wr_evaluated)
         if self.n_wr2_evaluated is not None:
             values["n_wr2_evaluated"] = float(self.n_wr2_evaluated)
         if self.n_r_obs_evaluated is not None:
@@ -1461,6 +1564,7 @@ class RefinementOrientationStep:
     r_obs: float | None = None
     diff_loss: float | None = None
     dataset: str = ""
+    wr: float | None = None
 
     @property
     def step(self) -> int | None:
@@ -1469,6 +1573,8 @@ class RefinementOrientationStep:
     @property
     def measurements(self) -> Mapping[str, float]:
         values: dict[str, float] = {"iteration": float(self.iteration)}
+        if self.wr is not None:
+            values["wr"] = self.wr
         if self.wr2 is not None:
             values["wr2"] = self.wr2
         if self.r_obs is not None:

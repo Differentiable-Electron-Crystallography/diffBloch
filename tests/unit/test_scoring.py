@@ -11,7 +11,7 @@ import pytest
 import torch
 from tests.unit.synthetic import make_constraint_spec
 
-from diffBloch.core.losses import optimal_scale, w_rbragg
+from diffBloch.core.losses import optimal_scale, weighted_r_amplitude
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
@@ -19,8 +19,7 @@ from diffBloch.engine import (
     OrientationPlan,
     RefinementEngine,
     StructureFactorGrid,
-    w_rbragg_loss,
-    wr2_loss,
+    wr_loss,
 )
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import (
@@ -60,7 +59,7 @@ def test_optimal_scale_returns_the_grid_minimum() -> None:
     # No other absolute scale on the search grid beats the returned one.
     ratio = float(observed.sum() / calculated.sum())
     for factor in np.linspace(0.02, 2.0, 100):
-        other = w_rbragg(factor * ratio * calculated, observed, sigmas)
+        other = weighted_r_amplitude(factor * ratio * calculated, observed, sigmas)
         assert float(value) <= float(other) + 1e-12
 
 
@@ -95,7 +94,7 @@ def _engine(
         numbers=numbers,
         grid=grid,
         orientations=(orientation,),
-        loss=w_rbragg_loss,
+        loss=wr_loss,
     )
 
 
@@ -170,7 +169,7 @@ def test_build_engine_wires_plan_geometry_and_structure_context() -> None:
     assert engine.numbers is refinement.numbers
     assert engine.orientations[0].thickness.tolist() == [300.0]
     # the refine objective defaults to the scale-normalised loss (calc<->obs on different scales)
-    assert engine.loss is wr2_loss
+    assert engine.loss is wr_loss
 
     scores = score_orientations(plan, refinement)
     assert len(scores) == len(plan.orientations)
@@ -308,7 +307,7 @@ def _engine_over(orientation: OrientationPlan | CoupledOrientationPlan) -> Refin
         numbers=numbers,
         grid=grid,
         orientations=(orientation,),
-        loss=w_rbragg_loss,
+        loss=wr_loss,
     )
 
 

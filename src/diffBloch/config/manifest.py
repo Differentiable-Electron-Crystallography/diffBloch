@@ -214,6 +214,14 @@ def _write_experiment_lock_file(lock_path: Path, lock: ExperimentLock) -> None:
     lock_path.write_text(lock.model_dump_json(indent=2) + "\n")
 
 
+# Version of what the residual names mean. The config records a residual by name ("wr2"), so a
+# change to a residual's definition leaves the config unchanged while changing every fitted
+# orientation and thickness; bumping this restales checkpoints settled under the old definition.
+# 2: "wr2" became wR on intensities (it was amplitude weights on intensity differences) and "wr"
+# (wR on |F|) was added as the default.
+_RESIDUAL_DEFINITIONS = 2
+
+
 def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
     """SHA256 of the config that determines *one dataset's* settled ``Plan`` -- its lock identity.
 
@@ -238,7 +246,8 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
       :func:`~diffBloch.preprocess.pipeline.as_step` -- so including them here unconditionally would
       restale a checkpoint over config that provably never touched it);
     - ``loss_metrics`` -- the residual ``optimize_orientation``/``optimize_thickness`` search
-      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
+      minimises (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_scores`), together with the
+      version of what the residual names mean (``_RESIDUAL_DEFINITIONS``).
 
     Everything else is excluded because it cannot change the Plan: ``name`` (a label), and all of
     ``refinement`` -- including ``split``, which partitions rotations at refinement time and no
@@ -264,7 +273,7 @@ def dataset_config_digest(config: ExperimentConfig, *, exp_data: str) -> str:
         "sample": {"thicknesses": list(config.sample.seed_thicknesses_for(exp_data))},
         "blochwave": blochwave,
         "preprocess": preprocess,
-        "loss_metrics": dump["loss_metrics"],
+        "loss_metrics": {**dump["loss_metrics"], "definitions": _RESIDUAL_DEFINITIONS},
     }
     canonical = json.dumps(dataset_identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()

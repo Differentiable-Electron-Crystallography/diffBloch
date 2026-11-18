@@ -41,7 +41,15 @@ from diffBloch.core.dynamical import (
     wavelength2energy,
     wavevector_magnitude,
 )
-from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg
+from diffBloch.core.losses import (
+    amplitude_sigma,
+    l1,
+    mse,
+    optimal_scale,
+    rbragg,
+    weighted_r_amplitude,
+    weighted_r_intensity,
+)
 from diffBloch.core.products import (
     AlignedIntensities,
     AlignmentPlan,
@@ -75,6 +83,7 @@ from diffBloch.core.symmetry import (
 )
 
 __all__ = [
+    "amplitude_sigma",
     "AlignedIntensities",
     "AlignmentPlan",
     "AsuExpansionPlan",
@@ -133,7 +142,8 @@ __all__ = [
     "structure_matrix_prefactor",
     "ueq_from_cif_uij",
     "unit_interval",
-    "w_rbragg",
+    "weighted_r_amplitude",
+    "weighted_r_intensity",
     "wavelength2energy",
     "wavevector_magnitude",
 ]

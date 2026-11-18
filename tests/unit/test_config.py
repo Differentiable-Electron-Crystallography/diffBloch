@@ -19,6 +19,8 @@ from diffBloch.engine.losses import (
     robs_scores,
     wr2_loss,
     wr2_scores,
+    wr_loss,
+    wr_scores,
 )
 from diffBloch.engine.refine import _TRAINABLE_FIELDS
 from diffBloch.specs import (
@@ -46,7 +48,7 @@ def test_minimal_config_validates_with_defaults() -> None:
     assert cfg.refinement.trainable.adp == "all"
     assert cfg.refinement.trainable.occupancy == "none"
     assert cfg.refinement.optimizer.name == "adam"
-    assert cfg.loss_metrics.residual == "wr2"
+    assert cfg.loss_metrics.residual == "wr"
     assert cfg.refinement.thickness_nn.to_spec() == ApparentThicknessNetwork()
     assert cfg.refinement.split.train_test is False
     assert cfg.refinement.split.val_frac == 0.2
@@ -418,12 +420,15 @@ def test_trainable_config_to_spec_maps_groups_to_selections() -> None:
 
 
 def test_loss_metrics_residual_parses_to_loss() -> None:
+    assert LossMetricsConfig().to_loss() is wr_loss  # the default residual is wR on |F|
+    assert LossMetricsConfig(residual="wr").to_loss() is wr_loss
     assert LossMetricsConfig(residual="wr2").to_loss() is wr2_loss
     assert LossMetricsConfig(residual="robs").to_loss() is rbragg_loss
 
 
 def test_loss_metrics_residual_parses_to_scores() -> None:
     """to_scores is the per-thickness counterpart to_loss sums -- same residual, matching metric."""
+    assert LossMetricsConfig(residual="wr").to_scores() is wr_scores
     assert LossMetricsConfig(residual="wr2").to_scores() is wr2_scores
     assert LossMetricsConfig(residual="robs").to_scores() is robs_scores
 

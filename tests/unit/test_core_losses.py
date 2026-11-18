@@ -9,7 +9,13 @@ from __future__ import annotations
 import pytest
 import torch
 
-from diffBloch.core.losses import l1, mse, rbragg, w_rbragg
+from diffBloch.core.losses import (
+    l1,
+    mse,
+    rbragg,
+    weighted_r_amplitude,
+    weighted_r_intensity,
+)
 from diffBloch.core.products import intensities
 
 
@@ -31,17 +37,22 @@ def _oracle_rbragg_abs(sim, exp, sigmas):
     return num / denom
 
 
-def _oracle_wrbragg(sim, exp, sigmas, mu=0.01):
-    eps = 1e-12
-    sqrt_I = torch.sqrt(torch.clamp(exp, min=eps))
-    weak_mask = exp < (0.01 * sigmas)
-    sigma_sqrt_I = torch.empty_like(sigmas)
-    sigma_sqrt_I[weak_mask] = 5 * torch.sqrt(sigmas[weak_mask])
-    sigma_sqrt_I[~weak_mask] = 0.5 * sigmas[~weak_mask] / sqrt_I[~weak_mask]
-    w = 1.0 / torch.sqrt(sigma_sqrt_I**2 + (mu * sqrt_I) ** 2)
-    numerator = torch.sum((w * (sim - exp)) ** 2, dim=-1)
-    denominator = torch.sum((w * exp) ** 2, dim=-1)
-    return torch.sqrt(numerator / denominator)
+def _oracle_wr_amplitude(sim, exp, sigmas, mu=0.01):
+    # Jana2020 wR on |F|: Fo = sqrt(max(I, 0)), sigma(F) = sigma(I)/(2 Fo) with the 5*sqrt(sigma)
+    # floor for I < 0.01 sigma, w = 1/(sigma(F)^2 + (mu Fo)^2).
+    fo = torch.sqrt(torch.clamp(exp, min=0.0))
+    fc = torch.sqrt(sim)
+    weak = exp < 0.01 * sigmas
+    sigma_f = torch.empty_like(sigmas)
+    sigma_f[weak] = 5 * torch.sqrt(sigmas[weak])
+    sigma_f[~weak] = sigmas[~weak] / (2 * fo[~weak])
+    w = 1.0 / (sigma_f**2 + (mu * fo) ** 2)
+    return torch.sqrt(torch.sum(w * (fo - fc) ** 2, dim=-1) / torch.sum(w * fo**2, dim=-1))
+
+
+def _oracle_wr_intensity(sim, exp, sigmas, mu=0.01):
+    w = 1.0 / (sigmas**2 + (2 * mu * exp) ** 2)
+    return torch.sqrt(torch.sum(w * (exp - sim) ** 2, dim=-1) / torch.sum(w * exp**2, dim=-1))
 
 
 # --- intensities -------------------------------------------------------------------------------
@@ -111,25 +122,45 @@ def test_rbragg_is_nan_safe_for_negative_masked_reflections() -> None:
     assert torch.allclose(full, subset)
 
 
-def test_w_rbragg_matches_oracle(_intensity_pair) -> None:
+def test_weighted_r_amplitude_matches_oracle(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
-    assert torch.allclose(w_rbragg(calc, obs, sigmas), _oracle_wrbragg(calc, obs, sigmas))
+    assert torch.allclose(
+        weighted_r_amplitude(calc, obs, sigmas), _oracle_wr_amplitude(calc, obs, sigmas)
+    )
 
 
-def test_w_rbragg_masks_negative_reflections() -> None:
-    # Experimental intensities can be negative (background-subtracted noise, not real signal). Such
-    # a reflection must be excluded from both sums entirely, not fit against -- the result must
-    # equal w_rbragg over the observed subset alone, and a large calc mismatch on the excluded
-    # reflection must not move the score.
+def test_weighted_r_intensity_matches_oracle(_intensity_pair) -> None:
+    calc, obs, sigmas = _intensity_pair
+    assert torch.allclose(
+        weighted_r_intensity(calc, obs, sigmas), _oracle_wr_intensity(calc, obs, sigmas)
+    )
+
+
+def test_weighted_r_amplitude_keeps_negative_intensities_at_zero_amplitude() -> None:
+    """Jana2020 convention: a negative intensity enters at Fo = 0 with the weak sigma(F) floor.
+
+    It is fitted against (a calculated intensity there costs), unlike R(obs), and is finite.
+    """
     obs = torch.tensor([[1.0, 4.0, -0.5]], dtype=torch.float64)
     sigmas = torch.tensor([[0.05, 0.10, 0.10]], dtype=torch.float64)
-    calc = torch.tensor([[1.2, 3.6, 9.0]], dtype=torch.float64)
-    subset = w_rbragg(calc[:, :2], obs[:, :2], sigmas[:, :2])
-    full = w_rbragg(calc, obs, sigmas)
-    full_other_calc = w_rbragg(torch.tensor([[1.2, 3.6, -100.0]], dtype=torch.float64), obs, sigmas)
-    assert torch.isfinite(full).all()
-    assert torch.allclose(full, subset)
-    assert torch.allclose(full, full_other_calc)
+    near = weighted_r_amplitude(torch.tensor([[1.0, 4.0, 1e-6]], dtype=torch.float64), obs, sigmas)
+    far = weighted_r_amplitude(torch.tensor([[1.0, 4.0, 9.0]], dtype=torch.float64), obs, sigmas)
+    assert torch.isfinite(near).all() and torch.isfinite(far).all()
+    assert bool(far > near)
+    zero_amplitude = torch.tensor([[1.0, 4.0, 0.0]], dtype=torch.float64)
+    assert torch.allclose(
+        weighted_r_amplitude(far.new_tensor([[1.0, 4.0, 9.0]]), obs, sigmas),
+        weighted_r_amplitude(far.new_tensor([[1.0, 4.0, 9.0]]), zero_amplitude, sigmas),
+    )
+
+
+def test_weighted_r_gradients_are_finite_at_vanishing_calculated_intensity() -> None:
+    obs = torch.tensor([[1.0, 4.0, 0.2]], dtype=torch.float64)
+    sigmas = torch.tensor([[0.05, 0.10, 0.10]], dtype=torch.float64)
+    for metric in (weighted_r_amplitude, weighted_r_intensity):
+        calc = torch.tensor([[1.1, 3.9, 0.0]], dtype=torch.float64, requires_grad=True)
+        metric(calc, obs, sigmas).sum().backward()
+        assert calc.grad is not None and torch.isfinite(calc.grad).all()
 
 
 # --- properties --------------------------------------------------------------------------------
@@ -138,12 +169,16 @@ def test_losses_vanish_for_perfect_agreement(_intensity_pair) -> None:
     assert torch.allclose(mse(obs, obs), torch.zeros(4, dtype=torch.float64), atol=1e-12)
     assert torch.allclose(l1(obs, obs), torch.zeros(4, dtype=torch.float64), atol=1e-12)
     assert torch.allclose(rbragg(obs, obs, sigmas), torch.zeros(4, dtype=torch.float64), atol=1e-12)
+    zero = torch.zeros(4, dtype=torch.float64)
+    assert torch.allclose(weighted_r_amplitude(obs, obs, sigmas), zero, atol=1e-6)
+    assert torch.allclose(weighted_r_intensity(obs, obs, sigmas), zero, atol=1e-12)
 
 
 def test_losses_reduce_reflection_axis(_intensity_pair) -> None:
     calc, obs, sigmas = _intensity_pair
     assert mse(calc, obs).shape == (4,)
-    assert w_rbragg(calc, obs, sigmas).shape == (4,)
+    assert weighted_r_amplitude(calc, obs, sigmas).shape == (4,)
+    assert weighted_r_intensity(calc, obs, sigmas).shape == (4,)
 
 
 def test_losses_are_differentiable(_intensity_pair) -> None:

@@ -163,7 +163,7 @@ Top-level, not nested under `refinement`, because it governs preprocessing too.
 
 | Field | Default | What it does |
 |---|---|---|
-| `residual` | `"wr2"` | `"wr2"` or `"robs"`. Both re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. |
+| `residual` | `"wr"` | `"wr"` (weighted R on amplitudes, Jana2020's `wR`), `"wr2"` (weighted R on intensities) or `"robs"`. All three re-fit an optimal multiplicative scale between calculated and observed intensities before scoring (`core.losses.optimal_scale`) because calculated and `.cif_pets` intensities use different scales. |
 
 ## `refinement`
 
@@ -190,7 +190,7 @@ Train/validation split (`DataSplitConfig`).
 
 | Field | Default | What it does |
 |---|---|---|
-| `train_test` | `false` | `false`: train on every rotation, no held-out set. `true`: hold out an evenly-spaced `val_frac` of rotations from the refinement objective (preprocessing still fits their orientation/thickness) and report their wR2/R_obs separately. |
+| `train_test` | `false` | `false`: train on every rotation, no held-out set. `true`: hold out an evenly-spaced `val_frac` of rotations from the refinement objective (preprocessing still fits their orientation/thickness) and report their wR/wR2/R_obs separately. |
 | `val_frac` | `0.2` | Fraction of rotations held out when `train_test: true`. Must be strictly between 0 and 1. |
 
 ### `refinement.thickness_nn`

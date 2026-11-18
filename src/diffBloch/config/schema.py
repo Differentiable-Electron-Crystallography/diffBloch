@@ -21,6 +21,8 @@ from diffBloch.engine.losses import (
     robs_scores,
     wr2_loss,
     wr2_scores,
+    wr_loss,
+    wr_scores,
 )
 from diffBloch.engine.refine import AtomSelection, TrainableSpec
 
@@ -241,11 +243,13 @@ class LossMetricsConfig(_StrictConfig):
     are Python/API composition, not config).
     """
 
-    residual: Literal["wr2", "robs"] = "wr2"
+    # "wr": wR on |F| (Jana2020's wR, the default); "wr2": wR2 on intensities; "robs": R(obs) on |F|.
+    residual: Literal["wr", "wr2", "robs"] = "wr"
 
     def to_loss(self) -> LossFn:
         """Parse the residual into the scalar ``LossFn`` the gradient refinement minimises."""
         return {
+            "wr": wr_loss,
             "wr2": wr2_loss,
             "robs": rbragg_loss,
         }[self.residual]
@@ -257,6 +261,7 @@ class LossMetricsConfig(_StrictConfig):
         :mod:`diffBloch.engine.losses` -- so the two always agree on one metric.
         """
         return {
+            "wr": wr_scores,
             "wr2": wr2_scores,
             "robs": robs_scores,
         }[self.residual]

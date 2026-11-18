@@ -364,6 +364,7 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
             "n_matched": 3,
             "dataset": "",
             "rotation_index": None,
+            "wr": None,
         }
     ]
     assert [_record.payload for _record in _records(b_path)] == [
@@ -374,6 +375,7 @@ def test_multi_logger_fans_each_event_out_to_every_logger(tmp_path: Path) -> Non
             "n_matched": 3,
             "dataset": "",
             "rotation_index": None,
+            "wr": None,
         }
     ]
 

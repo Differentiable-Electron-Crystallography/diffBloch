@@ -12,6 +12,7 @@ from tests.unit.test_engine import _engine, _params
 
 from diffBloch.app.loggers import ReportLogger
 from diffBloch.app.program import (
+    _fitted_parameter_count,
     _mosaicity_components,
     _report_refinement_outcome,
     _thickness_networks,
@@ -21,10 +22,14 @@ from diffBloch.config.manifest import read_refinement_lock
 from diffBloch.config.schema import ExperimentConfig
 from diffBloch.core.products import PatternBatch
 from diffBloch.engine import (
+    AtomSelection,
     ModelRefinementResult,
+    ParameterCount,
     StructureFactorGrid,
     TrainableIsotropicMosaicity,
+    TrainableSpec,
     build_refinement_model,
+    structural_parameter_count,
 )
 from diffBloch.io import read_structure
 from diffBloch.io.record import ExperimentalRecord
@@ -239,6 +244,7 @@ def test_report_refinement_outcome_emits_the_refined_mosaicity_sigma(tmp_path: P
         engine,
         result,
         root=tmp_path,
+        parameter_count=ParameterCount(structural=0),
         validation_rotation_indices=frozenset(),
         thickness_nns=(),
         mosaicity_nns=(component,),
@@ -488,14 +494,15 @@ def test_outputs_written_event_carries_paths_relative_to_the_experiment_director
         cast(Any, engine),
         cast(Any, result),
         root=root,
+        parameter_count=ParameterCount(structural=0),
         validation_rotation_indices=frozenset(),
         thickness_nns=(),
         mosaicity_nns=(),
         raw_alphas=None,
     )
 
-    (record,) = [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
-    assert record.event_type == "RefinementOutputsWritten"
+    records = [EventRecord.model_validate_json(line) for line in path.read_text().splitlines()]
+    (record,) = [r for r in records if r.event_type == "RefinementOutputsWritten"]
     assert record.payload["experiment_directory"] == str(root.resolve())
     assert record.payload["structure"] == "refined_structure.cif"
     assert record.artifacts == {
@@ -537,6 +544,7 @@ def test_report_refinement_outcome_emits_each_rotations_scored_reflections(
         engine,
         result,
         root=tmp_path,
+        parameter_count=ParameterCount(structural=0),
         validation_rotation_indices=frozenset({row.rotation_index}),
         thickness_nns=(),
         mosaicity_nns=(),
@@ -556,3 +564,57 @@ def test_report_refinement_outcome_emits_each_rotations_scored_reflections(
         calculated=row.calculated,
     )
     assert isinstance(events[-1], RefinementOutputsWritten)
+
+
+def test_fitted_parameter_count_itemises_what_the_run_fitted() -> None:
+    """Components count every trainable element; per-frame terms follow the preprocess recipe."""
+    engine = _engine(tilts=rocking_curve_tilts(0.5, 2))
+    component = TrainableIsotropicMosaicity(
+        azimuth_degrees=(0.0, 90.0),
+        polar_degrees=(0.0, 0.04),
+        init_sigma_degrees=0.02,
+        rotation_range=(0, 1),
+        key="isotropic_mosaicity[a.cif_pets]",
+    )
+    model = build_refinement_model(
+        initial=_params(),
+        components=(component,),
+        component_params={
+            component.key: component.initial_params(dtype=torch.float64, device=torch.device("cpu"))
+        },
+    )
+    result = ModelRefinementResult(
+        model=model,
+        losses=torch.zeros(1, dtype=torch.float64),
+        best_model=model,
+        best_step=0,
+        artifacts={},
+    )
+    trainable = TrainableSpec(positions=AtomSelection.all())
+
+    count = _fitted_parameter_count(
+        engine,
+        result,
+        trainable,
+        n_fitted_frames=4,
+        per_frame_thickness=True,
+        per_frame_orientation=True,
+    )
+
+    assert count.structural == structural_parameter_count(_params(), engine.spec, trainable)
+    assert count.components == 1  # the single mosaicity width
+    assert count.per_frame_thickness == 4
+    assert count.per_frame_orientation == 12  # (alpha, beta, omega) per frame
+    assert count.per_frame_scales == 4
+    assert count.with_orientation - count.without_orientation == 12
+
+    no_preprocess_fits = _fitted_parameter_count(
+        engine,
+        result,
+        trainable,
+        n_fitted_frames=4,
+        per_frame_thickness=False,
+        per_frame_orientation=False,
+    )
+    assert no_preprocess_fits.per_frame_thickness == 0
+    assert no_preprocess_fits.with_orientation == no_preprocess_fits.without_orientation

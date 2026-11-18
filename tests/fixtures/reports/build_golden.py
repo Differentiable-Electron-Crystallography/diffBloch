@@ -33,6 +33,7 @@ from diffBloch.observability import (
     Event,
     EventRecord,
     ExperimentDeclared,
+    FitStatisticsReported,
     InferenceCompleted,
     IsotropicMosaicityRefined,
     ObjectiveManifest,
@@ -285,10 +286,13 @@ def build_events() -> list[Event]:
                 n_matched=35,
                 dataset=DATASETS[k // 2],
                 rotation_index=k,
+                wr=0.034 + 0.002 * k,
             )
             for k in range(4)
         ),
-        InferenceCompleted(n_rotations=4, n_evaluated=4, mean_r_obs=0.053, mean_wr2=0.043),
+        InferenceCompleted(
+            n_rotations=4, n_evaluated=4, mean_r_obs=0.053, mean_wr2=0.043, mean_wr=0.037
+        ),
     )
     steps = [
         RefinementStep(
@@ -316,6 +320,10 @@ def build_events() -> list[Event]:
             val_n_r_obs_evaluated=1,
             position_rmsd=0.01 * (i + 1),
             ueq_rmsd=0.0005 * (i + 1),
+            wr=0.040 - 0.003 * i,
+            n_wr_evaluated=3,
+            val_wr=0.045 - 0.002 * i,
+            val_n_wr_evaluated=1,
         )
         for i in range(3)
     ]
@@ -337,6 +345,7 @@ def build_events() -> list[Event]:
                 r_obs=0.056 + 0.002 * k,
                 diff_loss=0.28,
                 dataset="a.cif_pets",
+                wr=0.041 + 0.002 * k,
             )
             for k in (0, 1)
         ),
@@ -349,6 +358,7 @@ def build_events() -> list[Event]:
                 r_obs=0.053 + 0.002 * k,
                 diff_loss=0.23,
                 dataset="a.cif_pets",
+                wr=0.038 + 0.002 * k,
             )
             for k in (0, 1)
         ),
@@ -368,6 +378,7 @@ def build_events() -> list[Event]:
                 n_matched=35,
                 is_validation=(k == 3),
                 dataset=DATASETS[k // 2],
+                wr=0.035 + 0.002 * k,
             )
             for k in range(4)
         ),
@@ -384,6 +395,27 @@ def build_events() -> list[Event]:
                 calculated=(5.6e5, 2.2e4, 1.5e3),
             )
             for k in range(4)
+        ),
+        FitStatisticsReported(
+            r_obs_amplitude=0.047,
+            wr_obs_amplitude=0.052,
+            wr_all_amplitude=0.061,
+            gof_obs_without_orientation=1.41,
+            gof_all_without_orientation=1.12,
+            gof_obs_with_orientation=1.45,
+            gof_all_with_orientation=1.13,
+            gof_obs_inverse_variance_without_orientation=1.83,
+            gof_all_inverse_variance_without_orientation=1.31,
+            gof_obs_inverse_variance_with_orientation=1.88,
+            gof_all_inverse_variance_with_orientation=1.32,
+            n_obs=40,
+            n_all=105,
+            n_frames=3,
+            p_structural=14,
+            p_components=5,
+            p_per_frame_thickness=0,
+            p_per_frame_orientation=9,
+            n_per_frame_scales=3,
         ),
         IsotropicMosaicityRefined(label="a.cif_pets", sigma_degrees=0.021, pets_sigma_degrees=0.02),
         *(

@@ -18,7 +18,7 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
+from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, wr_loss
 from diffBloch.observability import EventRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, optimize_thickness
@@ -63,7 +63,7 @@ def _engine(
         numbers=numbers,
         grid=grid,
         orientations=(orientation,),
-        loss=w_rbragg_loss,
+        loss=wr_loss,
     )
 
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import math
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -37,7 +38,12 @@ from diffBloch.core.dynamical import (
     stack_beam_plans,
     tilted_beam_geometry,
 )
-from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
+from diffBloch.core.losses import (
+    optimal_scale,
+    rbragg,
+    weighted_r_amplitude,
+    weighted_r_intensity,
+)
 from diffBloch.core.products import (
     AlignedIntensities,
     BlochSolution,
@@ -54,7 +60,7 @@ from diffBloch.core.solver import (
 )
 from diffBloch.core.symmetry import AsuExpansionPlan, expand_asu
 from diffBloch.engine.constraints import ConstraintTransform
-from diffBloch.engine.losses import wr2_scores
+from diffBloch.engine.losses import wr_scores
 from diffBloch.engine.plan import (
     CoupledOrientationPlan,
     OrientationPlan,
@@ -150,27 +156,48 @@ class _Timer:
             )
 
 
+def _scaled_metric_scores(
+    aligned: AlignedIntensities, metric: Callable[[Tensor, Tensor, Tensor], Tensor]
+) -> Tensor:
+    """Per-thickness ``metric`` of ``aligned``, each thickness at its own optimal scale."""
+    return torch.stack(
+        [
+            optimal_scale(
+                aligned.calculated[t], aligned.observed[t], aligned.sigmas[t], metric=metric
+            )[1]
+            for t in range(aligned.calculated.shape[0])
+        ]
+    )
+
+
+def _best_finite(scores: Tensor) -> float:
+    """The smallest finite per-thickness score, or ``nan`` when none is finite."""
+    finite = scores[torch.isfinite(scores)]
+    return float(finite.min()) if finite.numel() else float("nan")
+
+
 @dataclass(frozen=True)
 class RotationMetrics:
-    """One rotation's scaling-optimised wR2/R_obs for a settled model snapshot.
+    """One rotation's scaling-optimised wR/wR2/R_obs for a settled model snapshot.
 
     Report/plot use (:meth:`RefinementEngine.per_rotation_metrics`), not the objective: each metric
     independently re-optimises its own intensity scale (:func:`diffBloch.core.losses.optimal_scale`),
-    exactly as ``refinement_metrics``/the training objective do, so ``wr2``/``r_obs`` here match what
-    those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index (the
+    exactly as ``refinement_metrics``/the training objective do, so ``wr`` (on ``|F|``), ``wr2`` (on
+    intensities) and ``r_obs`` here match what those report elsewhere. ``rotation_index`` is the original zero-based PETS rotation index (the
     *pooled* one for a multi-dataset experiment), and ``dataset`` the ``inputs.exp_data`` ref it
     came from -- both read straight off the rotation's own ``pattern``, so a per-dataset breakdown
     never re-derives dataset membership from index offsets.
 
-    The per-reflection columns are the matched reflections ``wr2`` was scored over, in alignment
+    The per-reflection columns are the matched reflections ``wr`` was scored over, in alignment
     order: ``hkl`` and its ``g_magnitude`` (``|g| = 1/d`` in Angstrom^-1, the same no-``2 pi``
     convention as ``g_max``, from the fixed cell), the measured ``observed`` intensity and its
     ``sigmas``, and ``calculated``, the simulated intensity already multiplied by ``scale`` (the
-    wR2-optimal scale of the selected thickness), so it sits on the observed intensity's scale and
+    wR-optimal scale of the selected thickness), so it sits on the observed intensity's scale and
     an intensity- or resolution-dependent misfit can be read from them directly.
     """
 
     rotation_index: int
+    wr: float
     wr2: float
     r_obs: float
     n_matched: int
@@ -200,10 +227,10 @@ class RefinementEngine:
     orientations: tuple[OrientationPlanLike, ...]
     loss: LossFn
     # The per-thickness counterpart of loss (see ScoresFn): what score_orientation /
-    # score_orientation_per_thickness search over. Defaults to wr2_scores, reproducing this
-    # engine's long-standing hardcoded search criterion; build_engine derives both loss and scores
-    # from the same ExperimentConfig.objective so the two stay in lockstep.
-    scores: ScoresFn = wr2_scores
+    # score_orientation_per_thickness search over. Defaults to wr_scores (wR on |F|, the default
+    # residual); build_engine derives both loss and scores from the same
+    # ExperimentConfig.loss_metrics so the two stay in lockstep.
+    scores: ScoresFn = wr_scores
     method: SolverMethod = "matrix_exp"
     # matrix_exp propagator block cap (memory only; matches unbounded to machine precision, a
     # rounding-level ~1 ulp shift, never accuracy). None (default) lets each
@@ -272,7 +299,7 @@ class RefinementEngine:
         thicknesses at once: the expensive eigendecomposition depends only on the orientation and
         ``fgb``, while thickness enters only the cheap propagation tail. The calculated and observed
         intensities are aligned once (alignment is thickness-independent), then reduced by
-        ``self.scores`` (default :func:`~diffBloch.engine.losses.wr2_scores`) -- the same per-metric
+        ``self.scores`` (default :func:`~diffBloch.engine.losses.wr_scores`) -- the same per-metric
         function ``self.loss`` sums for the gradient objective, so this search and the refinement
         stage share one ``ExperimentConfig.objective``.
 
@@ -415,12 +442,13 @@ class RefinementEngine:
         return mean_r_obs, n_matched, n_strong, n_weak, n_unmatched
 
     def per_rotation_metrics(self, model: RefinementModel) -> tuple[RotationMetrics, ...]:
-        """Per-rotation wR2/R_obs for one refinement-model snapshot (report/plot use).
+        """Per-rotation wR/wR2/R_obs for one refinement-model snapshot (report/plot use).
 
         Same loop shape as :meth:`refinement_metrics` (component-aware thickness, one thickness per
-        rotation picked by the wR2 that is actually minimised during training -- not by R_obs, which
-        is reported but never optimised), returning every rotation's pair instead of an aggregate,
-        together with the per-reflection intensities that thickness's wR2 was scored over.
+        rotation picked by ``wR`` on ``|F|``, the default objective), returning every rotation's
+        values instead of an aggregate, together with the per-reflection intensities that
+        thickness's ``wR`` was scored over. ``wR2`` and ``R_obs`` are read at the same thickness,
+        each with its own optimal scale.
         """
         with torch.no_grad():
             state = self.physical_state(model.structure.initial)
@@ -441,34 +469,26 @@ class RefinementEngine:
                     orientation.pattern,
                     orientation.alignment,
                 )
-                wr2_fits = [
+                wr_fits = [
                     optimal_scale(
                         aligned.calculated[t],
                         aligned.observed[t],
                         aligned.sigmas[t],
-                        metric=w_rbragg,
+                        metric=weighted_r_amplitude,
                     )
                     for t in range(aligned.calculated.shape[0])
                 ]
-                wr2_scores = torch.stack([score for _, score in wr2_fits])
-                r_obs_scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t],
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                            metric=rbragg,
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
-                best_t = int(torch.argmin(wr2_scores))
-                scale = float(wr2_fits[best_t][0])
+                wr_scores_t = torch.stack([score for _, score in wr_fits])
+                wr2_scores_t = _scaled_metric_scores(aligned, weighted_r_intensity)
+                r_obs_scores = _scaled_metric_scores(aligned, rbragg)
+                best_t = int(torch.argmin(wr_scores_t))
+                scale = float(wr_fits[best_t][0])
                 hkl = orientation.alignment.hkl.to(dtype=torch.float64, device="cpu")
                 rows.append(
                     RotationMetrics(
                         rotation_index=orientation.pattern.rotation_index,
-                        wr2=float(wr2_scores[best_t]),
+                        wr=float(wr_scores_t[best_t]),
+                        wr2=float(wr2_scores_t[best_t]),
                         r_obs=float(r_obs_scores[best_t]),
                         n_matched=int(aligned.observed.shape[-1]),
                         scale=scale,
@@ -506,6 +526,7 @@ class RefinementEngine:
             state = constraint.apply(state)
         fgb = self._structure_factors_from_state(state)
         total = params.asu_positions.new_zeros(())
+        wr_values: list[float] = []
         wr2_values: list[float] = []
         r_obs_values: list[float] = []
         per_rotation: list[dict[str, float]] = []
@@ -522,35 +543,17 @@ class RefinementEngine:
                 solution = self._solve(orientation, fgb, thickness, tilts=context.tilts)
             aligned = align(solution, orientation.pattern, orientation.alignment)
             with torch.no_grad():
-                wr2_scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t].detach(),
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
-                finite_wr2 = wr2_scores[torch.isfinite(wr2_scores)]
-                rotation_wr2 = float(finite_wr2.min()) if finite_wr2.numel() else float("nan")
-                if finite_wr2.numel():
-                    wr2_values.append(rotation_wr2)
-                scores = torch.stack(
-                    [
-                        optimal_scale(
-                            aligned.calculated[t].detach(),
-                            aligned.observed[t],
-                            aligned.sigmas[t],
-                            metric=rbragg,
-                        )[1]
-                        for t in range(aligned.calculated.shape[0])
-                    ]
-                )
-                finite = scores[torch.isfinite(scores)]
-                rotation_r_obs = float(finite.min()) if finite.numel() else float("nan")
-                if finite.numel():
-                    r_obs_values.append(rotation_r_obs)
+                detached = dataclasses.replace(aligned, calculated=aligned.calculated.detach())
+                rotation_wr = _best_finite(_scaled_metric_scores(detached, weighted_r_amplitude))
+                rotation_wr2 = _best_finite(_scaled_metric_scores(detached, weighted_r_intensity))
+                rotation_r_obs = _best_finite(_scaled_metric_scores(detached, rbragg))
+                for value, bucket in (
+                    (rotation_wr, wr_values),
+                    (rotation_wr2, wr2_values),
+                    (rotation_r_obs, r_obs_values),
+                ):
+                    if math.isfinite(value):
+                        bucket.append(value)
             term = self.loss(aligned)
             if term.ndim != 0:
                 raise ValueError(f"loss must return a scalar, got shape {tuple(term.shape)}")
@@ -558,6 +561,7 @@ class RefinementEngine:
             per_rotation.append(
                 {
                     "rotation_index": float(rotation_index),
+                    "wr": rotation_wr,
                     "wr2": rotation_wr2,
                     "r_obs": rotation_r_obs,
                     "diff_loss": float(term.detach()),
@@ -573,12 +577,14 @@ class RefinementEngine:
         return ObjectiveValue(
             components,
             diagnostics={
+                "wr": (sum(wr_values) / len(wr_values) if wr_values else float("nan")),
                 "wr2": (sum(wr2_values) / len(wr2_values) if wr2_values else float("nan")),
                 "r_obs": (sum(r_obs_values) / len(r_obs_values) if r_obs_values else float("nan")),
-                # Each mean's own denominator, reported beside it. wR2 and R_obs are NaN-filtered
-                # independently, so a rotation can contribute to one and not the other -- one
-                # shared count would misstate at least one of the two means.
+                # Each mean's own denominator, reported beside it. wR, wR2 and R_obs are
+                # NaN-filtered independently, so a rotation can contribute to one and not another --
+                # one shared count would misstate at least one of the means.
                 "n_rotations": float(len(self.orientations)),
+                "n_wr_evaluated": float(len(wr_values)),
                 "n_wr2_evaluated": float(len(wr2_values)),
                 "n_r_obs_evaluated": float(len(r_obs_values)),
             },
@@ -1267,6 +1273,14 @@ def run_refinement_model(
             ),
             position_rmsd=position_rmsd,
             ueq_rmsd=ueq_rmsd,
+            wr=diagnostics["wr"],
+            n_wr_evaluated=int(diagnostics["n_wr_evaluated"]),
+            val_wr=None if selection_diagnostics is None else selection_diagnostics["wr"],
+            val_n_wr_evaluated=(
+                None
+                if selection_diagnostics is None
+                else int(selection_diagnostics["n_wr_evaluated"])
+            ),
         )
         history.append(event)
         logger.report(event)
@@ -1276,6 +1290,7 @@ def run_refinement_model(
                     RefinementOrientationStep(
                         iteration=step,
                         rotation_index=int(entry["rotation_index"]),
+                        wr=entry["wr"],
                         wr2=entry["wr2"],
                         r_obs=entry["r_obs"],
                         diff_loss=entry["diff_loss"],

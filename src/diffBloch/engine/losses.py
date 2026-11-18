@@ -1,4 +1,4 @@
-"""Named ``LossFn``/``ScoresFn`` builders: the objective terms ``ExperimentConfig.objective`` picks.
+"""Named ``LossFn``/``ScoresFn`` builders: the objective terms ``ExperimentConfig.loss_metrics`` picks.
 
 Each adapts a pure :mod:`diffBloch.core.losses` intensity comparison (which reduces over the
 reflection axis, yielding a ``(T,)`` per-thickness loss) into two shapes: a ``ScoresFn``
@@ -7,18 +7,39 @@ reflection axis, yielding a ``(T,)`` per-thickness loss) into two shapes: a ``Sc
 uses both off the *same* underlying metric -- ``scores`` for the orientation/thickness
 preprocessing search (``score_orientation``/``score_orientation_per_thickness``, which need a
 per-thickness vector to argmin over) and ``loss`` for the differentiable gradient-refinement
-objective -- so picking one ``ExperimentConfig.objective`` genuinely drives the whole pipeline, not
-just the gradient stage. Saves every caller from rewriting
-``lambda a: mse(a.calculated, a.observed).sum()`` and gives each objective a named, importable home
--- e.g. ``RefinementEngine(loss=rbragg_loss, scores=robs_scores, ...)``.
+objective -- so picking one residual genuinely drives the whole pipeline, not just the gradient
+stage.
+
+Three residuals, each re-fitting the multiplicative intensity scale per thickness through
+:func:`~diffBloch.core.losses.optimal_scale` (the calculated intensities come off the dynamical
+solve on an arbitrary scale; compared raw, a weighted R is denominator-dominated and parks near ~1
+with a vanishing gradient):
+
+- ``wr`` -- :func:`~diffBloch.core.losses.weighted_r_amplitude`, Jana2020's ``wR`` on ``|F|``
+  (the default);
+- ``wr2`` -- :func:`~diffBloch.core.losses.weighted_r_intensity`, ``wR2`` on intensities;
+- ``robs`` -- :func:`~diffBloch.core.losses.rbragg`, ``R(obs)`` on ``|F|``.
+
+The selected grid branch remains differentiable in the calculated intensities (``torch.min``
+routes the gradient through the winning candidate); only a boundary where the winning grid point
+changes is piecewise-smooth.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 from torch import Tensor
 
-from diffBloch.core.losses import l1, mse, optimal_scale, rbragg, w_rbragg
+from diffBloch.core.losses import (
+    l1,
+    mse,
+    optimal_scale,
+    rbragg,
+    weighted_r_amplitude,
+    weighted_r_intensity,
+)
 from diffBloch.core.products import AlignedIntensities
 
 __all__ = [
@@ -28,7 +49,8 @@ __all__ = [
     "robs_scores",
     "wr2_loss",
     "wr2_scores",
-    "w_rbragg_loss",
+    "wr_loss",
+    "wr_scores",
 ]
 
 
@@ -42,58 +64,43 @@ def l1_loss(aligned: AlignedIntensities) -> Tensor:
     return l1(aligned.calculated, aligned.observed).sum()
 
 
-def w_rbragg_loss(aligned: AlignedIntensities) -> Tensor:
-    """Per-orientation weighted-R2 term (default ``mu``), summed over thicknesses to a scalar.
-
-    Raw: no calc<->obs scaling. Correct only where the caller has already put calculated on the
-    observed scale; for the refinement objective use :func:`wr2_loss`, which is the
-    :func:`~diffBloch.preprocess.scoring.build_engine` default.
-    """
-    return w_rbragg(aligned.calculated, aligned.observed, aligned.sigmas).sum()
-
-
-def wr2_scores(aligned: AlignedIntensities) -> Tensor:
-    """Per-thickness scaling-optimised weighted-R2 (shape ``(T,)``).
-
-    The calculated intensities come off the dynamical solve on an arbitrary structure-factor scale,
-    while the observed are PETS intensities on their own scale. Compared raw
-    (:func:`w_rbragg_loss`), wR2 is denominator-dominated and parks near ~1 with a vanishing
-    gradient, so a gradient refinement cannot descend it. Every call therefore re-fits the
-    multiplicative intensity scale independently for every thickness through
-    :func:`~diffBloch.core.losses.optimal_scale`. The selected grid branch remains differentiable
-    in its calculated intensities (``torch.min`` routes the gradient through the winning
-    candidate); only a boundary where the winning grid point changes is piecewise-smooth.
-    """
-    calc, obs = aligned.calculated, aligned.observed
-    return torch.stack(
-        [optimal_scale(calc[t], obs[t], aligned.sigmas[t])[1] for t in range(calc.shape[0])]
-    )
-
-
-def wr2_loss(aligned: AlignedIntensities) -> Tensor:
-    """Scaling-optimised weighted-R2 -- the default refinement and orientation-search objective.
-
-    Sums :func:`wr2_scores` over the thickness axis to a scalar; see there for the scale-fit.
-    """
-    return wr2_scores(aligned).sum()
-
-
-def robs_scores(aligned: AlignedIntensities) -> Tensor:
-    """Per-thickness scaling-optimised Bragg R(obs) (shape ``(T,)``).
-
-    Refits the intensity scale per thickness exactly like :func:`wr2_scores`, but against the
-    :func:`~diffBloch.core.losses.rbragg` metric instead of the default ``w_rbragg`` -- the same
-    R_obs the app reports elsewhere (:meth:`~diffBloch.engine.forward.RefinementEngine.refinement_metrics`).
-    """
+def _scaled_scores(
+    aligned: AlignedIntensities, metric: Callable[[Tensor, Tensor, Tensor], Tensor]
+) -> Tensor:
     calc, obs = aligned.calculated, aligned.observed
     return torch.stack(
         [
-            optimal_scale(calc[t], obs[t], aligned.sigmas[t], metric=rbragg)[1]
+            optimal_scale(calc[t], obs[t], aligned.sigmas[t], metric=metric)[1]
             for t in range(calc.shape[0])
         ]
     )
 
 
+def wr_scores(aligned: AlignedIntensities) -> Tensor:
+    """Per-thickness scaling-optimised ``wR`` on amplitudes (shape ``(T,)``)."""
+    return _scaled_scores(aligned, weighted_r_amplitude)
+
+
+def wr_loss(aligned: AlignedIntensities) -> Tensor:
+    """Scaling-optimised ``wR`` on amplitudes -- the default refinement and search objective."""
+    return wr_scores(aligned).sum()
+
+
+def wr2_scores(aligned: AlignedIntensities) -> Tensor:
+    """Per-thickness scaling-optimised ``wR2`` on intensities (shape ``(T,)``)."""
+    return _scaled_scores(aligned, weighted_r_intensity)
+
+
+def wr2_loss(aligned: AlignedIntensities) -> Tensor:
+    """Scaling-optimised ``wR2`` on intensities. Sums :func:`wr2_scores` over thickness."""
+    return wr2_scores(aligned).sum()
+
+
+def robs_scores(aligned: AlignedIntensities) -> Tensor:
+    """Per-thickness scaling-optimised Bragg ``R(obs)`` (shape ``(T,)``), the ``R_obs`` reported."""
+    return _scaled_scores(aligned, rbragg)
+
+
 def rbragg_loss(aligned: AlignedIntensities) -> Tensor:
-    """Scaling-optimised Bragg R(obs) objective. Sums :func:`robs_scores` over thickness."""
+    """Scaling-optimised Bragg ``R(obs)`` objective. Sums :func:`robs_scores` over thickness."""
     return robs_scores(aligned).sum()
