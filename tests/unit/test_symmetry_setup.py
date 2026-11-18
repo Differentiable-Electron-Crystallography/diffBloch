@@ -15,6 +15,8 @@ import torch
 from diffpy.structure.spacegroups import get_space_group
 from diffpy.structure.symmetryutilities import SymmetryConstraints as DiffpyConstraints
 
+from diffBloch.core.scattering import structure_factors
+from diffBloch.core.symmetry import expand_asu
 from diffBloch.io.cif import read_structure
 from diffBloch.io.symmetry_setup import symmetry_constraints
 from diffBloch.params import constrain
@@ -168,3 +170,65 @@ def test_native_projector_matches_diffpy_oracle(cif: Path) -> None:
         # The dimension of freedom (rank of P) must match diffpy's free-parameter count -- this is
         # what catches a coupled site as well as any CIF-symops vs diffpy setting/origin mismatch.
         assert np.linalg.matrix_rank(p, tol=1e-9) == n_free
+
+
+def _quartz_with_split_si(tmp_path: Path, *, occupancies: tuple[float, float]) -> Path:
+    """Quartz with its Si site written as two co-located rows, as a mixed site would be."""
+    lines: list[str] = []
+    for line in QUARTZ.read_text().splitlines():
+        if line.startswith("_atom_site_thermal_displace_type"):
+            lines.extend((line, "_atom_site_occupancy"))
+        elif line.startswith("Si1 Si "):
+            lines.append(f"{line} {occupancies[0]}")
+            lines.append(f"{line.replace('Si1', 'Si2', 1)} {occupancies[1]}")
+        elif line.startswith("O1 O "):
+            lines.append(f"{line} 1.0")
+        elif line.startswith("Si1 0."):
+            lines.extend((line, line.replace("Si1", "Si2", 1)))
+        else:
+            lines.append(line)
+    path = tmp_path / "split_si.cif"
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def _structure_factors(cif: Path) -> torch.Tensor:
+    record = read_structure(cif)
+    setup = RefinementSetup.from_structure(record)
+    state = constrain(setup.params, setup.spec)
+    expanded = expand_asu(
+        setup.asu_plan,
+        state.positions,
+        numbers=setup.numbers,
+        uij=state.uij_star,
+        occupancies=state.occupancies,
+    )
+    assert expanded.numbers is not None and expanded.uij is not None
+    assert expanded.occupancies is not None
+    assert setup.spec.reciprocal_basis is not None
+    hkl = torch.tensor([[1, 0, 0], [1, 0, 1], [1, 1, 0], [2, 0, 1], [3, -1, 2]])
+    return structure_factors(
+        expanded.positions,
+        expanded.numbers,
+        expanded.occupancies,
+        expanded.uij,
+        hkl,
+        setup.spec.reciprocal_basis,
+        100.0,
+        g_max=5.0,
+    )
+
+
+def test_splitting_a_site_into_co_located_rows_leaves_structure_factors_unchanged(
+    tmp_path: Path,
+) -> None:
+    split = _quartz_with_split_si(tmp_path, occupancies=(0.25, 0.75))
+
+    assert torch.allclose(_structure_factors(split), _structure_factors(QUARTZ), atol=1e-10)
+
+
+def test_co_located_rows_with_total_occupancy_above_one_are_rejected(tmp_path: Path) -> None:
+    split = _quartz_with_split_si(tmp_path, occupancies=(0.75, 0.75))
+
+    with pytest.raises(ValueError, match="total occupancy"):
+        RefinementSetup.from_structure(read_structure(split))
