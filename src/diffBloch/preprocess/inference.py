@@ -20,7 +20,12 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from diffBloch.core.losses import optimal_scale, rbragg, w_rbragg
+from diffBloch.core.losses import (
+    optimal_scale,
+    rbragg,
+    weighted_r_amplitude,
+    weighted_r_intensity,
+)
 from diffBloch.core.products import BlochSolution, align
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine.plan import OrientationPlanLike
@@ -51,12 +56,15 @@ class RotationInference:
     ``r_obs`` is the scaling-optimised Bragg R-factor of calculated vs observed intensities over the
     reflections with ``I > 3*sigma`` (``core.losses.rbragg``); it is ``nan`` when no reflection
     passes that cut. ``n_matched`` is the rotation's full matched-reflection count (observed and
-    calculated both, no intensity cut) -- a diagnostic for why an ``r_obs`` is what it is.
+    calculated both, no intensity cut) -- a diagnostic for why an ``r_obs`` is what it is. ``wr`` is
+    the weighted R on ``|F|`` (``core.losses.weighted_r_amplitude``) and ``wr2`` the weighted R on
+    intensities (``core.losses.weighted_r_intensity``), each at its own optimal scale.
     """
 
     r_obs: float
     wr2: float
     n_matched: int
+    wr: float = math.nan
 
 
 @dataclass(frozen=True)
@@ -71,8 +79,14 @@ class InferenceResult:
         return sum(1 for row in self.per_rotation if math.isfinite(row.r_obs))
 
     @property
+    def mean_wr(self) -> float:
+        """Mean weighted R on ``|F|`` over rotations with a finite value; ``nan`` when none has one."""
+        finite = [row.wr for row in self.per_rotation if math.isfinite(row.wr)]
+        return sum(finite) / len(finite) if finite else float("nan")
+
+    @property
     def mean_wr2(self) -> float:
-        """Mean weighted-R2 over rotations with a finite value; ``nan`` when none has one.
+        """Mean weighted R on intensities over rotations with a finite value; ``nan`` when none has one.
 
         The companion to :attr:`mean_r_obs`, filtered independently: a rotation can produce a finite
         score under one metric and not the other, so the two means need not share a denominator.
@@ -146,6 +160,7 @@ def run_inference(
             RotationScored(
                 index=index,
                 r_obs=row.r_obs,
+                wr=row.wr,
                 wr2=row.wr2,
                 n_matched=row.n_matched,
                 dataset=orientation.pattern.dataset,
@@ -158,6 +173,7 @@ def run_inference(
             n_rotations=len(rows),
             n_evaluated=result.n_evaluated,
             mean_r_obs=result.mean_r_obs,
+            mean_wr=result.mean_wr,
             mean_wr2=result.mean_wr2,
         )
     )
@@ -187,7 +203,8 @@ def _score_rotation(orientation: OrientationPlanLike, solution: BlochSolution) -
         # Free alongside r_obs: the same aligned intensities under the other metric, no extra
         # solve. Reported so the CI anchor can track both -- a drift can show in one and not the
         # other, and R_obs alone would not say which.
-        wr2=best_over_thickness(w_rbragg),
+        wr=best_over_thickness(weighted_r_amplitude),
+        wr2=best_over_thickness(weighted_r_intensity),
         # Thickness-independent, so read at t = 0; this is the full matched set, not the I > 3*sigma
         # subset r_obs is scored over.
         n_matched=int(aligned.observed[0].shape[0]),

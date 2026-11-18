@@ -14,6 +14,7 @@ import pytest
 from diffBloch.app.loggers.summary import SummaryLogger, ascii_table
 from diffBloch.observability import (
     ExperimentDeclared,
+    FitStatisticsReported,
     ObjectiveManifest,
     ObjectiveTerm,
     PreprocessCompleted,
@@ -102,6 +103,7 @@ def _run(
     profiles: tuple[ThicknessProfile, ...] = (),
     manifest: ObjectiveManifest | None = None,
     completed: RefinementCompleted | None = None,
+    fit: FitStatisticsReported | None = None,
 ) -> str:
     """Drive a SummaryLogger through one run's worth of events and return the written text."""
     structure = _structure(tmp_path)
@@ -130,6 +132,8 @@ def _run(
         logger.report(rotation)
     for profile in profiles:
         logger.report(profile)
+    if fit is not None:
+        logger.report(fit)
     logger.report(RefinementOutputsWritten(structure=str(structure)))
     return (tmp_path / "refinement_report.txt").read_text()
 
@@ -167,7 +171,7 @@ def test_summary_renders_every_section_from_events_alone(tmp_path: Path) -> None
 
     assert "Simulation / refinement parameters" in text
     assert "Crystallographic parameters" in text
-    assert "Per-rotation wR2 / R_obs" in text
+    assert "Per-rotation wR / wR2 / R_obs" in text
     assert "Thickness NN" in text
     assert "enabled: no" in text
     assert "C1" in text and "O1" in text  # atom labels read back out of the committed CIF
@@ -490,3 +494,42 @@ def test_ascii_table_widens_a_column_to_its_content() -> None:
     table = ascii_table(["A", "B"], [["a-very-long-cell", "1"]])
     header, rule, row = table.splitlines()
     assert len(header) == len(rule) == len(row)
+
+
+def test_summary_reports_jana_fit_statistics_with_both_parameter_counts(tmp_path: Path) -> None:
+    fit = FitStatisticsReported(
+        r_obs_amplitude=0.0373,
+        wr_obs_amplitude=0.0438,
+        wr_all_amplitude=0.0454,
+        gof_obs_without_orientation=1.3834,
+        gof_all_without_orientation=1.2155,
+        gof_obs_with_orientation=1.42,
+        gof_all_with_orientation=1.24,
+        gof_obs_inverse_variance_without_orientation=1.9,
+        gof_all_inverse_variance_without_orientation=1.5,
+        gof_obs_inverse_variance_with_orientation=1.95,
+        gof_all_inverse_variance_with_orientation=1.52,
+        n_obs=5364,
+        n_all=7491,
+        n_frames=111,
+        p_structural=14,
+        p_components=1,
+        p_per_frame_thickness=0,
+        p_per_frame_orientation=333,
+        n_per_frame_scales=111,
+    )
+    text = _run(tmp_path, fit=fit)
+
+    assert "Fit statistics (Jana2020 convention, on |F|)" in text
+    assert "3.73" in text and "4.38" in text and "4.54" in text
+    assert "5364 / 7491" in text
+    assert "15 (without orientation)" in text and "348 (with orientation)" in text
+    assert "1.383" in text and "1.216" in text
+    assert "111 per-frame scales not charged" in text
+    # The per-frame means sit beside the pooled Jana-convention block: wR on |F| and wR2 on
+    # intensities are both reported.
+    assert "wR (%)" in text and "wR2 (%)" in text
+
+
+def test_summary_marks_fit_statistics_absent_when_not_reported(tmp_path: Path) -> None:
+    assert "n/a (no fit statistics reported)" in _run(tmp_path)

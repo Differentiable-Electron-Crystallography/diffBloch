@@ -1,19 +1,29 @@
 # Refinement
 
 Refinement holds a settled `Plan` (fitted orientation, tilts, thickness — see
-[Preprocessing](preprocessing.md)) fixed and minimizes the scaling-optimized weighted {math}`wR_2`
-of [Klar *et al.* (2023)](https://doi.org/10.1038/s41557-023-01186-1) over the differentiable
-structural parameters — ASU positions, ADPs, occupancies — by gradient descent through the full
-dynamical calculation described in [Workflow](workflow.md#structural-refinement). `R_obs`, the Bragg
-{math}`R`-factor restricted to {math}`I_{\mathrm{obs}} > 3\sigma` reflections, is reported alongside
-{math}`wR_2` at every step as the conventional crystallographic residual, but is not itself the
-optimized quantity.
+[Preprocessing](preprocessing.md)) fixed and minimizes a scaling-optimized residual, chosen with
+`loss_metrics.residual`, over the differentiable structural parameters — ASU positions, ADPs,
+occupancies — by gradient descent through the full dynamical calculation described in
+[Workflow](workflow.md#structural-refinement). Three residuals are available, and all three are
+reported at every step whichever one is minimized:
+
+| `residual` | Quantity | Definition |
+|---|---|---|
+| `wr` (default) | {math}`wR` on amplitudes, as printed by Jana2020 and Klar *et al.* (2023) | {math}`\sqrt{\sum w(F_o - F_c)^2 / \sum w F_o^2}`, {math}`w = 1/(\sigma(F)^2 + (0.01 F_o)^2)` |
+| `wr2` | {math}`wR_2 = wR(F^2)` on intensities | {math}`\sqrt{\sum w(I_o - I_c)^2 / \sum w I_o^2}`, {math}`w = 1/(\sigma(I)^2 + (0.02 I_o)^2)` |
+| `robs` | {math}`R_{\mathrm{obs}}` on amplitudes | {math}`\sum \lvert F_o - F_c \rvert / \sum F_o` over {math}`I_o > 3\sigma(I_o)` |
+
+Here {math}`F = \sqrt{I}`, {math}`\sigma(F) = \sigma(I)/(2F)` floored at {math}`5\sqrt{\sigma(I)}`
+for {math}`I < 0.01\,\sigma(I)`, and a negative measured intensity enters {math}`wR` at
+{math}`F_o = 0`. The intensity weight carries the same 0.01 instability factor as the amplitude
+weight, propagated to intensities. Klar *et al.*'s SI prints the {math}`wR` equation without the
+square roots; their published values reproduce only with them.
 
 ## `infer` vs `refine`
 
-- `infer` runs the forward simulation and reports {math}`wR_2`/{math}`R_{\mathrm{obs}}` for a settled
+- `infer` runs the forward simulation and reports {math}`wR`/{math}`wR_2`/{math}`R_{\mathrm{obs}}` for a settled
   `Plan`. It does not update parameters.
-- `refine` runs the optimization loop: simulate, differentiate {math}`wR_2` back to the structural
+- `refine` runs the optimization loop: simulate, differentiate the residual back to the structural
   parameters, step the optimizer, repeat.
 
 ## Refinable groups
@@ -46,6 +56,33 @@ refinement:
 Each live epoch reports `wR2`, `R_obs`, and the diffraction loss. Epoch numbering in the CLI starts
 at 1. At completion, the CLI shows the best epoch and its metrics in an aligned summary.
 `Matched HKLs (I>3σ/total): X / Y` means matched reflections with `I > 3 sigma` / all matched reflections.
+
+## Fit statistics comparable with Jana2020
+
+The per-epoch `wR`, `wR2` and `R_obs` above are means of per-frame values, each frame scored at its
+own optimal scale for that metric. Jana2020 instead pools every reflection into one sum, with one
+scale per frame, so the per-frame means differ slightly from Jana's numbers on the same model. After
+refinement, diffBloch therefore also reports Jana-convention statistics of the
+best model, pooled over the fitted frames (event `FitStatisticsReported`, and the
+"Fit statistics" section of `refinement_report.txt`):
+
+- refinement on {math}`|F|`, with {math}`F_o = \sqrt{\max(I_{\mathrm{obs}}, 0)}` and one
+  weighted least-squares amplitude scale per frame;
+- {math}`\sigma(F) = \sigma(I)/(2F_o)`, floored at {math}`5\sqrt{\sigma(I)}` for
+  {math}`I < 0.01\,\sigma(I)`, and weights {math}`w = 1/(\sigma(F)^2 + (0.01\,F_o)^2)`;
+- {math}`R_{\mathrm{obs}} = \sum|F_o - F_c| / \sum F_o` over {math}`I > 3\sigma(I)`, and
+  {math}`wR = \sqrt{\sum w(F_o - F_c)^2 / \sum w F_o^2}` over the obs and over all matched reflections;
+- {math}`\mathrm{GoF} = \sqrt{\sum w(F_o - F_c)^2 / (N - p)}`, with {math}`N` counting per-frame
+  measurements.
+
+The parameter count {math}`p` is itemised: structural parameters after symmetry and constraints, every
+trainable component element (thickness-network weights included, an upper bound on their freedom), a
+per-frame thickness when the model uses the preprocess-fitted one, and the per-frame orientation
+corrections. GoF is given both without and with the orientation corrections, and under both Jana
+weights and {math}`1/\sigma(F)^2`. Per-frame scales are not charged in {math}`p`: Jana2020 lists them
+among its parameters but leaves them out of GoF, and only that convention reproduces its published
+values. The definition is pinned against Jana2020's own per-reflection output for quartz and borane
+(`tests/unit/test_fit_statistics.py`).
 
 ## Refinement outputs
 

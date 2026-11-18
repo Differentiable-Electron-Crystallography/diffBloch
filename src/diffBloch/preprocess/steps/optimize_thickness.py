@@ -31,7 +31,7 @@ import torch
 from torch import Tensor
 
 from diffBloch.core.solver import SolverMethod
-from diffBloch.engine import RefinementEngine, ScoresFn, wr2_scores
+from diffBloch.engine import RefinementEngine, ScoresFn, wr_scores
 from diffBloch.engine.plan import OrientationPlanLike
 from diffBloch.observability import (
     NULL_LOGGER,
@@ -58,16 +58,16 @@ def optimize_thickness(
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
-    scores: ScoresFn = wr2_scores,
-    residual: str = "wr2",
+    scores: ScoresFn = wr_scores,
+    residual: str = "wr",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step optimizing each rotation's thickness by grid search.
 
-    ``scores`` (default :func:`~diffBloch.engine.wr2_scores`) is the per-thickness metric the grid
+    ``scores`` (default :func:`~diffBloch.engine.wr_scores`) is the per-thickness metric the grid
     search argmins over -- pass ``cfg.loss_metrics.to_scores()`` to search the same residual the
     gradient refinement stage minimises (:func:`~diffBloch.config.schema.LossMetricsConfig.to_scores`).
     Execution-only like ``method``: the resolved ``ExperimentConfig.loss_metrics`` already rides in
-    :func:`~diffBloch.config.manifest.dataset_config_digest`. ``residual`` (default ``"wr2"``) is the
+    :func:`~diffBloch.config.manifest.dataset_config_digest`. ``residual`` (default ``"wr"``) is the
     display name for ``scores`` -- pass ``cfg.loss_metrics.residual`` alongside it so
     :class:`~diffBloch.observability.ThicknessOptimized` reports the score under its real name.
 

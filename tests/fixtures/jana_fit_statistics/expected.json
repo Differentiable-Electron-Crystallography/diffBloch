@@ -1,0 +1,24 @@
+{
+  "quartz": {
+    "R_factor_gt": 0.0373,
+    "wR_factor_gt": 0.0438,
+    "R_factor_all": 0.0461,
+    "wR_factor_ref": 0.0454,
+    "goodness_of_fit_gt": 1.3834,
+    "goodness_of_fit_ref": 1.2155,
+    "number_parameters": 126.0,
+    "number_reflns": 7491.0,
+    "reflns_number_gt": 5364.0
+  },
+  "borane": {
+    "R_factor_gt": 0.0756,
+    "wR_factor_gt": 0.0785,
+    "R_factor_all": 0.1299,
+    "wR_factor_ref": 0.0845,
+    "goodness_of_fit_gt": 2.2744,
+    "goodness_of_fit_ref": 1.4361,
+    "number_parameters": 233.0,
+    "number_reflns": 13809.0,
+    "reflns_number_gt": 4779.0
+  }
+}

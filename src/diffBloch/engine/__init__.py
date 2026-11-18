@@ -22,6 +22,15 @@ from diffBloch.engine.constraints import (
     perceive_hydrogen_riding,
     with_hydrogen_riding,
 )
+from diffBloch.engine.fit_statistics import (
+    FitStatistics,
+    FitSums,
+    FrameFit,
+    ParameterCount,
+    fit_statistics,
+    frame_fit,
+    structural_parameter_count,
+)
 from diffBloch.engine.forward import (
     ForwardContext,
     LossFn,
@@ -42,9 +51,10 @@ from diffBloch.engine.losses import (
     mse_loss,
     rbragg_loss,
     robs_scores,
-    w_rbragg_loss,
     wr2_loss,
     wr2_scores,
+    wr_loss,
+    wr_scores,
 )
 from diffBloch.engine.penalties import BondLengthPenalty, perceive_bond_length_penalty
 from diffBloch.engine.plan import (
@@ -70,7 +80,14 @@ __all__ = [
     "AtomSelection",
     "BondLengthPenalty",
     "ConstraintTransform",
+    "FitStatistics",
+    "FitSums",
     "ForwardContext",
+    "FrameFit",
+    "ParameterCount",
+    "fit_statistics",
+    "frame_fit",
+    "structural_parameter_count",
     "HydrogenRiding",
     "LossFn",
     "mean_plan_thickness",
@@ -108,6 +125,7 @@ __all__ = [
     "run_refinement_model",
     "wr2_loss",
     "wr2_scores",
-    "w_rbragg_loss",
+    "wr_loss",
+    "wr_scores",
     "with_hydrogen_riding",
 ]

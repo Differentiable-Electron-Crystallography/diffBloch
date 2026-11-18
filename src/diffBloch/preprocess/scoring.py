@@ -30,8 +30,8 @@ from diffBloch.engine import (
     OrientationPlanLike,
     RefinementEngine,
     ScoresFn,
-    wr2_loss,
-    wr2_scores,
+    wr_loss,
+    wr_scores,
 )
 from diffBloch.preprocess.experiment import RefinementSetup
 from diffBloch.preprocess.plan import Plan, require_built_plans, require_orientation_plans
@@ -44,8 +44,8 @@ def build_engine(
     plan: Plan,
     refinement: RefinementSetup,
     *,
-    loss: LossFn = wr2_loss,
-    scores: ScoresFn = wr2_scores,
+    loss: LossFn = wr_loss,
+    scores: ScoresFn = wr_scores,
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
     absorption: Absorption = NO_ABSORPTION,
@@ -64,8 +64,8 @@ def build_engine(
     forms of one objective (see :mod:`diffBloch.engine.losses`): ``loss`` is the per-orientation term
     ``refine`` minimises, ``scores`` is what :meth:`RefinementEngine.score_orientation` /
     :meth:`~diffBloch.engine.forward.RefinementEngine.score_orientation_per_thickness` search over
-    (``optimize_orientation``/``optimize_thickness``). Both default to wR2
-    (:func:`~diffBloch.engine.wr2_loss`/:func:`~diffBloch.engine.wr2_scores`) after matching
+    (``optimize_orientation``/``optimize_thickness``). Both default to wR on amplitudes
+    (:func:`~diffBloch.engine.wr_loss`/:func:`~diffBloch.engine.wr_scores`) after matching
     calculated total intensity to observed -- calc and obs are on different scales, so the raw
     metric would be flat/gradient-free. Callers should pass both from the same
     ``ExperimentConfig.loss_metrics`` (:meth:`~diffBloch.config.schema.LossMetricsConfig.to_loss` /

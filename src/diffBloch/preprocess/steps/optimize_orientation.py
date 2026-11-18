@@ -24,7 +24,7 @@ rsg/dsg window + resolution cap, reapplied to that trial's fresh lab-frame geome
 the reference implementation's per-trial ``filter_hkls``, rather than pinning scoring to the seed's
 selection. A trial's matched-reflection count can therefore differ from the seed's and from other
 trials'; the default wR2 formula itself has no reflection-count term
-(:func:`diffBloch.core.losses.w_rbragg`: plain ``sum/sum``), so the search can in principle prefer
+(:func:`diffBloch.core.losses.weighted_r_amplitude`: plain ``sum/sum``), so the search can in principle prefer
 a trial that improves partly by matching a different, easier subset --
 ``search.penalize_fewer_reflections`` (:class:`~diffBloch.specs.NelderMeadSearch`, off by default)
 guards against exactly this by dividing the comparison score by the matched count
@@ -61,7 +61,7 @@ from diffBloch.core.dynamical import (
 )
 from diffBloch.core.reciprocal import g_vectors
 from diffBloch.core.solver import SolverMethod
-from diffBloch.engine import RefinementEngine, ScoresFn, wr2_scores
+from diffBloch.engine import RefinementEngine, ScoresFn, wr_scores
 from diffBloch.engine.plan import CoupledOrientationPlan, OrientationPlanLike, StructureFactorGrid
 from diffBloch.observability import (
     NULL_LOGGER,
@@ -107,16 +107,16 @@ def optimize_orientation(
     max_batch: int | None = None,
     logger: Logger = NULL_LOGGER,
     absorption: Absorption = NO_ABSORPTION,
-    scores: ScoresFn = wr2_scores,
-    residual: str = "wr2",
+    scores: ScoresFn = wr_scores,
+    residual: str = "wr",
 ) -> PlanStep:
     """Return a ``Plan -> Plan`` step refining each orientation by orientation search.
 
-    ``residual`` (default ``"wr2"``) is the display name for ``scores`` -- pass
+    ``residual`` (default ``"wr"``) is the display name for ``scores`` -- pass
     ``cfg.loss_metrics.residual`` alongside ``scores=cfg.loss_metrics.to_scores()`` so
     :class:`~diffBloch.observability.OrientationOptimized` reports the score under its real name.
 
-    ``scores`` (default :func:`~diffBloch.engine.wr2_scores`) is the per-thickness metric
+    ``scores`` (default :func:`~diffBloch.engine.wr_scores`) is the per-thickness metric
     :meth:`~diffBloch.engine.forward.RefinementEngine.score_orientation` searches -- pass
     ``cfg.loss_metrics.to_scores()`` to search the same residual the gradient refinement stage
     minimises (:func:`~diffBloch.config.schema.LossMetricsConfig.to_scores`). Execution-only like

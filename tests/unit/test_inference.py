@@ -19,7 +19,7 @@ from tests.unit.synthetic import make_constraint_spec
 from diffBloch.app.loggers import ReportLogger
 from diffBloch.core.products import PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
-from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, w_rbragg_loss
+from diffBloch.engine import OrientationPlan, RefinementEngine, StructureFactorGrid, wr_loss
 from diffBloch.observability import EventRecord
 from diffBloch.params import ConstraintSpec, RefinableParams
 from diffBloch.preprocess import RefinementSetup, run_inference
@@ -75,7 +75,7 @@ def _simulated_intensities(
         numbers=numbers,
         grid=grid,
         orientations=(seed,),
-        loss=w_rbragg_loss,
+        loss=wr_loss,
         method=_METHOD,
     )
     (solution,) = engine.simulate(_params())

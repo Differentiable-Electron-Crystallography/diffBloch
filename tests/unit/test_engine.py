@@ -12,7 +12,7 @@ import torch
 from tests.unit.synthetic import make_constraint_spec
 
 from diffBloch.app.loggers import ReportLogger
-from diffBloch.core.losses import mse, w_rbragg
+from diffBloch.core.losses import mse, weighted_r_amplitude, weighted_r_intensity
 from diffBloch.core.products import BlochSolution, PatternBatch
 from diffBloch.core.symmetry import build_asu_expansion_plan
 from diffBloch.engine import (
@@ -631,7 +631,10 @@ def test_refine_emits_a_step_stream_and_a_completion_event(tmp_path: Path) -> No
     # (mse_loss here) -- both are real numbers and both appear in measurements.
     assert first.payload["wr2"] is not None
     assert first.payload["r_obs"] is not None
+    assert first.payload["wr"] is not None
     assert first.measurements == {
+        "wr": first.payload["wr"],
+        "n_wr_evaluated": first.payload["n_wr_evaluated"],
         "wr2": first.payload["wr2"],
         "r_obs": first.payload["r_obs"],
         "diff_loss": first.payload["loss"],
@@ -677,6 +680,8 @@ def test_refine_lbfgs_step_diagnostics_match_reported_pre_update_loss(tmp_path: 
         step.payload["r_obs"] is not None
     )  # always-computed reporting diagnostic, independent of loss
     assert step.measurements == {
+        "wr": step.payload["wr"],
+        "n_wr_evaluated": step.payload["n_wr_evaluated"],
         "wr2": step.payload["wr2"],
         "r_obs": step.payload["r_obs"],
         "diff_loss": step.payload["loss"],
@@ -895,9 +900,13 @@ def test_per_rotation_metrics_carries_the_scaled_reflections_its_wr2_was_scored_
     assert row.g_magnitude == pytest.approx([np.linalg.norm(hkl) / 5.0 for hkl in row.hkl])
     assert len(row.observed) == len(row.sigmas) == len(row.calculated) == row.n_matched
     assert 500.0 < row.scale < 2000.0
-    rescored = w_rbragg(
+    columns = (
         torch.tensor(row.calculated, dtype=torch.float64),
         torch.tensor(row.observed, dtype=torch.float64),
         torch.tensor(row.sigmas, dtype=torch.float64),
     )
-    assert float(rescored) == pytest.approx(row.wr2, rel=1e-9)
+    # calculated is on the wR-optimal scale, so rescoring it reproduces wr; wr2 has its own scale,
+    # so the same columns can only score it at or above the reported (optimally scaled) value.
+    # rel 1e-6: the engine scored the fp32 solve output; the rescore runs in float64.
+    assert float(weighted_r_amplitude(*columns)) == pytest.approx(row.wr, rel=1e-6)
+    assert float(weighted_r_intensity(*columns)) >= row.wr2 - 1e-12

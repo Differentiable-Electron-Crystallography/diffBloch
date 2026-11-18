@@ -40,6 +40,7 @@ from diffBloch.io import read_structure
 from diffBloch.observability import (
     Event,
     ExperimentDeclared,
+    FitStatisticsReported,
     ObjectiveManifest,
     PreprocessCompleted,
     RefinedRotationMetrics,
@@ -106,6 +107,11 @@ def _kv_list(rows: list[list[str]]) -> str:
     return "\n".join(f"{label.ljust(width)}  {value}" for label, value in rows)
 
 
+def _wr(row: RefinedRotationMetrics) -> float:
+    """A rotation's ``wr``, ``nan`` for a report written before ``wr`` was recorded."""
+    return math.nan if row.wr is None else row.wr
+
+
 def _finite_mean_cell(values: Sequence[float]) -> str:
     """A compact ``mean [n_finite/n_total]`` cell, ``n/a [0/n_total]`` when nothing was finite.
 
@@ -152,6 +158,7 @@ class SummaryLogger:
     _steps: list[RefinementStep] = field(default_factory=list, init=False, repr=False)
     _completed: RefinementCompleted | None = field(default=None, init=False, repr=False)
     _rotations: list[RefinedRotationMetrics] = field(default_factory=list, init=False, repr=False)
+    _fit: FitStatisticsReported | None = field(default=None, init=False, repr=False)
     _preprocess: PreprocessCompleted | None = field(default=None, init=False, repr=False)
     _profiles: dict[str, ThicknessProfile] = field(default_factory=dict, init=False, repr=False)
     _started_at: float = field(default=0.0, init=False, repr=False)
@@ -173,6 +180,8 @@ class SummaryLogger:
             self._completed = event
         elif isinstance(event, RefinedRotationMetrics):
             self._rotations.append(event)
+        elif isinstance(event, FitStatisticsReported):
+            self._fit = event
         elif isinstance(event, PreprocessCompleted):
             self._preprocess = event
         elif isinstance(event, ThicknessProfile):
@@ -205,6 +214,7 @@ class SummaryLogger:
         # The event carries the CIF path relative to the experiment directory.
         structure_path = Path(outputs.experiment_directory) / outputs.structure
         self._simulation_parameters(lines, rule)
+        self._fit_statistics(lines, rule)
         self._crystallographic_parameters(lines, rule, structure_path)
         self._objective_terms(lines, rule)
         self._preprocessing(lines, rule)
@@ -290,10 +300,15 @@ class SummaryLogger:
         ]
         if best is not None and best.val_wr2 is not None:
             rows += [
+                ["Train wR (%)", epoch_mean_pct(best.wr, best.n_wr_evaluated, best.n_rotations)],
                 ["Train wR2 (%)", epoch_mean_pct(best.wr2, best.n_wr2_evaluated, best.n_rotations)],
                 [
                     "Train R_obs (%)",
                     epoch_mean_pct(best.r_obs, best.n_r_obs_evaluated, best.n_rotations),
+                ],
+                [
+                    "Val wR (%)",
+                    epoch_mean_pct(best.val_wr, best.val_n_wr_evaluated, best.val_n_rotations),
                 ],
                 [
                     "Val wR2 (%)",
@@ -317,6 +332,14 @@ class SummaryLogger:
                     ),
                 ],
                 [
+                    "wR (%)",
+                    epoch_mean_pct(
+                        best.wr if best else None,
+                        best.n_wr_evaluated if best else None,
+                        best.n_rotations if best else None,
+                    ),
+                ],
+                [
                     "wR2 (%)",
                     epoch_mean_pct(
                         best.wr2 if best else None,
@@ -327,6 +350,65 @@ class SummaryLogger:
             ]
         rows.append(["Matched HKLs (I>3σ/total)", hkls_matched])
         lines.append(_kv_list(rows))
+
+    def _fit_statistics(self, lines: list[str], rule: Callable[[str], None]) -> None:
+        rule("Fit statistics (Jana2020 convention, on |F|)")
+        fit = self._fit
+        if fit is None:
+            lines.append(" n/a (no fit statistics reported)")
+            return
+
+        def pct(value: float) -> str:
+            return f"{100.0 * value:.2f}" if math.isfinite(value) else "n/a"
+
+        def ratio(value: float) -> str:
+            return f"{value:.3f}" if math.isfinite(value) else "n/a"
+
+        lines.append(
+            " Pooled over the fitted frames, one weighted least-squares |F| scale per frame,"
+        )
+        lines.append(" w = 1/(sigma(F)^2 + (0.01 Fo)^2); comparable with Jana2020's own numbers.")
+        lines.append("")
+        lines.append(
+            _kv_list(
+                [
+                    ["R_obs (%)", pct(fit.r_obs_amplitude)],
+                    ["wR_obs (%)", pct(fit.wr_obs_amplitude)],
+                    ["wR_all (%)", pct(fit.wr_all_amplitude)],
+                    ["N obs (I>3σ) / N all", f"{fit.n_obs} / {fit.n_all}"],
+                    ["Frames", f"{fit.n_frames}"],
+                ]
+            )
+        )
+        lines.append("")
+        lines.append(
+            ascii_table(
+                ["p", "GoF obs", "GoF all", "GoF obs (1/σ²)", "GoF all (1/σ²)"],
+                [
+                    [
+                        f"{fit.p_without_orientation} (without orientation)",
+                        ratio(fit.gof_obs_without_orientation),
+                        ratio(fit.gof_all_without_orientation),
+                        ratio(fit.gof_obs_inverse_variance_without_orientation),
+                        ratio(fit.gof_all_inverse_variance_without_orientation),
+                    ],
+                    [
+                        f"{fit.p_with_orientation} (with orientation)",
+                        ratio(fit.gof_obs_with_orientation),
+                        ratio(fit.gof_all_with_orientation),
+                        ratio(fit.gof_obs_inverse_variance_with_orientation),
+                        ratio(fit.gof_all_inverse_variance_with_orientation),
+                    ],
+                ],
+            )
+        )
+        lines.append("")
+        lines.append(
+            f" p = {fit.p_structural} structural + {fit.p_components} component"
+            f" + {fit.p_per_frame_thickness} per-frame thickness"
+            f" [+ {fit.p_per_frame_orientation} per-frame orientation];"
+            f" {fit.n_per_frame_scales} per-frame scales not charged (Jana2020 convention)"
+        )
 
     def _crystallographic_parameters(
         self, lines: list[str], rule: Callable[[str], None], structure_path: Path
@@ -417,14 +499,14 @@ class SummaryLogger:
         # the train/validation curves sit side by side rather than validation only ever surfacing
         # once, in the final "Validation set" table.
         has_validation = any(step.val_wr2 is not None for step in self._steps)
-        headers = ["Epoch", "wR2", "R_obs"]
+        headers = ["Epoch", "wR", "wR2", "R_obs"]
         if has_validation:
-            headers += ["Val wR2", "Val R_obs"]
+            headers += ["Val wR", "Val wR2", "Val R_obs"]
         rows = []
         for step in self._steps:
-            row = [str(step.iteration + 1), cell(step.wr2), cell(step.r_obs)]
+            row = [str(step.iteration + 1), cell(step.wr), cell(step.wr2), cell(step.r_obs)]
             if has_validation:
-                row += [cell(step.val_wr2), cell(step.val_r_obs)]
+                row += [cell(step.val_wr), cell(step.val_wr2), cell(step.val_r_obs)]
             rows.append(row)
         lines.append(ascii_table(headers, rows))
 
@@ -432,10 +514,11 @@ class SummaryLogger:
         def block(rows: Sequence[RefinedRotationMetrics]) -> None:
             lines.append(
                 ascii_table(
-                    ["Rotation", "wR2", "R_obs", "N matched"],
+                    ["Rotation", "wR", "wR2", "R_obs", "N matched"],
                     [
                         [
                             str(row.rotation_index),
+                            "n/a" if row.wr is None else f"{row.wr:.6f}",
                             f"{row.wr2:.6f}",
                             f"{row.r_obs:.6f}",
                             str(row.n_matched),
@@ -445,10 +528,11 @@ class SummaryLogger:
                 )
             )
             lines.append("")
+            lines.append(f" mean wR    = {_finite_mean_cell([_wr(row) for row in rows])}")
             lines.append(f" mean wR2   = {_finite_mean_cell([row.wr2 for row in rows])}")
             lines.append(f" mean R_obs = {_finite_mean_cell([row.r_obs for row in rows])}")
 
-        rule("Per-rotation wR2 / R_obs (final refined model)")
+        rule("Per-rotation wR / wR2 / R_obs (final refined model)")
         block(self._rotations)
         validation = [row for row in self._rotations if row.is_validation]
         if validation:
@@ -475,10 +559,13 @@ class SummaryLogger:
             return [
                 name,
                 f"{len(train)}/{len(validation)}",
+                _finite_mean_cell([_wr(row) for row in train]),
                 _finite_mean_cell([row.wr2 for row in train]),
                 _finite_mean_cell([row.r_obs for row in train]),
+                _finite_mean_cell([_wr(row) for row in validation]),
                 _finite_mean_cell([row.wr2 for row in validation]),
                 _finite_mean_cell([row.r_obs for row in validation]),
+                _finite_mean_cell([_wr(row) for row in rows]),
                 _finite_mean_cell([row.wr2 for row in rows]),
                 _finite_mean_cell([row.r_obs for row in rows]),
             ]
@@ -493,10 +580,13 @@ class SummaryLogger:
                 [
                     "Dataset",
                     "N (train/val)",
+                    "Train wR",
                     "Train wR2",
                     "Train R_obs",
+                    "Val wR",
                     "Val wR2",
                     "Val R_obs",
+                    "Total wR",
                     "Total wR2",
                     "Total R_obs",
                 ],

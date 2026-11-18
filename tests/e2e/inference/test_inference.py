@@ -133,6 +133,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         {
             "rotation_index": index,
             "r_obs": row.r_obs,
+            "wr": row.wr,
             "wr2": row.wr2,
             "n_matched": row.n_matched,
         }
@@ -144,6 +145,7 @@ def _run_material(material: str, *, count: int) -> dict[str, Any]:
         "n_rotations": len(rotations),
         "wall_time_seconds": elapsed,
         "mean_r_obs": result.mean_r_obs,
+        "mean_wr": result.mean_wr,
         "mean_wr2": result.mean_wr2,
         "rotations": rotations,
     }
