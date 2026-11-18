@@ -22,7 +22,7 @@ from typing import cast
 import torch
 from torch import Tensor
 
-from diffBloch.core import StructureFactorGather
+from diffBloch.core import StructureFactorGather, has_inversion_at_origin
 from diffBloch.core.solver import SolverMethod
 from diffBloch.engine import (
     CoupledOrientationPlan,
@@ -77,6 +77,11 @@ def build_engine(
     unbounded solve to machine precision (a pin is only needed for a specific device budget).
     Execution-only, like ``method``.
 
+    The engine's ``real_operator`` is decided here, once, from the structure: no absorption and an
+    inversion through the origin (:func:`~diffBloch.core.symmetry.has_inversion_at_origin`) make
+    ``A`` real symmetric for every parameter value, so ``matrix_exp`` runs in real arithmetic.
+    Everything else stays on the complex path.
+
     ``compact_structure_factors`` computes only support-grid rows referenced by the settled solve
     gathers and scatters them into the unchanged grid-shaped interface. It changes neither the
     solve nor its gradients; callers whose beam sets change dynamically may disable it or extend
@@ -112,6 +117,10 @@ def build_engine(
         active_structure_factor_indices=active_indices,
         profile=profile,
         checkpoint_activations=checkpoint_activations,
+        # Absorption makes A non-Hermitian; without it, inversion at the origin makes every F_g
+        # real at any refined positions, so A is real symmetric and the solve can run in real
+        # arithmetic.
+        real_operator=not absorption.enabled and has_inversion_at_origin(refinement.asu_plan),
     )
 
 

@@ -16,6 +16,7 @@ a bug. The no-absorption path assumes ``A`` is Hermitian.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Literal
 
@@ -45,6 +46,7 @@ def propagate(
     *,
     method: SolverMethod = "matrix_exp",
     max_batch: int | None = None,
+    real_operator: bool = False,
 ) -> Tensor:
     """Propagate ``system.psi0`` to each thickness, returning the exit wavefunction.
 
@@ -66,6 +68,14 @@ def propagate(
     ~1 ulp: the result matches the unbounded solve *to machine precision*, never in accuracy. A
     memory knob, not a result knob. ``bloch_eigen`` ignores it (it diagonalises once, no
     ``(B, T, N, N)`` intermediate).
+
+    ``real_operator`` (``matrix_exp`` only) is the caller's guarantee that ``A`` is real symmetric
+    for *every* parameter value, not just the current one -- true when the space group holds the
+    inversion through the origin and absorption is off (see
+    :func:`diffBloch.core.symmetry.has_inversion_at_origin`). The solve then runs in real float32
+    arithmetic (:func:`_propagate_matrix_exp_real`), dropping ``Im A``. It is never inferred from
+    the values of ``A``: a structure that is only momentarily real would silently lose the gradient
+    through ``Im F``. ``False`` (the default) is the complex path. ``bloch_eigen`` ignores it.
     """
     if max_batch is not None and max_batch < 1:
         raise ValueError(f"max_batch must be a positive integer or None, got {max_batch}")
@@ -76,6 +86,8 @@ def propagate(
         raise ValueError("thicknesses must be a scalar or 1-D sequence")
 
     if method == "matrix_exp":
+        if real_operator:
+            return _propagate_matrix_exp_real(system, t, max_batch=max_batch)
         return _propagate_matrix_exp(system, t, max_batch=max_batch)
     if method == "bloch_eigen":
         return _propagate_bloch_eigen(system, t)
@@ -140,6 +152,81 @@ def _propagate_matrix_exp(
         block = a_flat[flat // n_thick] * scalars[flat % n_thick][:, None, None]  # (blk, N, N)
         amplitudes.append((torch.matrix_exp(block) @ psi0.unsqueeze(-1)).squeeze(-1))
     return torch.cat(amplitudes, dim=0).reshape(*a.shape[:-2], n_thick, n)  # (..., T, N)
+
+
+# Taylor coefficients of cos / sin in Z = Y^2 (|Y| <= 1 after scaling): cos(Y) = sum c_k Z^k,
+# sin(Y) = Y sum s_k Z^k, k = 0..6 -- truncation below 1/14! ~ 1e-11, far under float32 rounding.
+_COS_TAYLOR = tuple((-1) ** k / math.factorial(2 * k) for k in range(7))
+_SIN_TAYLOR = tuple((-1) ** k / math.factorial(2 * k + 1) for k in range(7))
+
+
+def _propagate_matrix_exp_real(
+    system: BlochSystem,
+    thicknesses: Tensor,
+    *,
+    max_batch: int | None = None,
+) -> Tensor:
+    """``matrix_exp`` for a real symmetric ``A`` in real arithmetic: ``exp(i theta A) = cos(theta A)
+    + i sin(theta A)``.
+
+    A centrosymmetric crystal (origin on the inversion centre) without absorption has real
+    structure factors, so ``A`` is real symmetric. ``cos`` / ``sin`` are then evaluated with real
+    matmuls only -- a scaled degree-6 Taylor series in ``Y^2`` (Paterson-Stockmeyer, 6 matmuls),
+    then ``s`` double-angle steps ``S <- 2 S C``, ``C <- C^2 - S^2`` (3 matmuls each) -- where a
+    complex matmul costs 4 real ones. Differentiable by autograd through those real ops. Only for a
+    caller that guarantees ``A`` is real (``propagate(real_operator=True)``); ``Im A`` is dropped.
+
+    Memory: forward plus backward holds about ``10 + 2 s`` float32 ``N x N`` matrices per operator
+    (``s`` squarings), i.e. ``40 + 8 s`` bytes per ``N**2``, against about 376 for complex
+    ``torch.matrix_exp`` (measured on CUDA, N = 512). The real path therefore stays under the
+    complex block budget up to ``s ~ 42`` -- a ``2**42`` operator norm, far past any crystal -- so it
+    reuses the caller's complex ``max_batch`` unchanged.
+    """
+    a = system.a
+    a = (a.real if a.is_complex() else a).to(torch.float32)
+    n = a.shape[-1]
+    psi0 = system.psi0
+    psi0 = (psi0.real if psi0.is_complex() else psi0).to(device=a.device, dtype=torch.float32)
+    theta = (torch.pi * thicknesses / system.k_n).to(torch.float32)  # (T,)
+    a_flat = a.reshape(-1, n, n)
+    n_batch, n_thick = a_flat.shape[0], theta.shape[0]
+    total = n_batch * n_thick
+    block = total if max_batch is None else max_batch
+    real_parts, imag_parts = [], []
+    for start in range(0, total, block):
+        flat = torch.arange(start, min(total, start + block), device=a.device)
+        x = a_flat[flat // n_thick] * theta[flat % n_thick][:, None, None]  # (blk, N, N)
+        cos_x, sin_x = _cos_sin(x)
+        column = psi0.unsqueeze(-1)
+        real_parts.append((cos_x @ column).squeeze(-1))
+        imag_parts.append((sin_x @ column).squeeze(-1))
+    amplitudes = torch.complex(torch.cat(real_parts), torch.cat(imag_parts))
+    return amplitudes.reshape(*a.shape[:-2], n_thick, n)  # (..., T, N)
+
+
+def _cos_sin(x: Tensor) -> tuple[Tensor, Tensor]:
+    """``(cos(X), sin(X))`` of a real ``(B, N, N)`` stack by scaling and double-angle squaring."""
+    with torch.no_grad():
+        norm = float(x.abs().sum(dim=-2).amax()) if x.numel() else 0.0  # max 1-norm
+        squarings = max(0, math.ceil(math.log2(norm))) if norm > 1.0 else 0
+    y = x / (2.0**squarings)
+    eye = torch.eye(x.shape[-1], dtype=x.dtype, device=x.device).expand_as(x)
+    z = y @ y
+    z2 = z @ z
+    z3 = z2 @ z
+
+    def series(c: tuple[float, ...]) -> Tensor:
+        low = c[0] * eye + c[1] * z + c[2] * z2
+        high = c[3] * eye + c[4] * z + c[5] * z2 + c[6] * z3
+        return low + z3 @ high
+
+    cos_y = series(_COS_TAYLOR)
+    sin_y = y @ series(_SIN_TAYLOR)
+    for _ in range(squarings):
+        # C^2 - S^2, not 2 C^2 - I: the latter amplifies rounding 4x per step (it loses the small
+        # 1 - C part to cancellation), this one 2x -- the same as squaring the complex exponential.
+        cos_y, sin_y = cos_y @ cos_y - sin_y @ sin_y, 2.0 * (sin_y @ cos_y)
+    return cos_y, sin_y
 
 
 def _propagate_bloch_eigen(system: BlochSystem, thicknesses: Tensor) -> Tensor:

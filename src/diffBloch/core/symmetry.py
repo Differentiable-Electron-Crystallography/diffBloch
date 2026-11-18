@@ -52,6 +52,25 @@ class ExpandedAsu:
     occupancies: Tensor | None = None
 
 
+def has_inversion_at_origin(plan: AsuExpansionPlan) -> bool:
+    """Whether the expansion holds the inversion through the origin (``-x, -y, -z`` + a lattice shift).
+
+    When it does, every structure factor ``F_g`` is real at *any* atomic positions, because each
+    site is expanded through that operation alongside its inverse partner. Without absorption the
+    Bloch structure matrix ``A`` is then real symmetric, which lets
+    :func:`diffBloch.core.solver.propagate` solve in real arithmetic (``real_operator=True``). A
+    crystal whose inversion centre is away from the origin returns ``False`` (its ``F_g`` carry a
+    phase), which keeps it on the complex path. Pure: reads only the symmetry operations, never
+    positions or structure-factor values.
+    """
+    rotations = plan.rotations.detach().cpu().to(torch.float64)
+    translations = plan.translations.detach().cpu().to(torch.float64)
+    eye = torch.eye(3, dtype=torch.float64)
+    inversion = (rotations + eye).abs().amax(dim=(-2, -1)) < 1e-6
+    lattice_shift = ((translations - translations.round()).abs() < 1e-6).all(dim=-1)
+    return bool((inversion & lattice_shift).any())
+
+
 def build_asu_expansion_plan(
     frac_positions: NDArray[np.float64],
     symops_R: NDArray[np.float64],

@@ -1,5 +1,6 @@
 """Bloch-wave propagators for closed ``BlochSystem`` values."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +15,7 @@ from diffBloch.core.dynamical import (
     stack_beam_plans,
 )
 from diffBloch.core.reciprocal import g_vectors
-from diffBloch.core.solver import memory_safe_max_batch, propagate
+from diffBloch.core.solver import _cos_sin, _propagate_matrix_exp, memory_safe_max_batch, propagate
 
 _BEAM_HKL = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.int64)
 _GRID_HKL = np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]], dtype=np.int64)
@@ -288,3 +289,76 @@ def test_propagate_matches_oracle_oblique() -> None:
     assert torch.allclose(flux, torch.ones_like(flux), atol=1e-5)
     gap = (psi_me - psi_be).abs().max().item()
     assert 1e-5 < gap < 1e-2  # obliquity-scale disagreement, not complex64 noise
+
+
+# Real-vs-complex agreement, as error relative to each output's largest entry: both paths are
+# float32, so thin slabs agree to ~1e-6; each double-angle step roughly doubles the rounding, so the
+# thick slabs (many squarings) drift to ~1e-4. Bounds sit ~5-10x above the measured drift.
+_REAL_PATH_TOLERANCE = {12.0: 1e-5, 137.0: 2e-5, 900.0: 3e-4, 2500.0: 5e-4}
+
+
+def _relative_gap(got: torch.Tensor, want: torch.Tensor) -> float:
+    return float((got - want).abs().max() / want.abs().max().clamp_min(1e-30))
+
+
+@pytest.mark.parametrize("max_batch", [None, 2])
+@pytest.mark.parametrize("batched", [False, True])
+@pytest.mark.parametrize("thickness", sorted(_REAL_PATH_TOLERANCE))
+def test_matrix_exp_on_a_real_operator_matches_the_complex_path(
+    thickness: float, batched: bool, max_batch: int | None
+) -> None:
+    # Real structure factors (a centrosymmetric crystal, no absorption): A is real symmetric. The
+    # thick slabs push the 1-norm well past 1, so the double-angle squaring loop runs many times.
+    factors = torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex64, requires_grad=True)
+    thicknesses = torch.tensor([0.0, thickness], requires_grad=True)
+
+    def solve(real_operator: bool) -> tuple[torch.Tensor, ...]:
+        system = _batched_system((1.0, 1.002, 0.998), factors) if batched else _system(factors)
+        psi = propagate(system, thicknesses, max_batch=max_batch, real_operator=real_operator)
+        loss = (psi.abs().square() * torch.arange(psi.shape[-1])).sum()
+        return (psi.detach(), *torch.autograd.grad(loss, (factors, thicknesses)))
+
+    direct, real = solve(real_operator=False), solve(real_operator=True)
+    assert real[0].dtype == torch.complex64
+    for got, want in zip(real, direct, strict=True):
+        assert _relative_gap(got, want) < _REAL_PATH_TOLERANCE[thickness]
+
+
+def test_matrix_exp_stays_complex_unless_the_caller_guarantees_a_real_operator() -> None:
+    # The default never inspects A: real now or not, it is exactly the complex path, which keeps
+    # the gradient through Im F that the real path (by design) drops.
+    thicknesses = torch.tensor([12.0, 137.0])
+    for factors in (
+        torch.tensor([0.0, 1.0, 1.0], dtype=torch.complex64),  # real at these values
+        torch.tensor([0.0, 1.0 + 0.5j, 1.0 - 0.5j], dtype=torch.complex64),  # complex
+    ):
+        default = propagate(_system(factors), thicknesses)
+        assert torch.equal(default, _propagate_matrix_exp(_system(factors), thicknesses))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="peak memory is measured on CUDA")
+def test_real_path_peak_memory_stays_under_the_complex_path_at_many_squarings() -> None:
+    # The real path keeps every double-angle step for backward (~10 + 2s float32 N x N matrices per
+    # operator), so its memory grows with the squaring count s; complex matrix_exp does not. At
+    # s = 18 (a 2**18 operator norm, far past any crystal) it must still be under the complex peak,
+    # which is what lets it reuse the complex max_batch.
+    generator = torch.Generator().manual_seed(0)
+    n, batch = 256, 4
+    base = torch.randn(n, n, generator=generator)
+    base = (base + base.T) / 2
+    base = (base / base.abs().sum(dim=0).max() * 2**18).to("cuda")
+
+    def peak(run: Callable[[], torch.Tensor]) -> int:
+        run().sum().backward()  # warm-up: cuBLAS workspaces are allocated once
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        start = torch.cuda.memory_allocated()
+        run().sum().backward()
+        torch.cuda.synchronize()
+        return torch.cuda.max_memory_allocated() - start
+
+    real_a = base.expand(batch, n, n).clone().requires_grad_()
+    complex_a = (1j * base).to(torch.complex64).expand(batch, n, n).clone().requires_grad_()
+    real_peak = peak(lambda: torch.stack(_cos_sin(real_a)))
+    complex_peak = peak(lambda: torch.matrix_exp(complex_a).abs())
+    assert real_peak < complex_peak
