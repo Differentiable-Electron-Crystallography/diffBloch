@@ -257,18 +257,37 @@ def _fixed_segments(
     return out
 
 
+def _union_counts(
+    n_sweep: int, sweep_mask: Callable[[int], NDArray[np.bool_]]
+) -> NDArray[np.float64]:
+    """``(n_sweep, n_sweep)`` beam counts of ``mask(a) | mask(b)`` for every tilt pair.
+
+    ``|A | B| = |A| + |B| - |A & B|``, and one product of the stacked masks gives every pairwise
+    intersection count, so scoring a split is a table lookup instead of a fresh union and count per
+    boundary pair (that recount dominated the orientation fit). The counts are integers far below
+    ``2**53``, so they are exact in float64.
+    """
+    masks = np.stack([sweep_mask(i) for i in range(n_sweep)]).astype(np.float64)
+    counts = masks.sum(axis=1)
+    union: NDArray[np.float64] = counts[:, None] + counts[None, :] - masks @ masks.T
+    return union
+
+
 def _split_cost(
     boundaries: NDArray[np.int64],
     n_sweep: int,
-    sweep_mask: Callable[[int], NDArray[np.bool_]],
+    union_counts: NDArray[np.float64],
     overhead_beams: float,
 ) -> float:
-    """Beam-count cost ``sum(K^3 + n_tilts * n_beams^3)`` of the even split at ``boundaries``."""
+    """Beam-count cost ``sum(K^3 + n_tilts * n_beams^3)`` of the even split at ``boundaries``.
+
+    ``union_counts`` is the :func:`_union_counts` table of the sweep.
+    """
     cost = 0.0
     last = len(boundaries) - 2
     for i in range(last + 1):
         a, b = int(boundaries[i]), int(boundaries[i + 1])
-        n_beams = float((sweep_mask(a) | sweep_mask(b)).sum())
+        n_beams = float(union_counts[a, b])
         n_covered = (n_sweep if i == last else b) - a
         cost += overhead_beams**3 + n_covered * n_beams**3
     return cost
@@ -286,6 +305,7 @@ def _cost_segment_boundaries(
     fixed split's segments use endpoint unions only. Every count from ``n_floor`` up to one segment
     per tilt is scored with :func:`_split_cost`; ties keep the fewer segments.
     """
+    union_counts = _union_counts(n_sweep, sweep_mask)
     best: NDArray[np.int64] | None = None
     best_cost = float("inf")
     seen: set[bytes] = set()
@@ -295,7 +315,7 @@ def _cost_segment_boundaries(
         if key in seen:
             continue
         seen.add(key)
-        cost = _split_cost(boundaries, n_sweep, sweep_mask, overhead_beams)
+        cost = _split_cost(boundaries, n_sweep, union_counts, overhead_beams)
         if cost < best_cost:
             best, best_cost = boundaries, cost
     assert best is not None

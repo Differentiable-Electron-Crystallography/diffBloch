@@ -77,7 +77,7 @@ def build_structure_factor_gather(
     gpts: tuple[int, int, int],
     *,
     validate: bool = True,
-    structure_factor_indices: IntArray | None = None,
+    structure_factor_indices: IntArray | Tensor | None = None,
 ) -> StructureFactorGather:
     """Precompute the structure-factor gather for a beam set against an ``Fgb`` support grid.
 
@@ -105,7 +105,9 @@ def build_structure_factor_gather(
     (:func:`grid_source_indices`)
     so a hot rebuild loop skips re-raveling the (large) support grid every call -- it is
     grid-constant, so one precompute serves every beam set. When ``None`` it is raveled here (also
-    validating ``gpts`` + the grid box, which a supplied one is trusted to have satisfied).
+    validating ``gpts`` + the grid box, which a supplied one is trusted to have satisfied). A
+    supplied CPU ``torch.long`` tensor is stored as is, so every gather built from it shares one
+    tensor instead of copying the (large) grid index array per gather.
     """
     beams = _beam_index_array(beam_hkl, name="beam_hkl")
 
@@ -117,8 +119,15 @@ def build_structure_factor_gather(
         source = ravel_hkl(grid, gpts)  # also validates gpts (len 3, positive) and the grid box
         if validate and np.unique(source).size != source.size:
             raise ValueError("structure_factor_hkl must not contain duplicate Miller indices")
+    elif isinstance(structure_factor_indices, Tensor):
+        source = structure_factor_indices.numpy()
     else:
         source = np.asarray(structure_factor_indices, dtype=np.int64)
+    source_tensor = (
+        structure_factor_indices
+        if isinstance(structure_factor_indices, Tensor)
+        else torch.tensor(source, dtype=torch.long)
+    )
 
     if validate:
         # ravel_hkl centres the box at gpts // 2; a difference outside it means gpts is too small to
@@ -148,7 +157,7 @@ def build_structure_factor_gather(
             )
 
     return StructureFactorGather(
-        structure_factor_indices=torch.tensor(source, dtype=torch.long),
+        structure_factor_indices=source_tensor,
         beam_difference_indices=torch.tensor(destination, dtype=torch.long),
         n_beams=int(beams.shape[0]),
         buffer_size=int(np.prod(gpts)),

@@ -265,12 +265,17 @@ def test_mosaic_composed_tilts_lose_no_excited_beam(rotation: int, adaptive: boo
 
 
 def _brute_force_cost_pick(n_sweep, mask_of, n_floor, overhead):
-    from diffBloch.preprocess.coupling import _fixed_segment_ranges, _split_cost
+    from diffBloch.preprocess.coupling import _fixed_segment_ranges
 
-    costs = {
-        n: _split_cost(_fixed_segment_ranges(n_sweep, n), n_sweep, mask_of, overhead)
-        for n in range(n_floor, n_sweep + 1)
-    }
+    def cost(boundaries):
+        total, last = 0.0, len(boundaries) - 2
+        for i in range(last + 1):
+            a, b = int(boundaries[i]), int(boundaries[i + 1])
+            n_beams = float((mask_of(a) | mask_of(b)).sum())
+            total += overhead**3 + ((n_sweep if i == last else b) - a) * n_beams**3
+        return total
+
+    costs = {n: cost(_fixed_segment_ranges(n_sweep, n)) for n in range(n_floor, n_sweep + 1)}
     best = min(costs.values())
     return _fixed_segment_ranges(n_sweep, min(n for n, c in costs.items() if c == best))
 
