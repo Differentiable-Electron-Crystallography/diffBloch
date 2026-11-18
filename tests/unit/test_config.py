@@ -615,6 +615,20 @@ def test_coupling_adaptive_fields_default_off_and_thread_through() -> None:
     policy = adaptive.blochwave.to_policy()
     assert policy.union_adaptive is True
     assert policy.union_max_new_beams_pct == 0.02
+    assert default.blochwave.to_policy().union_cost_select is True
+    assert default.blochwave.to_policy().union_segment_overhead_beams == 500.0
+    costed = ExperimentConfig.model_validate(
+        {
+            **base,
+            "blochwave": {
+                **fixed,
+                "union_cost_select": False,
+                "union_segment_overhead_beams": 700.0,
+            },
+        }
+    ).blochwave.to_policy()
+    assert costed.union_cost_select is False
+    assert costed.union_segment_overhead_beams == 700.0
 
 
 def test_coupling_policy_bounds_are_validated() -> None:

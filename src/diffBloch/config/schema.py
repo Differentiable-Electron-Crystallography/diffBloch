@@ -111,6 +111,8 @@ class BlochwaveConfig(_StrictConfig):
     sg_max: float = 0.01
     union_adaptive: bool = True
     union_max_new_beams_pct: float = 0.01
+    union_cost_select: bool = True
+    union_segment_overhead_beams: float = 500.0
     ignore_orientations: tuple[int, ...] = ()
 
     def to_absorption(self) -> Absorption:
@@ -139,6 +141,8 @@ class BlochwaveConfig(_StrictConfig):
             sg_max=self.sg_max,
             union_adaptive=self.union_adaptive,
             union_max_new_beams_pct=self.union_max_new_beams_pct,
+            union_cost_select=self.union_cost_select,
+            union_segment_overhead_beams=self.union_segment_overhead_beams,
         )
 
     def to_scored_resolution_cap(self) -> ScoredResolutionCap | None:
