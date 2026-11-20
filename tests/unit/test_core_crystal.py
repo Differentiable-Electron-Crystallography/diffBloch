@@ -141,3 +141,28 @@ def test_core_helpers_validate_shapes() -> None:
         g_vectors(np.zeros((3,), dtype=np.int64), np.eye(3))
     with pytest.raises(ValueError, match="unsupported lattice centering"):
         reflection_condition(np.zeros((1, 3), dtype=np.int64), "X")
+
+
+@pytest.mark.parametrize("gamma_degrees", [60.0, 120.0], ids=["acute", "hexagonal"])
+def test_reciprocal_space_gpts_covers_every_reflection_in_a_non_orthogonal_cell(
+    gamma_degrees: float,
+) -> None:
+    """Every reflection within ``g_max`` fits the grid, whatever the angle between the axes.
+
+    ``g_max / |a*|`` under-counts here: ``a*`` is not parallel to ``a``, so a reflection along
+    ``a`` has a larger ``h`` than that bound allows.
+    """
+    gamma = np.deg2rad(gamma_degrees)
+    a, c = 5.0, 7.0
+    cell = np.array([[a, 0.0, 0.0], [a * np.cos(gamma), a * np.sin(gamma), 0.0], [0.0, 0.0, c]])
+    # h/a along a: h = 8 needs g_max >= 1.6, yet g_max / |a*| = 1.61 * 5 * sin(120 deg) rounds up to 7.
+    g_max = 1.61
+    reciprocal = reciprocal_cell(cell)
+    limit = 40
+    axis = np.arange(-limit, limit + 1)
+    hkl = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    within = hkl[np.linalg.norm(hkl @ reciprocal, axis=1) <= g_max]
+
+    gpts = np.array(reciprocal_space_gpts(cell, g_max))
+
+    assert np.all(np.abs(within).max(axis=0) <= (gpts - 1) // 2)

@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import numpy as np
 from numpy.typing import NDArray
 
-from diffBloch.core.crystal import reciprocal_cell
+from diffBloch.core.crystal import _cell_array, reciprocal_cell
 
 type FloatArray = NDArray[np.float64]
 type IntArray = NDArray[np.int64]
@@ -28,14 +28,21 @@ def g_vector_lengths(hkl: IntArray, reciprocal_basis: FloatArray) -> FloatArray:
 
 
 def reciprocal_space_gpts(cell: FloatArray, g_max: float) -> tuple[int, int, int]:
-    """Return symmetric reciprocal-grid dimensions needed to cover ``g_max``."""
+    """Return symmetric reciprocal-grid dimensions needed to cover ``g_max``.
+
+    Bounded via the real-space cell vector lengths: with ``a*_i . a_j = delta_ij``
+    (:func:`~diffBloch.core.crystal.reciprocal_cell`), ``h = g . a``, so ``|h| <= g_max * |a|`` by
+    Cauchy-Schwarz for any cell shape. ``g_max / |a*_i|`` is only tight for an orthogonal cell; on a
+    non-orthogonal one it can size the grid too small for reflections within ``g_max``, which then
+    fail in :func:`ravel_hkl`.
+    """
     if g_max < 0.0:
         raise ValueError("g_max must be non-negative")
-    reciprocal_lengths = np.linalg.norm(reciprocal_cell(cell), axis=1)
+    direct_lengths = np.linalg.norm(_cell_array(cell), axis=1)
     return (
-        int(np.ceil(g_max / reciprocal_lengths[0])) * 2 + 1,
-        int(np.ceil(g_max / reciprocal_lengths[1])) * 2 + 1,
-        int(np.ceil(g_max / reciprocal_lengths[2])) * 2 + 1,
+        int(np.ceil(g_max * direct_lengths[0])) * 2 + 1,
+        int(np.ceil(g_max * direct_lengths[1])) * 2 + 1,
+        int(np.ceil(g_max * direct_lengths[2])) * 2 + 1,
     )
 
 
