@@ -11,6 +11,7 @@ from diffBloch.core.adp import (
 )
 from diffBloch.core.constraints import (
     apply_adp_constraints,
+    apply_adp_site_average,
     apply_symmetry_projection,
     diagonal_projection,
     positive,
@@ -87,6 +88,7 @@ __all__ = [
     "StructureFactorGather",
     "align",
     "apply_adp_constraints",
+    "apply_adp_site_average",
     "apply_symmetry_projection",
     "diagonal_projection",
     "build_alignment_plan",
