@@ -1,21 +1,17 @@
 """Symmetry-constraint setup: extract special-position constraints at the io boundary.
 
 Extracts special-position constraints from a validated :class:`StructureRecord`,
-as plain-value arrays the torch-only :func:`diffBloch.params.constrain` then applies. The position
-constraint is the **site-symmetry projector** built natively from the record's symmetry operators
-(no diffpy on the position path); the diffpy-backed ADP (``Uij``) equality constraints are extracted
-at this same boundary.
+as plain-value arrays the torch-only :func:`diffBloch.params.constrain` then applies. Both
+constraints come from the site stabilizer of each atom under the record's own symmetry operators,
+so they follow the setting and origin choice of the CIF. The position constraint is the
+**site-symmetry projector**. The ADP (``Uij``) equalities are read off the same site group.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import numpy as np
-from diffpy.structure.spacegroupmod import SpaceGroup
-from diffpy.structure.spacegroups import get_space_group
-from diffpy.structure.symmetryutilities import SymmetryConstraints as _DiffpyConstraints
 from numpy.typing import NDArray
 
 from diffBloch.core.constraints import AdpConstraint, AdpConstraints
@@ -50,8 +46,8 @@ def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> S
     subspace is the Reynolds average ``P = (1/|S|) * sum_{R in S} R`` with offset ``(I - P) @ x0``.
     ``P`` is idempotent and its image is exactly the free degrees of freedom, so
     ``P @ raw + offset`` keeps the atom on its site for any ``raw``. The projector is built from the
-    record's symmetry operators (no diffpy); the ADP (``Uij``) equalities are extracted from diffpy
-    ``SymmetryConstraints.Ueqns`` keyed on the record's H-M symbol.
+    record's symmetry operators. The ADP (``Uij``) equalities come from the same stabilizer (see
+    :func:`_adp_equalities`), so they never depend on the H-M name or the space-group number.
     """
     if symprec <= 0.0:
         raise ValueError("symprec must be positive")
@@ -62,18 +58,23 @@ def symmetry_constraints(record: StructureRecord, *, symprec: float = 1e-3) -> S
     identity = np.eye(3, dtype=np.float64)
     projection = np.empty((positions.shape[0], 3, 3), dtype=np.float64)
     offset = np.empty((positions.shape[0], 3), dtype=np.float64)
+    reciprocal_lengths = np.linalg.norm(
+        np.linalg.pinv(np.asarray(record.unit_cell, dtype=np.float64)).T, axis=1
+    )
+    adp_constraints: list[tuple[AdpConstraint, ...]] = []
     for index, position in enumerate(positions):
         stabilizer = _site_stabilizer(position, rotations, translations, symprec=symprec)
         projector = stabilizer.mean(axis=0)
         projection[index] = projector
         offset[index] = (identity - projector) @ position
+        adp_constraints.append(_adp_equalities(stabilizer, reciprocal_lengths))
 
     return SymmetryConstraints(
         n_asymmetric_sites=record.n_atoms,
         n_symops=record.n_symops,
         position_projection=projection,
         position_offset=offset,
-        adp_constraints=_adp_constraints(record, positions),
+        adp_constraints=tuple(adp_constraints),
     )
 
 
@@ -117,70 +118,73 @@ def _site_stabilizer(
     return np.stack(stabilizer)
 
 
-# CIF anisotropic-ADP component -> (row, col) in the symmetric 3x3 Uij tensor.
-_UIJ_COMPONENT = {
-    "11": (0, 0),
-    "22": (1, 1),
-    "33": (2, 2),
-    "12": (0, 1),
-    "13": (0, 2),
-    "23": (1, 2),
-}
-# One Ueqn term: optional sign, optional coefficient, then U + two component digits + atom-index.
-_UEQN_TERM = re.compile(r"^([+-]?)(\d*\.?\d+)?\*?U(\d)(\d)\d*$")
+def _adp_equalities(
+    stabilizer: NDArray[np.float64], reciprocal_lengths: NDArray[np.float64]
+) -> tuple[AdpConstraint, ...]:
+    """Return the ``Uij`` equalities that the site group ``stabilizer`` imposes, in the CIF frame.
 
+    A site rotation ``R`` maps ``U*`` to ``R @ U* @ R.T``, and the site symmetry requires that
+    ``U*`` is unchanged by every rotation in the stabilizer. The mean of that map over the
+    stabilizer is the projector onto the allowed ``Uij``. It is built here in the CIF frame,
+    where ``U*_ij = d*_i d*_j Uij`` (see :func:`diffBloch.core.adp.cif_adp_to_star`).
 
-def _adp_constraints(record: StructureRecord, positions: NDArray[np.float64]) -> AdpConstraints:
-    """Extract per-atom ``Uij`` equality tuples from the space-group ADP constraints (diffpy)."""
-    space_group = _space_group(record)
-    diffpy_constraints = _DiffpyConstraints(space_group, positions=positions.tolist())
-    return tuple(_atom_adp_constraints(equations) for equations in diffpy_constraints.Ueqns)
+    The reduced row echelon form of the allowed subspace chooses the free components in the order
+    ``U11, U22, U33, U12, U13, U23``, so diagonal terms are free where possible, as in the CIF
+    tables. Each other component becomes ``Uij[i,j] = coeff * Uij[src_i, src_j]`` with a free
+    source, or ``coeff = 0`` when the site forces it to zero. Crystallographic site groups only
+    give single-term relations. A relation with more than one term would mean a wrong stabilizer,
+    so it raises rather than being silently mishandled.
+    """
+    scale = np.outer(reciprocal_lengths, reciprocal_lengths)
+    columns = []
+    for i, j in _UIJ_COMPONENTS:
+        unit = np.zeros((3, 3), dtype=np.float64)
+        unit[i, j] = unit[j, i] = 1.0
+        star = unit * scale
+        averaged = np.mean([rot @ star @ rot.T for rot in stabilizer], axis=0) / scale
+        columns.append([averaged[a, b] for a, b in _UIJ_COMPONENTS])
+    projector = np.asarray(columns, dtype=np.float64).T  # column k: image of component k
 
-
-def _space_group(record: StructureRecord) -> SpaceGroup:
-    """Resolve the diffpy space group, preferring the CIF H-M symbol, then the number."""
-    try:
-        return get_space_group(record.spacegroup_hm)
-    except (ValueError, KeyError):
-        if record.spacegroup_number is None:
-            raise
-        return get_space_group(record.spacegroup_number)
-
-
-def _atom_adp_constraints(equations: dict[str, str]) -> tuple[AdpConstraint, ...]:
-    """Turn one diffpy ``Ueqns`` dict into ``(i, j, src_i, src_j, coeff)`` equality tuples."""
+    reduced, pivots = _row_echelon(projector.T)
     constraints: list[AdpConstraint] = []
-    for key, (i, j) in _UIJ_COMPONENT.items():
-        formula = equations["U" + key].replace(" ", "")
-        constraint = _parse_ueqn(i, j, formula)
-        if constraint is not None:
-            constraints.append(constraint)
+    for k, (i, j) in enumerate(_UIJ_COMPONENTS):
+        if k in pivots:
+            continue
+        terms = [
+            (row, reduced[row, k]) for row in range(len(pivots)) if abs(reduced[row, k]) > _TOL
+        ]
+        if not terms:
+            constraints.append((i, j, i, j, 0.0))  # Uij[i,j] = 0
+        elif len(terms) == 1:
+            row, coeff = terms[0]
+            src_i, src_j = _UIJ_COMPONENTS[pivots[row]]
+            constraints.append((i, j, src_i, src_j, float(round(coeff, 12))))
+        else:
+            raise ValueError(f"site symmetry gives a multi-term Uij relation for U{i + 1}{j + 1}")
     return tuple(constraints)
 
 
-def _parse_ueqn(i: int, j: int, formula: str) -> AdpConstraint | None:
-    """Parse one ``Ueqns`` formula for component ``(i, j)`` into a constraint, or ``None`` if free.
+def _row_echelon(matrix: NDArray[np.float64]) -> tuple[NDArray[np.float64], list[int]]:
+    """Return the reduced row echelon form of ``matrix`` and its pivot columns, left to right."""
+    reduced = np.array(matrix, dtype=np.float64)
+    pivots: list[int] = []
+    row = 0
+    for col in range(reduced.shape[1]):
+        if row == reduced.shape[0]:
+            break
+        best = row + int(np.argmax(np.abs(reduced[row:, col])))
+        if abs(reduced[best, col]) < _TOL:
+            continue
+        reduced[[row, best]] = reduced[[best, row]]
+        reduced[row] /= reduced[row, col]
+        for other in range(reduced.shape[0]):
+            if other != row:
+                reduced[other] -= reduced[other, col] * reduced[row]
+        pivots.append(col)
+        row += 1
+    return reduced[: len(pivots)], pivots
 
-    A pure constant (site symmetry gives homogeneous relations, so the constant is 0) zeroes the
-    component; a self-reference with unit coefficient is a free parameter (no constraint); a single
-    ``coeff * Ukl`` term becomes ``Uij[i,j] = coeff * Uij[src_i, src_j]``. Anything else (e.g. a
-    multi-term sum) raises rather than being silently mishandled.
-    """
-    if _is_zero(formula):
-        return (i, j, i, j, 0.0)  # Uij[i,j] = 0 * Uij[i,j] = 0
-    match = _UEQN_TERM.fullmatch(formula)
-    if match is None:
-        raise ValueError(f"unsupported ADP constraint formula: {formula!r}")
-    sign, magnitude, first, second = match.groups()
-    coeff = (float(magnitude) if magnitude else 1.0) * (-1.0 if sign == "-" else 1.0)
-    src_i, src_j = _UIJ_COMPONENT[first + second]
-    if (src_i, src_j) == (i, j) and coeff == 1.0:
-        return None  # the component is its own free parameter
-    return (i, j, src_i, src_j, coeff)
 
-
-def _is_zero(formula: str) -> bool:
-    try:
-        return float(formula) == 0.0
-    except ValueError:
-        return False
+# CIF anisotropic-ADP components in CIF order, as (row, col) in the symmetric 3x3 Uij tensor.
+_UIJ_COMPONENTS = ((0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2))
+_TOL = 1e-9

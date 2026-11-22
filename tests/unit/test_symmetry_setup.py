@@ -1,22 +1,24 @@
-"""Native site-symmetry projector + diffpy ADP constraints (``io.symmetry_setup``).
+"""Native site-symmetry projector and ADP constraints (``io.symmetry_setup``).
 
 The correctness proof for special-position constraints: the projector holds atoms on their sites
-(including *coupled* sites a boolean mask cannot express), the ADP equalities are enforced, and
-both agree with diffpy used as an independent oracle (which also trips on any space-group
-setting/origin mismatch between the CIF symops and diffpy).
+(including *coupled* sites a boolean mask cannot express), the ADP equalities are enforced in every
+setting and origin choice, and the position projector agrees with diffpy used as an independent
+oracle on the standard-setting fixtures.
 """
 
 from dataclasses import replace
 from pathlib import Path
 
+import gemmi
 import numpy as np
 import pytest
 import torch
 from diffpy.structure.spacegroups import get_space_group
 from diffpy.structure.symmetryutilities import SymmetryConstraints as DiffpyConstraints
 
-from diffBloch.io.cif import read_structure
-from diffBloch.io.symmetry_setup import symmetry_constraints
+from diffBloch.core.constraints import apply_adp_constraints
+from diffBloch.io.cif import parse_structure_block, read_structure
+from diffBloch.io.symmetry_setup import _site_stabilizer, symmetry_constraints
 from diffBloch.params import constrain
 from diffBloch.preprocess.experiment import RefinementSetup
 
@@ -168,3 +170,93 @@ def test_native_projector_matches_diffpy_oracle(cif: Path) -> None:
         # The dimension of freedom (rank of P) must match diffpy's free-parameter count -- this is
         # what catches a coupled site as well as any CIF-symops vs diffpy setting/origin mismatch.
         assert np.linalg.matrix_rank(p, tol=1e-9) == n_free
+
+
+# --- ADP constraints follow the CIF's own operators, in any setting or origin choice ---
+
+_MONOCLINIC = (9.0, 6.0, 8.0, 90.0, 105.0, 90.0)
+_HEXAGONAL = (5.0, 5.0, 12.0, 90.0, 90.0, 120.0)
+_RHOMBOHEDRAL = (5.0, 5.0, 5.0, 75.0, 75.0, 75.0)
+_CUBIC = (8.0, 8.0, 8.0, 90.0, 90.0, 90.0)
+_TETRAGONAL = (4.0, 4.0, 6.0, 90.0, 90.0, 90.0)
+
+# (operators, H-M name written in the CIF, IT number or None, cell, special site, free Uij count).
+# Each name is one that diffpy's table misreads or does not know, so a name-keyed lookup either
+# fails to load the structure or silently constrains Uij in the wrong setting.
+_SETTINGS = [
+    ("I 1 2/a 1", "I 2/a", 15, _MONOCLINIC, (0.25, 0.21, 0.0), 4),  # C2/c, other cell choice
+    ("A 1 2/a 1", "A 2/a", 15, _MONOCLINIC, (0.25, 0.21, 0.0), 4),
+    ("P 1 21/n 1", "P 21/n", None, _MONOCLINIC, (0.0, 0.0, 0.0), 6),  # loads without a number
+    ("R -3 m:H", "R -3 m", 166, _HEXAGONAL, (0.0, 0.0, 0.21), 2),  # hexagonal axes, bare name
+    ("R -3 m:R", "R -3 m", 166, _RHOMBOHEDRAL, (0.21, 0.21, 0.21), 2),  # rhombohedral axes
+    ("F d -3 m:2", "F d -3 m :2", 227, _CUBIC, (0.5, 0.5, 0.5), 2),  # origin choice 2 (spinel)
+    ("F d -3 m:2", "F d -3 m :2", 227, _CUBIC, (0.125, 0.125, 0.125), 1),
+    ("P 4/n m m:2", "P 4/n m m :2", 129, _TETRAGONAL, (0.25, 0.25, 0.21), 2),  # origin choice 2
+]
+
+
+def _record_from_operators(setting, name, number, cell, site):
+    operators = [op.triplet() for op in gemmi.find_spacegroup_by_name(setting).operations()]
+    lines = [
+        "data_setting",
+        f"_symmetry_space_group_name_H-M '{name}'",
+        *([f"_symmetry_Int_Tables_number {number}"] if number is not None else []),
+        *(
+            f"_cell_{key} {value}"
+            for key, value in zip(
+                ("length_a", "length_b", "length_c", "angle_alpha", "angle_beta", "angle_gamma"),
+                cell,
+                strict=True,
+            )
+        ),
+        "loop_",
+        "_symmetry_equiv_pos_as_xyz",
+        *(f"'{op}'" for op in operators),
+        "loop_",
+        "_atom_site_label",
+        "_atom_site_type_symbol",
+        "_atom_site_fract_x",
+        "_atom_site_fract_y",
+        "_atom_site_fract_z",
+        "_atom_site_U_iso_or_equiv",
+        f"Si1 Si {site[0]} {site[1]} {site[2]} 0.01",
+    ]
+    return parse_structure_block(gemmi.cif.read_string("\n".join(lines) + "\n").sole_block())
+
+
+@pytest.mark.parametrize(("setting", "name", "number", "cell", "site", "n_free"), _SETTINGS)
+def test_adp_constraints_hold_the_site_symmetry_in_every_setting(
+    setting, name, number, cell, site, n_free
+) -> None:
+    record = _record_from_operators(setting, name, number, cell, site)
+    (constraints,) = symmetry_constraints(record).adp_constraints
+    stabilizer = _site_stabilizer(
+        np.asarray(site, dtype=np.float64),
+        np.asarray(record.symops_R),
+        np.asarray(record.symops_t),
+        symprec=1e-3,
+    )
+    d = np.diag(np.linalg.norm(np.linalg.pinv(np.asarray(record.unit_cell)).T, axis=1))
+    assert 6 - len(constraints) == n_free
+
+    # A general U, once constrained, is invariant under every site rotation (in the U* frame).
+    a = np.random.default_rng(0).normal(size=(3, 3))
+    u = a @ a.T * 0.01
+    star = d @ apply_adp_constraints(torch.tensor(u[None]), (constraints,))[0].numpy() @ d
+    for rotation in stabilizer:
+        assert np.allclose(rotation @ star @ rotation.T, star, atol=1e-15)
+
+    # A U that already has the site symmetry passes through unchanged (nothing over-constrained).
+    symmetric_star = np.mean([r @ (d @ u @ d) @ r.T for r in stabilizer], axis=0)
+    symmetric = np.linalg.inv(d) @ symmetric_star @ np.linalg.inv(d)
+    constrained = apply_adp_constraints(torch.tensor(symmetric[None]), (constraints,))[0].numpy()
+    assert np.allclose(constrained, symmetric, atol=1e-15)
+
+
+def test_adp_constraints_ignore_the_space_group_name() -> None:
+    # The operators decide the constraints. A missing or misleading name changes nothing.
+    setting, _, number, cell, site, _ = _SETTINGS[0]
+    reference = symmetry_constraints(_record_from_operators(setting, "I 2/a", number, cell, site))
+    for name, label in (("", None), ("P 1", None), ("C 1 2/c 1", number)):
+        other = symmetry_constraints(_record_from_operators(setting, name, label, cell, site))
+        assert other.adp_constraints == reference.adp_constraints

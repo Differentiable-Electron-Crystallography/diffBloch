@@ -50,10 +50,8 @@ diffBloch stands on published science and several open-source projects. This fil
 - **pydantic** — boundary validation for config and IO records. <https://github.com/pydantic/pydantic>
 - **PyYAML** — experiment/config and lock parsing. <https://github.com/yaml/pyyaml>
 
-### Planned dependencies (seams already in place)
-- **diffpy.structure** — special-position and ADP symmetry-constraint expansion, behind the
-  `io.symmetry_setup` seam (lands with the constraints/symmetry stage). <https://github.com/diffpy/diffpy.structure>
-
 ### Development & verification oracles (not runtime dependencies)
+- **diffpy.structure** — test-only oracle for the site-symmetry projector in
+  `io.symmetry_setup`. The runtime constraints come from the CIF's own symmetry operators. <https://github.com/diffpy/diffpy.structure>
 - **abTEM** — Madsen, J. & Susi, T. (2021), *The abTEM code: transmission electron microscopy from
   first principles*, Open Research Europe 1:24. <https://open-research-europe.ec.europa.eu/articles/1-24>
