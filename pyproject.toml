@@ -38,7 +38,6 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "diffpy.structure>=3.2",  # io/symmetry_setup: ADP (Uij) special-position constraints + oracle
     "gemmi>=0.7.5",
     "numpy>=2.5.2",
     "pydantic>=2.7",
@@ -93,6 +92,7 @@ only-include = ["src/diffBloch", "README.md", "LICENSE", "REFERENCES.md"]
 [dependency-groups]
 dev = [
     "pytest>=8.2",
+    "diffpy.structure>=3.2",  # tests only: independent oracle for the site-symmetry projector
     "pytest-cov>=5.0",
     "ruff>=0.16.3",
     "mypy>=2.3.0",
